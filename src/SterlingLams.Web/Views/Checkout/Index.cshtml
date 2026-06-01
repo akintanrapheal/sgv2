@@ -1,0 +1,198 @@
+@model SterlingLams.Web.Models.ViewModels.CheckoutViewModel
+@{
+    ViewData["Title"] = "Checkout";
+}
+
+<div class="max-w-5xl mx-auto px-6 py-12">
+    <div class="text-center mb-12">
+        <h1 class="font-cormorant text-4xl font-light">Checkout</h1>
+    </div>
+
+    <form asp-action="PlaceOrder" method="post" id="checkout-form">
+        @Html.AntiForgeryToken()
+
+        <div class="grid md:grid-cols-5 gap-12">
+
+            <!-- ─── Left: Fulfillment + Details ─────────────────────────── -->
+            <div class="md:col-span-3 space-y-10">
+
+                <!-- Step 1: Fulfillment Type -->
+                <section>
+                    <h2 class="font-cormorant text-2xl font-light mb-6">How would you like to receive your order?</h2>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="fulfillment-option border border-neutral-300 p-5 cursor-pointer hover:border-neutral-900 transition-colors has-[:checked]:border-neutral-900 has-[:checked]:bg-neutral-50">
+                            <input type="radio" name="FulfillmentType" value="Delivery"
+                                   class="sr-only" @(Model.FulfillmentType == FulfillmentChoice.Delivery ? "checked" : "")
+                                   onchange="toggleFulfillment('delivery')" />
+                            <svg class="w-5 h-5 text-neutral-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12h12l1-12"/>
+                            </svg>
+                            <p class="text-sm font-medium text-neutral-800">Home Delivery</p>
+                            <p class="text-xs text-neutral-400 mt-1 font-light">3–5 business days</p>
+                        </label>
+
+                        <label class="fulfillment-option border border-neutral-300 p-5 cursor-pointer hover:border-neutral-900 transition-colors has-[:checked]:border-neutral-900 has-[:checked]:bg-neutral-50">
+                            <input type="radio" name="FulfillmentType" value="StorePickup"
+                                   class="sr-only" @(Model.FulfillmentType == FulfillmentChoice.StorePickup ? "checked" : "")
+                                   onchange="toggleFulfillment('pickup')" />
+                            <svg class="w-5 h-5 text-neutral-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 00-1-1h-2a1 1 0 00-1 1v5m4 0H9"/>
+                            </svg>
+                            <p class="text-sm font-medium text-neutral-800">Store Pickup</p>
+                            <p class="text-xs text-neutral-400 mt-1 font-light">Ready within 2 hours</p>
+                        </label>
+                    </div>
+                </section>
+
+                <!-- Step 2a: Delivery Address -->
+                <section id="delivery-section" class="@(Model.FulfillmentType == FulfillmentChoice.StorePickup ? "hidden" : "")">
+                    <h2 class="font-cormorant text-2xl font-light mb-6">Delivery Address</h2>
+
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Full Name</label>
+                                <input asp-for="DeliveryAddress.FullName" class="form-input" placeholder="Jane Smith" autocomplete="name" />
+                                <span asp-validation-for="DeliveryAddress.FullName" class="text-xs text-red-500 mt-1 block"></span>
+                            </div>
+                            <div>
+                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Phone</label>
+                                <input asp-for="DeliveryAddress.Phone" type="tel" class="form-input" placeholder="+234 800 000 0000" />
+                                <span asp-validation-for="DeliveryAddress.Phone" class="text-xs text-red-500 mt-1 block"></span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Address Line 1</label>
+                            <input asp-for="DeliveryAddress.Line1" class="form-input" placeholder="Street address" autocomplete="address-line1" />
+                            <span asp-validation-for="DeliveryAddress.Line1" class="text-xs text-red-500 mt-1 block"></span>
+                        </div>
+                        <div>
+                            <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Address Line 2 <span class="text-neutral-300">(optional)</span></label>
+                            <input asp-for="DeliveryAddress.Line2" class="form-input" placeholder="Apartment, suite, etc." autocomplete="address-line2" />
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">City</label>
+                                <input asp-for="DeliveryAddress.City" class="form-input" placeholder="Lagos" autocomplete="address-level2" />
+                                <span asp-validation-for="DeliveryAddress.City" class="text-xs text-red-500 mt-1 block"></span>
+                            </div>
+                            <div>
+                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">State</label>
+                                <input asp-for="DeliveryAddress.State" class="form-input" placeholder="Lagos" />
+                                <span asp-validation-for="DeliveryAddress.State" class="text-xs text-red-500 mt-1 block"></span>
+                            </div>
+                        </div>
+                        <label class="flex items-center gap-2 text-sm text-neutral-500">
+                            <input asp-for="DeliveryAddress.SaveAddress" type="checkbox" class="rounded-none border-neutral-300 text-neutral-900" />
+                            Save this address for future orders
+                        </label>
+                    </div>
+                </section>
+
+                <!-- Step 2b: Store Pickup -->
+                <section id="pickup-section" class="@(Model.FulfillmentType == FulfillmentChoice.Delivery ? "hidden" : "")">
+                    <h2 class="font-cormorant text-2xl font-light mb-6">Select a Store</h2>
+
+                    <div class="space-y-3">
+                        @foreach (var store in Model.AvailableStores)
+                        {
+                            <label class="flex gap-4 border border-neutral-200 p-5 cursor-pointer hover:border-neutral-900 transition-colors has-[:checked]:border-neutral-900 has-[:checked]:bg-neutral-50">
+                                <input type="radio" name="SelectedStoreId" value="@store.StoreId"
+                                       class="mt-1 text-neutral-900 focus:ring-0" />
+                                <div>
+                                    <p class="text-sm font-medium text-neutral-800">@store.StoreName</p>
+                                    <p class="text-xs text-neutral-400 font-light mt-0.5">@store.Address</p>
+                                    @if (!string.IsNullOrEmpty(store.OpeningHours))
+                                    {
+                                        <p class="text-xs text-neutral-400 font-light">@store.OpeningHours</p>
+                                    }
+                                    @if (!store.AllItemsAvailable)
+                                    {
+                                        <p class="text-xs text-amber-600 mt-1">Some items may not be available at this location</p>
+                                    }
+                                </div>
+                            </label>
+                        }
+                    </div>
+                </section>
+            </div>
+
+            <!-- ─── Right: Order Summary + Payment ──────────────────────── -->
+            <div class="md:col-span-2">
+                <div class="bg-neutral-50 p-6 sticky top-28">
+                    <h2 class="font-cormorant text-xl font-light mb-6">Order Summary</h2>
+
+                    <!-- Items -->
+                    <div class="space-y-4 mb-6 max-h-72 overflow-y-auto pr-1">
+                        @foreach (var item in Model.Cart.Items)
+                        {
+                            <div class="flex gap-3">
+                                <img src="@item.ImageUrl" alt="@item.ProductName"
+                                     class="w-16 h-16 object-cover flex-shrink-0" />
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-xs text-neutral-700 leading-snug">@item.ProductName</p>
+                                    @if (!string.IsNullOrEmpty(item.VariantName))
+                                    {
+                                        <p class="text-[11px] text-neutral-400">@item.VariantName</p>
+                                    }
+                                    <p class="text-[11px] text-neutral-400 mt-0.5">Qty: @item.Quantity</p>
+                                </div>
+                                <span class="text-xs text-neutral-700 flex-shrink-0">@item.FormattedLineTotal</span>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="border-t border-neutral-200 pt-4 space-y-2 mb-6">
+                        <div class="flex justify-between text-sm">
+                            <span class="text-neutral-500 font-light">Subtotal</span>
+                            <span>@Model.FormattedSubtotal</span>
+                        </div>
+                        <div class="flex justify-between text-sm">
+                            <span class="text-neutral-500 font-light">Delivery</span>
+                            <span>@Model.FormattedDeliveryFee</span>
+                        </div>
+                        <div class="flex justify-between text-sm font-medium border-t border-neutral-200 pt-3 mt-3">
+                            <span>Total</span>
+                            <span>@Model.FormattedTotal</span>
+                        </div>
+                    </div>
+
+                    <!-- Security badges -->
+                    <div class="flex items-center gap-2 text-xs text-neutral-400 mb-6">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                        </svg>
+                        <span>Secure checkout · SSL encrypted</span>
+                    </div>
+
+                    <button type="submit"
+                            class="w-full bg-neutral-900 text-white text-xs tracking-[0.2em] uppercase py-4 hover:bg-neutral-700 transition-colors duration-300">
+                        Proceed to Payment
+                    </button>
+
+                    <p class="text-[11px] text-neutral-400 text-center mt-4 font-light">
+                        You'll be redirected to Paystack's secure payment page.
+                    </p>
+                </div>
+            </div>
+
+        </div>
+    </form>
+</div>
+
+@section Scripts {
+<script>
+function toggleFulfillment(type) {
+    const delivery = document.getElementById('delivery-section');
+    const pickup = document.getElementById('pickup-section');
+    if (type === 'delivery') {
+        delivery.classList.remove('hidden');
+        pickup.classList.add('hidden');
+    } else {
+        pickup.classList.remove('hidden');
+        delivery.classList.add('hidden');
+    }
+}
+</script>
+}

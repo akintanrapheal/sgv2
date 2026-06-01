@@ -1,0 +1,52 @@
+@model IList<SterlingLams.Web.Models.Domain.Order>
+@{
+    ViewData["Title"] = "My Orders";
+}
+
+<div class="max-w-4xl mx-auto px-6 py-16">
+    <div class="mb-10">
+        <p class="section-label">Your account</p>
+        <h1 class="font-cormorant text-4xl font-light">Order History</h1>
+    </div>
+
+    @if (!Model.Any())
+    {
+        <div class="text-center py-24">
+            <p class="text-neutral-400 font-light mb-8">No orders placed yet.</p>
+            <a asp-controller="Products" asp-action="Index" class="btn-primary">Shop Now</a>
+        </div>
+    }
+    else
+    {
+        <div class="space-y-4">
+            @foreach (var order in Model)
+            {
+                <a asp-action="OrderDetail" asp-route-id="@order.Id"
+                   class="block border border-neutral-100 hover:border-neutral-300 transition-colors p-6">
+                    <div class="flex flex-wrap justify-between gap-4 mb-4">
+                        <div>
+                            <p class="text-sm font-medium text-neutral-800">@order.OrderNumber</p>
+                            <p class="text-xs text-neutral-400 mt-0.5">@order.CreatedAt.ToString("d MMMM yyyy")</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-sm text-neutral-700">₦@order.Total.ToString("N0")</p>
+                            <span class="text-[10px] tracking-widest uppercase @(order.Status == OrderStatus.Delivered ? "text-emerald-600" : order.Status == OrderStatus.Cancelled ? "text-red-400" : "text-amber-600")">
+                                @order.Status
+                            </span>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 text-xs text-neutral-400">
+                        <span>@order.Items.Count piece@(order.Items.Count == 1 ? "" : "s")</span>
+                        <span>·</span>
+                        <span>@(order.FulfillmentType == FulfillmentType.StorePickup ? "Store Pickup" : "Delivery")</span>
+                        @if (order.IsPaid)
+                        {
+                            <span>·</span>
+                            <span class="text-emerald-600">Paid</span>
+                        }
+                    </div>
+                </a>
+            }
+        </div>
+    }
+</div>

@@ -1,0 +1,224 @@
+@model SterlingLams.Web.Models.ViewModels.ProductDetailViewModel
+@{
+    ViewData["Title"] = Model.Name;
+    ViewData["Description"] = Model.ShortDescription;
+    Layout = "_Layout";
+}
+
+<div class="max-w-7xl mx-auto px-6 py-12">
+    <!-- Breadcrumb -->
+    <nav class="text-xs text-neutral-400 tracking-wider mb-10 flex gap-2 items-center">
+        <a asp-controller="Home" asp-action="Index" class="hover:text-neutral-700 transition-colors">Home</a>
+        <span>/</span>
+        <a asp-controller="Products" asp-action="Index" asp-route-category="@Model.CategorySlug" class="hover:text-neutral-700 transition-colors">@Model.CategoryName</a>
+        <span>/</span>
+        <span class="text-neutral-700">@Model.Name</span>
+    </nav>
+
+    <div class="grid md:grid-cols-2 gap-16 lg:gap-24">
+
+        <!-- ─── Image Gallery ─────────────────────────────────────────── -->
+        <div class="space-y-3">
+            <div class="aspect-square bg-neutral-50 overflow-hidden">
+                <img id="main-image" src="@Model.PrimaryImageUrl" alt="@Model.Name"
+                     class="w-full h-full object-cover object-center" />
+            </div>
+            @if (Model.ImageUrls.Count > 1)
+            {
+                <div class="grid grid-cols-4 gap-2">
+                    @foreach (var (url, i) in Model.ImageUrls.Select((u, i) => (u, i)))
+                    {
+                        <button onclick="document.getElementById('main-image').src = '@url'"
+                                class="aspect-square bg-neutral-50 overflow-hidden border-2 @(i == 0 ? "border-neutral-900" : "border-transparent") hover:border-neutral-400 transition-colors">
+                            <img src="@url" alt="@Model.Name view @(i+1)" class="w-full h-full object-cover" />
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- ─── Product Info ──────────────────────────────────────────── -->
+        <div class="flex flex-col">
+            <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-2">@Model.CategoryName</p>
+            <h1 class="font-cormorant text-4xl font-light text-neutral-900 mb-4">@Model.Name</h1>
+            <p class="text-2xl font-light text-neutral-800 mb-8">@Model.FormattedPrice</p>
+
+            @if (!string.IsNullOrEmpty(Model.ShortDescription))
+            {
+                <p class="text-sm text-neutral-500 leading-relaxed mb-8 font-light">@Model.ShortDescription</p>
+            }
+
+            <!-- ─── Store Stock ────────────────────────────────────────── -->
+            @if (Model.StoreStock.Any())
+            {
+                <div class="mb-8">
+                    <p class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-4">Availability</p>
+                    <div class="space-y-2">
+                        @foreach (var store in Model.StoreStock)
+                        {
+                            <div class="flex items-center justify-between py-2.5 border-b border-neutral-100">
+                                <span class="text-sm text-neutral-700">@store.StoreName</span>
+                                @if (store.IsAvailable)
+                                {
+                                    <span class="text-xs text-emerald-700 tracking-wider">
+                                        @store.Quantity in stock
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="text-xs text-neutral-400 tracking-wider">Out of stock</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- ─── Variants ──────────────────────────────────────────── -->
+            @if (Model.Variants.Any())
+            {
+                <div class="mb-8">
+                    <p class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-3">Size</p>
+                    <div class="flex flex-wrap gap-2">
+                        @foreach (var v in Model.Variants)
+                        {
+                            <button type="button"
+                                    class="variant-btn border border-neutral-300 text-xs px-4 py-2 hover:border-neutral-900 hover:text-neutral-900 transition-colors"
+                                    data-variant-id="@v.Id">
+                                @(v.Size ?? v.Name)
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+
+            <!-- ─── Actions ───────────────────────────────────────────── -->
+            <div class="flex gap-3 mb-8">
+                <button id="add-to-cart"
+                        data-product-id="@Model.Id"
+                        @(!Model.IsAvailableAnywhere ? "disabled" : "")
+                        class="flex-1 bg-neutral-900 text-white text-xs tracking-[0.2em] uppercase py-4 px-8 hover:bg-neutral-700 transition-colors duration-300 disabled:opacity-40 disabled:cursor-not-allowed">
+                    @(Model.IsAvailableAnywhere ? "Add to Bag" : "Out of Stock")
+                </button>
+                <button id="wishlist-btn"
+                        data-product-id="@Model.Id"
+                        aria-label="@(Model.IsInWishlist ? "Remove from wishlist" : "Add to wishlist")"
+                        class="border border-neutral-300 px-4 hover:border-neutral-900 transition-colors">
+                    <svg class="w-5 h-5 @(Model.IsInWishlist ? "fill-neutral-900" : "")"
+                         fill="@(Model.IsInWishlist ? "currentColor" : "none")"
+                         stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Reserve for pickup -->
+            <a asp-controller="Checkout" asp-action="Index"
+               class="text-center text-xs tracking-[0.2em] uppercase border border-neutral-300 py-4 hover:border-neutral-900 transition-colors mb-8 block">
+                Reserve for Store Pickup
+            </a>
+
+            <!-- ─── Specifications ─────────────────────────────────────── -->
+            @if (!string.IsNullOrEmpty(Model.Metal) || !string.IsNullOrEmpty(Model.GemstoneType) || !string.IsNullOrEmpty(Model.Carat))
+            {
+                <div class="border-t border-neutral-100 pt-8">
+                    <p class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-4">Details</p>
+                    <dl class="space-y-2">
+                        @if (!string.IsNullOrEmpty(Model.Metal))
+                        {
+                            <div class="flex justify-between text-sm">
+                                <dt class="text-neutral-500 font-light">Metal</dt>
+                                <dd class="text-neutral-800">@Model.Metal</dd>
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(Model.GemstoneType))
+                        {
+                            <div class="flex justify-between text-sm">
+                                <dt class="text-neutral-500 font-light">Gemstone</dt>
+                                <dd class="text-neutral-800">@Model.GemstoneType</dd>
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(Model.Carat))
+                        {
+                            <div class="flex justify-between text-sm">
+                                <dt class="text-neutral-500 font-light">Carat</dt>
+                                <dd class="text-neutral-800">@Model.Carat</dd>
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(Model.Weight))
+                        {
+                            <div class="flex justify-between text-sm">
+                                <dt class="text-neutral-500 font-light">Weight</dt>
+                                <dd class="text-neutral-800">@Model.Weight</dd>
+                            </div>
+                        }
+                    </dl>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- ─── Related Products ──────────────────────────────────────────────── -->
+    @if (Model.RelatedProducts.Any())
+    {
+        <div class="mt-24">
+            <div class="text-center mb-12">
+                <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-3">You may also like</p>
+                <h2 class="font-cormorant text-3xl font-light">Related Pieces</h2>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                @foreach (var p in Model.RelatedProducts)
+                {
+                    <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="group">
+                        <div class="aspect-square bg-neutral-50 mb-3 overflow-hidden">
+                            <img src="@p.PrimaryImageUrl" alt="@p.Name"
+                                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                        </div>
+                        <h3 class="text-sm font-light text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
+                        <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
+                    </a>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    let selectedVariantId = null;
+
+    // Variant selection
+    document.querySelectorAll('.variant-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.variant-btn').forEach(b => b.classList.remove('border-neutral-900', 'bg-neutral-900', 'text-white'));
+            btn.classList.add('border-neutral-900', 'bg-neutral-900', 'text-white');
+            selectedVariantId = btn.dataset.variantId;
+        });
+    });
+
+    // Add to cart
+    document.getElementById('add-to-cart')?.addEventListener('click', async () => {
+        const productId = @Model.Id;
+        const body = new URLSearchParams({ productId, quantity: 1 });
+        if (selectedVariantId) body.append('variantId', selectedVariantId);
+
+        const res = await fetch('/Cart/Add', { method: 'POST', body, headers: { 'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '' } });
+        const data = await res.json();
+        if (data.success) {
+            const badge = document.getElementById('cart-badge');
+            if (badge) badge.textContent = data.cartCount;
+        }
+    });
+
+    // Wishlist toggle
+    document.getElementById('wishlist-btn')?.addEventListener('click', async () => {
+        const productId = @Model.Id;
+        const res = await fetch('/Wishlist/Toggle', { method: 'POST', body: new URLSearchParams({ productId }), headers: { 'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '' } });
+        const data = await res.json();
+        if (data.success) location.reload();
+    });
+})();
+</script>
+}

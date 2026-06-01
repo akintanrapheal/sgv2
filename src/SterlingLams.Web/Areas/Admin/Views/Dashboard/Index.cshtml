@@ -1,0 +1,106 @@
+@model SterlingLams.Web.Areas.Admin.ViewModels.DashboardViewModel
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<!-- KPI Cards -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    @{
+        var cards = new[]
+        {
+            new { Label = "Revenue Today",    Value = "₦" + Model.RevenueToday.ToString("N0"),   Sub = "Paid orders",         Color = "text-emerald-600" },
+            new { Label = "Revenue (Month)",  Value = "₦" + Model.RevenueThisMonth.ToString("N0"), Sub = "Current month",      Color = "text-emerald-600" },
+            new { Label = "Orders Today",     Value = Model.OrdersToday.ToString(),              Sub = Model.OrdersPending + " pending", Color = "text-blue-600" },
+            new { Label = "Low Stock Alerts", Value = Model.LowStockAlerts.ToString(),           Sub = "Items below 3 units",  Color = "text-amber-600" },
+        };
+    }
+    @foreach (var c in cards)
+    {
+        <div class="bg-white rounded-sm border border-neutral-100 p-6">
+            <p class="text-xs text-neutral-400 uppercase tracking-widest mb-2">@c.Label</p>
+            <p class="text-2xl font-light @c.Color">@c.Value</p>
+            <p class="text-xs text-neutral-400 mt-1">@c.Sub</p>
+        </div>
+    }
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- Recent Orders -->
+    <div class="lg:col-span-2 bg-white rounded-sm border border-neutral-100">
+        <div class="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
+            <h2 class="text-sm font-medium">Recent Orders</h2>
+            <a asp-area="Admin" asp-controller="Orders" asp-action="Index"
+               class="text-xs text-neutral-400 hover:text-neutral-900 transition-colors">View all →</a>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-neutral-50">
+                        <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Order</th>
+                        <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Customer</th>
+                        <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Amount</th>
+                        <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Status</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-neutral-50">
+                    @if (!Model.RecentOrders.Any())
+                    {
+                        <tr><td colspan="4" class="px-6 py-8 text-center text-neutral-400 text-xs">No orders yet</td></tr>
+                    }
+                    @foreach (var o in Model.RecentOrders)
+                    {
+                        <tr class="hover:bg-neutral-50 transition-colors">
+                            <td class="px-6 py-3">
+                                <a asp-area="Admin" asp-controller="Orders" asp-action="Detail"
+                                   asp-route-id="@o.OrderNumber"
+                                   class="text-xs font-mono text-neutral-700 hover:text-neutral-900">@o.OrderNumber</a>
+                            </td>
+                            <td class="px-6 py-3 text-xs text-neutral-600">@o.CustomerName</td>
+                            <td class="px-6 py-3 text-xs font-medium">₦@o.Total.ToString("N0")</td>
+                            <td class="px-6 py-3">
+                                @{
+                                    var badgeColor = o.Status switch
+                                    {
+                                        "Delivered" => "bg-emerald-50 text-emerald-700",
+                                        "Cancelled" => "bg-red-50 text-red-700",
+                                        "Processing" or "Confirmed" => "bg-blue-50 text-blue-700",
+                                        _ => "bg-neutral-100 text-neutral-600"
+                                    };
+                                }
+                                <span class="inline-block text-[10px] px-2 py-0.5 rounded-full @badgeColor">@o.Status</span>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Low Stock -->
+    <div class="bg-white rounded-sm border border-neutral-100">
+        <div class="px-6 py-4 border-b border-neutral-100 flex items-center justify-between">
+            <h2 class="text-sm font-medium">Low Stock</h2>
+            <a asp-area="Admin" asp-controller="Inventory" asp-action="Index"
+               class="text-xs text-neutral-400 hover:text-neutral-900 transition-colors">Manage →</a>
+        </div>
+        <div class="divide-y divide-neutral-50">
+            @if (!Model.LowStockItems.Any())
+            {
+                <p class="px-6 py-8 text-center text-xs text-neutral-400">All stock levels healthy</p>
+            }
+            @foreach (var item in Model.LowStockItems)
+            {
+                <div class="px-6 py-3 flex items-center justify-between">
+                    <div class="min-w-0">
+                        <p class="text-xs font-medium text-neutral-800 truncate">@item.ProductName</p>
+                        <p class="text-[10px] text-neutral-400">@item.StoreName</p>
+                    </div>
+                    <span class="ml-3 text-xs font-medium @(item.Quantity == 0 ? "text-red-600" : "text-amber-600") flex-shrink-0">
+                        @item.Quantity left
+                    </span>
+                </div>
+            }
+        </div>
+    </div>
+</div>

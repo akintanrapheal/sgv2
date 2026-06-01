@@ -1,0 +1,131 @@
+@{
+    ViewData["Title"] = "Luxury Jewellery";
+    Layout = "_Layout";
+}
+
+<!-- ─── Hero ──────────────────────────────────────────────────────────────── -->
+<section class="relative h-screen min-h-[600px] flex items-center overflow-hidden">
+    <div class="absolute inset-0 bg-neutral-100">
+        <!-- Hero image placeholder — replace with actual image -->
+        <div class="w-full h-full bg-gradient-to-br from-neutral-200 via-neutral-100 to-stone-100"></div>
+    </div>
+
+    <div class="relative z-10 max-w-7xl mx-auto px-6 text-center">
+        <p class="text-xs tracking-[0.4em] uppercase text-neutral-500 mb-6">New Collection 2025</p>
+        <h1 class="font-cormorant text-6xl md:text-8xl font-light text-neutral-900 leading-none mb-6">
+            Timeless<br>
+            <em class="italic">Elegance</em>
+        </h1>
+        <p class="text-base font-light text-neutral-500 tracking-wide max-w-md mx-auto mb-10">
+            Luxury jewellery crafted for the discerning woman. Discover our newest arrivals.
+        </p>
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <a asp-controller="Products" asp-action="Index"
+               class="inline-block bg-neutral-900 text-white text-xs tracking-[0.2em] uppercase px-10 py-4 hover:bg-neutral-700 transition-colors duration-300">
+                Shop Collection
+            </a>
+            <a asp-controller="Home" asp-action="Collections"
+               class="inline-block border border-neutral-900 text-neutral-900 text-xs tracking-[0.2em] uppercase px-10 py-4 hover:bg-neutral-900 hover:text-white transition-colors duration-300">
+                Explore Lookbook
+            </a>
+        </div>
+    </div>
+
+    <!-- Scroll indicator -->
+    <div class="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
+        <div class="w-px h-12 bg-gradient-to-b from-transparent to-neutral-400"></div>
+        <span class="text-[10px] tracking-[0.3em] uppercase text-neutral-400">Scroll</span>
+    </div>
+</section>
+
+<!-- ─── Category Nav ──────────────────────────────────────────────────────── -->
+<section class="py-20 bg-white">
+    <div class="max-w-7xl mx-auto px-6">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            @foreach (var cat in new[] {
+                new { Name = "Rings", Slug = "rings", Icon = "💍" },
+                new { Name = "Necklaces", Slug = "necklaces", Icon = "📿" },
+                new { Name = "Bracelets", Slug = "bracelets", Icon = "⌚" },
+                new { Name = "Earrings", Slug = "earrings", Icon = "✨" }
+            })
+            {
+                <a asp-controller="Products" asp-action="Index" asp-route-category="@cat.Slug"
+                   class="group flex flex-col items-center py-10 px-6 bg-neutral-50 hover:bg-neutral-900 transition-all duration-500 cursor-pointer">
+                    <div class="w-16 h-16 rounded-full bg-white group-hover:bg-neutral-800 transition-colors duration-500 flex items-center justify-center mb-4 text-2xl shadow-sm">
+                        @cat.Icon
+                    </div>
+                    <span class="text-xs tracking-[0.2em] uppercase text-neutral-600 group-hover:text-white transition-colors duration-500">
+                        @cat.Name
+                    </span>
+                </a>
+            }
+        </div>
+    </div>
+</section>
+
+<!-- ─── Featured Products ─────────────────────────────────────────────────── -->
+<section class="py-20 bg-stone-50">
+    <div class="max-w-7xl mx-auto px-6">
+        <div class="text-center mb-14">
+            <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-3">Curated for you</p>
+            <h2 class="font-cormorant text-4xl font-light text-neutral-900">Featured Pieces</h2>
+        </div>
+
+        <!-- Product grid placeholder — real data populated by component -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+            @for (int i = 0; i < 4; i++)
+            {
+                <div class="group cursor-pointer">
+                    <div class="aspect-square bg-neutral-100 mb-4 overflow-hidden relative">
+                        <div class="w-full h-full bg-gradient-to-br from-neutral-200 to-neutral-100 group-hover:scale-105 transition-transform duration-700"></div>
+                        <div class="absolute inset-0 flex items-end justify-center pb-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                            <button class="bg-white text-neutral-900 text-xs tracking-widest uppercase px-6 py-2 shadow-lg">
+                                Quick View
+                            </button>
+                        </div>
+                    </div>
+                    <h3 class="font-light text-sm text-neutral-700">Sample Piece</h3>
+                    <p class="text-xs text-neutral-400 mt-1">₦450,000</p>
+                </div>
+            }
+        </div>
+
+        <div class="text-center mt-12">
+            <a asp-controller="Products" asp-action="Index"
+               class="inline-block border border-neutral-900 text-neutral-900 text-xs tracking-[0.2em] uppercase px-12 py-4 hover:bg-neutral-900 hover:text-white transition-colors duration-300">
+                View All
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- ─── Store Finder Banner ───────────────────────────────────────────────── -->
+<section class="py-20 bg-neutral-900 text-white">
+    <div class="max-w-7xl mx-auto px-6 grid md:grid-cols-2 gap-12 items-center">
+        <div>
+            <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-4">3 Locations in Lagos</p>
+            <h2 class="font-cormorant text-4xl font-light mb-6">Visit Us In-Store</h2>
+            <p class="text-neutral-400 font-light text-sm leading-relaxed mb-8">
+                Experience our jewellery in person at any of our three Lagos boutiques.
+                Our consultants are ready to help you find the perfect piece.
+            </p>
+            <a asp-controller="Stores" asp-action="Index"
+               class="inline-block border border-white text-white text-xs tracking-[0.2em] uppercase px-10 py-4 hover:bg-white hover:text-neutral-900 transition-colors duration-300">
+                Find a Store
+            </a>
+        </div>
+        <div class="grid grid-cols-3 gap-4">
+            @foreach (var store in new[] { "Victoria Island", "Ikeja", "Lekki" })
+            {
+                <div class="bg-neutral-800 p-6 text-center">
+                    <div class="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center mx-auto mb-3">
+                        <svg class="w-4 h-4 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                        </svg>
+                    </div>
+                    <p class="text-xs tracking-widest uppercase text-neutral-300">@store</p>
+                </div>
+            }
+        </div>
+    </div>
+</section>

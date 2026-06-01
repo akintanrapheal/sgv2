@@ -1,0 +1,198 @@
+@model SterlingLams.Web.Models.ViewModels.ProductListViewModel
+@{
+    ViewData["Title"] = Model.PageTitle ?? "Collections";
+    Layout = "_Layout";
+}
+
+<div class="max-w-7xl mx-auto px-6 py-12">
+
+    <!-- Page Header -->
+    <div class="text-center mb-12">
+        <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-3">Sterling Lams</p>
+        <h1 class="font-cormorant text-5xl font-light text-neutral-900">
+            @(Model.PageTitle ?? "Our Collections")
+        </h1>
+        @if (Model.TotalCount > 0)
+        {
+            <p class="text-sm text-neutral-400 mt-3">@Model.TotalCount pieces</p>
+        }
+    </div>
+
+    <div class="flex gap-8 lg:gap-12">
+
+        <!-- ─── Sidebar Filters ────────────────────────────────────────────── -->
+        <aside class="hidden lg:block w-56 flex-shrink-0">
+            <form method="get" id="filter-form">
+                <!-- Category -->
+                @if (Model.Filters.Categories.Any())
+                {
+                    <div class="mb-8">
+                        <h3 class="text-xs tracking-[0.2em] uppercase text-neutral-400 mb-4">Category</h3>
+                        <ul class="space-y-2">
+                            @foreach (var cat in Model.Filters.Categories)
+                            {
+                                <li>
+                                    <a asp-action="Index" asp-route-category="@cat.Slug"
+                                       class="text-sm @(Model.Filters.Category == cat.Slug ? "text-neutral-900 font-medium" : "text-neutral-500") hover:text-neutral-900 transition-colors flex justify-between">
+                                        <span>@cat.Name</span>
+                                        <span class="text-neutral-300">@cat.Count</span>
+                                    </a>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
+
+                <!-- Metal -->
+                @if (Model.Filters.AvailableMetals.Any())
+                {
+                    <div class="mb-8">
+                        <h3 class="text-xs tracking-[0.2em] uppercase text-neutral-400 mb-4">Metal</h3>
+                        <ul class="space-y-2">
+                            @foreach (var metal in Model.Filters.AvailableMetals)
+                            {
+                                <li>
+                                    <label class="flex items-center gap-2 text-sm text-neutral-600 cursor-pointer hover:text-neutral-900 transition-colors">
+                                        <input type="checkbox" name="metal" value="@metal"
+                                               @(Model.Filters.Metal == metal ? "checked" : "")
+                                               class="rounded-none border-neutral-300 text-neutral-900" />
+                                        @metal
+                                    </label>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
+
+                <!-- Price Range -->
+                <div class="mb-8">
+                    <h3 class="text-xs tracking-[0.2em] uppercase text-neutral-400 mb-4">Price</h3>
+                    <div class="space-y-2">
+                        <input type="number" name="minPrice" value="@Model.Filters.MinPrice" placeholder="Min ₦"
+                               class="w-full border border-neutral-200 text-sm px-3 py-2 focus:outline-none focus:border-neutral-900" />
+                        <input type="number" name="maxPrice" value="@Model.Filters.MaxPrice" placeholder="Max ₦"
+                               class="w-full border border-neutral-200 text-sm px-3 py-2 focus:outline-none focus:border-neutral-900" />
+                    </div>
+                </div>
+
+                <!-- Availability -->
+                <div class="mb-8">
+                    <label class="flex items-center gap-2 text-sm text-neutral-600 cursor-pointer">
+                        <input type="checkbox" name="inStockOnly" value="true"
+                               @(Model.Filters.InStockOnly == true ? "checked" : "") />
+                        In stock only
+                    </label>
+                </div>
+
+                <button type="submit"
+                        class="w-full bg-neutral-900 text-white text-xs tracking-[0.2em] uppercase py-3 hover:bg-neutral-700 transition-colors">
+                    Apply Filters
+                </button>
+
+                @if (!string.IsNullOrEmpty(Model.Filters.Category) || !string.IsNullOrEmpty(Model.Filters.Metal) || Model.Filters.MinPrice.HasValue)
+                {
+                    <a asp-action="Index" class="block text-center mt-3 text-xs text-neutral-400 hover:text-neutral-700 transition-colors">
+                        Clear all
+                    </a>
+                }
+            </form>
+        </aside>
+
+        <!-- ─── Product Grid ───────────────────────────────────────────────── -->
+        <div class="flex-1 min-w-0">
+
+            <!-- Sort bar -->
+            <div class="flex items-center justify-between mb-8 pb-4 border-b border-neutral-100">
+                <p class="text-xs text-neutral-400">
+                    Showing @((Model.Page - 1) * Model.PageSize + 1)–@Math.Min(Model.Page * Model.PageSize, Model.TotalCount) of @Model.TotalCount
+                </p>
+                <select name="sortBy" form="filter-form"
+                        onchange="document.getElementById('filter-form').submit()"
+                        class="text-xs border border-neutral-200 px-3 py-2 text-neutral-600 focus:outline-none focus:border-neutral-900 bg-white">
+                    <option value="newest" @(Model.Filters.SortBy == "newest" ? "selected" : "")>Newest</option>
+                    <option value="price_asc" @(Model.Filters.SortBy == "price_asc" ? "selected" : "")>Price: Low to High</option>
+                    <option value="price_desc" @(Model.Filters.SortBy == "price_desc" ? "selected" : "")>Price: High to Low</option>
+                    <option value="name" @(Model.Filters.SortBy == "name" ? "selected" : "")>Name</option>
+                </select>
+            </div>
+
+            @if (!Model.Products.Any())
+            {
+                <div class="text-center py-24">
+                    <p class="font-cormorant text-2xl font-light text-neutral-400">No pieces found</p>
+                    <p class="text-sm text-neutral-400 mt-2">Try adjusting your filters.</p>
+                </div>
+            }
+            else
+            {
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-6">
+                    @foreach (var product in Model.Products)
+                    {
+                        <div class="group">
+                            <!-- Image -->
+                            <a asp-controller="Products" asp-action="Detail" asp-route-slug="@product.Slug"
+                               class="block aspect-square bg-neutral-50 overflow-hidden relative mb-4">
+                                <img src="@product.PrimaryImageUrl" alt="@product.Name"
+                                     loading="lazy"
+                                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+
+                                @if (product.IsNewArrival)
+                                {
+                                    <span class="absolute top-3 left-3 bg-neutral-900 text-white text-[9px] tracking-widest uppercase px-2 py-1">
+                                        New
+                                    </span>
+                                }
+                                @if (!product.IsAvailable)
+                                {
+                                    <div class="absolute inset-0 bg-white/50 flex items-center justify-center">
+                                        <span class="text-xs tracking-widest uppercase text-neutral-500">Sold Out</span>
+                                    </div>
+                                }
+
+                                <!-- Quick actions on hover -->
+                                <div class="absolute bottom-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                    <button class="wishlist-toggle bg-white shadow p-2 hover:bg-neutral-900 hover:text-white transition-colors"
+                                            data-product-id="@product.Id"
+                                            aria-label="Wishlist">
+                                        <svg class="w-4 h-4 @(product.IsInWishlist ? "fill-neutral-900" : "")"
+                                             fill="@(product.IsInWishlist ? "currentColor" : "none")"
+                                             stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </a>
+
+                            <!-- Info -->
+                            <a asp-controller="Products" asp-action="Detail" asp-route-slug="@product.Slug">
+                                <p class="text-[10px] tracking-[0.2em] uppercase text-neutral-400 mb-1">@product.CategoryName</p>
+                                <h3 class="text-sm font-light text-neutral-800 group-hover:text-neutral-900 transition-colors leading-snug mb-2">
+                                    @product.Name
+                                </h3>
+                                <p class="text-sm text-neutral-700">@product.FormattedPrice</p>
+                            </a>
+                        </div>
+                    }
+                </div>
+
+                <!-- Pagination -->
+                @if (Model.TotalPages > 1)
+                {
+                    <div class="flex justify-center gap-2 mt-16">
+                        @for (int i = 1; i <= Model.TotalPages; i++)
+                        {
+                            <a asp-action="Index"
+                               asp-route-page="@i"
+                               asp-route-category="@Model.Filters.Category"
+                               asp-route-sortBy="@Model.Filters.SortBy"
+                               class="w-10 h-10 flex items-center justify-center text-xs border @(i == Model.Page ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-200 text-neutral-600 hover:border-neutral-900") transition-colors">
+                                @i
+                            </a>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>

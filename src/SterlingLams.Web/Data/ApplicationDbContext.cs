@@ -1,0 +1,103 @@
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+using SterlingLams.Web.Models.Domain;
+
+namespace SterlingLams.Web.Data;
+
+public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
+{
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
+
+    public DbSet<Product> Products => Set<Product>();
+    public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
+    public DbSet<ProductImage> ProductImages => Set<ProductImage>();
+    public DbSet<ProductTag> ProductTags => Set<ProductTag>();
+    public DbSet<Category> Categories => Set<Category>();
+    public DbSet<Store> Stores => Set<Store>();
+    public DbSet<StoreInventory> StoreInventories => Set<StoreInventory>();
+    public DbSet<Order> Orders => Set<Order>();
+    public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
+    public DbSet<Address> Addresses => Set<Address>();
+
+    protected override void OnModelCreating(ModelBuilder builder)
+    {
+        base.OnModelCreating(builder);
+
+        // ─── Product ────────────────────────────────────────────────────────
+        builder.Entity<Product>(e =>
+        {
+            e.HasIndex(p => p.Slug).IsUnique();
+            e.HasIndex(p => p.OdooProductId).IsUnique();
+            e.Property(p => p.Price).HasPrecision(18, 2);
+
+            e.HasOne(p => p.Category)
+             .WithMany(c => c.Products)
+             .HasForeignKey(p => p.CategoryId);
+
+            e.HasMany(p => p.Tags)
+             .WithMany(t => t.Products)
+             .UsingEntity("ProductProductTag");
+        });
+
+        // ─── Category ───────────────────────────────────────────────────────
+        builder.Entity<Category>(e =>
+        {
+            e.HasIndex(c => c.Slug).IsUnique();
+            e.HasOne(c => c.Parent)
+             .WithMany(c => c.Children)
+             .HasForeignKey(c => c.ParentId)
+             .IsRequired(false);
+        });
+
+        // ─── Store ──────────────────────────────────────────────────────────
+        builder.Entity<Store>(e =>
+        {
+            e.HasIndex(s => s.Slug).IsUnique();
+            e.HasIndex(s => s.OdooWarehouseId).IsUnique();
+        });
+
+        // ─── StoreInventory ─────────────────────────────────────────────────
+        builder.Entity<StoreInventory>(e =>
+        {
+            e.HasIndex(si => new { si.ProductId, si.StoreId }).IsUnique();
+        });
+
+        // ─── Order ──────────────────────────────────────────────────────────
+        builder.Entity<Order>(e =>
+        {
+            e.HasIndex(o => o.OrderNumber).IsUnique();
+            e.Property(o => o.Subtotal).HasPrecision(18, 2);
+            e.Property(o => o.DeliveryFee).HasPrecision(18, 2);
+            e.Property(o => o.Tax).HasPrecision(18, 2);
+            e.Property(o => o.Total).HasPrecision(18, 2);
+
+            e.HasOne(o => o.PickupStore)
+             .WithMany(s => s.Orders)
+             .HasForeignKey(o => o.PickupStoreId)
+             .IsRequired(false);
+        });
+
+        // ─── OrderItem ──────────────────────────────────────────────────────
+        builder.Entity<OrderItem>(e =>
+        {
+            e.Property(oi => oi.UnitPrice).HasPrecision(18, 2);
+            e.Ignore(oi => oi.LineTotal);
+        });
+
+        // ─── WishlistItem ───────────────────────────────────────────────────
+        builder.Entity<WishlistItem>(e =>
+        {
+            e.HasIndex(w => new { w.UserId, w.ProductId }).IsUnique();
+        });
+
+        // ─── StoreInventory.AvailableQuantity (computed, not mapped) ────────
+        builder.Entity<StoreInventory>()
+            .Ignore(si => si.AvailableQuantity);
+
+        // ─── Product computed properties ────────────────────────────────────
+        builder.Entity<Product>()
+            .Ignore(p => p.TotalStock)
+            .Ignore(p => p.IsAvailable);
+    }
+}

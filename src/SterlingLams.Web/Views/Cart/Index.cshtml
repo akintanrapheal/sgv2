@@ -1,0 +1,79 @@
+@model SterlingLams.Web.Models.ViewModels.CartViewModel
+@{
+    ViewData["Title"] = "Shopping Bag";
+}
+
+<div class="max-w-4xl mx-auto px-6 py-16">
+    <div class="text-center mb-12">
+        <h1 class="font-cormorant text-4xl font-light">Shopping Bag</h1>
+    </div>
+
+    @if (Model.IsEmpty)
+    {
+        <div class="text-center py-24">
+            <p class="text-neutral-400 mb-8 font-light">Your bag is empty.</p>
+            <a asp-controller="Products" asp-action="Index" class="btn-primary">Continue Shopping</a>
+        </div>
+    }
+    else
+    {
+        <div class="space-y-6 mb-12">
+            @foreach (var item in Model.Items)
+            {
+                <div class="flex gap-6 py-6 border-b border-neutral-100">
+                    <img src="@item.ImageUrl" alt="@item.ProductName"
+                         class="w-28 h-28 object-cover flex-shrink-0" />
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-light text-neutral-800 mb-1">@item.ProductName</h3>
+                        @if (!string.IsNullOrEmpty(item.VariantName))
+                        {
+                            <p class="text-xs text-neutral-400 mb-2">@item.VariantName</p>
+                        }
+                        <p class="text-sm text-neutral-600 mb-4">@item.FormattedUnitPrice</p>
+                        <div class="flex items-center gap-4">
+                            <div class="flex items-center border border-neutral-200">
+                                <button class="qty-btn px-3 py-1 text-neutral-600 hover:bg-neutral-50"
+                                        data-product-id="@item.ProductId"
+                                        data-variant-id="@item.VariantId"
+                                        data-delta="-1">−</button>
+                                <span class="qty-display px-4 py-1 text-sm border-x border-neutral-200">@item.Quantity</span>
+                                <button class="qty-btn px-3 py-1 text-neutral-600 hover:bg-neutral-50"
+                                        data-product-id="@item.ProductId"
+                                        data-variant-id="@item.VariantId"
+                                        data-delta="1">+</button>
+                            </div>
+                            <button class="remove-item text-xs text-neutral-400 hover:text-neutral-900 transition-colors"
+                                    data-product-id="@item.ProductId"
+                                    data-variant-id="@item.VariantId">
+                                Remove
+                            </button>
+                        </div>
+                    </div>
+                    <div class="text-right flex-shrink-0">
+                        <p class="font-light text-neutral-800">@item.FormattedLineTotal</p>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="border-t border-neutral-200 pt-8 flex flex-col md:flex-row justify-between gap-8">
+            <div>
+                <a asp-controller="Products" asp-action="Index"
+                   class="text-xs tracking-widest uppercase text-neutral-500 hover:text-neutral-900 transition-colors">
+                    ← Continue Shopping
+                </a>
+            </div>
+            <div class="md:w-72">
+                <div class="flex justify-between text-sm mb-4">
+                    <span class="text-neutral-500">Subtotal</span>
+                    <span id="subtotal-display" class="font-light">@Model.FormattedSubtotal</span>
+                </div>
+                <p class="text-xs text-neutral-400 mb-6">Shipping and taxes calculated at checkout.</p>
+                <a asp-controller="Checkout" asp-action="Index"
+                   class="block text-center bg-neutral-900 text-white text-xs tracking-[0.2em] uppercase py-4 hover:bg-neutral-700 transition-colors">
+                    Proceed to Checkout
+                </a>
+            </div>
+        </div>
+    }
+</div>

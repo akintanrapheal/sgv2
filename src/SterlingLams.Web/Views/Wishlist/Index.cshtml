@@ -1,0 +1,65 @@
+@model IList<SterlingLams.Web.Models.Domain.WishlistItem>
+@{
+    ViewData["Title"] = "Wishlist";
+}
+
+<div class="max-w-7xl mx-auto px-6 py-16">
+    <div class="text-center mb-12">
+        <p class="section-label">Saved pieces</p>
+        <h1 class="font-cormorant text-4xl font-light">My Wishlist</h1>
+    </div>
+
+    @if (!Model.Any())
+    {
+        <div class="text-center py-24">
+            <p class="text-neutral-400 font-light mb-8">You haven't saved any pieces yet.</p>
+            <a asp-controller="Products" asp-action="Index" class="btn-primary">Explore Collections</a>
+        </div>
+    }
+    else
+    {
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+            @foreach (var item in Model)
+            {
+                var product = item.Product;
+                var primaryImage = product.Images.FirstOrDefault(i => i.IsPrimary)?.Url
+                    ?? product.Images.FirstOrDefault()?.Url
+                    ?? "/images/placeholder.jpg";
+                var isAvailable = product.StoreInventories.Any(si => si.QuantityOnHand > 0);
+
+                <div class="group relative">
+                    <a asp-controller="Products" asp-action="Detail" asp-route-slug="@product.Slug"
+                       class="block aspect-square bg-neutral-50 overflow-hidden mb-4">
+                        <img src="@primaryImage" alt="@product.Name"
+                             class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                    </a>
+
+                    <!-- Remove button -->
+                    <form asp-controller="Wishlist" asp-action="Remove" method="post" class="absolute top-2 right-2">
+                        <input type="hidden" name="productId" value="@product.Id" />
+                        <button type="submit" class="bg-white shadow p-1.5 hover:bg-neutral-900 hover:text-white transition-colors" aria-label="Remove">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </form>
+
+                    <h3 class="text-sm font-light text-neutral-800 mb-1">@product.Name</h3>
+                    <p class="text-sm text-neutral-500 mb-3">₦@product.Price.ToString("N0")</p>
+
+                    @if (isAvailable)
+                    {
+                        <button class="add-to-cart w-full border border-neutral-900 text-neutral-900 text-xs tracking-widest uppercase py-2 hover:bg-neutral-900 hover:text-white transition-colors"
+                                data-product-id="@product.Id">
+                            Add to Bag
+                        </button>
+                    }
+                    else
+                    {
+                        <p class="text-xs text-neutral-400 text-center py-2 tracking-widest uppercase">Out of Stock</p>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>

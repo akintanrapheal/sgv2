@@ -1,0 +1,93 @@
+@model SterlingLams.Web.Models.Domain.Order
+@{
+    ViewData["Title"] = "Order Confirmed";
+}
+
+<div class="max-w-2xl mx-auto px-6 py-20 text-center">
+
+    <!-- Success icon -->
+    <div class="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-8">
+        <svg class="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 13l4 4L19 7"/>
+        </svg>
+    </div>
+
+    <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-3">Thank you</p>
+    <h1 class="font-cormorant text-4xl font-light mb-3">Order Confirmed</h1>
+    <p class="text-sm text-neutral-400 font-light mb-8">
+        Your order <span class="text-neutral-700 font-medium">@Model.OrderNumber</span> has been placed successfully.
+        @if (Model.IsPaid)
+        {
+            <text>Payment received.</text>
+        }
+    </p>
+
+    <!-- Order Details Box -->
+    <div class="border border-neutral-100 text-left p-8 mb-10">
+        <div class="space-y-4">
+
+            @if (Model.FulfillmentType == FulfillmentType.StorePickup && Model.PickupStore != null)
+            {
+                <div class="flex gap-4">
+                    <div class="w-10 h-10 bg-neutral-50 rounded-full flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-xs tracking-widest uppercase text-neutral-400 mb-0.5">Pickup Location</p>
+                        <p class="text-sm text-neutral-800">@Model.PickupStore.Name</p>
+                        <p class="text-xs text-neutral-400 font-light">@Model.PickupStore.Address</p>
+                    </div>
+                </div>
+            }
+            else if (Model.DeliveryAddress != null)
+            {
+                <div class="flex gap-4">
+                    <div class="w-10 h-10 bg-neutral-50 rounded-full flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-xs tracking-widest uppercase text-neutral-400 mb-0.5">Delivery To</p>
+                        <p class="text-sm text-neutral-800">@Model.DeliveryAddress.FullName</p>
+                        <p class="text-xs text-neutral-400 font-light">@Model.DeliveryAddress.Line1, @Model.DeliveryAddress.City</p>
+                    </div>
+                </div>
+            }
+
+            <div class="border-t border-neutral-100 pt-4 space-y-2">
+                @foreach (var item in Model.Items)
+                {
+                    <div class="flex justify-between text-sm">
+                        <span class="text-neutral-600 font-light">
+                            @item.ProductName
+                            @if (!string.IsNullOrEmpty(item.VariantName))
+                            {<text> (@item.VariantName)</text>}
+                            × @item.Quantity
+                        </span>
+                        <span class="text-neutral-700">₦@item.LineTotal.ToString("N0")</span>
+                    </div>
+                }
+            </div>
+
+            <div class="border-t border-neutral-100 pt-4 flex justify-between text-sm font-medium">
+                <span>Total</span>
+                <span>₦@Model.Total.ToString("N0")</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+        <a asp-controller="Account" asp-action="Orders"
+           class="btn-outline">
+            View My Orders
+        </a>
+        <a asp-controller="Products" asp-action="Index"
+           class="btn-primary">
+            Continue Shopping
+        </a>
+    </div>
+</div>

@@ -1,0 +1,110 @@
+@model SterlingLams.Web.Areas.Admin.ViewModels.AdminOrderListViewModel
+@{
+    ViewData["Title"] = "Orders";
+    var statuses = new[] { "", "Pending", "Confirmed", "Processing", "ReadyForPickup", "Shipped", "Delivered", "Cancelled" };
+}
+
+<!-- Toolbar -->
+<div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
+    <form method="get" class="flex gap-2 flex-1">
+        <input type="text" name="q" value="@Model.SearchQuery"
+               placeholder="Search order #, name or email…"
+               class="flex-1 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+        <input type="hidden" name="status" value="@Model.StatusFilter" />
+        <button type="submit"
+                class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+            Search
+        </button>
+    </form>
+</div>
+
+<!-- Status tabs -->
+<div class="flex gap-1 mb-4 flex-wrap">
+    @foreach (var s in statuses)
+    {
+        var label = string.IsNullOrEmpty(s) ? "All" : s;
+        var isActive = Model.StatusFilter == s;
+        <a asp-area="Admin" asp-controller="Orders" asp-action="Index"
+           asp-route-status="@s" asp-route-q="@Model.SearchQuery"
+           class="px-3 py-1.5 text-xs rounded-sm transition-colors @(isActive ? "bg-neutral-900 text-white" : "bg-white text-neutral-600 border border-neutral-200 hover:border-neutral-400")">
+            @label
+        </a>
+    }
+</div>
+
+<!-- Table -->
+<div class="bg-white rounded-sm border border-neutral-100 overflow-hidden">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="border-b border-neutral-100 bg-neutral-50">
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Order #</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Customer</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Total</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Fulfillment</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Paid</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Status</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Date</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (!Model.Orders.Any())
+            {
+                <tr><td colspan="7" class="px-6 py-12 text-center text-neutral-400 text-sm">No orders found.</td></tr>
+            }
+            @foreach (var o in Model.Orders)
+            {
+                <tr class="hover:bg-neutral-50 transition-colors">
+                    <td class="px-6 py-3">
+                        <a asp-area="Admin" asp-controller="Orders" asp-action="Detail" asp-route-id="@o.Id"
+                           class="font-mono text-xs text-neutral-700 hover:text-neutral-900 hover:underline">@o.OrderNumber</a>
+                    </td>
+                    <td class="px-6 py-3">
+                        <p class="text-xs font-medium text-neutral-800">@o.CustomerName</p>
+                        <p class="text-[10px] text-neutral-400">@o.CustomerEmail</p>
+                    </td>
+                    <td class="px-6 py-3 text-xs font-medium">₦@o.Total.ToString("N0")</td>
+                    <td class="px-6 py-3 text-xs text-neutral-600">@o.FulfillmentType</td>
+                    <td class="px-6 py-3">
+                        @if (o.IsPaid)
+                        {
+                            <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Paid</span>
+                        }
+                        else
+                        {
+                            <span class="text-[10px] bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full">Unpaid</span>
+                        }
+                    </td>
+                    <td class="px-6 py-3">
+                        @{
+                            var bc = o.Status switch
+                            {
+                                "Delivered" => "bg-emerald-50 text-emerald-700",
+                                "Cancelled" => "bg-red-50 text-red-700",
+                                "Processing" or "Confirmed" => "bg-blue-50 text-blue-700",
+                                "Shipped" => "bg-violet-50 text-violet-700",
+                                _ => "bg-neutral-100 text-neutral-600"
+                            };
+                        }
+                        <span class="text-[10px] px-2 py-0.5 rounded-full @bc">@o.Status</span>
+                    </td>
+                    <td class="px-6 py-3 text-xs text-neutral-400">@o.CreatedAt.ToString("dd MMM yy")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<!-- Pagination -->
+@if (Model.TotalPages > 1)
+{
+    <div class="flex items-center justify-end gap-2 mt-4">
+        @for (int p = 1; p <= Model.TotalPages; p++)
+        {
+            <a asp-area="Admin" asp-controller="Orders" asp-action="Index"
+               asp-route-page="@p" asp-route-status="@Model.StatusFilter" asp-route-q="@Model.SearchQuery"
+               class="px-3 py-1.5 text-xs rounded-sm border transition-colors @(p == Model.CurrentPage ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")">
+                @p
+            </a>
+        }
+    </div>
+}

@@ -1,0 +1,121 @@
+@model SterlingLams.Web.Areas.Admin.ViewModels.AdminOrderDetailViewModel
+@{
+    ViewData["Title"] = "Order " + Model.Order.OrderNumber;
+}
+
+<div class="flex items-center justify-between mb-6">
+    <a asp-area="Admin" asp-controller="Orders" asp-action="Index"
+       class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors">← Back to Orders</a>
+    <span class="text-xs text-neutral-400">@Model.Order.CreatedAt.ToString("dddd, dd MMMM yyyy HH:mm")</span>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <!-- Order items -->
+    <div class="lg:col-span-2 space-y-4">
+        <div class="bg-white rounded-sm border border-neutral-100">
+            <div class="px-6 py-4 border-b border-neutral-100">
+                <h2 class="text-sm font-medium">Items</h2>
+            </div>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-neutral-50 border-b border-neutral-100">
+                        <th class="text-left px-6 py-2 text-xs text-neutral-400 font-medium">Product</th>
+                        <th class="text-left px-6 py-2 text-xs text-neutral-400 font-medium">Variant</th>
+                        <th class="text-right px-6 py-2 text-xs text-neutral-400 font-medium">Qty</th>
+                        <th class="text-right px-6 py-2 text-xs text-neutral-400 font-medium">Price</th>
+                        <th class="text-right px-6 py-2 text-xs text-neutral-400 font-medium">Subtotal</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-neutral-50">
+                    @foreach (var item in Model.Order.Items)
+                    {
+                        <tr>
+                            <td class="px-6 py-3 text-xs font-medium text-neutral-800">@item.ProductName</td>
+                            <td class="px-6 py-3 text-xs text-neutral-500">@(item.VariantName ?? "—")</td>
+                            <td class="px-6 py-3 text-xs text-right">@item.Quantity</td>
+                            <td class="px-6 py-3 text-xs text-right">₦@item.UnitPrice.ToString("N0")</td>
+                            <td class="px-6 py-3 text-xs text-right font-medium">₦@item.LineTotal.ToString("N0")</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot class="border-t border-neutral-100">
+                    <tr><td colspan="4" class="px-6 py-2 text-xs text-right text-neutral-400">Subtotal</td><td class="px-6 py-2 text-xs text-right">₦@Model.Order.Subtotal.ToString("N0")</td></tr>
+                    <tr><td colspan="4" class="px-6 py-2 text-xs text-right text-neutral-400">Delivery</td><td class="px-6 py-2 text-xs text-right">₦@Model.Order.DeliveryFee.ToString("N0")</td></tr>
+                    <tr><td colspan="4" class="px-6 py-2 text-sm text-right font-medium">Total</td><td class="px-6 py-2 text-sm text-right font-medium">₦@Model.Order.Total.ToString("N0")</td></tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <!-- Fulfillment info -->
+        <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
+            <h2 class="text-sm font-medium mb-3">Fulfillment</h2>
+            <p class="text-xs text-neutral-600 mb-1"><span class="text-neutral-400">Type:</span> @Model.Order.FulfillmentType</p>
+            @if (Model.Order.PickupStore != null)
+            {
+                <p class="text-xs text-neutral-600"><span class="text-neutral-400">Pickup at:</span> @Model.Order.PickupStore.Name — @Model.Order.PickupStore.Address</p>
+            }
+            @if (Model.Order.DeliveryAddress != null)
+            {
+                var a = Model.Order.DeliveryAddress;
+                <p class="text-xs text-neutral-600"><span class="text-neutral-400">Deliver to:</span> @a.Line1, @a.City, @a.State</p>
+            }
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="space-y-4">
+
+        <!-- Customer -->
+        <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
+            <h2 class="text-sm font-medium mb-3">Customer</h2>
+            <p class="text-xs font-medium text-neutral-800">@Model.CustomerName</p>
+            <p class="text-xs text-neutral-500">@Model.CustomerEmail</p>
+        </div>
+
+        <!-- Payment -->
+        <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
+            <h2 class="text-sm font-medium mb-3">Payment</h2>
+            <div class="space-y-1">
+                <p class="text-xs"><span class="text-neutral-400">Status:</span>
+                    @if (Model.Order.IsPaid)
+                    {
+                        <span class="text-emerald-600 font-medium">Paid</span>
+                    }
+                    else
+                    {
+                        <span class="text-amber-600 font-medium">Unpaid</span>
+                    }
+                </p>
+                @if (Model.Order.PaymentReference != null)
+                {
+                    <p class="text-xs"><span class="text-neutral-400">Ref:</span> <code class="font-mono text-[10px]">@Model.Order.PaymentReference</code></p>
+                }
+                @if (Model.Order.PaidAt.HasValue)
+                {
+                    <p class="text-xs"><span class="text-neutral-400">Paid at:</span> @Model.Order.PaidAt.Value.ToString("dd MMM yy HH:mm")</p>
+                }
+            </div>
+        </div>
+
+        <!-- Update Status -->
+        <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
+            <h2 class="text-sm font-medium mb-3">Update Status</h2>
+            <form asp-area="Admin" asp-controller="Orders" asp-action="UpdateStatus"
+                  asp-route-id="@Model.Order.Id" method="post" class="space-y-3">
+                @Html.AntiForgeryToken()
+                <select name="status"
+                        class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400">
+                    @foreach (var s in Model.AvailableStatuses)
+                    {
+                        <option value="@s" @(Model.Order.Status.ToString() == s ? "selected" : "")>@s</option>
+                    }
+                </select>
+                <button type="submit"
+                        class="w-full py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+                    Update Status
+                </button>
+            </form>
+        </div>
+    </div>
+</div>

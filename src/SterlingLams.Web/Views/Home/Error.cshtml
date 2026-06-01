@@ -1,0 +1,15 @@
+@{
+    ViewData["Title"] = "Error";
+}
+
+<div class="max-w-xl mx-auto px-6 py-32 text-center">
+    <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-4">We're sorry</p>
+    <h1 class="font-cormorant text-5xl font-light text-neutral-900 mb-6">Something went wrong</h1>
+    <p class="text-sm text-neutral-400 font-light mb-10">
+        An unexpected error occurred. Please try again or contact us if the issue persists.
+    </p>
+    <div class="flex gap-4 justify-center">
+        <a asp-controller="Home" asp-action="Index" class="btn-primary">Go Home</a>
+        <a asp-controller="Home" asp-action="Contact" class="btn-outline">Contact Us</a>
+    </div>
+</div>

@@ -1,0 +1,51 @@
+@model IList<SterlingLams.Web.Models.Domain.Store>
+@{
+    ViewData["Title"] = "Our Stores";
+}
+
+<div class="max-w-5xl mx-auto px-6 py-16">
+    <div class="text-center mb-16">
+        <p class="section-label">Visit us</p>
+        <h1 class="font-cormorant text-5xl font-light">Our Boutiques</h1>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-8">
+        @foreach (var store in Model)
+        {
+            <div class="border border-neutral-100 p-8 hover:border-neutral-400 transition-colors">
+                <div class="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center mb-6">
+                    <svg class="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                              d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                </div>
+                <h2 class="font-cormorant text-2xl font-light mb-3">@store.Name</h2>
+                <p class="text-sm text-neutral-500 font-light mb-2">@store.Address</p>
+                <p class="text-sm text-neutral-500 font-light mb-6">@store.City, @store.State</p>
+
+                @if (!string.IsNullOrEmpty(store.OpeningHours))
+                {
+                    <p class="text-xs text-neutral-400 mb-4 tracking-wide">@store.OpeningHours</p>
+                }
+
+                @if (!string.IsNullOrEmpty(store.Phone))
+                {
+                    <a href="tel:@store.Phone" class="text-xs tracking-widest uppercase text-neutral-600 hover:text-neutral-900 transition-colors">
+                        @store.Phone
+                    </a>
+                }
+
+                @if (store.Latitude.HasValue && store.Longitude.HasValue)
+                {
+                    <a href="https://maps.google.com/?q=@store.Latitude,@store.Longitude"
+                       target="_blank" rel="noopener"
+                       class="mt-4 block text-xs tracking-widest uppercase border border-neutral-300 text-center py-2 hover:border-neutral-900 transition-colors">
+                        Get Directions
+                    </a>
+                }
+            </div>
+        }
+    </div>
+</div>

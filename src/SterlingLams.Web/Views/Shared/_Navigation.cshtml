@@ -1,0 +1,132 @@
+@{
+    var cartCount = ViewBag.CartCount ?? 0;
+    var wishlistCount = ViewBag.WishlistCount ?? 0;
+}
+
+<header class="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-neutral-100">
+    <!-- Top bar -->
+    <div class="bg-neutral-900 text-white text-xs text-center py-2 tracking-widest font-light">
+        COMPLIMENTARY SHIPPING ON ORDERS OVER ₦150,000 &nbsp;|&nbsp; IN-STORE PICKUP AVAILABLE
+    </div>
+
+    <!-- Main nav -->
+    <nav class="max-w-7xl mx-auto px-6 flex items-center justify-between h-20">
+
+        <!-- Left: nav links -->
+        <div class="hidden md:flex items-center gap-8">
+            <a asp-controller="Products" asp-action="Index" asp-route-category="rings"
+               class="text-xs tracking-[0.2em] uppercase text-neutral-600 hover:text-neutral-900 transition-colors duration-200">
+                Rings
+            </a>
+            <a asp-controller="Products" asp-action="Index" asp-route-category="necklaces"
+               class="text-xs tracking-[0.2em] uppercase text-neutral-600 hover:text-neutral-900 transition-colors duration-200">
+                Necklaces
+            </a>
+            <a asp-controller="Products" asp-action="Index" asp-route-category="bracelets"
+               class="text-xs tracking-[0.2em] uppercase text-neutral-600 hover:text-neutral-900 transition-colors duration-200">
+                Bracelets
+            </a>
+            <a asp-controller="Products" asp-action="Index" asp-route-category="earrings"
+               class="text-xs tracking-[0.2em] uppercase text-neutral-600 hover:text-neutral-900 transition-colors duration-200">
+                Earrings
+            </a>
+            <a asp-controller="Home" asp-action="Collections"
+               class="text-xs tracking-[0.2em] uppercase text-neutral-600 hover:text-neutral-900 transition-colors duration-200">
+                Collections
+            </a>
+        </div>
+
+        <!-- Centre: Logo -->
+        <a asp-controller="Home" asp-action="Index" class="absolute left-1/2 -translate-x-1/2">
+            <span class="font-cormorant text-2xl font-light tracking-[0.3em] uppercase text-neutral-900">
+                Sterling Lams
+            </span>
+        </a>
+
+        <!-- Right: icons -->
+        <div class="flex items-center gap-5 ml-auto">
+            <!-- Search -->
+            <button id="search-toggle" aria-label="Search"
+                    class="text-neutral-600 hover:text-neutral-900 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                          d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+                </svg>
+            </button>
+
+            <!-- Wishlist -->
+            <a asp-controller="Wishlist" asp-action="Index" aria-label="Wishlist"
+               class="relative text-neutral-600 hover:text-neutral-900 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                          d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                </svg>
+                @if (wishlistCount > 0)
+                {
+                    <span class="absolute -top-1.5 -right-1.5 bg-neutral-900 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
+                        @wishlistCount
+                    </span>
+                }
+            </a>
+
+            <!-- Account -->
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <a asp-controller="Account" asp-action="Profile" aria-label="Account"
+                   class="text-neutral-600 hover:text-neutral-900 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                    </svg>
+                </a>
+            }
+            else
+            {
+                <a asp-controller="Account" asp-action="Login" aria-label="Sign in"
+                   class="text-xs tracking-widest uppercase text-neutral-600 hover:text-neutral-900 transition-colors">
+                    Sign in
+                </a>
+            }
+
+            <!-- Cart -->
+            <a asp-controller="Cart" asp-action="Index" aria-label="Shopping bag"
+               class="relative text-neutral-600 hover:text-neutral-900 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                          d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+                </svg>
+                @if (cartCount > 0)
+                {
+                    <span id="cart-badge"
+                          class="absolute -top-1.5 -right-1.5 bg-neutral-900 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
+                        @cartCount
+                    </span>
+                }
+            </a>
+
+            <!-- Mobile hamburger -->
+            <button id="mobile-menu-toggle" class="md:hidden text-neutral-600" aria-label="Menu">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Mobile menu -->
+    <div id="mobile-menu" class="md:hidden hidden border-t border-neutral-100 bg-white px-6 py-6 flex flex-col gap-5">
+        <a asp-controller="Products" asp-action="Index" asp-route-category="rings"
+           class="text-sm tracking-[0.15em] uppercase text-neutral-700">Rings</a>
+        <a asp-controller="Products" asp-action="Index" asp-route-category="necklaces"
+           class="text-sm tracking-[0.15em] uppercase text-neutral-700">Necklaces</a>
+        <a asp-controller="Products" asp-action="Index" asp-route-category="bracelets"
+           class="text-sm tracking-[0.15em] uppercase text-neutral-700">Bracelets</a>
+        <a asp-controller="Products" asp-action="Index" asp-route-category="earrings"
+           class="text-sm tracking-[0.15em] uppercase text-neutral-700">Earrings</a>
+        <a asp-controller="Stores" asp-action="Index"
+           class="text-sm tracking-[0.15em] uppercase text-neutral-700">Our Stores</a>
+    </div>
+</header>
+
+<!-- Spacer for fixed nav -->
+<div class="h-[88px]"></div>

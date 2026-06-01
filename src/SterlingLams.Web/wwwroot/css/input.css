@@ -1,0 +1,54 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── Base Typography ────────────────────────────────────────────────────── */
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .font-cormorant {
+    font-family: 'Cormorant Garamond', Georgia, serif;
+  }
+
+  body {
+    @apply text-neutral-900 bg-white;
+  }
+
+  h1, h2, h3, h4 {
+    @apply font-light;
+  }
+}
+
+/* ─── Components ─────────────────────────────────────────────────────────── */
+@layer components {
+  .btn-primary {
+    @apply inline-block bg-neutral-900 text-white text-xs tracking-[0.2em] uppercase px-10 py-4
+           hover:bg-neutral-700 transition-colors duration-300;
+  }
+
+  .btn-outline {
+    @apply inline-block border border-neutral-900 text-neutral-900 text-xs tracking-[0.2em] uppercase px-10 py-4
+           hover:bg-neutral-900 hover:text-white transition-colors duration-300;
+  }
+
+  .form-input {
+    @apply w-full border border-neutral-200 px-4 py-3 text-sm
+           focus:outline-none focus:border-neutral-900 transition-colors;
+  }
+
+  .section-label {
+    @apply text-xs tracking-[0.3em] uppercase text-neutral-400 mb-3;
+  }
+
+  .section-heading {
+    @apply font-cormorant text-4xl font-light text-neutral-900;
+  }
+
+  /* Product card hover effect */
+  .product-card:hover .product-image {
+    @apply scale-105;
+  }
+}

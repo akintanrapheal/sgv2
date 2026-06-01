@@ -1,0 +1,26 @@
+namespace SterlingLams.Web.Models.ViewModels;
+
+public class CartItemViewModel
+{
+    public int ProductId { get; set; }
+    public int? VariantId { get; set; }
+    public string ProductName { get; set; } = string.Empty;
+    public string? VariantName { get; set; }
+    public string ImageUrl { get; set; } = "/images/placeholder.jpg";
+    public string Slug { get; set; } = string.Empty;
+    public decimal UnitPrice { get; set; }
+    public int Quantity { get; set; }
+    public decimal LineTotal => UnitPrice * Quantity;
+    public string FormattedLineTotal => $"₦{LineTotal:N0}";
+    public string FormattedUnitPrice => $"₦{UnitPrice:N0}";
+    public int MaxQuantity { get; set; } = 10;
+}
+
+public class CartViewModel
+{
+    public List<CartItemViewModel> Items { get; set; } = new();
+    public decimal Subtotal => Items.Sum(i => i.LineTotal);
+    public string FormattedSubtotal => $"₦{Subtotal:N0}";
+    public int TotalItems => Items.Sum(i => i.Quantity);
+    public bool IsEmpty => !Items.Any();
+}

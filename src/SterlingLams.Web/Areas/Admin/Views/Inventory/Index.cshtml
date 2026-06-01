@@ -1,0 +1,78 @@
+@model SterlingLams.Web.Areas.Admin.ViewModels.AdminInventoryViewModel
+@{
+    ViewData["Title"] = "Inventory";
+}
+
+<!-- Header with sync -->
+<div class="flex items-center justify-between mb-6">
+    <div>
+        @if (Model.LastSyncedAt.HasValue)
+        {
+            <p class="text-xs text-neutral-400">Last synced: @Model.LastSyncedAt.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm")</p>
+        }
+    </div>
+    <form asp-area="Admin" asp-controller="Inventory" asp-action="Sync" method="post">
+        @Html.AntiForgeryToken()
+        <button type="submit"
+                class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+            ↺ Sync from Odoo
+        </button>
+    </form>
+</div>
+
+@if (!Model.Stores.Any())
+{
+    <div class="bg-white rounded-sm border border-neutral-100 p-12 text-center text-neutral-400 text-sm">
+        No inventory data yet. Click "Sync from Odoo" to import stock levels.
+    </div>
+}
+
+@foreach (var section in Model.Stores)
+{
+    <div class="mb-8">
+        <div class="flex items-center gap-3 mb-3">
+            <h2 class="text-sm font-medium">@section.Store.Name</h2>
+            <span class="text-[10px] text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded">@section.Store.City</span>
+            <span class="text-xs text-neutral-400">@section.Products.Count products</span>
+        </div>
+
+        <div class="bg-white rounded-sm border border-neutral-100 overflow-hidden">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-neutral-50 border-b border-neutral-100">
+                        <th class="text-left px-6 py-2 text-xs text-neutral-400 font-medium">Product</th>
+                        <th class="text-left px-6 py-2 text-xs text-neutral-400 font-medium">SKU</th>
+                        <th class="text-right px-6 py-2 text-xs text-neutral-400 font-medium">On Hand</th>
+                        <th class="text-right px-6 py-2 text-xs text-neutral-400 font-medium">Alert</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-neutral-50">
+                    @if (!section.Products.Any())
+                    {
+                        <tr><td colspan="4" class="px-6 py-4 text-xs text-neutral-400 text-center">No inventory records for this store.</td></tr>
+                    }
+                    @foreach (var row in section.Products)
+                    {
+                        <tr class="hover:bg-neutral-50 transition-colors @(row.IsLowStock ? "bg-amber-50/40" : "")">
+                            <td class="px-6 py-2.5 text-xs font-medium text-neutral-800">@row.ProductName</td>
+                            <td class="px-6 py-2.5 text-xs font-mono text-neutral-400">@(string.IsNullOrEmpty(row.Sku) ? "—" : row.Sku)</td>
+                            <td class="px-6 py-2.5 text-xs text-right font-medium @(row.QuantityOnHand == 0 ? "text-red-600" : row.IsLowStock ? "text-amber-600" : "text-neutral-800")">
+                                @row.QuantityOnHand
+                            </td>
+                            <td class="px-6 py-2.5 text-right">
+                                @if (row.QuantityOnHand == 0)
+                                {
+                                    <span class="text-[10px] bg-red-50 text-red-700 px-2 py-0.5 rounded-full">Out of stock</span>
+                                }
+                                else if (row.IsLowStock)
+                                {
+                                    <span class="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">Low stock</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}

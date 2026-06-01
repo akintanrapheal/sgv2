@@ -1,0 +1,69 @@
+using Microsoft.Extensions.Caching.Memory;
+using SterlingLams.Web.Services;
+using SterlingLams.Web.Services.Inventory;
+using SterlingLams.Web.Services.Odoo;
+using SterlingLams.Web.Services.Payment;
+
+namespace SterlingLams.Web.Infrastructure.Extensions;
+
+public static class ServiceCollectionExtensions
+{
+    public static IServiceCollection AddSterlingLamsServices(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // ─── Odoo ────────────────────────────────────────────────────────────
+        var odooSettings = configuration.GetSection("Odoo").Get<OdooSettings>()
+            ?? throw new InvalidOperationException("Odoo configuration is missing.");
+
+        services.AddSingleton(odooSettings);
+
+        services.AddHttpClient<IOdooService, OdooService>(client =>
+        {
+            client.BaseAddress = new Uri(odooSettings.BaseUrl);
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
+
+        // ─── Inventory ───────────────────────────────────────────────────────
+        services.AddMemoryCache();
+        services.AddScoped<IInventoryService, InventoryService>();
+
+        // ─── Product Import ───────────────────────────────────────────────────
+        services.AddScoped<IProductImportService, ProductImportService>();
+
+        // ─── Payment ─────────────────────────────────────────────────────────
+        var paymentProvider = configuration["Payment:Provider"] ?? "Paystack";
+
+        switch (paymentProvider.ToLowerInvariant())
+        {
+            case "paystack":
+                var paystackSettings = configuration.GetSection("Payment:Paystack").Get<PaystackSettings>()
+                    ?? new PaystackSettings();
+                services.AddSingleton(paystackSettings);
+                services.AddHttpClient<IPaymentService, PaystackPaymentService>();
+                break;
+
+            case "stripe":
+                var stripeSettings = configuration.GetSection("Payment:Stripe").Get<StripeSettings>()
+                    ?? new StripeSettings();
+                services.AddSingleton(stripeSettings);
+                services.AddScoped<IPaymentService, StripePaymentService>();
+                break;
+
+            case "flutterwave":
+                var flwSettings = configuration.GetSection("Payment:Flutterwave").Get<FlutterwaveSettings>()
+                    ?? new FlutterwaveSettings();
+                services.AddSingleton(flwSettings);
+                services.AddHttpClient<IPaymentService, FlutterwavePaymentService>(client =>
+                {
+                    client.BaseAddress = new Uri(flwSettings.BaseUrl);
+                });
+                break;
+
+            default:
+                throw new InvalidOperationException($"Unknown payment provider: {paymentProvider}");
+        }
+
+        return services;
+    }
+}

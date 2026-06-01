@@ -1,0 +1,10 @@
+@{
+    ViewData["Title"] = "Access Denied";
+}
+
+<div class="max-w-xl mx-auto px-6 py-32 text-center">
+    <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-4">Access denied</p>
+    <h1 class="font-cormorant text-4xl font-light text-neutral-900 mb-6">You don't have permission to view this page</h1>
+    <p class="text-sm text-neutral-400 font-light mb-10">Please sign in with an authorised account.</p>
+    <a asp-controller="Account" asp-action="Login" class="btn-primary">Sign In</a>
+</div>

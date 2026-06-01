@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin — @ViewData["Title"] — Sterling Lams</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
+</head>
+<body class="bg-neutral-50 text-neutral-900 font-inter antialiased">
+
+<div class="flex h-screen overflow-hidden">
+
+    <!-- ─── Sidebar ──────────────────────────────────────────────────────── -->
+    <aside class="w-64 bg-neutral-900 text-white flex flex-col flex-shrink-0 overflow-y-auto">
+
+        <!-- Logo -->
+        <div class="px-6 py-6 border-b border-neutral-800">
+            <span class="font-cormorant text-xl font-light tracking-[0.2em] uppercase">Sterling Lams</span>
+            <p class="text-[10px] text-neutral-500 tracking-widest uppercase mt-0.5">Admin Console</p>
+        </div>
+
+        <!-- Nav -->
+        <nav class="flex-1 px-3 py-6 space-y-1">
+            @{
+                var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
+                var currentArea = ViewContext.RouteData.Values["area"]?.ToString();
+
+                var navItems = new[]
+                {
+                    new { Label = "Dashboard",  Controller = "Dashboard", Icon = "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" },
+                    new { Label = "Orders",     Controller = "Orders",    Icon = "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" },
+                    new { Label = "Products",   Controller = "Products",  Icon = "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
+                    new { Label = "Inventory",  Controller = "Inventory", Icon = "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" },
+                    new { Label = "Stores",     Controller = "Stores",    Icon = "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" },
+                };
+            }
+
+            @foreach (var item in navItems)
+            {
+                var isActive = currentController == item.Controller;
+                <a asp-area="Admin" asp-controller="@item.Controller" asp-action="Index"
+                   class="flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm transition-colors @(isActive ? "bg-neutral-800 text-white" : "text-neutral-400 hover:text-white hover:bg-neutral-800")">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="@item.Icon"/>
+                    </svg>
+                    @item.Label
+                </a>
+            }
+        </nav>
+
+        <!-- Bottom: storefront link + logout -->
+        <div class="px-3 py-4 border-t border-neutral-800 space-y-1">
+            <a asp-controller="Home" asp-action="Index" asp-area=""
+               class="flex items-center gap-3 px-3 py-2.5 text-xs text-neutral-500 hover:text-white transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                </svg>
+                View Storefront
+            </a>
+            <form asp-controller="Account" asp-action="Logout" asp-area="" method="post">
+                @Html.AntiForgeryToken()
+                <button type="submit"
+                        class="flex items-center gap-3 px-3 py-2.5 w-full text-xs text-neutral-500 hover:text-white transition-colors text-left">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                    </svg>
+                    Sign Out
+                </button>
+            </form>
+        </div>
+    </aside>
+
+    <!-- ─── Main ─────────────────────────────────────────────────────────── -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+
+        <!-- Top bar -->
+        <header class="bg-white border-b border-neutral-100 px-8 py-4 flex items-center justify-between flex-shrink-0">
+            <h1 class="text-sm font-medium text-neutral-800">@ViewData["Title"]</h1>
+            <div class="flex items-center gap-3">
+                @if (TempData["Success"] != null)
+                {
+                    <span class="text-xs text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full">✓ @TempData["Success"]</span>
+                }
+                @if (TempData["Error"] != null)
+                {
+                    <span class="text-xs text-red-700 bg-red-50 px-3 py-1.5 rounded-full">@TempData["Error"]</span>
+                }
+                <span class="text-xs text-neutral-400">@User.Identity?.Name</span>
+            </div>
+        </header>
+
+        <!-- Page content -->
+        <main class="flex-1 overflow-y-auto p-8">
+            @RenderBody()
+        </main>
+    </div>
+</div>
+
+<script src="~/js/app.js" asp-append-version="true"></script>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
