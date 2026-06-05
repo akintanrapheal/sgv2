@@ -27,7 +27,7 @@
             <div>
                 <div class="flex justify-between items-center mb-2">
                     <label asp-for="Password" class="text-xs tracking-[0.15em] uppercase text-neutral-500">Password</label>
-                    <a href="#" class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors">Forgot password?</a>
+                    <a href="mailto:hello@sterlinglams.com?subject=Password Reset Request" class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors">Forgot password?</a>
                 </div>
                 <input asp-for="Password" type="password" autocomplete="current-password"
                        class="form-input @(ViewData.ModelState["Password"]?.Errors.Any() == true ? "border-red-400" : "")" />

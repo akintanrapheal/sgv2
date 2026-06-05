@@ -2,77 +2,90 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.Domain;
-using SterlingLams.Web.Services.Odoo;
+using SterlingLams.Web.Services.ERPNext;
 
 namespace SterlingLams.Web.Services.Inventory;
 
 public interface IInventoryService
 {
-    Task<Dictionary<int, int>> GetStoreInventoryForProductAsync(int odooProductId);
-    Task SyncProductInventoryAsync(int[] odooProductIds);
+    /// <summary>Returns localStoreId → availableQty for a given ERPNext item code.</summary>
+    Task<Dictionary<int, int>> GetStoreInventoryForProductAsync(string itemCode);
+    Task SyncProductInventoryAsync(string[] itemCodes);
     Task SyncAllAsync();
-    Task<bool> IsAvailableInStoreAsync(int odooProductId, int storeId, int requiredQty = 1);
+    Task<bool> IsAvailableInStoreAsync(string itemCode, int storeId, int requiredQty = 1);
 }
 
 public class InventoryService : IInventoryService
 {
-    private readonly IOdooService _odoo;
+    private readonly IERPNextService _erpNext;
     private readonly ApplicationDbContext _db;
     private readonly IMemoryCache _cache;
-    private readonly OdooSettings _odooSettings;
+    private readonly ERPNextSettings _settings;
     private readonly ILogger<InventoryService> _logger;
 
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromSeconds(60);
-
     public InventoryService(
-        IOdooService odoo,
+        IERPNextService erpNext,
         ApplicationDbContext db,
         IMemoryCache cache,
-        OdooSettings odooSettings,
+        ERPNextSettings settings,
         ILogger<InventoryService> logger)
     {
-        _odoo = odoo;
+        _erpNext = erpNext;
         _db = db;
         _cache = cache;
-        _odooSettings = odooSettings;
+        _settings = settings;
         _logger = logger;
     }
 
-    /// <summary>Returns storeId → availableQty for a given Odoo product.</summary>
-    public async Task<Dictionary<int, int>> GetStoreInventoryForProductAsync(int odooProductId)
+    /// <summary>Returns localStoreId → availableQty, resolved via ERPNext Bin and local store mapping.</summary>
+    public async Task<Dictionary<int, int>> GetStoreInventoryForProductAsync(string itemCode)
     {
-        var cacheKey = $"inventory:product:{odooProductId}";
+        var cacheKey = $"inventory:product:{itemCode}";
 
         if (_cache.TryGetValue(cacheKey, out Dictionary<int, int>? cached) && cached != null)
             return cached;
 
-        var inventoryMap = await _odoo.GetInventoryByStoreAsync(new[] { odooProductId });
-        var result = inventoryMap.TryGetValue(odooProductId, out var storeMap) ? storeMap : new Dictionary<int, int>();
+        var stores = await _db.Stores.ToListAsync();
+        var inventoryMap = await _erpNext.GetInventoryByWarehouseAsync(new[] { itemCode });
+        var warehouseQty = inventoryMap.TryGetValue(itemCode, out var wh)
+            ? wh
+            : new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-        _cache.Set(cacheKey, result, TimeSpan.FromSeconds(_odooSettings.InventoryCacheTtlSeconds));
+        var result = new Dictionary<int, int>();
+        foreach (var store in stores)
+        {
+            if (!string.IsNullOrEmpty(store.ErpNextWarehouse) &&
+                warehouseQty.TryGetValue(store.ErpNextWarehouse, out var qty))
+            {
+                result[store.Id] = qty;
+            }
+        }
+
+        _cache.Set(cacheKey, result, TimeSpan.FromSeconds(_settings.InventoryCacheTtlSeconds));
         return result;
     }
 
-    /// <summary>Syncs stock from Odoo into the local DB for given product IDs.</summary>
-    public async Task SyncProductInventoryAsync(int[] odooProductIds)
+    /// <summary>Syncs stock from ERPNext Bin into the local StoreInventory table.</summary>
+    public async Task SyncProductInventoryAsync(string[] itemCodes)
     {
         try
         {
-            var inventoryMap = await _odoo.GetInventoryByStoreAsync(odooProductIds);
+            var inventoryMap = await _erpNext.GetInventoryByWarehouseAsync(itemCodes);
 
             var stores = await _db.Stores.ToListAsync();
             var products = await _db.Products
-                .Where(p => odooProductIds.Contains(p.OdooProductId))
+                .Where(p => itemCodes.Contains(p.ErpNextItemCode))
                 .ToListAsync();
 
-            foreach (var (odooProductId, storeStockMap) in inventoryMap)
+            foreach (var (itemCode, warehouseQty) in inventoryMap)
             {
-                var product = products.FirstOrDefault(p => p.OdooProductId == odooProductId);
+                var product = products.FirstOrDefault(p => p.ErpNextItemCode == itemCode);
                 if (product == null) continue;
 
-                foreach (var (odooWarehouseId, qty) in storeStockMap)
+                foreach (var (warehouse, qty) in warehouseQty)
                 {
-                    var store = stores.FirstOrDefault(s => s.OdooWarehouseId == odooWarehouseId);
+                    var store = stores.FirstOrDefault(s =>
+                        s.ErpNextWarehouse.Equals(warehouse, StringComparison.OrdinalIgnoreCase));
                     if (store == null) continue;
 
                     var existing = await _db.StoreInventories
@@ -97,32 +110,32 @@ public class InventoryService : IInventoryService
             }
 
             await _db.SaveChangesAsync();
-            _logger.LogInformation("Synced inventory for {Count} products", odooProductIds.Length);
+            _logger.LogInformation("Synced inventory for {Count} items", itemCodes.Length);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to sync inventory for products {Ids}", string.Join(",", odooProductIds));
+            _logger.LogError(ex, "Failed to sync inventory for items {Codes}", string.Join(",", itemCodes));
             throw;
         }
     }
 
-    public async Task<bool> IsAvailableInStoreAsync(int odooProductId, int storeId, int requiredQty = 1)
+    public async Task<bool> IsAvailableInStoreAsync(string itemCode, int storeId, int requiredQty = 1)
     {
-        var inventory = await GetStoreInventoryForProductAsync(odooProductId);
+        var inventory = await GetStoreInventoryForProductAsync(itemCode);
         return inventory.TryGetValue(storeId, out var qty) && qty >= requiredQty;
     }
 
-    /// <summary>Syncs all active products' inventory from Odoo in batches.</summary>
+    /// <summary>Syncs all active products' inventory from ERPNext in batches of 50.</summary>
     public async Task SyncAllAsync()
     {
-        var odooProductIds = await _db.Products
-            .Where(p => p.IsActive)
-            .Select(p => p.OdooProductId)
+        var itemCodes = await _db.Products
+            .Where(p => p.IsActive && !string.IsNullOrEmpty(p.ErpNextItemCode))
+            .Select(p => p.ErpNextItemCode)
             .ToArrayAsync();
 
-        if (odooProductIds.Length == 0) return;
+        if (itemCodes.Length == 0) return;
 
-        foreach (var batch in odooProductIds.Chunk(50))
+        foreach (var batch in itemCodes.Chunk(50))
             await SyncProductInventoryAsync(batch);
     }
 }

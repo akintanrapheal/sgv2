@@ -88,7 +88,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string? GemstoneType { get; set; }
         public bool IsActive { get; set; } = true;
         public bool IsFeatured { get; set; }
-        public int OdooProductId { get; set; }
+        public string ErpNextItemCode { get; set; } = string.Empty;
         public int? CategoryId { get; set; }
         public List<Category> Categories { get; set; } = new();
     }
@@ -126,7 +126,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string? Phone { get; set; }
         public string? Email { get; set; }
         public string? OpeningHours { get; set; }
-        public int OdooWarehouseId { get; set; }
+        public string ErpNextWarehouse { get; set; } = string.Empty;
         public bool IsActive { get; set; } = true;
     }
 }

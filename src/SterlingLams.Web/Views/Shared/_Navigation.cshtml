@@ -9,42 +9,20 @@
         COMPLIMENTARY SHIPPING ON ORDERS OVER ₦150,000 &nbsp;|&nbsp; IN-STORE PICKUP AVAILABLE
     </div>
 
-    <!-- Main nav -->
-    <nav class="max-w-7xl mx-auto px-6 flex items-center justify-between h-20">
+    <!-- Row 1: Brand name + icons -->
+    <div class="relative flex items-center justify-center px-6 py-4">
 
-        <!-- Left: nav links -->
-        <div class="hidden md:flex items-center gap-8">
-            <a asp-controller="Products" asp-action="Index" asp-route-category="rings"
-               class="text-xs tracking-[0.2em] uppercase text-neutral-600 hover:text-neutral-900 transition-colors duration-200">
-                Rings
-            </a>
-            <a asp-controller="Products" asp-action="Index" asp-route-category="necklaces"
-               class="text-xs tracking-[0.2em] uppercase text-neutral-600 hover:text-neutral-900 transition-colors duration-200">
-                Necklaces
-            </a>
-            <a asp-controller="Products" asp-action="Index" asp-route-category="bracelets"
-               class="text-xs tracking-[0.2em] uppercase text-neutral-600 hover:text-neutral-900 transition-colors duration-200">
-                Bracelets
-            </a>
-            <a asp-controller="Products" asp-action="Index" asp-route-category="earrings"
-               class="text-xs tracking-[0.2em] uppercase text-neutral-600 hover:text-neutral-900 transition-colors duration-200">
-                Earrings
-            </a>
-            <a asp-controller="Home" asp-action="Collections"
-               class="text-xs tracking-[0.2em] uppercase text-neutral-600 hover:text-neutral-900 transition-colors duration-200">
-                Collections
-            </a>
-        </div>
-
-        <!-- Centre: Logo -->
-        <a asp-controller="Home" asp-action="Index" class="absolute left-1/2 -translate-x-1/2">
-            <span class="font-cormorant text-2xl font-light tracking-[0.3em] uppercase text-neutral-900">
+        <!-- Brand name — centred absolutely so icons never push it -->
+        <a asp-controller="Home" asp-action="Index"
+           class="absolute left-1/2 -translate-x-1/2">
+            <span class="font-cormorant font-semibold uppercase text-neutral-900 tracking-widest whitespace-nowrap"
+                  style="font-size: clamp(1.8rem, 3.5vw, 3rem); letter-spacing: 0.28em;">
                 Sterling Lams
             </span>
         </a>
 
-        <!-- Right: icons -->
-        <div class="flex items-center gap-5 ml-auto">
+        <!-- Icons — right side -->
+        <div class="ml-auto flex items-center gap-5">
             <!-- Search -->
             <button id="search-toggle" aria-label="Search"
                     class="text-neutral-600 hover:text-neutral-900 transition-colors">
@@ -111,6 +89,30 @@
                 </svg>
             </button>
         </div>
+    </div>
+
+    <!-- Row 2: Category nav (desktop only) -->
+    <nav class="hidden md:flex items-center justify-center gap-10 border-t border-neutral-100 py-3">
+        <a asp-controller="Products" asp-action="Index" asp-route-category="rings"
+           class="text-xs tracking-widest uppercase text-neutral-500 hover:text-neutral-900 transition-colors duration-200">
+            Rings
+        </a>
+        <a asp-controller="Products" asp-action="Index" asp-route-category="necklaces"
+           class="text-xs tracking-widest uppercase text-neutral-500 hover:text-neutral-900 transition-colors duration-200">
+            Necklaces
+        </a>
+        <a asp-controller="Products" asp-action="Index" asp-route-category="bracelets"
+           class="text-xs tracking-widest uppercase text-neutral-500 hover:text-neutral-900 transition-colors duration-200">
+            Bracelets
+        </a>
+        <a asp-controller="Products" asp-action="Index" asp-route-category="earrings"
+           class="text-xs tracking-widest uppercase text-neutral-500 hover:text-neutral-900 transition-colors duration-200">
+            Earrings
+        </a>
+        <a asp-controller="Home" asp-action="Collections"
+           class="text-xs tracking-widest uppercase text-neutral-500 hover:text-neutral-900 transition-colors duration-200">
+            Collections
+        </a>
     </nav>
 
     <!-- Mobile menu -->
@@ -128,5 +130,44 @@
     </div>
 </header>
 
+<!-- Search Overlay -->
+<div id="search-overlay" class="hidden fixed inset-0 z-[200]" role="dialog" aria-modal="true" aria-label="Search">
+    <!-- Backdrop -->
+    <div id="search-backdrop" class="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+    <!-- Panel -->
+    <div class="relative bg-white w-full shadow-xl px-6 py-8">
+        <form id="search-form" action="/Products" method="get" class="max-w-2xl mx-auto">
+            <div class="flex items-center border-b-2 border-neutral-900 gap-4">
+                <svg class="w-5 h-5 text-neutral-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+                </svg>
+                <input id="search-input" name="search" type="search" autocomplete="off"
+                       placeholder="Search rings, necklaces, diamonds…"
+                       class="flex-1 py-3 text-lg text-neutral-900 placeholder-neutral-400 bg-transparent outline-none font-light tracking-wide"/>
+                <button type="button" id="search-close"
+                        class="text-neutral-400 hover:text-neutral-900 transition-colors p-1" aria-label="Close search">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div id="search-suggestions" class="mt-4 text-sm text-neutral-500 font-light tracking-wide"></div>
+        </form>
+        <!-- Quick links -->
+        <div class="max-w-2xl mx-auto mt-6">
+            <p class="text-xs tracking-[0.25em] uppercase text-neutral-400 mb-3">Popular</p>
+            <div class="flex flex-wrap gap-2">
+                <a href="/Products?category=rings"    onclick="document.getElementById('search-overlay').classList.add('hidden');document.body.style.overflow=''" class="text-xs tracking-widest uppercase border border-neutral-200 px-4 py-2 hover:border-neutral-900 hover:text-neutral-900 transition-colors">Rings</a>
+                <a href="/Products?category=necklaces" onclick="document.getElementById('search-overlay').classList.add('hidden');document.body.style.overflow=''" class="text-xs tracking-widest uppercase border border-neutral-200 px-4 py-2 hover:border-neutral-900 hover:text-neutral-900 transition-colors">Necklaces</a>
+                <a href="/Products?category=earrings"  onclick="document.getElementById('search-overlay').classList.add('hidden');document.body.style.overflow=''" class="text-xs tracking-widest uppercase border border-neutral-200 px-4 py-2 hover:border-neutral-900 hover:text-neutral-900 transition-colors">Earrings</a>
+                <a href="/Products?category=bracelets" onclick="document.getElementById('search-overlay').classList.add('hidden');document.body.style.overflow=''" class="text-xs tracking-widest uppercase border border-neutral-200 px-4 py-2 hover:border-neutral-900 hover:text-neutral-900 transition-colors">Bracelets</a>
+                <a href="/Products?isNewArrival=true"  onclick="document.getElementById('search-overlay').classList.add('hidden');document.body.style.overflow=''" class="text-xs tracking-widest uppercase border border-neutral-200 px-4 py-2 hover:border-neutral-900 hover:text-neutral-900 transition-colors">New Arrivals</a>
+                <a href="/Products"                    onclick="document.getElementById('search-overlay').classList.add('hidden');document.body.style.overflow=''" class="text-xs tracking-widest uppercase border border-neutral-200 px-4 py-2 hover:border-neutral-900 hover:text-neutral-900 transition-colors">All Jewellery</a>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Spacer for fixed nav -->
-<div class="h-[88px]"></div>
+<div style="height: 90px;" class="md:hidden" aria-hidden="true"></div>
+<div style="height: 126px;" class="hidden md:block" aria-hidden="true"></div>

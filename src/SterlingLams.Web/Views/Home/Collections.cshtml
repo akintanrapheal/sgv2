@@ -1,0 +1,84 @@
+@{
+    ViewData["Title"] = "Collections";
+    ViewData["Description"] = "Explore our curated jewellery collections — rings, necklaces, bracelets and earrings crafted for the discerning woman.";
+    Layout = "_Layout";
+}
+
+<!-- Hero -->
+<section class="relative h-72 flex items-center justify-center bg-neutral-100">
+    <div class="text-center">
+        <p class="text-xs tracking-[0.4em] uppercase text-neutral-500 mb-4">Sterling Lams</p>
+        <h1 class="font-cormorant text-5xl font-light text-neutral-900">Our Collections</h1>
+    </div>
+</section>
+
+<!-- Collections Grid -->
+<section class="py-24 bg-white">
+    <div class="max-w-7xl mx-auto px-6">
+        <div class="grid md:grid-cols-2 gap-8 mb-8">
+
+            <!-- Rings -->
+            <a asp-controller="Products" asp-action="Index" asp-route-category="rings"
+               class="group relative overflow-hidden bg-stone-50 aspect-[4/3] flex items-end">
+                <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div class="relative z-10 p-8 w-full">
+                    <h2 class="font-cormorant text-3xl font-light text-neutral-900 group-hover:text-white transition-colors duration-300 mb-1">Rings</h2>
+                    <p class="text-xs tracking-widest uppercase text-neutral-500 group-hover:text-neutral-300 transition-colors duration-300">
+                        Shop Collection →
+                    </p>
+                </div>
+            </a>
+
+            <!-- Necklaces -->
+            <a asp-controller="Products" asp-action="Index" asp-route-category="necklaces"
+               class="group relative overflow-hidden bg-neutral-100 aspect-[4/3] flex items-end">
+                <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div class="relative z-10 p-8 w-full">
+                    <h2 class="font-cormorant text-3xl font-light text-neutral-900 group-hover:text-white transition-colors duration-300 mb-1">Necklaces</h2>
+                    <p class="text-xs tracking-widest uppercase text-neutral-500 group-hover:text-neutral-300 transition-colors duration-300">
+                        Shop Collection →
+                    </p>
+                </div>
+            </a>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-8">
+            <!-- Bracelets -->
+            <a asp-controller="Products" asp-action="Index" asp-route-category="bracelets"
+               class="group relative overflow-hidden bg-neutral-100 aspect-[4/3] flex items-end">
+                <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div class="relative z-10 p-8 w-full">
+                    <h2 class="font-cormorant text-3xl font-light text-neutral-900 group-hover:text-white transition-colors duration-300 mb-1">Bracelets</h2>
+                    <p class="text-xs tracking-widest uppercase text-neutral-500 group-hover:text-neutral-300 transition-colors duration-300">
+                        Shop Collection →
+                    </p>
+                </div>
+            </a>
+
+            <!-- Earrings -->
+            <a asp-controller="Products" asp-action="Index" asp-route-category="earrings"
+               class="group relative overflow-hidden bg-stone-50 aspect-[4/3] flex items-end">
+                <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div class="relative z-10 p-8 w-full">
+                    <h2 class="font-cormorant text-3xl font-light text-neutral-900 group-hover:text-white transition-colors duration-300 mb-1">Earrings</h2>
+                    <p class="text-xs tracking-widest uppercase text-neutral-500 group-hover:text-neutral-300 transition-colors duration-300">
+                        Shop Collection →
+                    </p>
+                </div>
+            </a>
+        </div>
+    </div>
+</section>
+
+<!-- New Arrivals CTA -->
+<section class="py-20 bg-neutral-900 text-white text-center">
+    <p class="text-xs tracking-[0.4em] uppercase text-neutral-400 mb-4">Just In</p>
+    <h2 class="font-cormorant text-4xl font-light mb-6">New Arrivals</h2>
+    <p class="text-neutral-400 font-light text-sm max-w-md mx-auto mb-8">
+        Discover our latest pieces, crafted with the finest materials and timeless elegance.
+    </p>
+    <a asp-controller="Products" asp-action="Index" asp-route-isNewArrival="true"
+       class="inline-block border border-white text-white text-xs tracking-[0.2em] uppercase px-12 py-4 hover:bg-white hover:text-neutral-900 transition-colors duration-300">
+        View New Arrivals
+    </a>
+</section>

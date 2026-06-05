@@ -28,7 +28,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<Product>(e =>
         {
             e.HasIndex(p => p.Slug).IsUnique();
-            e.HasIndex(p => p.OdooProductId).IsUnique();
+            e.HasIndex(p => p.ErpNextItemCode).IsUnique();
             e.Property(p => p.Price).HasPrecision(18, 2);
 
             e.HasOne(p => p.Category)
@@ -54,7 +54,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<Store>(e =>
         {
             e.HasIndex(s => s.Slug).IsUnique();
-            e.HasIndex(s => s.OdooWarehouseId).IsUnique();
+            e.HasIndex(s => s.ErpNextWarehouse).IsUnique();
         });
 
         // ─── StoreInventory ─────────────────────────────────────────────────

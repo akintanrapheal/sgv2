@@ -109,10 +109,10 @@
                 <select name="sortBy" form="filter-form"
                         onchange="document.getElementById('filter-form').submit()"
                         class="text-xs border border-neutral-200 px-3 py-2 text-neutral-600 focus:outline-none focus:border-neutral-900 bg-white">
-                    <option value="newest" @(Model.Filters.SortBy == "newest" ? "selected" : "")>Newest</option>
-                    <option value="price_asc" @(Model.Filters.SortBy == "price_asc" ? "selected" : "")>Price: Low to High</option>
-                    <option value="price_desc" @(Model.Filters.SortBy == "price_desc" ? "selected" : "")>Price: High to Low</option>
-                    <option value="name" @(Model.Filters.SortBy == "name" ? "selected" : "")>Name</option>
+                    <option value="newest" selected="@(Model.Filters.SortBy == "newest")">Newest</option>
+                    <option value="price_asc" selected="@(Model.Filters.SortBy == "price_asc")">Price: Low to High</option>
+                    <option value="price_desc" selected="@(Model.Filters.SortBy == "price_desc")">Price: High to Low</option>
+                    <option value="name" selected="@(Model.Filters.SortBy == "name")">Name</option>
                 </select>
             </div>
 

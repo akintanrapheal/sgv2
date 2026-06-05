@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using SterlingLams.Web.Services;
+using SterlingLams.Web.Services.ERPNext;
 using SterlingLams.Web.Services.Inventory;
-using SterlingLams.Web.Services.Odoo;
 using SterlingLams.Web.Services.Payment;
 
 namespace SterlingLams.Web.Infrastructure.Extensions;
@@ -12,15 +12,18 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // ─── Odoo ────────────────────────────────────────────────────────────
-        var odooSettings = configuration.GetSection("Odoo").Get<OdooSettings>()
-            ?? throw new InvalidOperationException("Odoo configuration is missing.");
+        // ─── ERPNext ─────────────────────────────────────────────────────────
+        var erpSettings = configuration.GetSection("ERPNext").Get<ERPNextSettings>()
+            ?? throw new InvalidOperationException("ERPNext configuration is missing.");
 
-        services.AddSingleton(odooSettings);
+        services.AddSingleton(erpSettings);
 
-        services.AddHttpClient<IOdooService, OdooService>(client =>
+        services.AddHttpClient<IERPNextService, ERPNextService>(client =>
         {
-            client.BaseAddress = new Uri(odooSettings.BaseUrl);
+            client.BaseAddress = new Uri(erpSettings.BaseUrl);
+            client.DefaultRequestHeaders.Add(
+                "Authorization",
+                $"token {erpSettings.ApiKey}:{erpSettings.ApiSecret}");
             client.Timeout = TimeSpan.FromSeconds(30);
         });
 

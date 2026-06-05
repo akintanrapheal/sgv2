@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Data;
@@ -170,15 +171,40 @@ public class ProductsController : Controller
         return View(vm);
     }
 
-    // GET /api/products/{id}/inventory (AJAX)
+    // GET /api/products/{id}/inventory (AJAX - requires login)
     [HttpGet("api/products/{id:int}/inventory")]
+    [Authorize]
     public async Task<IActionResult> GetInventory(int id)
     {
         var product = await _db.Products.FindAsync(id);
         if (product == null) return NotFound();
 
-        var inventory = await _inventory.GetStoreInventoryForProductAsync(product.OdooProductId);
+        var inventory = await _inventory.GetStoreInventoryForProductAsync(product.ErpNextItemCode);
         return Json(inventory);
+    }
+
+    // GET /api/search?q=diamond  (live search suggestions — separate route to avoid slug conflict)
+    [HttpGet("/api/search")]
+    public async Task<IActionResult> SearchSuggestions(string q)
+    {
+        if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
+            return Json(Array.Empty<object>());
+
+        var results = await _db.Products
+            .Where(p => p.IsActive && (
+                EF.Functions.ILike(p.Name, $"%{q}%") ||
+                EF.Functions.ILike(p.ShortDescription ?? "", $"%{q}%")))
+            .OrderBy(p => p.Name)
+            .Take(6)
+            .Select(p => new
+            {
+                p.Name,
+                p.Slug,
+                p.Price
+            })
+            .ToListAsync();
+
+        return Json(results);
     }
 
     private string GetUserId() => User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;

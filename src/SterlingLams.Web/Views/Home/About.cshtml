@@ -1,0 +1,87 @@
+@{
+    ViewData["Title"] = "Our Story";
+    ViewData["Description"] = "Discover the story behind Sterling Lams — luxury jewellery crafted for the discerning Nigerian woman.";
+    Layout = "_Layout";
+}
+
+<!-- Hero -->
+<section class="relative h-72 flex items-center justify-center bg-stone-50">
+    <div class="text-center">
+        <p class="text-xs tracking-[0.4em] uppercase text-neutral-500 mb-4">Sterling Lams</p>
+        <h1 class="font-cormorant text-5xl font-light text-neutral-900">Our Story</h1>
+    </div>
+</section>
+
+<!-- Story -->
+<section class="py-24 bg-white">
+    <div class="max-w-3xl mx-auto px-6">
+        <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-4">Who We Are</p>
+        <h2 class="font-cormorant text-4xl font-light text-neutral-900 mb-8 leading-tight">
+            Jewellery crafted for<br><em class="italic">timeless elegance</em>
+        </h2>
+        <div class="space-y-6 text-neutral-600 font-light text-sm leading-relaxed">
+            <p>
+                Sterling Lams was founded with a singular vision: to bring world-class luxury jewellery to the discerning Nigerian woman.
+                Each piece in our collection is thoughtfully curated and crafted to celebrate femininity, power and grace.
+            </p>
+            <p>
+                From our boutiques across Nigeria — Abuja, Allen Avenue Ikeja and Ikota Ajah — our expert consultants guide you to the perfect piece for every occasion.
+                Whether it is a statement necklace for a black-tie event or a delicate ring to mark a milestone, we are here to make it unforgettable.
+            </p>
+            <p>
+                We believe jewellery is not just an accessory — it is a story, an emotion, a legacy.
+                That is the Sterling Lams promise.
+            </p>
+        </div>
+    </div>
+</section>
+
+<!-- Values -->
+<section class="py-20 bg-stone-50">
+    <div class="max-w-7xl mx-auto px-6">
+        <div class="grid md:grid-cols-3 gap-12 text-center">
+            <div>
+                <div class="w-10 h-10 border border-neutral-300 flex items-center justify-center mx-auto mb-6">
+                    <svg class="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+                    </svg>
+                </div>
+                <h3 class="font-cormorant text-2xl font-light mb-3 text-neutral-900">Authenticity</h3>
+                <p class="text-xs text-neutral-500 font-light leading-relaxed tracking-wide">Every piece is certified authentic. We never compromise on quality or craftsmanship.</p>
+            </div>
+            <div>
+                <div class="w-10 h-10 border border-neutral-300 flex items-center justify-center mx-auto mb-6">
+                    <svg class="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                    </svg>
+                </div>
+                <h3 class="font-cormorant text-2xl font-light mb-3 text-neutral-900">Craftsmanship</h3>
+                <p class="text-xs text-neutral-500 font-light leading-relaxed tracking-wide">We partner with master artisans to deliver jewellery of unrivalled quality and detail.</p>
+            </div>
+            <div>
+                <div class="w-10 h-10 border border-neutral-300 flex items-center justify-center mx-auto mb-6">
+                    <svg class="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                </div>
+                <h3 class="font-cormorant text-2xl font-light mb-3 text-neutral-900">Personal Service</h3>
+                <p class="text-xs text-neutral-500 font-light leading-relaxed tracking-wide">Our in-store consultants provide a one-to-one experience that is as unique as you are.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="py-20 bg-neutral-900 text-white text-center">
+    <h2 class="font-cormorant text-4xl font-light mb-6">Find Your Perfect Piece</h2>
+    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+        <a asp-controller="Products" asp-action="Index"
+           class="inline-block border border-white text-white text-xs tracking-[0.2em] uppercase px-12 py-4 hover:bg-white hover:text-neutral-900 transition-colors duration-300">
+            Shop Now
+        </a>
+        <a asp-controller="Stores" asp-action="Index"
+           class="inline-block bg-white text-neutral-900 text-xs tracking-[0.2em] uppercase px-12 py-4 hover:bg-neutral-200 transition-colors duration-300">
+            Visit a Store
+        </a>
+    </div>
+</section>

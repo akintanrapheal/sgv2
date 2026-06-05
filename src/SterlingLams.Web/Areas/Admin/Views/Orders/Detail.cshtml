@@ -108,7 +108,7 @@
                         class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400">
                     @foreach (var s in Model.AvailableStatuses)
                     {
-                        <option value="@s" @(Model.Order.Status.ToString() == s ? "selected" : "")>@s</option>
+                        <option value="@s" selected="@(Model.Order.Status.ToString() == s)">@s</option>
                     }
                 </select>
                 <button type="submit"

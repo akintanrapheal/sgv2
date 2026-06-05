@@ -22,7 +22,7 @@ public class Order
 {
     public int Id { get; set; }
     public string OrderNumber { get; set; } = string.Empty;
-    public int? OdooSaleOrderId { get; set; }
+    public string? ErpNextSalesOrderName { get; set; }
 
     public string UserId { get; set; } = string.Empty;
     public ApplicationUser User { get; set; } = null!;

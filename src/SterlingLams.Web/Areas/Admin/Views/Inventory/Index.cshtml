@@ -1,4 +1,4 @@
-@model SterlingLams.Web.Areas.Admin.ViewModels.AdminInventoryViewModel
+﻿@model SterlingLams.Web.Areas.Admin.ViewModels.AdminInventoryViewModel
 @{
     ViewData["Title"] = "Inventory";
 }
@@ -15,7 +15,7 @@
         @Html.AntiForgeryToken()
         <button type="submit"
                 class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
-            ↺ Sync from Odoo
+            Sync from ERPNext
         </button>
     </form>
 </div>
@@ -23,56 +23,97 @@
 @if (!Model.Stores.Any())
 {
     <div class="bg-white rounded-sm border border-neutral-100 p-12 text-center text-neutral-400 text-sm">
-        No inventory data yet. Click "Sync from Odoo" to import stock levels.
+        No inventory data yet. Click "Sync from ERPNext" to import stock levels.
     </div>
 }
-
-@foreach (var section in Model.Stores)
+else
 {
-    <div class="mb-8">
-        <div class="flex items-center gap-3 mb-3">
-            <h2 class="text-sm font-medium">@section.Store.Name</h2>
-            <span class="text-[10px] text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded">@section.Store.City</span>
-            <span class="text-xs text-neutral-400">@section.Products.Count products</span>
-        </div>
-
-        <div class="bg-white rounded-sm border border-neutral-100 overflow-hidden">
-            <table class="w-full text-sm">
-                <thead>
-                    <tr class="bg-neutral-50 border-b border-neutral-100">
-                        <th class="text-left px-6 py-2 text-xs text-neutral-400 font-medium">Product</th>
-                        <th class="text-left px-6 py-2 text-xs text-neutral-400 font-medium">SKU</th>
-                        <th class="text-right px-6 py-2 text-xs text-neutral-400 font-medium">On Hand</th>
-                        <th class="text-right px-6 py-2 text-xs text-neutral-400 font-medium">Alert</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-neutral-50">
-                    @if (!section.Products.Any())
-                    {
-                        <tr><td colspan="4" class="px-6 py-4 text-xs text-neutral-400 text-center">No inventory records for this store.</td></tr>
-                    }
-                    @foreach (var row in section.Products)
-                    {
-                        <tr class="hover:bg-neutral-50 transition-colors @(row.IsLowStock ? "bg-amber-50/40" : "")">
-                            <td class="px-6 py-2.5 text-xs font-medium text-neutral-800">@row.ProductName</td>
-                            <td class="px-6 py-2.5 text-xs font-mono text-neutral-400">@(string.IsNullOrEmpty(row.Sku) ? "—" : row.Sku)</td>
-                            <td class="px-6 py-2.5 text-xs text-right font-medium @(row.QuantityOnHand == 0 ? "text-red-600" : row.IsLowStock ? "text-amber-600" : "text-neutral-800")">
-                                @row.QuantityOnHand
-                            </td>
-                            <td class="px-6 py-2.5 text-right">
-                                @if (row.QuantityOnHand == 0)
-                                {
-                                    <span class="text-[10px] bg-red-50 text-red-700 px-2 py-0.5 rounded-full">Out of stock</span>
-                                }
-                                else if (row.IsLowStock)
-                                {
-                                    <span class="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">Low stock</span>
-                                }
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+    <!-- Store Tabs -->
+    <div class="flex gap-1 border-b border-neutral-200 mb-6">
+        @for (int i = 0; i < Model.Stores.Count; i++)
+        {
+            var storeSection = Model.Stores[i];
+            var lowCount = storeSection.Products.Count(p => p.IsLowStock);
+            var outCount = storeSection.Products.Count(p => p.QuantityOnHand == 0);
+            <button type="button"
+                    data-tab="store-@i"
+                    onclick="switchTab('store-@i')"
+                    class="tab-btn px-4 py-2 text-xs font-medium border-b-2 transition-colors @(i == 0 ? "border-neutral-900 text-neutral-900" : "border-transparent text-neutral-400 hover:text-neutral-700")">
+                @storeSection.Store.Name
+                @if (outCount > 0)
+                {
+                    <span class="ml-1.5 text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">@outCount out</span>
+                }
+                else if (lowCount > 0)
+                {
+                    <span class="ml-1.5 text-[9px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full">@lowCount low</span>
+                }
+            </button>
+        }
     </div>
+
+    <!-- Tab Panels -->
+    @for (int i = 0; i < Model.Stores.Count; i++)
+    {
+        var storeSection = Model.Stores[i];
+        <div id="store-@i" class="tab-panel @(i == 0 ? "" : "hidden")">
+            <div class="flex items-center gap-3 mb-3">
+                <span class="text-[10px] text-neutral-400 bg-neutral-100 px-2 py-0.5 rounded">@storeSection.Store.City</span>
+                <span class="text-xs text-neutral-400">@storeSection.Products.Count products</span>
+            </div>
+
+            <div class="bg-white rounded-sm border border-neutral-100 overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="bg-neutral-50 border-b border-neutral-100">
+                            <th class="text-left px-6 py-2 text-xs text-neutral-400 font-medium">Product</th>
+                            <th class="text-left px-6 py-2 text-xs text-neutral-400 font-medium">SKU</th>
+                            <th class="text-right px-6 py-2 text-xs text-neutral-400 font-medium">On Hand</th>
+                            <th class="text-right px-6 py-2 text-xs text-neutral-400 font-medium">Alert</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-neutral-50">
+                        @if (!storeSection.Products.Any())
+                        {
+                            <tr><td colspan="4" class="px-6 py-4 text-xs text-neutral-400 text-center">No inventory records for this store.</td></tr>
+                        }
+                        @foreach (var row in storeSection.Products)
+                        {
+                            <tr class="hover:bg-neutral-50 transition-colors @(row.IsLowStock ? "bg-amber-50/40" : "")">
+                                <td class="px-6 py-2.5 text-xs font-medium text-neutral-800">@row.ProductName</td>
+                                <td class="px-6 py-2.5 text-xs font-mono text-neutral-400">@(string.IsNullOrEmpty(row.Sku) ? "—" : row.Sku)</td>
+                                <td class="px-6 py-2.5 text-xs text-right font-medium @(row.QuantityOnHand == 0 ? "text-red-600" : row.IsLowStock ? "text-amber-600" : "text-neutral-800")">
+                                    @row.QuantityOnHand
+                                </td>
+                                <td class="px-6 py-2.5 text-right">
+                                    @if (row.QuantityOnHand == 0)
+                                    {
+                                        <span class="text-[10px] bg-red-50 text-red-700 px-2 py-0.5 rounded-full">Out of stock</span>
+                                    }
+                                    else if (row.IsLowStock)
+                                    {
+                                        <span class="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">Low stock</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    <script>
+        function switchTab(activeId) {
+            document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                b.classList.remove('border-neutral-900', 'text-neutral-900');
+                b.classList.add('border-transparent', 'text-neutral-400');
+            });
+            document.getElementById(activeId).classList.remove('hidden');
+            const btn = document.querySelector('[data-tab="' + activeId + '"]');
+            btn.classList.remove('border-transparent', 'text-neutral-400');
+            btn.classList.add('border-neutral-900', 'text-neutral-900');
+        }
+    </script>
 }

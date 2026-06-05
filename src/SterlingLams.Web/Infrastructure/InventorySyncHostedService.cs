@@ -8,14 +8,14 @@ using SterlingLams.Web.Services.Inventory;
 namespace SterlingLams.Web.Infrastructure;
 
 /// <summary>
-/// Background service that periodically syncs inventory from Odoo
+/// Background service that periodically syncs inventory from ERPNext
 /// into the local StoreInventory table.
 /// </summary>
 public class InventorySyncHostedService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<InventorySyncHostedService> _logger;
-    private readonly TimeSpan _interval = TimeSpan.FromMinutes(5);
+    private readonly TimeSpan _interval = TimeSpan.FromMinutes(1);
 
     public InventorySyncHostedService(
         IServiceScopeFactory scopeFactory,
@@ -30,7 +30,7 @@ public class InventorySyncHostedService : BackgroundService
         _logger.LogInformation("Inventory sync service started. Interval: {Interval}", _interval);
 
         // Initial delay to let the app fully start
-        await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken);
+        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -47,21 +47,21 @@ public class InventorySyncHostedService : BackgroundService
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var inventory = scope.ServiceProvider.GetRequiredService<IInventoryService>();
 
-            var odooProductIds = await db.Products
-                .Where(p => p.IsActive)
-                .Select(p => p.OdooProductId)
+            var itemCodes = await db.Products
+                .Where(p => p.IsActive && !string.IsNullOrEmpty(p.ErpNextItemCode))
+                .Select(p => p.ErpNextItemCode)
                 .ToArrayAsync(ct);
 
-            if (odooProductIds.Length == 0)
+            if (itemCodes.Length == 0)
             {
                 _logger.LogDebug("No active products to sync.");
                 return;
             }
 
-            _logger.LogInformation("Syncing inventory for {Count} products from Odoo...", odooProductIds.Length);
+            _logger.LogInformation("Syncing inventory for {Count} products from ERPNext...", itemCodes.Length);
 
-            // Sync in batches of 50 to avoid large Odoo requests
-            var batches = odooProductIds.Chunk(50);
+            // Sync in batches of 50 to avoid large ERPNext requests
+            var batches = itemCodes.Chunk(50);
             foreach (var batch in batches)
             {
                 if (ct.IsCancellationRequested) break;

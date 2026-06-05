@@ -1,6 +1,7 @@
 @{
     ViewData["Title"] = "Luxury Jewellery";
     Layout = "_Layout";
+    var featuredProducts = ViewBag.FeaturedProducts as List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> ?? new();
 }
 
 <!-- ─── Hero ──────────────────────────────────────────────────────────────── -->
@@ -43,16 +44,41 @@
     <div class="max-w-7xl mx-auto px-6">
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
             @foreach (var cat in new[] {
-                new { Name = "Rings", Slug = "rings", Icon = "💍" },
-                new { Name = "Necklaces", Slug = "necklaces", Icon = "📿" },
-                new { Name = "Bracelets", Slug = "bracelets", Icon = "⌚" },
-                new { Name = "Earrings", Slug = "earrings", Icon = "✨" }
+                new { Name = "Rings", Slug = "rings" },
+                new { Name = "Necklaces", Slug = "necklaces" },
+                new { Name = "Bracelets", Slug = "bracelets" },
+                new { Name = "Earrings", Slug = "earrings" }
             })
             {
                 <a asp-controller="Products" asp-action="Index" asp-route-category="@cat.Slug"
                    class="group flex flex-col items-center py-10 px-6 bg-neutral-50 hover:bg-neutral-900 transition-all duration-500 cursor-pointer">
-                    <div class="w-16 h-16 rounded-full bg-white group-hover:bg-neutral-800 transition-colors duration-500 flex items-center justify-center mb-4 text-2xl shadow-sm">
-                        @cat.Icon
+                    <div class="w-14 h-14 rounded-full bg-white group-hover:bg-neutral-800 transition-colors duration-500 flex items-center justify-center mb-4 shadow-sm">
+                        @if (cat.Slug == "rings")
+                        {
+                            <svg class="w-6 h-6 text-neutral-500 group-hover:text-neutral-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="7" stroke-width="1.5"/>
+                                <circle cx="12" cy="12" r="3" stroke-width="1.5"/>
+                            </svg>
+                        }
+                        else if (cat.Slug == "necklaces")
+                        {
+                            <svg class="w-6 h-6 text-neutral-500 group-hover:text-neutral-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 3C8 3 4 6 4 10c0 3 2 5.5 5 6.5V20h6v-3.5c3-1 5-3.5 5-6.5 0-4-4-7-8-7z"/>
+                            </svg>
+                        }
+                        else if (cat.Slug == "bracelets")
+                        {
+                            <svg class="w-6 h-6 text-neutral-500 group-hover:text-neutral-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.5 17.5A7 7 0 1 1 17.5 6.5"/>
+                                <circle cx="6" cy="18" r="1.5" fill="currentColor" stroke="none"/>
+                            </svg>
+                        }
+                        else
+                        {
+                            <svg class="w-6 h-6 text-neutral-500 group-hover:text-neutral-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2l1.5 4H18l-3.5 2.5 1.5 4L12 10l-4 2.5 1.5-4L6 6h4.5L12 2z"/>
+                            </svg>
+                        }
                     </div>
                     <span class="text-xs tracking-[0.2em] uppercase text-neutral-600 group-hover:text-white transition-colors duration-500">
                         @cat.Name
@@ -71,22 +97,36 @@
             <h2 class="font-cormorant text-4xl font-light text-neutral-900">Featured Pieces</h2>
         </div>
 
-        <!-- Product grid placeholder — real data populated by component -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
-            @for (int i = 0; i < 4; i++)
+            @if (featuredProducts.Any())
             {
-                <div class="group cursor-pointer">
-                    <div class="aspect-square bg-neutral-100 mb-4 overflow-hidden relative">
-                        <div class="w-full h-full bg-gradient-to-br from-neutral-200 to-neutral-100 group-hover:scale-105 transition-transform duration-700"></div>
-                        <div class="absolute inset-0 flex items-end justify-center pb-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                            <button class="bg-white text-neutral-900 text-xs tracking-widest uppercase px-6 py-2 shadow-lg">
-                                Quick View
-                            </button>
+                @foreach (var p in featuredProducts)
+                {
+                    <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="group">
+                        <div class="aspect-square bg-neutral-100 mb-4 overflow-hidden relative">
+                            <img src="@p.PrimaryImageUrl" alt="@p.Name"
+                                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                            <div class="absolute inset-0 flex items-end justify-center pb-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                <span class="bg-white text-neutral-900 text-xs tracking-widest uppercase px-6 py-2 shadow-lg">Quick View</span>
+                            </div>
                         </div>
+                        <h3 class="font-light text-sm text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
+                        <p class="text-xs text-neutral-400 mt-1">₦@p.Price.ToString("N0")</p>
+                    </a>
+                }
+            }
+            else
+            {
+                @for (int i = 0; i < 4; i++)
+                {
+                    <div class="group">
+                        <div class="aspect-square bg-neutral-100 mb-4 overflow-hidden">
+                            <div class="w-full h-full bg-gradient-to-br from-neutral-200 to-neutral-100"></div>
+                        </div>
+                        <div class="h-3 bg-neutral-200 rounded w-3/4 mb-2"></div>
+                        <div class="h-2 bg-neutral-100 rounded w-1/3"></div>
                     </div>
-                    <h3 class="font-light text-sm text-neutral-700">Sample Piece</h3>
-                    <p class="text-xs text-neutral-400 mt-1">₦450,000</p>
-                </div>
+                }
             }
         </div>
 
@@ -115,7 +155,7 @@
             </a>
         </div>
         <div class="grid grid-cols-3 gap-4">
-            @foreach (var store in new[] { "Victoria Island", "Ikeja", "Lekki" })
+            @foreach (var store in new[] { "Sterlin Glams Abuja", "Sterlin Glams Allen", "Sterlin Glams Ikota" })
             {
                 <div class="bg-neutral-800 p-6 text-center">
                     <div class="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center mx-auto mb-3">

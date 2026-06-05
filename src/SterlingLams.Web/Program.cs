@@ -38,7 +38,7 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.LogoutPath = "/Account/Logout";
     options.AccessDeniedPath = "/Account/AccessDenied";
     options.Cookie.HttpOnly = true;
-    options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
     options.ExpireTimeSpan = TimeSpan.FromDays(30);
     options.SlidingExpiration = true;
 });
@@ -124,11 +124,20 @@ app.MapControllers(); // API controllers (WebhooksController)
     catch (Exception ex)
     {
         logger.LogError(ex, "Database initialisation failed. Check your connection string.");
-        throw; // Fail fast — app cannot run without DB
+        if (!app.Environment.IsDevelopment()) throw; // Fail fast in production
+        logger.LogWarning("Continuing without database in Development mode. Some features will not work.");
     }
 }
 
 // Seed roles, stores, and categories (all environments)
-await SterlingLams.Web.Infrastructure.SeedData.SeedAsync(app.Services);
+try
+{
+    await SterlingLams.Web.Infrastructure.SeedData.SeedAsync(app.Services);
+}
+catch (Exception ex)
+{
+    var seedLogger = app.Services.GetRequiredService<ILogger<Program>>();
+    seedLogger.LogError(ex, "Seeding failed — database may not be available.");
+}
 
 await app.RunAsync();

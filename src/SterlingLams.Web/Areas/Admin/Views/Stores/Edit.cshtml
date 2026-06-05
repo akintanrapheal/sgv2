@@ -41,7 +41,7 @@
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label asp-for="Phone" class="block text-xs text-neutral-500 mb-1">Phone</label>
-                    <input asp-for="Phone" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                    <input asp-for="Phone" type="tel" pattern="[\+0-9\s\-()]+" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
                 </div>
                 <div>
                     <label asp-for="Email" class="block text-xs text-neutral-500 mb-1">Email</label>
@@ -56,8 +56,8 @@
             </div>
 
             <div>
-                <label asp-for="OdooWarehouseId" class="block text-xs text-neutral-500 mb-1">Odoo Warehouse ID</label>
-                <input asp-for="OdooWarehouseId" type="number"
+                <label asp-for="ErpNextWarehouse" class="block text-xs text-neutral-500 mb-1">ERPNext Warehouse</label>
+                <input asp-for="ErpNextWarehouse" type="text"
                        class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:border-neutral-400" />
             </div>
 

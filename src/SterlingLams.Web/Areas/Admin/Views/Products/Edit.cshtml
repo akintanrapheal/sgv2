@@ -34,7 +34,7 @@
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label asp-for="Price" class="block text-xs text-neutral-500 mb-1">Price (₦) <span class="text-red-400">*</span></label>
-                    <input asp-for="Price" type="number" step="0.01"
+                    <input asp-for="Price" type="number" step="0.01" min="0"
                            class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
                     <span asp-validation-for="Price" class="text-xs text-red-500"></span>
                 </div>
@@ -71,10 +71,10 @@
                 </div>
             </div>
 
-            <!-- Odoo ID -->
+            <!-- ERPNext Item Code -->
             <div>
-                <label asp-for="OdooProductId" class="block text-xs text-neutral-500 mb-1">Odoo Product ID</label>
-                <input asp-for="OdooProductId" type="number"
+                <label asp-for="ErpNextItemCode" class="block text-xs text-neutral-500 mb-1">ERPNext Item Code</label>
+                <input asp-for="ErpNextItemCode" type="text"
                        class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:border-neutral-400" />
             </div>
 

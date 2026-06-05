@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.Domain;
-using SterlingLams.Web.Services.Odoo;
+using SterlingLams.Web.Services.ERPNext;
 using SterlingLams.Web.Services.Payment;
 using Microsoft.EntityFrameworkCore;
 using System.IO;
@@ -15,18 +15,18 @@ public class WebhooksController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly IPaymentService _payment;
-    private readonly IOdooService _odoo;
+    private readonly IERPNextService _erpNext;
     private readonly ILogger<WebhooksController> _logger;
 
     public WebhooksController(
         ApplicationDbContext db,
         IPaymentService payment,
-        IOdooService odoo,
+        IERPNextService erpNext,
         ILogger<WebhooksController> logger)
     {
         _db = db;
         _payment = payment;
-        _odoo = odoo;
+        _erpNext = erpNext;
         _logger = logger;
     }
 
@@ -71,12 +71,16 @@ public class WebhooksController : ControllerBase
                 order.PaymentProvider = "Paystack";
                 await _db.SaveChangesAsync();
 
-                // Push to Odoo async (fire & forget with error logging)
-                _ = Task.Run(async () =>
+                // Submit to ERPNext async (fire & forget with error logging)
+                if (!string.IsNullOrEmpty(order.ErpNextSalesOrderName))
                 {
-                    try { await _odoo.ConfirmSaleOrderAsync(order.OdooSaleOrderId ?? 0); }
-                    catch (Exception ex) { _logger.LogError(ex, "Failed to confirm Odoo order for {OrderNumber}", order.OrderNumber); }
-                });
+                    var soName = order.ErpNextSalesOrderName;
+                    _ = Task.Run(async () =>
+                    {
+                        try { await _erpNext.SubmitSalesOrderAsync(soName); }
+                        catch (Exception ex) { _logger.LogError(ex, "Failed to submit ERPNext sales order for {OrderNumber}", order.OrderNumber); }
+                    });
+                }
 
                 _logger.LogInformation("Order {OrderNumber} marked as paid via webhook", order.OrderNumber);
             }

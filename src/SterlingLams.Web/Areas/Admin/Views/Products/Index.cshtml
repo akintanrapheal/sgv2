@@ -16,17 +16,17 @@
     </form>
 
     <div class="flex gap-2">
-        <!-- Import from Odoo (full product catalog upsert) -->
-        <form asp-area="Admin" asp-controller="Products" asp-action="ImportFromOdoo" method="post"
+        <!-- Import from ERPNext (full product catalog upsert) -->
+        <form asp-area="Admin" asp-controller="Products" asp-action="ImportFromERPNext" method="post"
               onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Importing…';">
             @Html.AntiForgeryToken()
             <button type="submit"
                     class="px-4 py-2 border border-amber-300 text-amber-700 text-xs rounded-sm hover:bg-amber-50 transition-colors">
-                ↓ Import from Odoo
+                ↓ Import from ERPNext
             </button>
         </form>
         <!-- Sync inventory quantities only -->
-        <form asp-area="Admin" asp-controller="Products" asp-action="SyncFromOdoo" method="post"
+        <form asp-area="Admin" asp-controller="Products" asp-action="SyncFromERPNext" method="post"
               onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Syncing…';">
             @Html.AntiForgeryToken()
             <button type="submit"
@@ -49,7 +49,7 @@
                 <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Name</th>
                 <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Category</th>
                 <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Price</th>
-                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Odoo ID</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Item Code</th>
                 <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Status</th>
                 <th class="text-right px-6 py-3 text-xs text-neutral-400 font-medium">Actions</th>
             </tr>
@@ -57,7 +57,7 @@
         <tbody class="divide-y divide-neutral-50">
             @if (!Model.Products.Any())
             {
-                <tr><td colspan="6" class="px-6 py-12 text-center text-neutral-400 text-sm">No products found. Click <strong>↓ Import from Odoo</strong> to import your catalog.</td></tr>
+                <tr><td colspan="6" class="px-6 py-12 text-center text-neutral-400 text-sm">No products found. Click <strong>↓ Import from ERPNext</strong> to import your catalog.</td></tr>
             }
             @foreach (var p in Model.Products)
             {
@@ -73,7 +73,7 @@
                     </td>
                     <td class="px-6 py-3 text-xs text-neutral-500">@(p.Category?.Name ?? "—")</td>
                     <td class="px-6 py-3 text-xs font-medium">₦@p.Price.ToString("N0")</td>
-                    <td class="px-6 py-3 text-xs font-mono text-neutral-400">@p.OdooProductId</td>
+                    <td class="px-6 py-3 text-xs font-mono text-neutral-400">@p.ErpNextItemCode</td>
                     <td class="px-6 py-3">
                         @if (p.IsActive)
                         {

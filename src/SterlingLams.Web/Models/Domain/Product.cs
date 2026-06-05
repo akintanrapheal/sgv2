@@ -4,8 +4,8 @@ public class Product
 {
     public int Id { get; set; }
 
-    /// <summary>Odoo product template ID (source of truth)</summary>
-    public int OdooProductId { get; set; }
+    /// <summary>ERPNext item code (source of truth)</summary>
+    public string ErpNextItemCode { get; set; } = string.Empty;
 
     public string Name { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;

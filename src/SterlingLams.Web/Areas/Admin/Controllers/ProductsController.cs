@@ -87,7 +87,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 GemstoneType = product.GemstoneType,
                 IsActive = product.IsActive,
                 IsFeatured = product.IsFeatured,
-                OdooProductId = product.OdooProductId,
+                ErpNextItemCode = product.ErpNextItemCode,
                 CategoryId = product.CategoryId,
                 Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync()
             };
@@ -129,7 +129,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             product.GemstoneType = vm.GemstoneType;
             product.IsActive = vm.IsActive;
             product.IsFeatured = vm.IsFeatured;
-            product.OdooProductId = vm.OdooProductId;
+            product.ErpNextItemCode = vm.ErpNextItemCode?.Trim() ?? string.Empty;
             product.CategoryId = vm.CategoryId ?? product.CategoryId;
             product.UpdatedAt = DateTime.UtcNow;
 
@@ -156,12 +156,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> SyncFromOdoo()
+        public async Task<IActionResult> SyncFromERPNext()
         {
             try
             {
                 await _inventory.SyncAllAsync();
-                TempData["Success"] = "Odoo inventory sync completed successfully.";
+                TempData["Success"] = "ERPNext inventory sync completed successfully.";
             }
             catch (Exception ex)
             {
@@ -171,18 +171,15 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return RedirectToAction(nameof(Index));
         }
 
-        /// <summary>
-        /// Import all products from Odoo into local database (upsert by OdooProductId).
-        /// </summary>
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ImportFromOdoo()
+        public async Task<IActionResult> ImportFromERPNext()
         {
             try
             {
-                var result = await _importer.ImportAllFromOdooAsync();
+                var result = await _importer.ImportAllFromERPNextAsync();
                 TempData[result.Success ? "Success" : "Warning"] =
-                    $"Odoo product import complete: {result.Summary}" +
+                    $"ERPNext product import complete: {result.Summary}" +
                     (result.Errors.Any() ? $" — First error: {result.Errors[0]}" : "");
             }
             catch (Exception ex)
