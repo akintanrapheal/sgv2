@@ -1,0 +1,56 @@
+@model SterlingLams.Web.Areas.Admin.ViewModels.AdminAuditLogViewModel
+@{
+    ViewData["Title"] = "Audit Log";
+}
+
+<div class="bg-white rounded-sm border border-neutral-100 overflow-hidden">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="border-b border-neutral-100 bg-neutral-50">
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Time</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Action</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Entity</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Description</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Performed By</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (!Model.Logs.Any())
+            {
+                <tr><td colspan="5" class="px-6 py-12 text-center text-xs text-neutral-400">No audit events recorded yet.</td></tr>
+            }
+            @foreach (var log in Model.Logs)
+            {
+                <tr class="hover:bg-neutral-50 transition-colors">
+                    <td class="px-6 py-3 text-xs text-neutral-400 whitespace-nowrap">@log.CreatedAt.ToString("dd MMM yy HH:mm")</td>
+                    <td class="px-6 py-3">
+                        <span class="text-[10px] px-2 py-0.5 rounded-full @(log.Action == "Delete" ? "bg-red-50 text-red-700" : log.Action == "Create" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700")">@log.Action</span>
+                    </td>
+                    <td class="px-6 py-3 text-xs text-neutral-500">
+                        <span>@log.EntityType</span>
+                        @if (!string.IsNullOrEmpty(log.EntityId))
+                        {
+                            <span class="text-neutral-400"> #@log.EntityId</span>
+                        }
+                    </td>
+                    <td class="px-6 py-3 text-xs text-neutral-600">@log.Description</td>
+                    <td class="px-6 py-3 text-xs text-neutral-500">@log.PerformedBy</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (Model.TotalPages > 1)
+{
+    <div class="flex items-center justify-end gap-2 mt-4">
+        @for (int p = 1; p <= Model.TotalPages; p++)
+        {
+            <a asp-area="Admin" asp-controller="AuditLog" asp-action="Index"
+               asp-route-page="@p"
+               class="px-3 py-1.5 text-xs rounded-sm border transition-colors @(p == Model.CurrentPage ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")">
+                @p
+            </a>
+        }
+    </div>
+}

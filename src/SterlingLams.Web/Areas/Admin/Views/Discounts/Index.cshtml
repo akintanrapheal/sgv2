@@ -1,0 +1,81 @@
+@model SterlingLams.Web.Areas.Admin.ViewModels.AdminDiscountListViewModel
+@{
+    ViewData["Title"] = "Discount Codes";
+}
+
+<div class="flex items-center justify-between mb-6">
+    <h2 class="text-sm font-medium">Discount Codes</h2>
+    <a asp-area="Admin" asp-controller="Discounts" asp-action="Create"
+       class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+        + New Code
+    </a>
+</div>
+
+<div class="bg-white rounded-sm border border-neutral-100 overflow-hidden">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="border-b border-neutral-100 bg-neutral-50">
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Code</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Type</th>
+                <th class="text-right px-6 py-3 text-xs text-neutral-400 font-medium">Value</th>
+                <th class="text-right px-6 py-3 text-xs text-neutral-400 font-medium">Min. Order</th>
+                <th class="text-right px-6 py-3 text-xs text-neutral-400 font-medium">Uses</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Expires</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Status</th>
+                <th class="px-6 py-3"></th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (!Model.DiscountCodes.Any())
+            {
+                <tr><td colspan="8" class="px-6 py-10 text-center text-xs text-neutral-400">No discount codes yet.</td></tr>
+            }
+            @foreach (var d in Model.DiscountCodes)
+            {
+                <tr class="hover:bg-neutral-50 transition-colors">
+                    <td class="px-6 py-3">
+                        <span class="font-mono text-xs text-neutral-800 bg-neutral-50 border border-neutral-200 px-2 py-0.5 rounded">@d.Code</span>
+                    </td>
+                    <td class="px-6 py-3 text-xs text-neutral-600">@d.Type</td>
+                    <td class="px-6 py-3 text-xs text-right font-medium">
+                        @(d.Type == SterlingLams.Web.Models.Domain.DiscountType.Percentage ? d.Value.ToString("N0") + "%" : "₦" + d.Value.ToString("N0"))
+                    </td>
+                    <td class="px-6 py-3 text-xs text-right text-neutral-500">
+                        @(d.MinimumOrderAmount.HasValue ? "₦" + d.MinimumOrderAmount.Value.ToString("N0") : "—")
+                    </td>
+                    <td class="px-6 py-3 text-xs text-right text-neutral-500">
+                        @d.UsedCount@(d.MaxUses.HasValue ? " / " + d.MaxUses : "")
+                    </td>
+                    <td class="px-6 py-3 text-xs text-neutral-400">
+                        @(d.ExpiresAt.HasValue ? d.ExpiresAt.Value.ToString("dd MMM yy") : "Never")
+                    </td>
+                    <td class="px-6 py-3">
+                        @if (d.IsActive)
+                        {
+                            <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Active</span>
+                        }
+                        else
+                        {
+                            <span class="text-[10px] bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full">Inactive</span>
+                        }
+                    </td>
+                    <td class="px-6 py-3 text-right">
+                        <div class="flex items-center justify-end gap-3">
+                            <a asp-area="Admin" asp-controller="Discounts" asp-action="Edit" asp-route-id="@d.Id"
+                               class="text-xs text-neutral-500 hover:text-neutral-900 transition-colors">Edit</a>
+                            <form asp-area="Admin" asp-controller="Discounts" asp-action="Toggle" asp-route-id="@d.Id" method="post">
+                                @Html.AntiForgeryToken()
+                                <button class="text-xs text-blue-500 hover:text-blue-700 transition-colors">@(d.IsActive ? "Disable" : "Enable")</button>
+                            </form>
+                            <form asp-area="Admin" asp-controller="Discounts" asp-action="Delete" asp-route-id="@d.Id"
+                                  method="post" onsubmit="return confirm('Delete this code?')">
+                                @Html.AntiForgeryToken()
+                                <button class="text-xs text-red-400 hover:text-red-700 transition-colors">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

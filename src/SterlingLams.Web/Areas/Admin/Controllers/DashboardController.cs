@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
@@ -43,6 +44,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
                 TotalProducts = await _db.Products.CountAsync(p => p.IsActive),
 
+                TotalCustomers = await _db.Users.CountAsync(),
+
                 LowStockAlerts = await _db.StoreInventories
                     .CountAsync(si => si.QuantityOnHand > 0 && si.QuantityOnHand < 3),
 
@@ -74,6 +77,25 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     })
                     .ToListAsync()
             };
+
+            // 30-day daily revenue chart
+            var thirtyDaysAgo = today.AddDays(-29);
+            var revenueByDay = await _db.Orders
+                .Where(o => o.IsPaid && o.CreatedAt >= thirtyDaysAgo)
+                .GroupBy(o => o.CreatedAt.Date)
+                .Select(g => new { Date = g.Key, Amount = g.Sum(o => o.Total) })
+                .ToListAsync();
+
+            var dailyRevenue = new List<DailyRevenueRow>();
+            for (int i = 29; i >= 0; i--)
+            {
+                var date = today.AddDays(-i);
+                var amount = revenueByDay.FirstOrDefault(r => r.Date == date)?.Amount ?? 0;
+                dailyRevenue.Add(new DailyRevenueRow { Date = date.ToString("MMM dd"), Amount = amount });
+            }
+            vm.DailyRevenue = dailyRevenue;
+
+            vm.DailyRevenue = dailyRevenue;
 
             return View(vm);
         }

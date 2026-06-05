@@ -102,4 +102,59 @@
             </a>
         </div>
     </form>
+
+    @if (!isNew)
+    {
+        <!-- Images -->
+        <div class="mt-6 bg-white rounded-sm border border-neutral-100 p-6">
+            <h2 class="text-sm font-medium mb-4">Product Images</h2>
+
+            @if (Model.Images.Any())
+            {
+                <div class="flex flex-wrap gap-3 mb-4">
+                    @foreach (var img in Model.Images)
+                    {
+                        <div class="relative group">
+                            <img src="@img.Url" alt="@img.AltText" class="w-20 h-20 object-cover rounded border border-neutral-200" />
+                            @if (img.IsPrimary)
+                            {
+                                <span class="absolute bottom-1 left-1 text-[9px] bg-neutral-900 text-white px-1 rounded">Primary</span>
+                            }
+                            <form asp-area="Admin" asp-controller="Products" asp-action="DeleteImage"
+                                  asp-route-productId="@Model.Id" asp-route-imageId="@img.Id"
+                                  method="post" class="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="bg-red-500 text-white text-[10px] rounded w-5 h-5 flex items-center justify-center">×</button>
+                            </form>
+                        </div>
+                    }
+                </div>
+            }
+
+            <form asp-area="Admin" asp-controller="Products" asp-action="AddImage"
+                  asp-route-id="@Model.Id" method="post" class="space-y-3">
+                @Html.AntiForgeryToken()
+                <div>
+                    <label class="block text-xs text-neutral-500 mb-1">Image URL *</label>
+                    <input name="imageUrl" type="url" required placeholder="https://…"
+                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                </div>
+                <div class="flex gap-4 items-end">
+                    <div class="flex-1">
+                        <label class="block text-xs text-neutral-500 mb-1">Alt Text</label>
+                        <input name="altText" type="text"
+                               class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                    </div>
+                    <label class="flex items-center gap-2 text-xs text-neutral-600 pb-2 cursor-pointer">
+                        <input name="isPrimary" type="checkbox" class="accent-neutral-900" />
+                        Set as primary
+                    </label>
+                    <button type="submit"
+                            class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors pb-2">
+                        Add Image
+                    </button>
+                </div>
+            </form>
+        </div>
+    }
 </div>

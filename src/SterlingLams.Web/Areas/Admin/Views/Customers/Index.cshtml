@@ -1,0 +1,70 @@
+@model SterlingLams.Web.Areas.Admin.ViewModels.AdminCustomerListViewModel
+@{
+    ViewData["Title"] = "Customers";
+}
+
+<!-- Toolbar -->
+<div class="flex items-center gap-3 mb-6">
+    <form method="get" class="flex gap-2 flex-1">
+        <input type="text" name="q" value="@Model.SearchQuery"
+               placeholder="Search name or email…"
+               class="flex-1 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+        <button type="submit"
+                class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+            Search
+        </button>
+    </form>
+</div>
+
+<!-- Table -->
+<div class="bg-white rounded-sm border border-neutral-100 overflow-hidden">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="border-b border-neutral-100 bg-neutral-50">
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Name</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Email</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Phone</th>
+                <th class="text-right px-6 py-3 text-xs text-neutral-400 font-medium">Orders</th>
+                <th class="text-right px-6 py-3 text-xs text-neutral-400 font-medium">Total Spend</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Joined</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Last Order</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (!Model.Customers.Any())
+            {
+                <tr><td colspan="7" class="px-6 py-12 text-center text-neutral-400 text-sm">No customers found.</td></tr>
+            }
+            @foreach (var c in Model.Customers)
+            {
+                <tr class="hover:bg-neutral-50 transition-colors">
+                    <td class="px-6 py-3">
+                        <a asp-area="Admin" asp-controller="Customers" asp-action="Detail" asp-route-id="@c.Id"
+                           class="text-xs font-medium text-neutral-800 hover:text-neutral-900 hover:underline">@c.FullName</a>
+                    </td>
+                    <td class="px-6 py-3 text-xs text-neutral-500">@c.Email</td>
+                    <td class="px-6 py-3 text-xs text-neutral-500">@(c.Phone ?? "—")</td>
+                    <td class="px-6 py-3 text-xs text-right font-medium">@c.OrderCount</td>
+                    <td class="px-6 py-3 text-xs text-right font-medium text-emerald-700">₦@c.TotalSpend.ToString("N0")</td>
+                    <td class="px-6 py-3 text-xs text-neutral-400">@c.JoinedAt.ToString("dd MMM yy")</td>
+                    <td class="px-6 py-3 text-xs text-neutral-400">@(c.LastOrderAt.HasValue ? c.LastOrderAt.Value.ToString("dd MMM yy") : "—")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<!-- Pagination -->
+@if (Model.TotalPages > 1)
+{
+    <div class="flex items-center justify-end gap-2 mt-4">
+        @for (int p = 1; p <= Model.TotalPages; p++)
+        {
+            <a asp-area="Admin" asp-controller="Customers" asp-action="Index"
+               asp-route-page="@p" asp-route-q="@Model.SearchQuery"
+               class="px-3 py-1.5 text-xs rounded-sm border transition-colors @(p == Model.CurrentPage ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")">
+                @p
+            </a>
+        }
+    </div>
+}

@@ -26,6 +26,7 @@ public class Product
 
     public bool IsActive { get; set; } = true;
     public bool IsFeatured { get; set; }
+    public int LowStockThreshold { get; set; } = 3;
     public bool IsNewArrival { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

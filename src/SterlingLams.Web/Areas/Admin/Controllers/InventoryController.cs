@@ -46,7 +46,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                         ProductId = si.ProductId,
                         ProductName = si.Product.Name,
                         Sku = si.Product.Sku ?? "",
-                        QuantityOnHand = si.QuantityOnHand
+                        QuantityOnHand = si.QuantityOnHand,
+                        LowStockThreshold = si.Product.LowStockThreshold
                     })
                     .ToList()
             }).ToList();
@@ -77,6 +78,21 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 TempData["Error"] = $"Sync failed: {ex.Message}";
             }
 
+            return RedirectToAction(nameof(Index));
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> UpdateThreshold(int productId, int threshold)
+        {
+            var product = await _db.Products.FindAsync(productId);
+            if (product == null) return NotFound();
+
+            product.LowStockThreshold = Math.Max(0, threshold);
+            product.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            TempData["Success"] = $"Low-stock threshold for '{product.Name}' updated to {threshold}.";
             return RedirectToAction(nameof(Index));
         }
     }

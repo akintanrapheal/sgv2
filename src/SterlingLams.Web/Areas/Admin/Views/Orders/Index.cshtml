@@ -16,6 +16,11 @@
             Search
         </button>
     </form>
+    <a asp-area="Admin" asp-controller="Orders" asp-action="ExportCsv"
+       asp-route-status="@Model.StatusFilter" asp-route-q="@Model.SearchQuery"
+       class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:border-neutral-500 transition-colors whitespace-nowrap">
+        ↓ Export CSV
+    </a>
 </div>
 
 <!-- Status tabs -->
@@ -32,39 +37,63 @@
     }
 </div>
 
+<!-- Bulk action bar (shown when checkboxes selected) -->
+<form id="bulk-form" asp-area="Admin" asp-controller="Orders" asp-action="BulkUpdateStatus" method="post"
+      class="hidden mb-4 flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-sm px-4 py-2">
+    @Html.AntiForgeryToken()
+    <span id="bulk-count" class="text-xs text-blue-700 font-medium"></span>
+    <select name="status" class="border border-blue-200 rounded-sm px-2 py-1 text-xs focus:outline-none ml-auto">
+        @foreach (var s in statuses.Where(s => s != ""))
+        {
+            <option value="@s">→ @s</option>
+        }
+    </select>
+    <button type="submit"
+            class="px-3 py-1.5 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+        Update Selected
+    </button>
+</form>
+
 <!-- Table -->
 <div class="bg-white rounded-sm border border-neutral-100 overflow-hidden">
     <table class="w-full text-sm">
         <thead>
             <tr class="border-b border-neutral-100 bg-neutral-50">
-                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Order #</th>
-                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Customer</th>
-                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Total</th>
-                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Fulfillment</th>
-                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Paid</th>
-                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Status</th>
-                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Date</th>
+                <th class="px-4 py-3 w-8">
+                    <input type="checkbox" id="select-all" class="accent-neutral-900" />
+                </th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Order #</th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Customer</th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Total</th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Fulfillment</th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Paid</th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Status</th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Date</th>
             </tr>
         </thead>
         <tbody class="divide-y divide-neutral-50">
             @if (!Model.Orders.Any())
             {
-                <tr><td colspan="7" class="px-6 py-12 text-center text-neutral-400 text-sm">No orders found.</td></tr>
+                <tr><td colspan="8" class="px-6 py-12 text-center text-neutral-400 text-sm">No orders found.</td></tr>
             }
             @foreach (var o in Model.Orders)
             {
                 <tr class="hover:bg-neutral-50 transition-colors">
-                    <td class="px-6 py-3">
+                    <td class="px-4 py-3">
+                        <input type="checkbox" name="orderIds" value="@o.Id" form="bulk-form"
+                               class="order-checkbox accent-neutral-900" />
+                    </td>
+                    <td class="px-4 py-3">
                         <a asp-area="Admin" asp-controller="Orders" asp-action="Detail" asp-route-id="@o.Id"
                            class="font-mono text-xs text-neutral-700 hover:text-neutral-900 hover:underline">@o.OrderNumber</a>
                     </td>
-                    <td class="px-6 py-3">
+                    <td class="px-4 py-3">
                         <p class="text-xs font-medium text-neutral-800">@o.CustomerName</p>
                         <p class="text-[10px] text-neutral-400">@o.CustomerEmail</p>
                     </td>
-                    <td class="px-6 py-3 text-xs font-medium">₦@o.Total.ToString("N0")</td>
-                    <td class="px-6 py-3 text-xs text-neutral-600">@o.FulfillmentType</td>
-                    <td class="px-6 py-3">
+                    <td class="px-4 py-3 text-xs font-medium">₦@o.Total.ToString("N0")</td>
+                    <td class="px-4 py-3 text-xs text-neutral-600">@o.FulfillmentType</td>
+                    <td class="px-4 py-3">
                         @if (o.IsPaid)
                         {
                             <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Paid</span>
@@ -74,7 +103,7 @@
                             <span class="text-[10px] bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full">Unpaid</span>
                         }
                     </td>
-                    <td class="px-6 py-3">
+                    <td class="px-4 py-3">
                         @{
                             var bc = o.Status switch
                             {
@@ -87,7 +116,7 @@
                         }
                         <span class="text-[10px] px-2 py-0.5 rounded-full @bc">@o.Status</span>
                     </td>
-                    <td class="px-6 py-3 text-xs text-neutral-400">@o.CreatedAt.ToString("dd MMM yy")</td>
+                    <td class="px-4 py-3 text-xs text-neutral-400">@o.CreatedAt.ToString("dd MMM yy")</td>
                 </tr>
             }
         </tbody>
@@ -108,3 +137,30 @@
         }
     </div>
 }
+
+@section Scripts {
+<script>
+    const checkboxes = document.querySelectorAll('.order-checkbox');
+    const selectAll = document.getElementById('select-all');
+    const bulkForm = document.getElementById('bulk-form');
+    const bulkCount = document.getElementById('bulk-count');
+
+    function updateBulkBar() {
+        const checked = document.querySelectorAll('.order-checkbox:checked');
+        if (checked.length > 0) {
+            bulkForm.classList.remove('hidden');
+            bulkCount.textContent = checked.length + ' order(s) selected';
+        } else {
+            bulkForm.classList.add('hidden');
+        }
+    }
+
+    selectAll.addEventListener('change', () => {
+        checkboxes.forEach(cb => cb.checked = selectAll.checked);
+        updateBulkBar();
+    });
+
+    checkboxes.forEach(cb => cb.addEventListener('change', updateBulkBar));
+</script>
+}
+

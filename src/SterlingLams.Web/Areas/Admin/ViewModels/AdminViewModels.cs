@@ -13,8 +13,16 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public int OrdersPending { get; set; }
         public int TotalProducts { get; set; }
         public int LowStockAlerts { get; set; }
+        public int TotalCustomers { get; set; }
         public List<RecentOrderRow> RecentOrders { get; set; } = new();
         public List<LowStockRow> LowStockItems { get; set; } = new();
+        public List<DailyRevenueRow> DailyRevenue { get; set; } = new();
+    }
+
+    public class DailyRevenueRow
+    {
+        public string Date { get; set; } = "";
+        public decimal Amount { get; set; }
     }
 
     public class RecentOrderRow
@@ -63,7 +71,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string CustomerEmail { get; set; } = "";
         public List<string> AvailableStatuses { get; set; } = new()
         {
-            "Pending", "Confirmed", "Processing", "ReadyForPickup", "Shipped", "Delivered", "Cancelled"
+            "Pending", "Confirmed", "Processing", "ReadyForPickup", "Shipped", "Delivered", "Cancelled", "Refunded"
         };
     }
 
@@ -91,6 +99,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string ErpNextItemCode { get; set; } = string.Empty;
         public int? CategoryId { get; set; }
         public List<Category> Categories { get; set; } = new();
+        public List<ProductImage> Images { get; set; } = new();
     }
 
     // ─── Inventory ────────────────────────────────────────────────────────
@@ -112,7 +121,92 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string ProductName { get; set; } = "";
         public string Sku { get; set; } = "";
         public int QuantityOnHand { get; set; }
-        public bool IsLowStock => QuantityOnHand < 3;
+        public int LowStockThreshold { get; set; } = 3;
+        public bool IsLowStock => QuantityOnHand < LowStockThreshold;
+    }
+
+    // ─── Customers ────────────────────────────────────────────────────────
+    public class AdminCustomerListViewModel
+    {
+        public List<AdminCustomerRow> Customers { get; set; } = new();
+        public string SearchQuery { get; set; } = "";
+        public int CurrentPage { get; set; } = 1;
+        public int TotalPages { get; set; } = 1;
+    }
+
+    public class AdminCustomerRow
+    {
+        public string Id { get; set; } = "";
+        public string FullName { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string? Phone { get; set; }
+        public int OrderCount { get; set; }
+        public decimal TotalSpend { get; set; }
+        public DateTime JoinedAt { get; set; }
+        public DateTime? LastOrderAt { get; set; }
+    }
+
+    public class AdminCustomerDetailViewModel
+    {
+        public string Id { get; set; } = "";
+        public string FullName { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string? Phone { get; set; }
+        public DateTime JoinedAt { get; set; }
+        public int OrderCount { get; set; }
+        public decimal TotalSpend { get; set; }
+        public List<RecentOrderRow> RecentOrders { get; set; } = new();
+    }
+
+    // ─── Audit Log ────────────────────────────────────────────────────────
+    public class AdminAuditLogViewModel
+    {
+        public List<AuditLogRow> Logs { get; set; } = new();
+        public int CurrentPage { get; set; } = 1;
+        public int TotalPages { get; set; } = 1;
+    }
+
+    public class AuditLogRow
+    {
+        public string Action { get; set; } = "";
+        public string EntityType { get; set; } = "";
+        public string EntityId { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string PerformedBy { get; set; } = "";
+        public DateTime CreatedAt { get; set; }
+    }
+
+    // ─── Discount Codes ───────────────────────────────────────────────────
+    public class AdminDiscountListViewModel
+    {
+        public List<DiscountCode> DiscountCodes { get; set; } = new();
+    }
+
+    public class AdminDiscountEditViewModel
+    {
+        public int Id { get; set; }
+        public string Code { get; set; } = "";
+        public string? Description { get; set; }
+        public string Type { get; set; } = "Percentage";
+        public decimal Value { get; set; }
+        public decimal? MinimumOrderAmount { get; set; }
+        public int? MaxUses { get; set; }
+        public bool IsActive { get; set; } = true;
+        public DateTime? StartsAt { get; set; }
+        public DateTime? ExpiresAt { get; set; }
+    }
+
+    // ─── Categories ───────────────────────────────────────────────────────
+    public class AdminCategoryEditViewModel
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Slug { get; set; } = "";
+        public string? Description { get; set; }
+        public bool IsActive { get; set; } = true;
+        public int SortOrder { get; set; }
+        public int? ParentId { get; set; }
+        public List<Category> AllCategories { get; set; } = new();
     }
 
     // ─── Stores ───────────────────────────────────────────────────────────

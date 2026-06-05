@@ -19,6 +19,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
     public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
     public DbSet<Address> Addresses => Set<Address>();
+    public DbSet<DiscountCode> DiscountCodes => Set<DiscountCode>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -99,5 +101,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<Product>()
             .Ignore(p => p.TotalStock)
             .Ignore(p => p.IsAvailable);
+
+        // ─── DiscountCode ────────────────────────────────────────────────────
+        builder.Entity<DiscountCode>(e =>
+        {
+            e.HasIndex(d => d.Code).IsUnique();
+            e.Property(d => d.Value).HasPrecision(18, 2);
+            e.Property(d => d.MinimumOrderAmount).HasPrecision(18, 2);
+        });
     }
 }

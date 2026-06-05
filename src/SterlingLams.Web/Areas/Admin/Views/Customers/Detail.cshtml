@@ -1,0 +1,93 @@
+@model SterlingLams.Web.Areas.Admin.ViewModels.AdminCustomerDetailViewModel
+@{
+    ViewData["Title"] = "Customer — " + Model.FullName;
+}
+
+<div class="mb-6">
+    <a asp-area="Admin" asp-controller="Customers" asp-action="Index"
+       class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors">← Back to Customers</a>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Stats -->
+    <div class="space-y-4">
+        <div class="bg-white rounded-sm border border-neutral-100 px-6 py-5">
+            <h2 class="text-sm font-medium mb-4">Customer Info</h2>
+            <div class="space-y-2">
+                <p class="text-xs font-medium text-neutral-800">@Model.FullName</p>
+                <p class="text-xs text-neutral-500">@Model.Email</p>
+                @if (!string.IsNullOrWhiteSpace(Model.Phone))
+                {
+                    <p class="text-xs text-neutral-500">@Model.Phone</p>
+                }
+                <p class="text-xs text-neutral-400 pt-2">Joined @Model.JoinedAt.ToString("dd MMMM yyyy")</p>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-sm border border-neutral-100 px-6 py-5">
+            <h2 class="text-sm font-medium mb-4">Summary</h2>
+            <div class="space-y-3">
+                <div class="flex justify-between">
+                    <span class="text-xs text-neutral-400">Total Orders</span>
+                    <span class="text-xs font-medium">@Model.OrderCount</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-xs text-neutral-400">Total Spend (paid)</span>
+                    <span class="text-xs font-medium text-emerald-700">₦@Model.TotalSpend.ToString("N0")</span>
+                </div>
+                @if (Model.OrderCount > 0)
+                {
+                    <div class="flex justify-between">
+                        <span class="text-xs text-neutral-400">Avg. Order Value</span>
+                        <span class="text-xs font-medium">₦@((Model.TotalSpend / Model.OrderCount).ToString("N0"))</span>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Orders -->
+    <div class="lg:col-span-2">
+        <div class="bg-white rounded-sm border border-neutral-100">
+            <div class="px-6 py-4 border-b border-neutral-100">
+                <h2 class="text-sm font-medium">Recent Orders</h2>
+            </div>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-neutral-50 border-b border-neutral-100">
+                        <th class="text-left px-6 py-2 text-xs text-neutral-400 font-medium">Order #</th>
+                        <th class="text-left px-6 py-2 text-xs text-neutral-400 font-medium">Status</th>
+                        <th class="text-right px-6 py-2 text-xs text-neutral-400 font-medium">Total</th>
+                        <th class="text-left px-6 py-2 text-xs text-neutral-400 font-medium">Date</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-neutral-50">
+                    @if (!Model.RecentOrders.Any())
+                    {
+                        <tr><td colspan="4" class="px-6 py-8 text-center text-xs text-neutral-400">No orders yet</td></tr>
+                    }
+                    @foreach (var o in Model.RecentOrders)
+                    {
+                        <tr class="hover:bg-neutral-50">
+                            <td class="px-6 py-3 text-xs font-mono text-neutral-700">@o.OrderNumber</td>
+                            <td class="px-6 py-3">
+                                @{
+                                    var bc = o.Status switch
+                                    {
+                                        "Delivered" => "bg-emerald-50 text-emerald-700",
+                                        "Cancelled" => "bg-red-50 text-red-700",
+                                        "Processing" or "Confirmed" => "bg-blue-50 text-blue-700",
+                                        _ => "bg-neutral-100 text-neutral-600"
+                                    };
+                                }
+                                <span class="text-[10px] px-2 py-0.5 rounded-full @bc">@o.Status</span>
+                            </td>
+                            <td class="px-6 py-3 text-xs text-right font-medium">₦@o.Total.ToString("N0")</td>
+                            <td class="px-6 py-3 text-xs text-neutral-400">@o.CreatedAt.ToString("dd MMM yy")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

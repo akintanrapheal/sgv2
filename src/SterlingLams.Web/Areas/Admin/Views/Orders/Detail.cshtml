@@ -117,5 +117,36 @@
                 </button>
             </form>
         </div>
+
+        <!-- ERPNext Info -->
+        <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
+            <h2 class="text-sm font-medium mb-3">ERPNext</h2>
+            @if (!string.IsNullOrEmpty(Model.Order.ErpNextSalesOrderName))
+            {
+                <p class="text-xs text-emerald-700 font-medium">✓ Synced</p>
+                <p class="text-xs text-neutral-500 font-mono mt-1">@Model.Order.ErpNextSalesOrderName</p>
+            }
+            else
+            {
+                <p class="text-xs text-amber-600">Not synced to ERPNext</p>
+                <p class="text-[10px] text-neutral-400 mt-1">Order was not pushed or push failed.</p>
+            }
+        </div>
+
+        <!-- Admin Notes -->
+        <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
+            <h2 class="text-sm font-medium mb-3">Internal Notes</h2>
+            <form asp-area="Admin" asp-controller="Orders" asp-action="SaveNote"
+                  asp-route-id="@Model.Order.Id" method="post" class="space-y-3">
+                @Html.AntiForgeryToken()
+                <textarea name="adminNotes" rows="4"
+                          placeholder="Add internal notes (not visible to customer)…"
+                          class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-neutral-400 resize-none">@Model.Order.AdminNotes</textarea>
+                <button type="submit"
+                        class="w-full py-2 bg-neutral-100 text-neutral-700 text-xs rounded-sm hover:bg-neutral-200 transition-colors">
+                    Save Note
+                </button>
+            </form>
+        </div>
     </div>
 </div>

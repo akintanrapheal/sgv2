@@ -72,7 +72,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         {
             ViewData["Title"] = "Edit Product";
 
-            var product = await _db.Products.FindAsync(id);
+            var product = await _db.Products
+                .Include(p => p.Images)
+                .FirstOrDefaultAsync(p => p.Id == id);
             if (product == null) return NotFound();
 
             var vm = new AdminProductEditViewModel
@@ -89,7 +91,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 IsFeatured = product.IsFeatured,
                 ErpNextItemCode = product.ErpNextItemCode,
                 CategoryId = product.CategoryId,
-                Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync()
+                Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync(),
+                Images = product.Images.OrderBy(i => i.SortOrder).ToList()
             };
 
             return View(vm);
@@ -203,6 +206,53 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
 
             return RedirectToAction(nameof(Index));
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> AddImage(int id, string imageUrl, string? altText, bool isPrimary)
+        {
+            var product = await _db.Products.FindAsync(id);
+            if (product == null) return NotFound();
+
+            if (isPrimary)
+            {
+                var existing = await _db.ProductImages
+                    .Where(i => i.ProductId == id && i.IsPrimary)
+                    .ToListAsync();
+                existing.ForEach(i => i.IsPrimary = false);
+            }
+
+            var maxSort = await _db.ProductImages
+                .Where(i => i.ProductId == id)
+                .MaxAsync(i => (int?)i.SortOrder) ?? 0;
+
+            _db.ProductImages.Add(new ProductImage
+            {
+                ProductId = id,
+                Url = imageUrl.Trim(),
+                AltText = altText?.Trim(),
+                IsPrimary = isPrimary,
+                SortOrder = maxSort + 1
+            });
+
+            await _db.SaveChangesAsync();
+            TempData["Success"] = "Image added.";
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteImage(int productId, int imageId)
+        {
+            var image = await _db.ProductImages.FindAsync(imageId);
+            if (image != null && image.ProductId == productId)
+            {
+                _db.ProductImages.Remove(image);
+                await _db.SaveChangesAsync();
+                TempData["Success"] = "Image removed.";
+            }
+            return RedirectToAction(nameof(Edit), new { id = productId });
         }
     }
 }

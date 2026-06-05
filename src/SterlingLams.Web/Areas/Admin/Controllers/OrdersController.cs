@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -107,6 +108,91 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
 
             return RedirectToAction(nameof(Detail), new { id });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> SaveNote(int id, string adminNotes)
+        {
+            var order = await _db.Orders.FindAsync(id);
+            if (order == null) return NotFound();
+
+            order.AdminNotes = adminNotes?.Trim();
+            order.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            TempData["Success"] = "Note saved.";
+            return RedirectToAction(nameof(Detail), new { id });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> BulkUpdateStatus(int[] orderIds, string status)
+        {
+            if (orderIds == null || orderIds.Length == 0 || string.IsNullOrWhiteSpace(status))
+                return RedirectToAction(nameof(Index));
+
+            if (!Enum.TryParse<OrderStatus>(status, out var newStatus))
+                return RedirectToAction(nameof(Index));
+
+            var orders = await _db.Orders
+                .Where(o => orderIds.Contains(o.Id))
+                .ToListAsync();
+
+            foreach (var o in orders)
+            {
+                o.Status = newStatus;
+                o.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _db.SaveChangesAsync();
+            TempData["Success"] = $"{orders.Count} order(s) updated to {status}.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        public async Task<IActionResult> ExportCsv(string status = "", string q = "")
+        {
+            var query = _db.Orders.Include(o => o.User).AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<OrderStatus>(status, out var statusEnum))
+                query = query.Where(o => o.Status == statusEnum);
+
+            if (!string.IsNullOrWhiteSpace(q))
+                query = query.Where(o =>
+                    o.OrderNumber.Contains(q) ||
+                    o.User.FirstName.Contains(q) ||
+                    o.User.LastName.Contains(q) ||
+                    o.User.Email!.Contains(q));
+
+            var orders = await query
+                .OrderByDescending(o => o.CreatedAt)
+                .Select(o => new
+                {
+                    o.OrderNumber,
+                    CustomerName = o.User.FirstName + " " + o.User.LastName,
+                    CustomerEmail = o.User.Email ?? "",
+                    o.Total,
+                    o.Subtotal,
+                    o.DeliveryFee,
+                    Status = o.Status.ToString(),
+                    Fulfillment = o.FulfillmentType.ToString(),
+                    o.IsPaid,
+                    PaymentRef = o.PaymentReference ?? "",
+                    o.ErpNextSalesOrderName,
+                    CreatedAt = o.CreatedAt.ToString("yyyy-MM-dd HH:mm")
+                })
+                .ToListAsync();
+
+            var sb = new StringBuilder();
+            sb.AppendLine("Order #,Customer Name,Customer Email,Total,Subtotal,Delivery Fee,Status,Fulfillment,Paid,Payment Ref,ERPNext Order,Created At");
+
+            foreach (var o in orders)
+            {
+                sb.AppendLine($"\"{o.OrderNumber}\",\"{o.CustomerName}\",\"{o.CustomerEmail}\",{o.Total},{o.Subtotal},{o.DeliveryFee},{o.Status},{o.Fulfillment},{o.IsPaid},\"{o.PaymentRef}\",\"{o.ErpNextSalesOrderName ?? ""}\",\"{o.CreatedAt}\"");
+            }
+
+            var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+            return File(bytes, "text/csv", $"orders_{DateTime.UtcNow:yyyyMMdd}.csv");
         }
     }
 }

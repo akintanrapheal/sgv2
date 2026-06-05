@@ -69,13 +69,14 @@ else
                             <th class="text-left px-6 py-2 text-xs text-neutral-400 font-medium">Product</th>
                             <th class="text-left px-6 py-2 text-xs text-neutral-400 font-medium">SKU</th>
                             <th class="text-right px-6 py-2 text-xs text-neutral-400 font-medium">On Hand</th>
+                            <th class="text-right px-6 py-2 text-xs text-neutral-400 font-medium">Threshold</th>
                             <th class="text-right px-6 py-2 text-xs text-neutral-400 font-medium">Alert</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-neutral-50">
                         @if (!storeSection.Products.Any())
                         {
-                            <tr><td colspan="4" class="px-6 py-4 text-xs text-neutral-400 text-center">No inventory records for this store.</td></tr>
+                            <tr><td colspan="5" class="px-6 py-4 text-xs text-neutral-400 text-center">No inventory records for this store.</td></tr>
                         }
                         @foreach (var row in storeSection.Products)
                         {
@@ -84,6 +85,16 @@ else
                                 <td class="px-6 py-2.5 text-xs font-mono text-neutral-400">@(string.IsNullOrEmpty(row.Sku) ? "—" : row.Sku)</td>
                                 <td class="px-6 py-2.5 text-xs text-right font-medium @(row.QuantityOnHand == 0 ? "text-red-600" : row.IsLowStock ? "text-amber-600" : "text-neutral-800")">
                                     @row.QuantityOnHand
+                                </td>
+                                <td class="px-6 py-2.5 text-right">
+                                    <form asp-area="Admin" asp-controller="Inventory" asp-action="UpdateThreshold"
+                                          method="post" class="flex items-center justify-end gap-1">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="productId" value="@row.ProductId" />
+                                        <input type="number" name="threshold" value="@row.LowStockThreshold" min="0"
+                                               class="w-14 border border-neutral-200 rounded-sm px-1.5 py-0.5 text-xs text-right focus:outline-none focus:border-neutral-400" />
+                                        <button type="submit" class="text-[10px] text-neutral-400 hover:text-neutral-900 transition-colors">✓</button>
+                                    </form>
                                 </td>
                                 <td class="px-6 py-2.5 text-right">
                                     @if (row.QuantityOnHand == 0)

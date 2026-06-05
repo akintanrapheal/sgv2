@@ -1,0 +1,113 @@
+@model System.Collections.Generic.List<SterlingLams.Web.Models.Domain.ApplicationUser>
+@{
+    ViewData["Title"] = "User Management";
+    var isAdminMap = ViewBag.UserIsAdmin as System.Collections.Generic.Dictionary<string, bool> ?? new();
+    var q = ViewBag.SearchQuery as string ?? "";
+    int currentPage = ViewBag.CurrentPage;
+    int totalPages = ViewBag.TotalPages;
+}
+
+<!-- Toolbar -->
+<div class="flex items-center gap-3 mb-6">
+    <form method="get" class="flex gap-2 flex-1">
+        <input type="text" name="q" value="@q"
+               placeholder="Search name or email…"
+               class="flex-1 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+        <button type="submit"
+                class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+            Search
+        </button>
+    </form>
+</div>
+
+<div class="bg-white rounded-sm border border-neutral-100 overflow-hidden">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="border-b border-neutral-100 bg-neutral-50">
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">User</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Phone</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Role</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Status</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Joined</th>
+                <th class="px-6 py-3"></th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (!Model.Any())
+            {
+                <tr><td colspan="6" class="px-6 py-10 text-center text-xs text-neutral-400">No users found.</td></tr>
+            }
+            @foreach (var u in Model)
+            {
+                var isAdmin = isAdminMap.ContainsKey(u.Id) && isAdminMap[u.Id];
+                var isLocked = u.LockoutEnd.HasValue && u.LockoutEnd > DateTimeOffset.UtcNow;
+                <tr class="hover:bg-neutral-50 transition-colors">
+                    <td class="px-6 py-3">
+                        <p class="text-xs font-medium text-neutral-800">@u.FullName</p>
+                        <p class="text-[10px] text-neutral-400">@u.Email</p>
+                    </td>
+                    <td class="px-6 py-3 text-xs text-neutral-500">@(u.PhoneNumber ?? "—")</td>
+                    <td class="px-6 py-3">
+                        @if (isAdmin)
+                        {
+                            <span class="text-[10px] bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full">Admin</span>
+                        }
+                        else
+                        {
+                            <span class="text-[10px] bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full">Customer</span>
+                        }
+                    </td>
+                    <td class="px-6 py-3">
+                        @if (isLocked)
+                        {
+                            <span class="text-[10px] bg-red-50 text-red-700 px-2 py-0.5 rounded-full">Locked</span>
+                        }
+                        else
+                        {
+                            <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Active</span>
+                        }
+                    </td>
+                    <td class="px-6 py-3 text-xs text-neutral-400">@u.CreatedAt.ToString("dd MMM yy")</td>
+                    <td class="px-6 py-3 text-right">
+                        @if (u.Email != User.Identity?.Name)
+                        {
+                            <div class="flex items-center justify-end gap-3">
+                                <form asp-area="Admin" asp-controller="Users" asp-action="ToggleAdmin" asp-route-id="@u.Id" method="post">
+                                    @Html.AntiForgeryToken()
+                                    <button class="text-xs text-violet-500 hover:text-violet-800 transition-colors">
+                                        @(isAdmin ? "Remove Admin" : "Make Admin")
+                                    </button>
+                                </form>
+                                <form asp-area="Admin" asp-controller="Users" asp-action="ToggleLock" asp-route-id="@u.Id"
+                                      method="post" onsubmit="return confirm('@(isLocked ? "Unlock" : "Lock") this user?')">
+                                    @Html.AntiForgeryToken()
+                                    <button class="text-xs @(isLocked ? "text-emerald-500 hover:text-emerald-800" : "text-red-400 hover:text-red-700") transition-colors">
+                                        @(isLocked ? "Unlock" : "Lock")
+                                    </button>
+                                </form>
+                            </div>
+                        }
+                        else
+                        {
+                            <span class="text-[10px] text-neutral-300">You</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (totalPages > 1)
+{
+    <div class="flex items-center justify-end gap-2 mt-4">
+        @for (int p = 1; p <= totalPages; p++)
+        {
+            <a asp-area="Admin" asp-controller="Users" asp-action="Index"
+               asp-route-page="@p" asp-route-q="@q"
+               class="px-3 py-1.5 text-xs rounded-sm border transition-colors @(p == currentPage ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")">
+                @p
+            </a>
+        }
+    </div>
+}
