@@ -45,7 +45,7 @@ public class StripePaymentService : IPaymentService
                     ["order_number"] = request.OrderNumber,
                     ["customer_name"] = request.CustomerName
                 },
-                Description = $"Sterling Lams Order {request.OrderNumber}",
+                Description = $"Sterlin Glams Order {request.OrderNumber}",
                 AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
                 {
                     Enabled = true
@@ -98,7 +98,7 @@ public class StripePaymentService : IPaymentService
                             UnitAmount = (long)(request.Amount * 100),
                             ProductData = new Stripe.Checkout.SessionLineItemPriceDataProductDataOptions
                             {
-                                Name = $"Sterling Lams Order {request.OrderNumber}"
+                                Name = $"Sterlin Glams Order {request.OrderNumber}"
                             }
                         },
                         Quantity = 1

@@ -1,7 +1,7 @@
 {
   "name": "sterlinglams-web",
   "version": "1.0.0",
-  "description": "Sterling Lams luxury jewellery e-commerce",
+  "description": "Sterlin Glams luxury jewellery e-commerce",
   "scripts": {
     "build:css": "tailwindcss -i ./src/SterlingLams.Web/wwwroot/css/input.css -o ./src/SterlingLams.Web/wwwroot/css/app.css --minify",
     "watch:css": "tailwindcss -i ./src/SterlingLams.Web/wwwroot/css/input.css -o ./src/SterlingLams.Web/wwwroot/css/app.css --watch"

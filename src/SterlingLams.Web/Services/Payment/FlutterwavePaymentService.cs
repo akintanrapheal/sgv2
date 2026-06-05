@@ -51,7 +51,7 @@ public class FlutterwavePaymentService : IPaymentService
                 },
                 customizations = new
                 {
-                    title = "Sterling Lams",
+                    title = "Sterlin Glams",
                     description = $"Order {request.OrderNumber}",
                     logo = "https://sterlinglams.com/images/logo.png"
                 },

@@ -6,7 +6,7 @@ using SterlingLams.Web.Models.Domain;
 namespace SterlingLams.Web.Infrastructure;
 
 /// <summary>
-/// Seeds the database with the 3 Sterling Lams Lagos stores,
+/// Seeds the database with the 3 Sterlin Glams Lagos stores,
 /// product categories, and the Admin role.
 /// Safe to run repeatedly â€” checks for existing data before inserting.
 /// </summary>
