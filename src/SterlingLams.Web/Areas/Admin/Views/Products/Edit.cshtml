@@ -48,26 +48,28 @@
                 </div>
             </div>
 
+            <!-- Short Description -->
+            <div>
+                <label asp-for="ShortDescription" class="block text-xs text-neutral-500 mb-1">Short Description <span class="text-neutral-300">(shown on product page)</span></label>
+                <input asp-for="ShortDescription" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+            </div>
+
             <!-- Description -->
             <div>
-                <label asp-for="Description" class="block text-xs text-neutral-500 mb-1">Description</label>
+                <label asp-for="Description" class="block text-xs text-neutral-500 mb-1">Full Description</label>
                 <textarea asp-for="Description" rows="4"
                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400"></textarea>
             </div>
 
-            <!-- Material attributes -->
-            <div class="grid grid-cols-3 gap-4">
+            <!-- Metal + Weight -->
+            <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label asp-for="Material" class="block text-xs text-neutral-500 mb-1">Material</label>
-                    <input asp-for="Material" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                    <label asp-for="Colour" class="block text-xs text-neutral-500 mb-1">Colour</label>
+                    <input asp-for="Colour" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
                 </div>
                 <div>
-                    <label asp-for="Carat" class="block text-xs text-neutral-500 mb-1">Carat</label>
-                    <input asp-for="Carat" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
-                </div>
-                <div>
-                    <label asp-for="GemstoneType" class="block text-xs text-neutral-500 mb-1">Gemstone</label>
-                    <input asp-for="GemstoneType" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                    <label asp-for="Weight" class="block text-xs text-neutral-500 mb-1">Weight <span class="text-neutral-300">(e.g. 4.2g)</span></label>
+                    <input asp-for="Weight" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
                 </div>
             </div>
 
@@ -87,6 +89,10 @@
                 <label class="flex items-center gap-2 text-sm text-neutral-600 cursor-pointer">
                     <input asp-for="IsFeatured" type="checkbox" class="rounded" />
                     Featured
+                </label>
+                <label class="flex items-center gap-2 text-sm text-neutral-600 cursor-pointer">
+                    <input asp-for="IsNewArrival" type="checkbox" class="rounded" />
+                    New Arrival
                 </label>
             </div>
         </div>

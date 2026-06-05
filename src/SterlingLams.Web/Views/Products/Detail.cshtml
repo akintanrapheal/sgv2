@@ -133,7 +133,7 @@
             </a>
 
             <!-- ─── Specifications ─────────────────────────────────────── -->
-            @if (!string.IsNullOrEmpty(Model.Metal) || !string.IsNullOrEmpty(Model.GemstoneType) || !string.IsNullOrEmpty(Model.Carat))
+            @if (!string.IsNullOrEmpty(Model.Metal) || !string.IsNullOrEmpty(Model.Weight))
             {
                 <div class="border-t border-neutral-100 pt-8">
                     <p class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-4">Details</p>
@@ -141,22 +141,8 @@
                         @if (!string.IsNullOrEmpty(Model.Metal))
                         {
                             <div class="flex justify-between text-sm">
-                                <dt class="text-neutral-500 font-light">Metal</dt>
+                                <dt class="text-neutral-500 font-light">Colour</dt>
                                 <dd class="text-neutral-800">@Model.Metal</dd>
-                            </div>
-                        }
-                        @if (!string.IsNullOrEmpty(Model.GemstoneType))
-                        {
-                            <div class="flex justify-between text-sm">
-                                <dt class="text-neutral-500 font-light">Gemstone</dt>
-                                <dd class="text-neutral-800">@Model.GemstoneType</dd>
-                            </div>
-                        }
-                        @if (!string.IsNullOrEmpty(Model.Carat))
-                        {
-                            <div class="flex justify-between text-sm">
-                                <dt class="text-neutral-500 font-light">Carat</dt>
-                                <dd class="text-neutral-800">@Model.Carat</dd>
                             </div>
                         }
                         @if (!string.IsNullOrEmpty(Model.Weight))

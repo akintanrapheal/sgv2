@@ -90,12 +90,13 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string Name { get; set; } = "";
         public string Slug { get; set; } = "";
         public string Description { get; set; } = "";
+        public string? ShortDescription { get; set; }
         public decimal Price { get; set; }
-        public string? Material { get; set; }
-        public string? Carat { get; set; }
-        public string? GemstoneType { get; set; }
+        public string? Colour { get; set; }
+        public string? Weight { get; set; }
         public bool IsActive { get; set; } = true;
         public bool IsFeatured { get; set; }
+        public bool IsNewArrival { get; set; }
         public string ErpNextItemCode { get; set; } = string.Empty;
         public int? CategoryId { get; set; }
         public List<Category> Categories { get; set; } = new();

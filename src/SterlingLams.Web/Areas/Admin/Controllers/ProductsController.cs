@@ -83,12 +83,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 Name = product.Name,
                 Slug = product.Slug,
                 Description = product.Description ?? "",
+                ShortDescription = product.ShortDescription,
                 Price = product.Price,
-                Material = product.Material,
-                Carat = product.Carat,
-                GemstoneType = product.GemstoneType,
+                Colour = product.Metal,
+                Weight = product.Weight,
                 IsActive = product.IsActive,
                 IsFeatured = product.IsFeatured,
+                IsNewArrival = product.IsNewArrival,
                 ErpNextItemCode = product.ErpNextItemCode,
                 CategoryId = product.CategoryId,
                 Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync(),
@@ -126,12 +127,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 ? Regex.Replace(vm.Name.ToLower().Trim(), @"[^a-z0-9]+", "-")
                 : vm.Slug.Trim();
             product.Description = vm.Description;
+            product.ShortDescription = vm.ShortDescription;
             product.Price = vm.Price;
-            product.Material = vm.Material;
-            product.Carat = vm.Carat;
-            product.GemstoneType = vm.GemstoneType;
+            product.Metal = vm.Colour;
+            product.Weight = vm.Weight;
             product.IsActive = vm.IsActive;
             product.IsFeatured = vm.IsFeatured;
+            product.IsNewArrival = vm.IsNewArrival;
             product.ErpNextItemCode = vm.ErpNextItemCode?.Trim() ?? string.Empty;
             product.CategoryId = vm.CategoryId ?? product.CategoryId;
             product.UpdatedAt = DateTime.UtcNow;
