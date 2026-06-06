@@ -106,7 +106,7 @@ public class ProductsController : Controller
         var product = await _db.Products
             .Include(p => p.Category)
             .Include(p => p.Images.OrderBy(i => i.SortOrder))
-            .Include(p => p.Variants)
+            .Include(p => p.Variants).ThenInclude(v => v.AttributeValues).ThenInclude(av => av.Attribute)
             .Include(p => p.StoreInventories).ThenInclude(si => si.Store)
             .Include(p => p.Tags)
             .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive);
@@ -147,13 +147,19 @@ public class ProductsController : Controller
                 StoreSlug = si.Store.Slug,
                 Quantity = Math.Max(0, si.QuantityOnHand - si.QuantityReserved)
             }).ToList(),
-            Variants = product.Variants.Select(v => new ProductVariantOptionViewModel
+            Variants = product.Variants.Where(v => v.IsActive).Select(v => new ProductVariantOptionViewModel
             {
                 Id = v.Id,
                 Name = v.Name,
-                Size = v.Size,
-                Color = v.Color,
-                PriceAdjustment = v.PriceAdjustment
+                PriceAdjustment = v.PriceAdjustment,
+                AttributeLabels = v.AttributeValues
+                    .OrderBy(av => av.Attribute.SortOrder)
+                    .Select(av => new AttributeLabelViewModel
+                    {
+                        AttributeName = av.Attribute.Name,
+                        Value         = av.Value,
+                        ColorHex      = av.ColorHex,
+                    }).ToList()
             }).ToList(),
             Tags = product.Tags.Select(t => t.Name).ToList(),
             IsInWishlist = isInWishlist,

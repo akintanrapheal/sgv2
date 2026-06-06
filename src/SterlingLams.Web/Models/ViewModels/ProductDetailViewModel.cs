@@ -42,11 +42,17 @@ public class ProductDetailViewModel
     public List<ProductCardViewModel> RelatedProducts { get; set; } = new();
 }
 
+public class AttributeLabelViewModel
+{
+    public string AttributeName { get; set; } = string.Empty;
+    public string Value { get; set; } = string.Empty;
+    public string? ColorHex { get; set; }
+}
+
 public class ProductVariantOptionViewModel
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
-    public string? Size { get; set; }
-    public string? Color { get; set; }
     public decimal? PriceAdjustment { get; set; }
+    public List<AttributeLabelViewModel> AttributeLabels { get; set; } = new();
 }

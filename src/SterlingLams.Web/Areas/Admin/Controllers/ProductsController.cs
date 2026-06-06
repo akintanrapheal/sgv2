@@ -78,29 +78,142 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             var product = await _db.Products
                 .Include(p => p.Images)
+                .Include(p => p.Variants).ThenInclude(v => v.AttributeValues).ThenInclude(av => av.Attribute)
                 .FirstOrDefaultAsync(p => p.Id == id);
             if (product == null) return NotFound();
 
             var vm = new AdminProductEditViewModel
             {
-                Id = product.Id,
-                Name = product.Name,
-                Slug = product.Slug,
-                Description = product.Description ?? "",
+                Id               = product.Id,
+                Name             = product.Name,
+                Slug             = product.Slug,
+                Description      = product.Description ?? "",
                 ShortDescription = product.ShortDescription,
-                Price = product.Price,
-                Colour = product.Metal,
-                Weight = product.Weight,
-                IsActive = product.IsActive,
-                IsFeatured = product.IsFeatured,
-                IsNewArrival = product.IsNewArrival,
-                ErpNextItemCode = product.ErpNextItemCode,
-                CategoryId = product.CategoryId,
-                Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync(),
-                Images = product.Images.OrderBy(i => i.SortOrder).ToList()
+                Price            = product.Price,
+                Colour           = product.Metal,
+                Weight           = product.Weight,
+                IsActive         = product.IsActive,
+                IsFeatured       = product.IsFeatured,
+                IsNewArrival     = product.IsNewArrival,
+                ErpNextItemCode  = product.ErpNextItemCode,
+                CategoryId       = product.CategoryId,
+                Categories       = await _db.Categories.OrderBy(c => c.Name).ToListAsync(),
+                Images           = product.Images.OrderBy(i => i.SortOrder).ToList(),
+                AllAttributes    = await _db.ProductAttributes
+                                     .Include(a => a.Values.OrderBy(v => v.SortOrder))
+                                     .Where(a => a.IsActive)
+                                     .OrderBy(a => a.SortOrder).ThenBy(a => a.Name)
+                                     .ToListAsync(),
+                Variants = product.Variants.OrderBy(v => v.Name).Select(v => new AdminVariantViewModel
+                {
+                    Id              = v.Id,
+                    Name            = v.Name,
+                    Sku             = v.Sku,
+                    PriceAdjustment = v.PriceAdjustment,
+                    StockQuantity   = v.StockQuantity,
+                    IsActive        = v.IsActive,
+                    AttributeLabels = v.AttributeValues
+                                       .OrderBy(av => av.Attribute.SortOrder)
+                                       .Select(av => av.Value).ToList()
+                }).ToList()
             };
 
             return View(vm);
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> GenerateVariants(int id, List<int> selectedValueIds)
+        {
+            var product = await _db.Products
+                .Include(p => p.Variants).ThenInclude(v => v.AttributeValues)
+                .FirstOrDefaultAsync(p => p.Id == id);
+            if (product == null) return NotFound();
+
+            // Group selected values by attribute
+            var selectedValues = await _db.ProductAttributeValues
+                .Include(v => v.Attribute)
+                .Where(v => selectedValueIds.Contains(v.Id))
+                .OrderBy(v => v.Attribute.SortOrder).ThenBy(v => v.SortOrder)
+                .ToListAsync();
+
+            var byAttribute = selectedValues
+                .GroupBy(v => v.AttributeId)
+                .Select(g => g.ToList())
+                .ToList();
+
+            if (!byAttribute.Any())
+            {
+                TempData["Error"] = "Select at least one attribute value to generate variants.";
+                return RedirectToAction(nameof(Edit), new { id });
+            }
+
+            // Cartesian product of all attribute groups
+            var combinations = CartesianProduct(byAttribute);
+            int created = 0;
+
+            foreach (var combo in combinations)
+            {
+                var comboIds = combo.Select(v => v.Id).OrderBy(x => x).ToList();
+                // Skip if a variant with this exact combination already exists
+                var exists = product.Variants.Any(v =>
+                    v.AttributeValues.Select(av => av.Id).OrderBy(x => x).SequenceEqual(comboIds));
+                if (exists) continue;
+
+                var name    = string.Join(" / ", combo.Select(v => v.Value));
+                var variant = new ProductVariant { ProductId = id, Name = name, IsActive = true };
+                foreach (var val in combo) variant.AttributeValues.Add(val);
+                _db.ProductVariants.Add(variant);
+                created++;
+            }
+
+            await _db.SaveChangesAsync();
+            TempData["Success"] = created > 0
+                ? $"{created} variant(s) generated."
+                : "All combinations already exist.";
+
+            return RedirectToAction(nameof(Edit), new { id });
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> SaveVariant(int productId, int variantId,
+            string? sku, decimal? priceAdjustment, int stockQuantity, bool isActive)
+        {
+            var variant = await _db.ProductVariants
+                .FirstOrDefaultAsync(v => v.Id == variantId && v.ProductId == productId);
+            if (variant == null) return NotFound();
+
+            variant.Sku             = sku?.Trim();
+            variant.PriceAdjustment = priceAdjustment;
+            variant.StockQuantity   = stockQuantity;
+            variant.IsActive        = isActive;
+            await _db.SaveChangesAsync();
+
+            TempData["Success"] = $"Variant '{variant.Name}' updated.";
+            return RedirectToAction(nameof(Edit), new { id = productId });
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteVariant(int productId, int variantId)
+        {
+            var variant = await _db.ProductVariants
+                .FirstOrDefaultAsync(v => v.Id == variantId && v.ProductId == productId);
+            if (variant != null)
+            {
+                _db.ProductVariants.Remove(variant);
+                await _db.SaveChangesAsync();
+                TempData["Success"] = "Variant deleted.";
+            }
+            return RedirectToAction(nameof(Edit), new { id = productId });
+        }
+
+        private static IEnumerable<List<ProductAttributeValue>> CartesianProduct(
+            List<List<ProductAttributeValue>> sets)
+        {
+            IEnumerable<List<ProductAttributeValue>> result = new[] { new List<ProductAttributeValue>() };
+            foreach (var set in sets)
+                result = result.SelectMany(
+                    combo => set.Select(item => combo.Concat(new[] { item }).ToList()));
+            return result;
         }
 
         [HttpPost]

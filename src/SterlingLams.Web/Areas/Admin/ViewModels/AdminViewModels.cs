@@ -101,6 +101,42 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public int? CategoryId { get; set; }
         public List<Category> Categories { get; set; } = new();
         public List<ProductImage> Images { get; set; } = new();
+
+        // Variants tab
+        public List<ProductAttribute> AllAttributes { get; set; } = new();
+        public List<AdminVariantViewModel> Variants { get; set; } = new();
+
+        // Selected attribute value IDs for variant generation (posted from form)
+        public List<int> SelectedAttributeValueIds { get; set; } = new();
+    }
+
+    public class AdminVariantViewModel
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string? Sku { get; set; }
+        public decimal? PriceAdjustment { get; set; }
+        public int StockQuantity { get; set; }
+        public bool IsActive { get; set; } = true;
+        public List<string> AttributeLabels { get; set; } = new();  // e.g. ["Gold", "18\""]
+    }
+
+    // ─── Attributes ───────────────────────────────────────────────────────
+    public class AdminAttributeListViewModel
+    {
+        public List<ProductAttribute> Attributes { get; set; } = new();
+    }
+
+    public class AdminAttributeEditViewModel
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Slug { get; set; } = "";
+        public bool IsActive { get; set; } = true;
+        public int SortOrder { get; set; }
+        public List<ProductAttributeValue> Values { get; set; } = new();
+        // Posted to add a new value
+        public string NewValue { get; set; } = "";
     }
 
     // ─── Inventory ────────────────────────────────────────────────────────

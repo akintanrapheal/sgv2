@@ -12,6 +12,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
     public DbSet<ProductImage> ProductImages => Set<ProductImage>();
     public DbSet<ProductTag> ProductTags => Set<ProductTag>();
+    public DbSet<ProductAttribute> ProductAttributes => Set<ProductAttribute>();
+    public DbSet<ProductAttributeValue> ProductAttributeValues => Set<ProductAttributeValue>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Store> Stores => Set<Store>();
     public DbSet<StoreInventory> StoreInventories => Set<StoreInventory>();
@@ -96,6 +98,25 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         // ─── StoreInventory.AvailableQuantity (computed, not mapped) ────────
         builder.Entity<StoreInventory>()
             .Ignore(si => si.AvailableQuantity);
+
+        // ─── ProductAttribute ────────────────────────────────────────────────────
+        builder.Entity<ProductAttribute>(e =>
+        {
+            e.HasIndex(a => a.Slug).IsUnique();
+            e.HasMany(a => a.Values)
+             .WithOne(v => v.Attribute)
+             .HasForeignKey(v => v.AttributeId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── ProductVariant ──────────────────────────────────────────────────────
+        builder.Entity<ProductVariant>(e =>
+        {
+            e.Property(v => v.PriceAdjustment).HasPrecision(18, 2);
+            e.HasMany(v => v.AttributeValues)
+             .WithMany(av => av.Variants)
+             .UsingEntity("ProductVariantAttributeValue");
+        });
 
         // ─── Product computed properties ────────────────────────────────────
         builder.Entity<Product>()
