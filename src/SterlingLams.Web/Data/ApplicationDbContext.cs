@@ -23,6 +23,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Address> Addresses => Set<Address>();
     public DbSet<DiscountCode> DiscountCodes => Set<DiscountCode>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -122,6 +123,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<Product>()
             .Ignore(p => p.TotalStock)
             .Ignore(p => p.IsAvailable);
+
+        // ─── SiteSetting ─────────────────────────────────────────────────────
+        builder.Entity<SiteSetting>(e =>
+        {
+            e.HasIndex(s => s.Key).IsUnique();
+        });
 
         // ─── DiscountCode ────────────────────────────────────────────────────
         builder.Entity<DiscountCode>(e =>

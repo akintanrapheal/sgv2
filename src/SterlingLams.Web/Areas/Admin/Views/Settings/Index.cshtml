@@ -1,0 +1,113 @@
+@model List<SterlingLams.Web.Models.Domain.SiteSetting>
+@{
+    ViewData["Title"] = "Settings";
+    var activeTab = ViewData["ActiveTab"]?.ToString() ?? "General";
+    var groups = Model.GroupBy(s => s.Group).OrderBy(g => g.Key).ToList();
+
+    // group slug used as HTML id
+    string Slug(string g) => g.ToLower().Replace(" ", "_");
+}
+
+<!-- Tab nav -->
+<div class="flex gap-1 border-b border-neutral-200 mb-6 overflow-x-auto">
+    @foreach (var g in groups)
+    {
+        var isActive = g.Key == activeTab;
+        <button type="button" onclick="switchTab('@g.Key')"
+                id="tab-btn-@Slug(g.Key)"
+                class="tab-btn px-4 py-2.5 text-xs font-medium whitespace-nowrap border-b-2 transition-colors
+                       @(isActive ? "border-neutral-900 text-neutral-900" : "border-transparent text-neutral-400 hover:text-neutral-700")">
+            @g.Key
+        </button>
+    }
+</div>
+
+@foreach (var group in groups)
+{
+    var slug = Slug(group.Key);
+    <div id="panel-@slug" class="tab-panel @(group.Key == activeTab ? "" : "hidden") max-w-2xl">
+        <form asp-area="Admin" asp-controller="Settings" asp-action="Save" method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="group" value="@group.Key" />
+
+            <div class="bg-white rounded-sm border border-neutral-100 p-6 space-y-5">
+
+                @foreach (var s in group.OrderBy(x => x.SortOrder))
+                {
+                    <div>
+                        @if (s.Type == "boolean")
+                        {
+                            <label class="flex items-start gap-3 cursor-pointer">
+                                <div class="mt-0.5">
+                                    <input type="checkbox" name="@s.Key" value="true"
+                                           @(s.Value == "true" ? "checked" : "")
+                                           class="rounded border-neutral-300 accent-neutral-900 w-4 h-4" />
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-neutral-800">@s.Label</p>
+                                    @if (!string.IsNullOrEmpty(s.Description))
+                                    {
+                                        <p class="text-xs text-neutral-400 mt-0.5">@s.Description</p>
+                                    }
+                                </div>
+                            </label>
+                        }
+                        else
+                        {
+                            <label class="block text-xs font-medium text-neutral-700 mb-1">
+                                @s.Label
+                            </label>
+                            @if (!string.IsNullOrEmpty(s.Description))
+                            {
+                                <p class="text-[11px] text-neutral-400 mb-1.5">@s.Description</p>
+                            }
+                            @if (s.Type == "textarea")
+                            {
+                                <textarea name="@s.Key" rows="3"
+                                          class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 resize-none">@s.Value</textarea>
+                            }
+                            else if (s.Type == "number")
+                            {
+                                <input type="number" name="@s.Key" value="@s.Value" min="0" step="0.01"
+                                       class="w-48 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                            }
+                            else
+                            {
+                                <input type="@s.Type" name="@s.Key" value="@s.Value"
+                                       class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                            }
+                        }
+                    </div>
+                }
+
+            </div>
+
+            <div class="mt-4 flex items-center gap-3">
+                <button type="submit"
+                        class="px-6 py-2.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">
+                    Save @group.Key Settings
+                </button>
+                <p class="text-xs text-neutral-400">Changes take effect immediately.</p>
+            </div>
+        </form>
+    </div>
+}
+
+@section Scripts {
+<script>
+    function switchTab(name) {
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+        document.querySelectorAll('.tab-btn').forEach(b => {
+            b.classList.remove('border-neutral-900', 'text-neutral-900');
+            b.classList.add('border-transparent', 'text-neutral-400');
+        });
+        const slug = name.toLowerCase().replace(/ /g, '_');
+        document.getElementById('panel-' + slug)?.classList.remove('hidden');
+        const btn = document.getElementById('tab-btn-' + slug);
+        if (btn) {
+            btn.classList.remove('border-transparent', 'text-neutral-400');
+            btn.classList.add('border-neutral-900', 'text-neutral-900');
+        }
+    }
+</script>
+}

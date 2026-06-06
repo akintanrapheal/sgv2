@@ -25,6 +25,7 @@ public class CheckoutController : Controller
     private readonly IConfiguration _config;
     private readonly IWebHostEnvironment _env;
     private readonly IERPNextService _erpNext;
+    private readonly SterlingLams.Web.Services.ISettingsService _settings;
 
     public CheckoutController(
         ApplicationDbContext db,
@@ -33,7 +34,8 @@ public class CheckoutController : Controller
         ILogger<CheckoutController> logger,
         IConfiguration config,
         IWebHostEnvironment env,
-        IERPNextService erpNext)
+        IERPNextService erpNext,
+        SterlingLams.Web.Services.ISettingsService settings)
     {
         _db = db;
         _payment = payment;
@@ -42,6 +44,7 @@ public class CheckoutController : Controller
         _config = config;
         _env = env;
         _erpNext = erpNext;
+        _settings = settings;
     }
 
     [HttpGet]
@@ -53,6 +56,11 @@ public class CheckoutController : Controller
         var stores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
         var user = await _userManager.GetUserAsync(User);
 
+        var freeThreshold = await _settings.GetDecimalAsync("shipping.free_threshold", 150000);
+        var deliveryFee   = cart.Subtotal >= freeThreshold
+            ? 0
+            : await _settings.GetDecimalAsync("shipping.delivery_fee", 0);
+
         var vm = new CheckoutViewModel
         {
             Cart = cart,
@@ -60,7 +68,7 @@ public class CheckoutController : Controller
             DiscountAmount = cart.DiscountAmount,
             AppliedDiscountCode = cart.AppliedDiscountCode,
             DiscountDescription = cart.DiscountDescription,
-            DeliveryFee = 0,
+            DeliveryFee = deliveryFee,
             PaystackPublicKey = _config["Payment:Paystack:PublicKey"],
             AvailableStores = stores.Select(s => new StorePickupOptionViewModel
             {
