@@ -59,7 +59,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<Store>(e =>
         {
             e.HasIndex(s => s.Slug).IsUnique();
-            e.HasIndex(s => s.ErpNextWarehouse).IsUnique();
+            // Only enforce uniqueness on non-empty warehouse codes
+            e.HasIndex(s => s.ErpNextWarehouse)
+             .IsUnique()
+             .HasFilter("\"ErpNextWarehouse\" <> ''");
         });
 
         // ─── StoreInventory ─────────────────────────────────────────────────
