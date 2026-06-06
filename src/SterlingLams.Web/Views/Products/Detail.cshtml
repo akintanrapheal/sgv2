@@ -74,14 +74,14 @@
                 </div>
             }
 
-            <!-- ─── Variants / Colour Selector ───────────────────────── -->
+            <!-- ─── Variants / Option Selector ───────────────────────── -->
             @if (Model.Variants.Any())
             {
                 var attributeNames = Model.Variants
                     .SelectMany(v => v.AttributeLabels.Select(a => a.AttributeName))
                     .Distinct().ToList();
 
-                <div class="mb-8 space-y-5" id="variant-selectors">
+                <div class="mb-8 space-y-4" id="variant-selectors">
                     @foreach (var attrName in attributeNames)
                     {
                         var distinctValues = Model.Variants
@@ -91,42 +91,27 @@
                             .ToList();
 
                         <div>
-                            <div class="flex items-center gap-2 mb-3">
-                                <p class="text-xs tracking-[0.2em] uppercase text-neutral-500">@attrName</p>
-                                <span id="selected-label-@attrName.ToLower().Replace(" ","-")"
-                                      class="text-xs text-neutral-700 font-medium hidden"></span>
-                            </div>
-                            <div class="flex flex-wrap gap-2">
+                            <label class="block text-xs tracking-[0.2em] uppercase text-neutral-500 mb-2">
+                                @attrName
+                            </label>
+                            <select class="attr-select w-full border border-neutral-300 px-4 py-3 text-sm text-neutral-700
+                                           focus:outline-none focus:border-neutral-900 bg-white transition-colors appearance-none
+                                           cursor-pointer"
+                                    data-attr="@attrName"
+                                    onchange="onAttrSelectChange('@attrName', this.value)">
+                                <option value="">— Select @attrName —</option>
                                 @foreach (var val in distinctValues)
                                 {
-                                    if (!string.IsNullOrEmpty(val.ColorHex))
-                                    {
-                                        <button type="button"
-                                                class="attr-btn w-9 h-9 rounded-full border-2 border-neutral-200 hover:border-neutral-900 transition-all relative"
-                                                style="background-color: @val.ColorHex"
-                                                data-attr="@attrName" data-value="@val.Value"
-                                                title="@val.Value">
-                                        </button>
-                                    }
-                                    else
-                                    {
-                                        <button type="button"
-                                                class="attr-btn border border-neutral-200 text-xs px-4 py-2 text-neutral-600 hover:border-neutral-900 hover:text-neutral-900 transition-colors"
-                                                data-attr="@attrName" data-value="@val.Value">
-                                            @val.Value
-                                        </button>
-                                    }
+                                    <option value="@val.Value">@val.Value</option>
                                 }
-                            </div>
+                            </select>
                         </div>
                     }
 
                     <input type="hidden" id="selected-variant-id" value="" />
                     <p id="variant-price-adj" class="text-xs text-neutral-400 hidden"></p>
-
-                    <!-- Prompt shown before colour is selected -->
                     <p id="select-colour-prompt" class="text-xs text-amber-600 hidden">
-                        Please select a colour before adding to bag.
+                        Please select all options before adding to bag.
                     </p>
                 </div>
 
@@ -253,43 +238,23 @@
         if (qty < 10) { qty++; qtyDisplay.textContent = qty; }
     });
 
-    // ── Attribute-based variant selection ────────────────────────────────
+    // ── Dropdown-based variant selection ──────────────────────────────────
     const variantsDataEl = document.getElementById('variants-data');
-    const variants = variantsDataEl ? JSON.parse(variantsDataEl.textContent) : [];
+    const variants    = variantsDataEl ? JSON.parse(variantsDataEl.textContent) : [];
     const selectedAttrs = {};
     const hasVariants = document.getElementById('add-to-cart')?.dataset.hasVariants === 'true';
 
-    document.querySelectorAll('.attr-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const attr = btn.dataset.attr;
-            const val  = btn.dataset.value;
-            selectedAttrs[attr] = val;
+    function onAttrSelectChange(attr, val) {
+        if (val) selectedAttrs[attr] = val;
+        else     delete selectedAttrs[attr];
 
-            // Highlight selected button per attribute group
-            document.querySelectorAll(`.attr-btn[data-attr="${attr}"]`).forEach(b => {
-                b.classList.remove('border-neutral-900', 'bg-neutral-900', 'text-white');
-                b.style.outline = '';
-            });
+        document.getElementById('select-colour-prompt')?.classList.add('hidden');
 
-            // Visual feedback: outline for colour swatches, filled style for text buttons
-            if (btn.style.backgroundColor) {
-                btn.style.outline = '2px solid #171717';
-                btn.style.outlineOffset = '2px';
-            } else {
-                btn.classList.add('border-neutral-900', 'bg-neutral-900', 'text-white');
-            }
+        // Count how many selects still need a value
+        const allSelects = document.querySelectorAll('.attr-select');
+        const allPicked  = [...allSelects].every(s => s.value !== '');
 
-            // Show selected label next to attribute name
-            const labelEl = document.getElementById(`selected-label-${attr.toLowerCase().replace(/ /g,'-')}`);
-            if (labelEl) {
-                labelEl.textContent = `— ${val}`;
-                labelEl.classList.remove('hidden');
-            }
-
-            // Hide the "select colour" prompt
-            document.getElementById('select-colour-prompt')?.classList.add('hidden');
-
-            // Find matching variant
+        if (allPicked) {
             const match = variants.find(v =>
                 Object.entries(selectedAttrs).every(([k, v2]) => v.attributes[k] === v2)
             );
@@ -303,11 +268,15 @@
                 } else if (adjEl) {
                     adjEl.classList.add('hidden');
                 }
+            } else {
+                selectedVariantId = null; // combination not available
             }
-        });
-    });
+        } else {
+            selectedVariantId = null;
+        }
+    }
 
-    // Validate colour selection before add-to-cart
+    // Validate all dropdowns are selected before add-to-cart
     document.getElementById('add-to-cart')?.addEventListener('click', function(e) {
         if (hasVariants && !selectedVariantId) {
             e.stopImmediatePropagation();
@@ -315,7 +284,7 @@
             document.getElementById('variant-selectors')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             return false;
         }
-    }, true); // capture phase so it runs before the cart handler
+    }, true);
 
     // ── Add to cart ───────────────────────────────────────────────────────
     document.getElementById('add-to-cart')?.addEventListener('click', async (e) => {

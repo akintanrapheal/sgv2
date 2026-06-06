@@ -138,40 +138,137 @@
             }
             else
             {
-                <!-- Attribute value selector -->
+                <!-- Attribute selector — accordion with search per attribute -->
                 <form asp-area="Admin" asp-controller="Products" asp-action="GenerateVariants"
-                      asp-route-id="@Model.Id" method="post" class="space-y-5 mb-6">
+                      asp-route-id="@Model.Id" method="post" class="mb-6">
                     @Html.AntiForgeryToken()
 
-                    @foreach (var attr in Model.AllAttributes)
-                    {
-                        <div>
-                            <p class="text-xs tracking-[0.1em] uppercase text-neutral-500 mb-2">@attr.Name</p>
-                            <div class="flex flex-wrap gap-2">
-                                @foreach (var val in attr.Values)
-                                {
-                                    var isSelected = Model.Variants.Any(v => v.AttributeLabels.Contains(val.Value));
-                                    <label class="flex items-center gap-1.5 cursor-pointer">
-                                        <input type="checkbox" name="selectedValueIds" value="@val.Id"
-                                               @(isSelected ? "checked" : "")
-                                               class="rounded border-neutral-300 text-neutral-900 accent-neutral-900" />
-                                        @if (!string.IsNullOrEmpty(val.ColorHex))
+                    <div class="space-y-2 mb-5">
+                        @foreach (var attr in Model.AllAttributes)
+                        {
+                            // AttributeLabels is List<string> of plain value names — find which of this
+                            // attribute's values appear in any existing variant's labels
+                            var attrValueNames = attr.Values.Select(av => av.Value).ToHashSet();
+                            var allLabels      = Model.Variants.SelectMany(v => v.AttributeLabels).ToHashSet();
+                            var selectedVals   = attrValueNames.Intersect(allLabels).ToHashSet();
+                            var selectedCount  = selectedVals.Count;
+                            var slug = attr.Slug;
+
+                            <div class="border border-neutral-200 rounded-sm overflow-hidden">
+                                <!-- Accordion header -->
+                                <button type="button"
+                                        onclick="toggleAttrPanel('@slug')"
+                                        class="w-full flex items-center justify-between px-4 py-3 hover:bg-neutral-50 transition-colors text-left">
+                                    <span class="text-sm font-medium text-neutral-800">@attr.Name</span>
+                                    <div class="flex items-center gap-3">
+                                        <span id="count-@slug"
+                                              class="text-xs @(selectedCount > 0 ? "bg-neutral-900 text-white px-2 py-0.5 rounded-full" : "text-neutral-400")">
+                                            @(selectedCount > 0 ? $"{selectedCount} selected" : "None selected")
+                                        </span>
+                                        <svg id="arrow-@slug" class="w-4 h-4 text-neutral-400 transition-transform duration-200"
+                                             fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 9l-7 7-7-7"/>
+                                        </svg>
+                                    </div>
+                                </button>
+
+                                <!-- Accordion panel -->
+                                <div id="panel-@slug" class="hidden border-t border-neutral-100 p-4">
+                                    <!-- Search box -->
+                                    <input type="text"
+                                           placeholder="Search @attr.Name…"
+                                           oninput="filterAttr('@slug', this.value)"
+                                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs mb-3 focus:outline-none focus:border-neutral-400" />
+
+                                    <!-- Quick actions -->
+                                    <div class="flex gap-3 mb-3">
+                                        <button type="button" onclick="selectAllAttr('@slug', true)"
+                                                class="text-[10px] text-neutral-500 hover:text-neutral-900 underline underline-offset-2">Select all</button>
+                                        <button type="button" onclick="selectAllAttr('@slug', false)"
+                                                class="text-[10px] text-neutral-500 hover:text-neutral-900 underline underline-offset-2">Clear</button>
+                                    </div>
+
+                                    <!-- Scrollable checkbox list -->
+                                    <div class="max-h-52 overflow-y-auto space-y-0.5" id="list-@slug">
+                                        @foreach (var val in attr.Values.OrderBy(v => v.SortOrder))
                                         {
-                                            <span class="w-4 h-4 rounded-full border border-neutral-200 inline-block"
-                                                  style="background-color:@val.ColorHex"></span>
+                                            var chk = selectedVals.Contains(val.Value);
+                                            <label class="attr-item-@slug flex items-center gap-2.5 px-2 py-1.5 rounded hover:bg-neutral-50 cursor-pointer"
+                                                   data-label="@val.Value.ToLower()">
+                                                <input type="checkbox"
+                                                       name="selectedValueIds"
+                                                       value="@val.Id"
+                                                       @(chk ? "checked" : "")
+                                                       onchange="updateAttrCount('@slug')"
+                                                       class="rounded border-neutral-300 accent-neutral-900 flex-shrink-0" />
+                                                @if (!string.IsNullOrEmpty(val.ColorHex))
+                                                {
+                                                    <span class="w-4 h-4 rounded-full border border-neutral-200 flex-shrink-0 inline-block"
+                                                          style="background-color:@val.ColorHex"></span>
+                                                }
+                                                <span class="text-sm text-neutral-700">@val.Value</span>
+                                            </label>
                                         }
-                                        <span class="text-sm text-neutral-700">@val.Value</span>
-                                    </label>
-                                }
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    }
+                        }
+                    </div>
 
                     <button type="submit"
-                            class="px-5 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
-                        ↺ Generate Variants
+                            class="px-6 py-2.5 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+                        ↺ Generate Variants from Selected Options
                     </button>
                 </form>
+
+                @section Scripts {
+                <script>
+                function toggleAttrPanel(slug) {
+                    const panel = document.getElementById('panel-' + slug);
+                    const arrow = document.getElementById('arrow-' + slug);
+                    const isOpen = !panel.classList.contains('hidden');
+                    panel.classList.toggle('hidden', isOpen);
+                    arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+                }
+
+                function filterAttr(slug, query) {
+                    const q = query.toLowerCase();
+                    document.querySelectorAll('.attr-item-' + slug).forEach(item => {
+                        item.style.display = item.dataset.label.includes(q) ? '' : 'none';
+                    });
+                }
+
+                function selectAllAttr(slug, check) {
+                    document.querySelectorAll('.attr-item-' + slug + ' input[type=checkbox]').forEach(cb => {
+                        cb.checked = check;
+                    });
+                    updateAttrCount(slug);
+                }
+
+                function updateAttrCount(slug) {
+                    const total = document.querySelectorAll('.attr-item-' + slug + ' input[type=checkbox]:checked').length;
+                    const el = document.getElementById('count-' + slug);
+                    el.textContent = total > 0 ? total + ' selected' : 'None selected';
+                    el.className = total > 0
+                        ? 'text-xs bg-neutral-900 text-white px-2 py-0.5 rounded-full'
+                        : 'text-xs text-neutral-400';
+                }
+
+                // Auto-open panels that already have selections (check via selected checkboxes)
+                document.addEventListener('DOMContentLoaded', () => {
+                    @foreach (var attr in Model.AllAttributes)
+                    {
+                        var attrValueNames = attr.Values.Select(v => v.Value).ToHashSet();
+                        var hasSelection   = Model.Variants.Any(v =>
+                            v.AttributeLabels.Any(l => attrValueNames.Contains(l)));
+                        if (hasSelection)
+                        {
+                            @:toggleAttrPanel('@attr.Slug');
+                        }
+                    }
+                });
+                </script>
+                }
 
                 <!-- Existing variants table -->
                 @if (Model.Variants.Any())
