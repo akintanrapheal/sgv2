@@ -319,6 +319,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [RequestFormLimits(MultipartBodyLengthLimit = 52428800)] // 50 MB
         public async Task<IActionResult> ImportFromWooCommerce(Microsoft.AspNetCore.Http.IFormFile csvFile)
         {
             if (csvFile == null || csvFile.Length == 0)

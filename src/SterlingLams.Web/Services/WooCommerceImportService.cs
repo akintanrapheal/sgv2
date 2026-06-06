@@ -72,6 +72,9 @@ public class WooCommerceImportService : IWooCommerceImportService
         var categories = await _db.Categories.ToListAsync();
         var existingByCode = new Dictionary<string, Product>(StringComparer.OrdinalIgnoreCase);
 
+        // Track slugs used in this import run so we don't assign duplicates within a batch
+        var usedSlugs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         // Load the Colour attribute and all its values for variant creation
         var colourAttr = await _db.ProductAttributes
             .Include(a => a.Values)
@@ -121,7 +124,8 @@ public class WooCommerceImportService : IWooCommerceImportService
                 // Use first colour as the product's Metal field (for display in Details)
                 var firstColour = colNames.FirstOrDefault() ?? Get(row, "attribute:Colour");
 
-                var slug    = await UniqueSlugAsync(Slugify(name));
+                var slug    = await UniqueSlugAsync(Slugify(name), usedSlugs);
+                usedSlugs.Add(slug);
                 var product = new Product
                 {
                     ErpNextItemCode  = code,
@@ -181,23 +185,38 @@ public class WooCommerceImportService : IWooCommerceImportService
                 }
 
                 _db.Products.Add(product);
+                await _db.SaveChangesAsync();   // save each product individually — avoids slug/key collisions within a batch
                 existingByCode[code] = product;
                 result.Created++;
-
                 batchCount++;
-                if (batchCount % 30 == 0)
-                    await _db.SaveChangesAsync();
             }
             catch (Exception ex)
             {
-                var msg = $"Error importing '{Get(row, "post_title")}': {ex.Message}";
+                // Surface the innermost exception for DB constraint errors
+                var inner = ex;
+                while (inner.InnerException != null) inner = inner.InnerException;
+                var msg = $"Error importing '{Get(row, "post_title")}': {inner.Message}";
                 _logger.LogWarning(ex, msg);
                 result.Errors.Add(msg);
                 result.Skipped++;
+
+                // Detach any partially-tracked entities so the next product can still save
+                _db.ChangeTracker.Clear();
             }
         }
 
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            var inner = ex;
+            while (inner.InnerException != null) inner = inner.InnerException;
+            _logger.LogError(ex, "Final SaveChanges failed: {Message}", inner.Message);
+            result.Errors.Add($"Final save error: {inner.Message}");
+        }
+
         _logger.LogInformation("WooCommerce CSV import complete: {Summary}", result.Summary);
         return result;
     }
@@ -285,11 +304,16 @@ public class WooCommerceImportService : IWooCommerceImportService
                     .Replace("&quot;", "\"").Trim();
     }
 
-    private async Task<string> UniqueSlugAsync(string baseSlug)
+    private async Task<string> UniqueSlugAsync(string baseSlug, HashSet<string>? inMemory = null)
     {
-        var slug = baseSlug; var n = 1;
-        while (await _db.Products.AnyAsync(p => p.Slug == slug))
+        var slug = baseSlug;
+        var n = 1;
+        // Check both the DB and slugs already assigned in this import run (unsaved)
+        while (await _db.Products.AnyAsync(p => p.Slug == slug) ||
+               (inMemory != null && inMemory.Contains(slug)))
+        {
             slug = $"{baseSlug}-{n++}";
+        }
         return slug;
     }
 
