@@ -37,6 +37,7 @@ public static class ServiceCollectionExtensions
 
         // ─── Site Settings ────────────────────────────────────────────────────
         services.AddScoped<ISettingsService, SettingsService>();
+        services.AddScoped<DeliveryZoneService>();
 
         // ─── Payment ─────────────────────────────────────────────────────────
         var paymentProvider = configuration["Payment:Provider"] ?? "Paystack";

@@ -37,10 +37,15 @@ public static class SettingsSeedData
         new() { Key = "announcement.bg_color",    Group = "Announcement Bar", Label = "Background Colour",      Type = "text",     Value = "bg-neutral-900",  Description = "Tailwind class: bg-neutral-900, bg-red-600, bg-emerald-700, bg-amber-500, etc.", SortOrder = 3 },
 
         // ── Shipping & Delivery ───────────────────────────────────────────────
-        new() { Key = "shipping.free_threshold",  Group = "Shipping", Label = "Free Shipping Threshold (N)", Type = "number", Value = "150000", Description = "Orders above this amount get free shipping. Set 0 to always charge.", SortOrder = 1 },
-        new() { Key = "shipping.delivery_fee",    Group = "Shipping", Label = "Standard Delivery Fee (N)",  Type = "number", Value = "0",       Description = "Flat delivery fee applied at checkout for delivery orders.",         SortOrder = 2 },
-        new() { Key = "shipping.delivery_days",   Group = "Shipping", Label = "Estimated Delivery Days",    Type = "text",   Value = "3-5",     Description = "Shown to customers e.g. '3-5 business days'.",                       SortOrder = 3 },
-        new() { Key = "shipping.areas",           Group = "Shipping", Label = "Delivery Areas",             Type = "text",   Value = "Lagos, Abuja", Description = "Cities or states you deliver to (shown on checkout).",          SortOrder = 4 },
+        // Lagos & Abuja — Express
+        new() { Key = "shipping.lagos_abuja_express_fee",  Group = "Shipping", Label = "Lagos & Abuja Express Fee (N)",         Type = "number", Value = "4000",               Description = "Express delivery fee for Lagos and Abuja FCT.",                SortOrder = 1 },
+        new() { Key = "shipping.lagos_abuja_express_days", Group = "Shipping", Label = "Lagos & Abuja Express Timeframe",       Type = "text",   Value = "24 - 48 hours",      Description = "Timeframe shown to customers for express delivery.",           SortOrder = 2 },
+        // Lagos & Abuja — Standard
+        new() { Key = "shipping.lagos_abuja_standard_fee", Group = "Shipping", Label = "Lagos & Abuja Standard Fee (N)",        Type = "number", Value = "2000",               Description = "Standard delivery fee for Lagos and Abuja FCT.",               SortOrder = 3 },
+        new() { Key = "shipping.lagos_abuja_standard_days",Group = "Shipping", Label = "Lagos & Abuja Standard Timeframe",      Type = "text",   Value = "2 - 4 working days", Description = "Timeframe shown to customers for standard delivery.",          SortOrder = 4 },
+        // National — Standard
+        new() { Key = "shipping.national_standard_fee",   Group = "Shipping", Label = "Nationwide Standard Fee (N)",           Type = "number", Value = "7500",               Description = "Delivery fee for all other Nigerian states.",                  SortOrder = 5 },
+        new() { Key = "shipping.national_standard_days",  Group = "Shipping", Label = "Nationwide Standard Timeframe",         Type = "text",   Value = "2 - 5 working days", Description = "Timeframe shown to customers for nationwide standard delivery.", SortOrder = 6 },
 
         // ── Notifications ─────────────────────────────────────────────────────
         new() { Key = "notifications.admin_email",     Group = "Notifications", Label = "Admin Email",                    Type = "email",   Value = "rapheal@sterlinglamslogistics.com", Description = "Receives new order and low stock alerts.",         SortOrder = 1 },

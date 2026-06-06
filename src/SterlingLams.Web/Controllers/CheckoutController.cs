@@ -26,6 +26,7 @@ public class CheckoutController : Controller
     private readonly IWebHostEnvironment _env;
     private readonly IERPNextService _erpNext;
     private readonly SterlingLams.Web.Services.ISettingsService _settings;
+    private readonly SterlingLams.Web.Services.DeliveryZoneService _zones;
 
     public CheckoutController(
         ApplicationDbContext db,
@@ -35,7 +36,8 @@ public class CheckoutController : Controller
         IConfiguration config,
         IWebHostEnvironment env,
         IERPNextService erpNext,
-        SterlingLams.Web.Services.ISettingsService settings)
+        SterlingLams.Web.Services.ISettingsService settings,
+        SterlingLams.Web.Services.DeliveryZoneService zones)
     {
         _db = db;
         _payment = payment;
@@ -45,6 +47,7 @@ public class CheckoutController : Controller
         _env = env;
         _erpNext = erpNext;
         _settings = settings;
+        _zones = zones;
     }
 
     [HttpGet]
@@ -56,10 +59,28 @@ public class CheckoutController : Controller
         var stores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
         var user = await _userManager.GetUserAsync(User);
 
-        var freeThreshold = await _settings.GetDecimalAsync("shipping.free_threshold", 150000);
-        var deliveryFee   = cart.Subtotal >= freeThreshold
-            ? 0
-            : await _settings.GetDecimalAsync("shipping.delivery_fee", 0);
+        // Build delivery pricing JSON for client-side zone detection
+        var lagosExpressFee   = await _settings.GetDecimalAsync("shipping.lagos_abuja_express_fee",  4000);
+        var lagosExpressDays  = await _settings.GetAsync("shipping.lagos_abuja_express_days",        "24 - 48 hours");
+        var lagosStdFee       = await _settings.GetDecimalAsync("shipping.lagos_abuja_standard_fee", 2000);
+        var lagosStdDays      = await _settings.GetAsync("shipping.lagos_abuja_standard_days",       "2 - 4 working days");
+        var natStdFee         = await _settings.GetDecimalAsync("shipping.national_standard_fee",    7500);
+        var natStdDays        = await _settings.GetAsync("shipping.national_standard_days",          "2 - 5 working days");
+
+        var pricingJson = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            lagosAbuja = new[]
+            {
+                new { type = "Express",  label = "Express Delivery",  fee = lagosExpressFee, timeframe = lagosExpressDays },
+                new { type = "Standard", label = "Standard Delivery", fee = lagosStdFee,     timeframe = lagosStdDays     },
+            },
+            national = new[]
+            {
+                new { type = "Standard", label = "Standard Delivery", fee = natStdFee, timeframe = natStdDays },
+            },
+            lagosLGAs       = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs,
+            abujaKeywords   = new[] { "FCT", "Abuja", "Federal Capital" },
+        });
 
         var vm = new CheckoutViewModel
         {
@@ -68,7 +89,10 @@ public class CheckoutController : Controller
             DiscountAmount = cart.DiscountAmount,
             AppliedDiscountCode = cart.AppliedDiscountCode,
             DiscountDescription = cart.DiscountDescription,
-            DeliveryFee = deliveryFee,
+            DeliveryFee = 0,   // updated client-side when delivery type selected
+            DeliveryPricingJson = pricingJson,
+            NigerianStates = SterlingLams.Web.Services.DeliveryZoneService.NigerianStates,
+            LagosLGAs = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs,
             PaystackPublicKey = _config["Payment:Paystack:PublicKey"],
             AvailableStores = stores.Select(s => new StorePickupOptionViewModel
             {
@@ -120,6 +144,11 @@ public class CheckoutController : Controller
             return RedirectToAction("Index", "Cart");
         }
 
+        // Calculate delivery fee server-side (never trust client-submitted amount)
+        decimal deliveryFee = 0;
+        if (vm.FulfillmentType == FulfillmentChoice.Delivery)
+            deliveryFee = await _zones.CalculateFeeAsync(vm.DeliveryAddress.State, vm.SelectedDeliveryType);
+
         // Build order
         var orderNumber = $"SL-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}";
 
@@ -132,8 +161,8 @@ public class CheckoutController : Controller
                 : FulfillmentType.Delivery,
             PickupStoreId = vm.FulfillmentType == FulfillmentChoice.StorePickup ? vm.SelectedStoreId : null,
             Subtotal = cart.Subtotal,
-            DeliveryFee = vm.DeliveryFee,
-            Total = cart.Subtotal + vm.DeliveryFee,
+            DeliveryFee = deliveryFee,
+            Total = cart.Subtotal - cart.DiscountAmount + deliveryFee,
             Items = cart.Items.Select(i => new OrderItem
             {
                 ProductId = i.ProductId,
