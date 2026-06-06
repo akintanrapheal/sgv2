@@ -11,6 +11,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 {
     public class CustomersController : AdminBaseController
     {
+        protected override string Section => "Customers";
+
         private readonly ApplicationDbContext _db;
         private const int PageSize = 30;
 

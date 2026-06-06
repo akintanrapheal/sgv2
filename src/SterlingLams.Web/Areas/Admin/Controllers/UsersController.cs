@@ -14,23 +14,37 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 {
     public class UsersController : AdminBaseController
     {
+        protected override string Section => "Users";
+
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
+        private readonly RoleManager<IdentityRole> _roleManager;
         private const int PageSize = 30;
 
-        public UsersController(ApplicationDbContext db, UserManager<ApplicationUser> userManager)
+        public UsersController(ApplicationDbContext db, UserManager<ApplicationUser> userManager,
+            RoleManager<IdentityRole> roleManager)
         {
             _db = db;
             _userManager = userManager;
+            _roleManager = roleManager;
         }
+
+        // Determines a user's single display role (first backend role, else "Customer")
+        private static string PrimaryRole(IList<string> roles) =>
+            roles.FirstOrDefault(r => r != "Customer") ?? "Customer";
 
         public async Task<IActionResult> Index(string q = "", string role = "", string status = "", int page = 1)
         {
             ViewData["Title"] = "User Management";
 
-            // Admin user IDs (one role lookup for the whole admin role)
-            var adminUsers = await _userManager.GetUsersInRoleAsync("Admin");
-            var adminIds   = adminUsers.Select(u => u.Id).ToHashSet();
+            var adminIds = (await _userManager.GetUsersInRoleAsync("Admin")).Select(u => u.Id).ToHashSet();
+
+            // Backend roles (everything except the implicit Customer role) for the dropdown
+            var staffRoles = await _roleManager.Roles
+                .Where(r => r.Name != "Customer")
+                .OrderBy(r => r.Name == "Admin" ? 0 : 1).ThenBy(r => r.Name)
+                .Select(r => r.Name!)
+                .ToListAsync();
 
             var query = _db.Users.AsQueryable();
 
@@ -40,10 +54,24 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     EF.Functions.ILike(u.Email!, $"%{q}%") ||
                     EF.Functions.ILike(u.PhoneNumber ?? "", $"%{q}%"));
 
-            if (role == "admin")
-                query = query.Where(u => adminIds.Contains(u.Id));
-            else if (role == "customer")
-                query = query.Where(u => !adminIds.Contains(u.Id));
+            // Role filter: resolve to user-id set
+            if (!string.IsNullOrWhiteSpace(role))
+            {
+                if (role == "Customer")
+                {
+                    // Users not in any backend (staff) role
+                    var staffIds = new HashSet<string>();
+                    foreach (var r in staffRoles)
+                        foreach (var u in await _userManager.GetUsersInRoleAsync(r))
+                            staffIds.Add(u.Id);
+                    query = query.Where(u => !staffIds.Contains(u.Id));
+                }
+                else
+                {
+                    var inRole = (await _userManager.GetUsersInRoleAsync(role)).Select(u => u.Id).ToHashSet();
+                    query = query.Where(u => inRole.Contains(u.Id));
+                }
+            }
 
             var now = DateTimeOffset.UtcNow;
             if (status == "locked")
@@ -72,15 +100,18 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 })
                 .ToListAsync();
 
-            var rows = pageUsers.Select(u =>
+            var rows = new List<AdminUserRow>();
+            foreach (var u in pageUsers)
             {
                 var stat = orderStats.FirstOrDefault(s => s.UserId == u.Id);
-                return new AdminUserRow
+                var userRoles = await _userManager.GetRolesAsync(u);
+                rows.Add(new AdminUserRow
                 {
                     Id             = u.Id,
                     FullName       = u.FullName,
                     Email          = u.Email ?? "",
                     Phone          = u.PhoneNumber,
+                    RoleName       = PrimaryRole(userRoles),
                     IsAdmin        = adminIds.Contains(u.Id),
                     IsLocked       = u.LockoutEnd.HasValue && u.LockoutEnd > now,
                     EmailConfirmed = u.EmailConfirmed,
@@ -88,25 +119,26 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     TotalSpend     = stat?.Spend ?? 0,
                     JoinedAt       = u.CreatedAt,
                     LastLoginAt    = u.LastLoginAt,
-                };
-            }).ToList();
+                });
+            }
 
             // Stat cards (whole-table aggregates)
             var monthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             var vm = new AdminUserListViewModel
             {
-                Users         = rows,
-                SearchQuery   = q,
-                RoleFilter    = role,
-                StatusFilter  = status,
-                CurrentPage   = page,
-                TotalPages    = (int)Math.Ceiling(total / (double)PageSize),
-                TotalCount    = total,
-                TotalUsers    = await _db.Users.CountAsync(),
-                AdminCount    = adminIds.Count,
-                CustomerCount = await _db.Users.CountAsync() - adminIds.Count,
-                LockedCount   = await _db.Users.CountAsync(u => u.LockoutEnd != null && u.LockoutEnd > now),
-                NewThisMonth  = await _db.Users.CountAsync(u => u.CreatedAt >= monthStart),
+                Users          = rows,
+                SearchQuery    = q,
+                RoleFilter     = role,
+                StatusFilter   = status,
+                AvailableRoles = new List<string> { "Customer" }.Concat(staffRoles).ToList(),
+                CurrentPage    = page,
+                TotalPages     = (int)Math.Ceiling(total / (double)PageSize),
+                TotalCount     = total,
+                TotalUsers     = await _db.Users.CountAsync(),
+                AdminCount     = adminIds.Count,
+                CustomerCount  = await _db.Users.CountAsync() - adminIds.Count,
+                LockedCount    = await _db.Users.CountAsync(u => u.LockoutEnd != null && u.LockoutEnd > now),
+                NewThisMonth   = await _db.Users.CountAsync(u => u.CreatedAt >= monthStart),
             };
 
             return View(vm);
@@ -221,30 +253,36 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         }
 
         [HttpPost, ValidateAntiForgeryToken]
-        public async Task<IActionResult> ToggleAdmin(string id)
+        public async Task<IActionResult> SetRole(string id, string role)
         {
             var user = await _userManager.FindByIdAsync(id);
             if (user == null) return NotFound();
 
             if (user.Email == User.Identity?.Name)
             {
-                TempData["Error"] = "You cannot remove your own admin role.";
+                TempData["Error"] = "You cannot change your own role.";
                 return RedirectToAction(nameof(Index));
             }
 
-            if (await _userManager.IsInRoleAsync(user, "Admin"))
+            role = (role ?? "Customer").Trim();
+
+            // Validate the target role exists (Customer = no backend role)
+            if (role != "Customer" && !await _roleManager.RoleExistsAsync(role))
             {
-                await _userManager.RemoveFromRoleAsync(user, "Admin");
-                await LogAsync("Update", "User", user.Id, $"Removed Admin role from {user.Email}");
-                TempData["Success"] = $"{user.Email} is no longer an admin.";
-            }
-            else
-            {
-                await _userManager.AddToRoleAsync(user, "Admin");
-                await LogAsync("Update", "User", user.Id, $"Granted Admin role to {user.Email}");
-                TempData["Success"] = $"{user.Email} is now an admin.";
+                TempData["Error"] = $"Role '{role}' does not exist.";
+                return RedirectToAction(nameof(Index));
             }
 
+            // Remove all current roles, then assign the chosen one (Customer = none)
+            var current = await _userManager.GetRolesAsync(user);
+            if (current.Any())
+                await _userManager.RemoveFromRolesAsync(user, current);
+
+            if (role != "Customer")
+                await _userManager.AddToRoleAsync(user, role);
+
+            await LogAsync("Update", "User", user.Id, $"Set role of {user.Email} to {role}");
+            TempData["Success"] = $"{user.Email} is now {role}.";
             return RedirectToAction(nameof(Index));
         }
 

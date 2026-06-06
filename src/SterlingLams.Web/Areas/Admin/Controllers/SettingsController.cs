@@ -5,6 +5,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers;
 
 public class SettingsController : AdminBaseController
 {
+    protected override string Section => "Settings";
+
     private readonly ISettingsService _settings;
 
     public SettingsController(ISettingsService settings) => _settings = settings;

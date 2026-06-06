@@ -12,6 +12,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 {
     public class AuditLogController : AdminBaseController
     {
+        protected override string Section => "AuditLog";
+
         private readonly ApplicationDbContext _db;
         private const int PageSize = 50;
 

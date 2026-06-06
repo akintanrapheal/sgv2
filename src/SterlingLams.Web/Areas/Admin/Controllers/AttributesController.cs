@@ -8,6 +8,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers;
 
 public class AttributesController : AdminBaseController
 {
+    protected override string Section => "Attributes";
+
     private readonly ApplicationDbContext _db;
 
     public AttributesController(ApplicationDbContext db) => _db = db;

@@ -12,6 +12,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 {
     public class DashboardController : AdminBaseController
     {
+        protected override string Section => "Dashboard";
+
         private readonly ApplicationDbContext _db;
 
         public DashboardController(ApplicationDbContext db)

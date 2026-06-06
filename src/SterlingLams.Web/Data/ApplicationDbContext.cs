@@ -24,6 +24,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<DiscountCode> DiscountCodes => Set<DiscountCode>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
+    public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -131,6 +132,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<SiteSetting>(e =>
         {
             e.HasIndex(s => s.Key).IsUnique();
+        });
+
+        // ─── RolePermission ──────────────────────────────────────────────────
+        builder.Entity<RolePermission>(e =>
+        {
+            e.HasIndex(rp => new { rp.RoleName, rp.Section }).IsUnique();
         });
 
         // ─── DiscountCode ────────────────────────────────────────────────────

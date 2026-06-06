@@ -9,6 +9,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers;
 
 public class StoresController : AdminBaseController
 {
+    protected override string Section => "Stores";
+
     private readonly ApplicationDbContext _db;
 
     public StoresController(ApplicationDbContext db) => _db = db;

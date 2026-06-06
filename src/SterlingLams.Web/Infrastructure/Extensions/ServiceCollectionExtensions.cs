@@ -42,6 +42,9 @@ public static class ServiceCollectionExtensions
         // ─── Audit Log ────────────────────────────────────────────────────────
         services.AddScoped<IAuditService, AuditService>();
 
+        // ─── Roles & Permissions ───────────────────────────────────────────────
+        services.AddScoped<IPermissionService, PermissionService>();
+
         // ─── Payment ─────────────────────────────────────────────────────────
         var paymentProvider = configuration["Payment:Provider"] ?? "Paystack";
 

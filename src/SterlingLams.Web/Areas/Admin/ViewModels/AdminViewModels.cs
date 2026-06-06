@@ -227,11 +227,14 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
     {
         public List<AdminUserRow> Users { get; set; } = new();
         public string SearchQuery { get; set; } = "";
-        public string RoleFilter { get; set; } = "";    // "" | admin | customer
+        public string RoleFilter { get; set; } = "";    // "" | <role name>
         public string StatusFilter { get; set; } = "";  // "" | active | locked
         public int CurrentPage { get; set; } = 1;
         public int TotalPages { get; set; } = 1;
         public int TotalCount { get; set; }
+
+        // All assignable roles (for the dropdown + role filter)
+        public List<string> AvailableRoles { get; set; } = new();
 
         // Stat cards
         public int TotalUsers { get; set; }
@@ -247,6 +250,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string FullName { get; set; } = "";
         public string Email { get; set; } = "";
         public string? Phone { get; set; }
+        public string RoleName { get; set; } = "Customer";
         public bool IsAdmin { get; set; }
         public bool IsLocked { get; set; }
         public bool EmailConfirmed { get; set; }
@@ -264,6 +268,29 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string? Phone { get; set; }
         public string Password { get; set; } = "";
         public bool MakeAdmin { get; set; }
+    }
+
+    // ─── Roles & Permissions ───────────────────────────────────────────────
+    public class AdminRoleListViewModel
+    {
+        public List<AdminRoleRow> Roles { get; set; } = new();
+    }
+
+    public class AdminRoleRow
+    {
+        public string Name { get; set; } = "";
+        public bool IsSystem { get; set; }          // Admin / Customer — not editable/deletable
+        public bool IsFullAccess { get; set; }      // Admin
+        public int UserCount { get; set; }
+        public List<string> Sections { get; set; } = new();  // section labels
+    }
+
+    public class AdminRoleEditViewModel
+    {
+        public string Name { get; set; } = "";
+        public string OriginalName { get; set; } = "";
+        public bool IsNew { get; set; }
+        public HashSet<string> SelectedSections { get; set; } = new();
     }
 
     // ─── Audit Log ────────────────────────────────────────────────────────

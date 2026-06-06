@@ -15,6 +15,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 {
     public class ProductsController : AdminBaseController
     {
+        protected override string Section => "Products";
+
         private readonly ApplicationDbContext _db;
         private readonly IInventoryService _inventory;
         private readonly IProductImportService _importer;

@@ -11,6 +11,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 {
     public class DiscountsController : AdminBaseController
     {
+        protected override string Section => "Discounts";
+
         private readonly ApplicationDbContext _db;
 
         public DiscountsController(ApplicationDbContext db)

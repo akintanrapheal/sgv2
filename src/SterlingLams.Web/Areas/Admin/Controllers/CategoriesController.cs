@@ -12,6 +12,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 {
     public class CategoriesController : AdminBaseController
     {
+        protected override string Section => "Categories";
+
         private readonly ApplicationDbContext _db;
 
         public CategoriesController(ApplicationDbContext db)

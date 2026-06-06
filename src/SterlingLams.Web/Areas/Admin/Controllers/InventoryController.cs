@@ -14,6 +14,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 {
     public class InventoryController : AdminBaseController
     {
+        protected override string Section => "Inventory";
+
         private readonly ApplicationDbContext _db;
         private readonly IInventoryService _inventory;
         private const int PageSize = 30;
