@@ -111,9 +111,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             if (Enum.TryParse<OrderStatus>(status, out var newStatus))
             {
+                var old = order.Status.ToString();
                 order.Status = newStatus;
                 order.UpdatedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync();
+                await LogAsync("Update", "Order", order.Id.ToString(),
+                    $"Order {order.OrderNumber} status: {old} → {status}");
                 TempData["Success"] = $"Order {order.OrderNumber} updated to {status}.";
             }
 
@@ -146,6 +149,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             order.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
 
+            await LogAsync("Update", "Order", order.Id.ToString(),
+                $"Set tracking number for {order.OrderNumber}: {order.TrackingNumber}");
+
             TempData["Success"] = "Tracking number saved.";
             return RedirectToAction(nameof(Detail), new { id });
         }
@@ -171,6 +177,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
 
             await _db.SaveChangesAsync();
+            await LogAsync("Update", "Order", null,
+                $"Bulk updated {orders.Count} order(s) to {status}");
             TempData["Success"] = $"{orders.Count} order(s) updated to {status}.";
             return RedirectToAction(nameof(Index));
         }
@@ -215,6 +223,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             {
                 sb.AppendLine($"\"{o.OrderNumber}\",\"{o.CustomerName}\",\"{o.CustomerEmail}\",{o.Total},{o.Subtotal},{o.DeliveryFee},{o.Status},{o.Fulfillment},{o.IsPaid},\"{o.PaymentRef}\",\"{o.ErpNextInvoiceName ?? ""}\",\"{o.CreatedAt}\"");
             }
+
+            await LogAsync("Export", "Order", null, $"Exported {orders.Count} order(s) to CSV");
 
             var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
             return File(bytes, "text/csv", $"orders_{DateTime.UtcNow:yyyyMMdd}.csv");

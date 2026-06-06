@@ -298,7 +298,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             product.CategoryId = vm.CategoryId ?? product.CategoryId;
             product.UpdatedAt = DateTime.UtcNow;
 
+            var isNew = vm.Id == 0;
             await _db.SaveChangesAsync();
+
+            await LogAsync(isNew ? "Create" : "Update", "Product", product.Id.ToString(),
+                $"{(isNew ? "Created" : "Updated")} product '{product.Name}' (₦{product.Price:N0})");
 
             TempData["Success"] = $"Product '{product.Name}' saved.";
             return RedirectToAction(nameof(Index));
@@ -341,6 +345,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             _db.Products.Add(copy);
             await _db.SaveChangesAsync();
 
+            await LogAsync("Create", "Product", copy.Id.ToString(),
+                $"Duplicated '{source.Name}' → '{copy.Name}'");
+
             TempData["Success"] = $"Product duplicated as '{copy.Name}'. It is inactive — edit and activate when ready.";
             return RedirectToAction(nameof(Edit), new { id = copy.Id });
         }
@@ -355,6 +362,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             product.IsActive = !product.IsActive;
             product.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
+
+            await LogAsync("Update", "Product", product.Id.ToString(),
+                $"Set '{product.Name}' to {(product.IsActive ? "active" : "inactive")}");
 
             TempData["Success"] = $"'{product.Name}' is now {(product.IsActive ? "active" : "inactive")}.";
             return RedirectToAction(nameof(Index));
@@ -381,6 +391,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             {
                 using var stream = csvFile.OpenReadStream();
                 var result = await _wooImporter.ImportFromCsvAsync(stream);
+                await LogAsync("Import", "Product", null,
+                    $"WooCommerce CSV import ({csvFile.FileName}): {result.Summary}");
                 TempData[result.Errors.Any() ? "Warning" : "Success"] =
                     $"WooCommerce import complete: {result.Summary}" +
                     (result.Errors.Any() ? $" — First error: {result.Errors[0]}" : "");
@@ -436,9 +448,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var product = await _db.Products.FindAsync(id);
             if (product != null)
             {
+                var name = product.Name;
                 _db.Products.Remove(product);
                 await _db.SaveChangesAsync();
-                TempData["Success"] = $"Product '{product.Name}' deleted.";
+                await LogAsync("Delete", "Product", id.ToString(), $"Deleted product '{name}'");
+                TempData["Success"] = $"Product '{name}' deleted.";
             }
 
             return RedirectToAction(nameof(Index));

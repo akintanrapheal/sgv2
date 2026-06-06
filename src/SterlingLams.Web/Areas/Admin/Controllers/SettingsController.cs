@@ -37,6 +37,8 @@ public class SettingsController : AdminBaseController
         }
 
         await _settings.SaveManyAsync(updates);
+        await LogAsync("Update", "Setting", null,
+            $"Updated {group} settings ({updates.Count} field(s))");
         TempData["Success"] = $"{group} settings saved.";
         return RedirectToAction(nameof(Index), new { tab = group });
     }

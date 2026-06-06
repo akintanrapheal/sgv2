@@ -232,6 +232,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string EntityFilter { get; set; } = "";
         public string DateFrom { get; set; } = "";
         public string DateTo { get; set; } = "";
+        public string SearchQuery { get; set; } = "";
         public List<string> AvailableActions { get; set; } = new();
         public List<string> AvailableEntities { get; set; } = new();
     }
@@ -243,6 +244,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string EntityId { get; set; } = "";
         public string Description { get; set; } = "";
         public string PerformedBy { get; set; } = "";
+        public string? IpAddress { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 

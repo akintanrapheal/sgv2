@@ -124,6 +124,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             foreach (var c in customers)
                 sb.AppendLine($"\"{c.FullName}\",\"{c.Email}\",\"{c.Phone}\",{c.Orders},{c.TotalSpend},\"{c.Joined}\"");
 
+            await LogAsync("Export", "Customer", null, $"Exported {customers.Count} customer record(s) to CSV");
+
             var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
             return File(bytes, "text/csv", $"customers_{DateTime.UtcNow:yyyyMMdd}.csv");
         }

@@ -1,45 +1,66 @@
 @model SterlingLams.Web.Areas.Admin.ViewModels.AdminAuditLogViewModel
 @{
     ViewData["Title"] = "Audit Log";
+    bool hasFilters = !string.IsNullOrEmpty(Model.ActionFilter) || !string.IsNullOrEmpty(Model.EntityFilter)
+                   || !string.IsNullOrEmpty(Model.DateFrom)     || !string.IsNullOrEmpty(Model.DateTo)
+                   || !string.IsNullOrEmpty(Model.SearchQuery);
 }
 
-<!-- Filters -->
-<form method="get" class="flex flex-wrap gap-2 mb-4">
-    <select name="action"
-            class="border border-neutral-200 rounded-sm px-3 py-1.5 text-xs focus:outline-none focus:border-neutral-400 bg-white">
-        <option value="">All Actions</option>
-        @foreach (var a in Model.AvailableActions)
+<!-- Filters + Export -->
+<form method="get" class="bg-white rounded-sm border border-neutral-100 p-4 mb-4">
+    <div class="flex flex-wrap gap-2 items-center">
+        <input type="text" name="q" value="@Model.SearchQuery"
+               placeholder="Search description or user…"
+               class="border border-neutral-200 rounded-sm px-3 py-1.5 text-xs focus:outline-none focus:border-neutral-400 min-w-[200px]" />
+
+        <select name="action"
+                class="border border-neutral-200 rounded-sm px-3 py-1.5 text-xs focus:outline-none focus:border-neutral-400 bg-white">
+            <option value="">All Actions</option>
+            @foreach (var a in Model.AvailableActions)
+            {
+                <option value="@a" selected="@(Model.ActionFilter == a)">@a</option>
+            }
+        </select>
+
+        <select name="entity"
+                class="border border-neutral-200 rounded-sm px-3 py-1.5 text-xs focus:outline-none focus:border-neutral-400 bg-white">
+            <option value="">All Entities</option>
+            @foreach (var e in Model.AvailableEntities)
+            {
+                <option value="@e" selected="@(Model.EntityFilter == e)">@e</option>
+            }
+        </select>
+
+        <input type="date" name="dateFrom" value="@Model.DateFrom" title="From date"
+               class="border border-neutral-200 rounded-sm px-3 py-1.5 text-xs focus:outline-none focus:border-neutral-400" />
+        <input type="date" name="dateTo" value="@Model.DateTo" title="To date"
+               class="border border-neutral-200 rounded-sm px-3 py-1.5 text-xs focus:outline-none focus:border-neutral-400" />
+
+        <button type="submit"
+                class="px-4 py-1.5 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+            Filter
+        </button>
+
+        @if (hasFilters)
         {
-            <option value="@a" selected="@(Model.ActionFilter == a)">@a</option>
+            <a asp-area="Admin" asp-controller="AuditLog" asp-action="Index"
+               class="px-4 py-1.5 border border-neutral-200 text-neutral-500 text-xs rounded-sm hover:border-neutral-400 transition-colors">
+                Clear
+            </a>
         }
-    </select>
-    <select name="entity"
-            class="border border-neutral-200 rounded-sm px-3 py-1.5 text-xs focus:outline-none focus:border-neutral-400 bg-white">
-        <option value="">All Entities</option>
-        @foreach (var e in Model.AvailableEntities)
-        {
-            <option value="@e" selected="@(Model.EntityFilter == e)">@e</option>
-        }
-    </select>
-    <input type="date" name="dateFrom" value="@Model.DateFrom"
-           class="border border-neutral-200 rounded-sm px-3 py-1.5 text-xs focus:outline-none focus:border-neutral-400" />
-    <input type="date" name="dateTo" value="@Model.DateTo"
-           class="border border-neutral-200 rounded-sm px-3 py-1.5 text-xs focus:outline-none focus:border-neutral-400" />
-    <button type="submit"
-            class="px-4 py-1.5 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
-        Filter
-    </button>
-    @if (!string.IsNullOrEmpty(Model.ActionFilter) || !string.IsNullOrEmpty(Model.EntityFilter) || !string.IsNullOrEmpty(Model.DateFrom))
-    {
-        <a asp-area="Admin" asp-controller="AuditLog" asp-action="Index"
-           class="px-4 py-1.5 border border-neutral-200 text-neutral-500 text-xs rounded-sm hover:border-neutral-400 transition-colors">
-            Clear
+
+        <!-- Export respects current filters -->
+        <a asp-area="Admin" asp-controller="AuditLog" asp-action="ExportCsv"
+           asp-route-action="@Model.ActionFilter" asp-route-entity="@Model.EntityFilter"
+           asp-route-dateFrom="@Model.DateFrom" asp-route-dateTo="@Model.DateTo" asp-route-q="@Model.SearchQuery"
+           class="ml-auto px-4 py-1.5 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:border-neutral-500 transition-colors">
+            ↓ Export CSV
         </a>
-    }
+    </div>
 </form>
 
-<div class="bg-white rounded-sm border border-neutral-100 overflow-hidden">
-    <table class="w-full text-sm">
+<div class="bg-white rounded-sm border border-neutral-100 overflow-x-auto">
+    <table class="w-full text-sm min-w-[800px]">
         <thead>
             <tr class="border-b border-neutral-100 bg-neutral-50">
                 <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Time</th>
@@ -47,21 +68,31 @@
                 <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Entity</th>
                 <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Description</th>
                 <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Performed By</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">IP</th>
             </tr>
         </thead>
         <tbody class="divide-y divide-neutral-50">
             @if (!Model.Logs.Any())
             {
-                <tr><td colspan="5" class="px-6 py-12 text-center text-xs text-neutral-400">No audit events match your filters.</td></tr>
+                <tr><td colspan="6" class="px-6 py-12 text-center text-xs text-neutral-400">No audit events match your filters.</td></tr>
             }
             @foreach (var log in Model.Logs)
             {
+                var badge = log.Action switch
+                {
+                    "Delete" => "bg-red-50 text-red-700",
+                    "Create" => "bg-emerald-50 text-emerald-700",
+                    "Export" => "bg-violet-50 text-violet-700",
+                    "Import" => "bg-amber-50 text-amber-700",
+                    "Login"  => "bg-neutral-100 text-neutral-600",
+                    _        => "bg-blue-50 text-blue-700"
+                };
                 <tr class="hover:bg-neutral-50 transition-colors">
-                    <td class="px-6 py-3 text-xs text-neutral-400 whitespace-nowrap">@log.CreatedAt.ToString("dd MMM yy HH:mm")</td>
+                    <td class="px-6 py-3 text-xs text-neutral-400 whitespace-nowrap">@log.CreatedAt.ToLocalTime().ToString("dd MMM yy HH:mm")</td>
                     <td class="px-6 py-3">
-                        <span class="text-[10px] px-2 py-0.5 rounded-full @(log.Action == "Delete" ? "bg-red-50 text-red-700" : log.Action == "Create" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700")">@log.Action</span>
+                        <span class="text-[10px] px-2 py-0.5 rounded-full @badge">@log.Action</span>
                     </td>
-                    <td class="px-6 py-3 text-xs text-neutral-500">
+                    <td class="px-6 py-3 text-xs text-neutral-500 whitespace-nowrap">
                         <span>@log.EntityType</span>
                         @if (!string.IsNullOrEmpty(log.EntityId))
                         {
@@ -69,7 +100,8 @@
                         }
                     </td>
                     <td class="px-6 py-3 text-xs text-neutral-600">@log.Description</td>
-                    <td class="px-6 py-3 text-xs text-neutral-500">@log.PerformedBy</td>
+                    <td class="px-6 py-3 text-xs text-neutral-500 whitespace-nowrap">@log.PerformedBy</td>
+                    <td class="px-6 py-3 text-xs text-neutral-400 font-mono whitespace-nowrap">@(string.IsNullOrEmpty(log.IpAddress) ? "—" : log.IpAddress)</td>
                 </tr>
             }
         </tbody>
@@ -87,6 +119,7 @@
                asp-route-entity="@Model.EntityFilter"
                asp-route-dateFrom="@Model.DateFrom"
                asp-route-dateTo="@Model.DateTo"
+               asp-route-q="@Model.SearchQuery"
                class="px-3 py-1.5 text-xs rounded-sm border transition-colors @(p == Model.CurrentPage ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")">
                 @p
             </a>

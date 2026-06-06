@@ -144,6 +144,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
 
             await _db.SaveChangesAsync();
+
+            var summary = string.Join(", ", stores.Select(s =>
+                $"{s.Name.Replace("Sterlin Glams ", "")}: {form[$"store_{s.Id}"]}"));
+            await LogAsync("Update", "Inventory", productId.ToString(),
+                $"Set stock for '{product.Name}' — {summary}");
+
             TempData["Success"] = $"Stock updated for '{product.Name}'.";
 
             var q        = form["q"].ToString();

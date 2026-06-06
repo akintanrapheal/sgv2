@@ -39,6 +39,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISettingsService, SettingsService>();
         services.AddScoped<DeliveryZoneService>();
 
+        // ─── Audit Log ────────────────────────────────────────────────────────
+        services.AddScoped<IAuditService, AuditService>();
+
         // ─── Payment ─────────────────────────────────────────────────────────
         var paymentProvider = configuration["Payment:Provider"] ?? "Paystack";
 

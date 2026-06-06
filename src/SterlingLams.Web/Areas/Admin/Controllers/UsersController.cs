@@ -73,11 +73,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             if (await _userManager.IsInRoleAsync(user, "Admin"))
             {
                 await _userManager.RemoveFromRoleAsync(user, "Admin");
+                await LogAsync("Update", "User", user.Id, $"Removed Admin role from {user.Email}");
                 TempData["Success"] = $"{user.Email} is no longer an admin.";
             }
             else
             {
                 await _userManager.AddToRoleAsync(user, "Admin");
+                await LogAsync("Update", "User", user.Id, $"Granted Admin role to {user.Email}");
                 TempData["Success"] = $"{user.Email} is now an admin.";
             }
 
@@ -100,11 +102,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             if (user.LockoutEnd.HasValue && user.LockoutEnd > DateTimeOffset.UtcNow)
             {
                 await _userManager.SetLockoutEndDateAsync(user, null);
+                await LogAsync("Update", "User", user.Id, $"Unlocked account {user.Email}");
                 TempData["Success"] = $"{user.Email} account unlocked.";
             }
             else
             {
                 await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
+                await LogAsync("Update", "User", user.Id, $"Locked account {user.Email}");
                 TempData["Success"] = $"{user.Email} account locked.";
             }
 

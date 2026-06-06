@@ -100,9 +100,13 @@ public class StoresController : AdminBaseController
         store.Longitude        = vm.Longitude;
         store.IsActive         = vm.IsActive;
 
+        var isNew = vm.Id == 0;
         await _db.SaveChangesAsync();
 
-        TempData["Success"] = vm.Id == 0
+        await LogAsync(isNew ? "Create" : "Update", "Store", store.Id.ToString(),
+            $"{(isNew ? "Created" : "Updated")} store '{store.Name}' ({store.City}, {store.State})");
+
+        TempData["Success"] = isNew
             ? $"Store '{store.Name}' created successfully."
             : $"Store '{store.Name}' updated.";
 
@@ -118,6 +122,9 @@ public class StoresController : AdminBaseController
 
         store.IsActive = !store.IsActive;
         await _db.SaveChangesAsync();
+
+        await LogAsync("Update", "Store", store.Id.ToString(),
+            $"Set store '{store.Name}' to {(store.IsActive ? "active" : "inactive")}");
 
         TempData["Success"] = $"'{store.Name}' is now {(store.IsActive ? "active" : "inactive")}.";
         return RedirectToAction(nameof(Index));
@@ -141,11 +148,14 @@ public class StoresController : AdminBaseController
         }
 
         // Remove inventory records first, then the store
+        var name = store.Name;
         _db.StoreInventories.RemoveRange(store.Inventories);
         _db.Stores.Remove(store);
         await _db.SaveChangesAsync();
 
-        TempData["Success"] = $"Store '{store.Name}' deleted.";
+        await LogAsync("Delete", "Store", id.ToString(), $"Deleted store '{name}'");
+
+        TempData["Success"] = $"Store '{name}' deleted.";
         return RedirectToAction(nameof(Index));
     }
 
