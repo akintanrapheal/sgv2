@@ -133,6 +133,12 @@ app.MapControllers(); // API controllers (WebhooksController)
 try
 {
     await SterlingLams.Web.Infrastructure.SeedData.SeedAsync(app.Services);
+
+    // Seed product attributes (Colour, Alphabet, Size, Length, Combo)
+    using var attrScope = app.Services.CreateScope();
+    var attrDb     = attrScope.ServiceProvider.GetRequiredService<SterlingLams.Web.Data.ApplicationDbContext>();
+    var attrLogger = attrScope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    await SterlingLams.Web.Infrastructure.AttributeSeedData.SeedAsync(attrDb, attrLogger);
 }
 catch (Exception ex)
 {
