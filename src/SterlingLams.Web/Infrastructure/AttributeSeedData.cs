@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.Domain;
@@ -6,6 +7,38 @@ namespace SterlingLams.Web.Infrastructure;
 
 public static class AttributeSeedData
 {
+    public static async Task SeedAdminUserAsync(
+        UserManager<ApplicationUser> userManager,
+        RoleManager<IdentityRole> roleManager,
+        ILogger logger)
+    {
+        const string email    = "rapheal@sterlinglamslogistics.com";
+        const string password = "Admin@sterlinglams1";
+
+        if (await userManager.FindByEmailAsync(email) != null) return;
+
+        var user = new ApplicationUser
+        {
+            UserName       = email,
+            Email          = email,
+            FirstName      = "Rapheal",
+            LastName       = "Admin",
+            EmailConfirmed = true,
+        };
+
+        var result = await userManager.CreateAsync(user, password);
+        if (result.Succeeded)
+        {
+            await userManager.AddToRoleAsync(user, "Admin");
+            logger.LogInformation("Admin user created: {Email}", email);
+        }
+        else
+        {
+            logger.LogError("Failed to create admin user: {Errors}",
+                string.Join(", ", result.Errors.Select(e => e.Description)));
+        }
+    }
+
     public static async Task SeedAsync(ApplicationDbContext db, ILogger logger)
     {
         await SeedColourAsync(db, logger);
