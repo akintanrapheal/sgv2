@@ -198,7 +198,7 @@ else
             <tbody class="divide-y divide-neutral-50">
                 @foreach (var row in Model.Products)
                 {
-                    var total = row.StockByStore.Values.Where(v => v >= 0).Sum();
+                    var total = row.TotalStock;
                     <tr class="hover:bg-neutral-50 transition-colors @(row.HasOutOfStock ? "bg-red-50/30" : row.HasLowStock ? "bg-amber-50/30" : "")">
 
                         <!-- Thumbnail -->

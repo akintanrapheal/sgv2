@@ -78,10 +78,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             // ── Stock status filter (in-memory, after building rows) ──────────────
             var filteredRows = stock switch
             {
-                "outofstock" => allRows.Where(r => r.StockByStore.Values.Any(v => v == 0)).ToList(),
-                "low"        => allRows.Where(r => r.HasLowStock && !r.HasOutOfStock).ToList(),
-                "instock"    => allRows.Where(r => r.TotalStock > 0 && !r.HasLowStock).ToList(),
-                "norecord"   => allRows.Where(r => r.StockByStore.Values.Any(v => v == -1)).ToList(),
+                "outofstock" => allRows.Where(r => r.HasAnyRecord && r.TotalStock == 0).ToList(),
+                "low"        => allRows.Where(r => r.HasLowStock).ToList(),
+                "instock"    => allRows.Where(r => r.TotalStock > 0).ToList(),
+                "norecord"   => allRows.Where(r => r.HasMissingRecord).ToList(),
                 _            => allRows
             };
 

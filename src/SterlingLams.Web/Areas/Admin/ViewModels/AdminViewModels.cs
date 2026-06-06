@@ -179,10 +179,14 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string CategoryName { get; set; } = "";
         public string? ImageUrl { get; set; }
         public int LowStockThreshold { get; set; } = 3;
-        public Dictionary<int, int> StockByStore { get; set; } = new();   // storeId → qty
-        public int TotalStock => StockByStore.Values.Sum();
-        public bool HasLowStock => StockByStore.Any(s => s.Value < LowStockThreshold && s.Value >= 0);
-        public bool HasOutOfStock => StockByStore.Any(s => s.Value == 0);
+        public Dictionary<int, int> StockByStore { get; set; } = new();   // storeId → qty (-1 = no record)
+
+        // Only count stores that have an actual record (exclude -1)
+        public int TotalStock        => StockByStore.Values.Where(v => v >= 0).Sum();
+        public bool HasAnyRecord     => StockByStore.Values.Any(v => v >= 0);
+        public bool HasOutOfStock    => StockByStore.Values.Any(v => v == 0);
+        public bool HasLowStock      => StockByStore.Values.Any(v => v > 0 && v < LowStockThreshold);
+        public bool HasMissingRecord => StockByStore.Values.Any(v => v == -1);
     }
 
     // ─── Customers ────────────────────────────────────────────────────────
