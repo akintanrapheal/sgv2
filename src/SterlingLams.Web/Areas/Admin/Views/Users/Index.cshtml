@@ -1,54 +1,128 @@
-@model System.Collections.Generic.List<SterlingLams.Web.Models.Domain.ApplicationUser>
+@model SterlingLams.Web.Areas.Admin.ViewModels.AdminUserListViewModel
 @{
     ViewData["Title"] = "User Management";
-    var isAdminMap = ViewBag.UserIsAdmin as System.Collections.Generic.Dictionary<string, bool> ?? new();
-    var q = ViewBag.SearchQuery as string ?? "";
-    int currentPage = ViewBag.CurrentPage;
-    int totalPages = ViewBag.TotalPages;
+    bool hasFilters = !string.IsNullOrEmpty(Model.SearchQuery) ||
+                      !string.IsNullOrEmpty(Model.RoleFilter) ||
+                      !string.IsNullOrEmpty(Model.StatusFilter);
 }
 
-<!-- Toolbar -->
-<div class="flex items-center gap-3 mb-6">
-    <form method="get" class="flex gap-2 flex-1">
-        <input type="text" name="q" value="@q"
-               placeholder="Search name or email…"
-               class="flex-1 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
-        <button type="submit"
-                class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
-            Search
-        </button>
-    </form>
+<!-- Stat cards -->
+<div class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+    @{
+        var stats = new[]
+        {
+            new { Label = "Total Users",   Value = Model.TotalUsers.ToString(),    Color = "text-neutral-800" },
+            new { Label = "Admins",        Value = Model.AdminCount.ToString(),    Color = "text-violet-600" },
+            new { Label = "Customers",     Value = Model.CustomerCount.ToString(), Color = "text-blue-600" },
+            new { Label = "Locked",        Value = Model.LockedCount.ToString(),   Color = "text-red-600" },
+            new { Label = "New This Month",Value = Model.NewThisMonth.ToString(),  Color = "text-emerald-600" },
+        };
+    }
+    @foreach (var s in stats)
+    {
+        <div class="bg-white rounded-sm border border-neutral-100 p-4">
+            <p class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">@s.Label</p>
+            <p class="text-2xl font-light @s.Color">@s.Value</p>
+        </div>
+    }
 </div>
 
-<div class="bg-white rounded-sm border border-neutral-100 overflow-hidden">
-    <table class="w-full text-sm">
+<!-- Toolbar: action buttons -->
+<div class="flex justify-end gap-2 mb-4">
+    <a asp-area="Admin" asp-controller="Users" asp-action="ExportCsv"
+       class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:border-neutral-500 transition-colors">
+        ↓ Export CSV
+    </a>
+    <a asp-area="Admin" asp-controller="Users" asp-action="Create"
+       class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+        + New User
+    </a>
+</div>
+
+<!-- Filters -->
+<form method="get" class="bg-white rounded-sm border border-neutral-100 p-4 mb-4">
+    <div class="flex flex-wrap gap-3 items-end">
+        <div class="flex-1 min-w-[200px]">
+            <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Search</label>
+            <input type="text" name="q" value="@Model.SearchQuery"
+                   placeholder="Name, email or phone…"
+                   class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+        </div>
+        <div>
+            <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Role</label>
+            <select name="role" class="border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-neutral-400 bg-white min-w-[120px]">
+                <option value="">All Roles</option>
+                <option value="admin"    selected="@(Model.RoleFilter == "admin")">Admin</option>
+                <option value="customer" selected="@(Model.RoleFilter == "customer")">Customer</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Status</label>
+            <select name="status" class="border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-neutral-400 bg-white min-w-[120px]">
+                <option value="">All Status</option>
+                <option value="active" selected="@(Model.StatusFilter == "active")">Active</option>
+                <option value="locked" selected="@(Model.StatusFilter == "locked")">Locked</option>
+            </select>
+        </div>
+        <button type="submit" class="px-6 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+            Apply Filters
+        </button>
+        @if (hasFilters)
+        {
+            <a asp-area="Admin" asp-controller="Users" asp-action="Index"
+               class="px-4 py-2 border border-neutral-300 text-neutral-500 text-xs rounded-sm hover:border-neutral-500 transition-colors">
+                ✕ Clear
+            </a>
+        }
+        <p class="text-xs text-neutral-400 ml-auto self-center">
+            <strong class="text-neutral-700">@Model.TotalCount</strong> result@(Model.TotalCount == 1 ? "" : "s")
+        </p>
+    </div>
+</form>
+
+<!-- Hidden reset-password forms (outside table) -->
+@foreach (var u in Model.Users.Where(u => u.Email != User.Identity?.Name))
+{
+    <form id="reset-@u.Id" asp-area="Admin" asp-controller="Users" asp-action="ResetPassword"
+          method="post" style="display:none">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="id" value="@u.Id" />
+        <input type="hidden" name="newPassword" id="reset-pwd-@u.Id" />
+    </form>
+}
+
+<div class="bg-white rounded-sm border border-neutral-100 overflow-x-auto">
+    <table class="w-full text-sm min-w-[800px]">
         <thead>
             <tr class="border-b border-neutral-100 bg-neutral-50">
                 <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">User</th>
-                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Phone</th>
-                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Role</th>
-                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Status</th>
-                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Joined</th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Phone</th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Role</th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Status</th>
+                <th class="text-center px-4 py-3 text-xs text-neutral-400 font-medium">Orders</th>
+                <th class="text-right px-4 py-3 text-xs text-neutral-400 font-medium">Spend</th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Last Login</th>
                 <th class="px-6 py-3"></th>
             </tr>
         </thead>
         <tbody class="divide-y divide-neutral-50">
-            @if (!Model.Any())
+            @if (!Model.Users.Any())
             {
-                <tr><td colspan="6" class="px-6 py-10 text-center text-xs text-neutral-400">No users found.</td></tr>
+                <tr><td colspan="8" class="px-6 py-10 text-center text-xs text-neutral-400">No users match your filters.</td></tr>
             }
-            @foreach (var u in Model)
+            @foreach (var u in Model.Users)
             {
-                var isAdmin = isAdminMap.ContainsKey(u.Id) && isAdminMap[u.Id];
-                var isLocked = u.LockoutEnd.HasValue && u.LockoutEnd > DateTimeOffset.UtcNow;
+                var isSelf = u.Email == User.Identity?.Name;
                 <tr class="hover:bg-neutral-50 transition-colors">
                     <td class="px-6 py-3">
-                        <p class="text-xs font-medium text-neutral-800">@u.FullName</p>
-                        <p class="text-[10px] text-neutral-400">@u.Email</p>
+                        <p class="text-xs font-medium text-neutral-800">@u.FullName @if (isSelf) { <span class="text-[9px] text-neutral-300">(You)</span> }</p>
+                        <p class="text-[10px] text-neutral-400">@u.Email
+                            @if (!u.EmailConfirmed) { <span class="text-amber-500" title="Email not confirmed">●</span> }
+                        </p>
                     </td>
-                    <td class="px-6 py-3 text-xs text-neutral-500">@(u.PhoneNumber ?? "—")</td>
-                    <td class="px-6 py-3">
-                        @if (isAdmin)
+                    <td class="px-4 py-3 text-xs text-neutral-500">@(string.IsNullOrEmpty(u.Phone) ? "—" : u.Phone)</td>
+                    <td class="px-4 py-3">
+                        @if (u.IsAdmin)
                         {
                             <span class="text-[10px] bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full">Admin</span>
                         }
@@ -57,8 +131,8 @@
                             <span class="text-[10px] bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full">Customer</span>
                         }
                     </td>
-                    <td class="px-6 py-3">
-                        @if (isLocked)
+                    <td class="px-4 py-3">
+                        @if (u.IsLocked)
                         {
                             <span class="text-[10px] bg-red-50 text-red-700 px-2 py-0.5 rounded-full">Locked</span>
                         }
@@ -67,29 +141,38 @@
                             <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Active</span>
                         }
                     </td>
-                    <td class="px-6 py-3 text-xs text-neutral-400">@u.CreatedAt.ToString("dd MMM yy")</td>
+                    <td class="px-4 py-3 text-center text-xs text-neutral-600">@u.OrderCount</td>
+                    <td class="px-4 py-3 text-right text-xs font-medium @(u.TotalSpend > 0 ? "text-emerald-600" : "text-neutral-400")">
+                        ₦@u.TotalSpend.ToString("N0")
+                    </td>
+                    <td class="px-4 py-3 text-xs text-neutral-400 whitespace-nowrap">
+                        @(u.LastLoginAt.HasValue ? u.LastLoginAt.Value.ToLocalTime().ToString("dd MMM yy") : "Never")
+                    </td>
                     <td class="px-6 py-3 text-right">
-                        @if (u.Email != User.Identity?.Name)
+                        @if (!isSelf)
                         {
-                            <div class="flex items-center justify-end gap-3">
-                                <form asp-area="Admin" asp-controller="Users" asp-action="ToggleAdmin" asp-route-id="@u.Id" method="post">
+                            <div class="flex items-center justify-end gap-3 whitespace-nowrap">
+                                <form asp-area="Admin" asp-controller="Users" asp-action="ToggleAdmin" asp-route-id="@u.Id" method="post" class="inline">
                                     @Html.AntiForgeryToken()
-                                    <button class="text-xs text-violet-500 hover:text-violet-800 transition-colors">
-                                        @(isAdmin ? "Remove Admin" : "Make Admin")
+                                    <button data-no-loading="1" class="text-xs text-violet-500 hover:text-violet-800 transition-colors">
+                                        @(u.IsAdmin ? "Remove Admin" : "Make Admin")
                                     </button>
                                 </form>
+                                <button type="button" data-no-loading="1"
+                                        onclick="resetPwd('@u.Id', '@u.Email')"
+                                        class="text-xs text-amber-500 hover:text-amber-700 transition-colors">Reset PW</button>
                                 <form asp-area="Admin" asp-controller="Users" asp-action="ToggleLock" asp-route-id="@u.Id"
-                                      method="post" onsubmit="return confirm('@(isLocked ? "Unlock" : "Lock") this user?')">
+                                      method="post" class="inline" onsubmit="return confirm('@(u.IsLocked ? "Unlock" : "Lock") @u.Email?')">
                                     @Html.AntiForgeryToken()
-                                    <button class="text-xs @(isLocked ? "text-emerald-500 hover:text-emerald-800" : "text-red-400 hover:text-red-700") transition-colors">
-                                        @(isLocked ? "Unlock" : "Lock")
+                                    <button data-no-loading="1" class="text-xs @(u.IsLocked ? "text-emerald-500 hover:text-emerald-800" : "text-red-400 hover:text-red-700") transition-colors">
+                                        @(u.IsLocked ? "Unlock" : "Lock")
                                     </button>
                                 </form>
                             </div>
                         }
                         else
                         {
-                            <span class="text-[10px] text-neutral-300">You</span>
+                            <span class="text-[10px] text-neutral-300">—</span>
                         }
                     </td>
                 </tr>
@@ -98,16 +181,29 @@
     </table>
 </div>
 
-@if (totalPages > 1)
+@if (Model.TotalPages > 1)
 {
     <div class="flex items-center justify-end gap-2 mt-4">
-        @for (int p = 1; p <= totalPages; p++)
+        @for (int p = 1; p <= Model.TotalPages; p++)
         {
             <a asp-area="Admin" asp-controller="Users" asp-action="Index"
-               asp-route-page="@p" asp-route-q="@q"
-               class="px-3 py-1.5 text-xs rounded-sm border transition-colors @(p == currentPage ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")">
+               asp-route-page="@p" asp-route-q="@Model.SearchQuery"
+               asp-route-role="@Model.RoleFilter" asp-route-status="@Model.StatusFilter"
+               class="px-3 py-1.5 text-xs rounded-sm border transition-colors @(p == Model.CurrentPage ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")">
                 @p
             </a>
         }
     </div>
+}
+
+@section Scripts {
+<script>
+function resetPwd(id, email) {
+    const pwd = prompt('Enter a new password for ' + email + ' (min 8 characters):');
+    if (pwd === null) return;            // cancelled
+    if (pwd.length < 8) { alert('Password must be at least 8 characters.'); return; }
+    document.getElementById('reset-pwd-' + id).value = pwd;
+    document.getElementById('reset-' + id).submit();
+}
+</script>
 }

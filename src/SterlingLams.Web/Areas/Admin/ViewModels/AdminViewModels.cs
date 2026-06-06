@@ -222,6 +222,50 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public List<RecentOrderRow> RecentOrders { get; set; } = new();
     }
 
+    // ─── Users ────────────────────────────────────────────────────────────
+    public class AdminUserListViewModel
+    {
+        public List<AdminUserRow> Users { get; set; } = new();
+        public string SearchQuery { get; set; } = "";
+        public string RoleFilter { get; set; } = "";    // "" | admin | customer
+        public string StatusFilter { get; set; } = "";  // "" | active | locked
+        public int CurrentPage { get; set; } = 1;
+        public int TotalPages { get; set; } = 1;
+        public int TotalCount { get; set; }
+
+        // Stat cards
+        public int TotalUsers { get; set; }
+        public int AdminCount { get; set; }
+        public int CustomerCount { get; set; }
+        public int LockedCount { get; set; }
+        public int NewThisMonth { get; set; }
+    }
+
+    public class AdminUserRow
+    {
+        public string Id { get; set; } = "";
+        public string FullName { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string? Phone { get; set; }
+        public bool IsAdmin { get; set; }
+        public bool IsLocked { get; set; }
+        public bool EmailConfirmed { get; set; }
+        public int OrderCount { get; set; }
+        public decimal TotalSpend { get; set; }
+        public DateTime JoinedAt { get; set; }
+        public DateTime? LastLoginAt { get; set; }
+    }
+
+    public class AdminCreateUserViewModel
+    {
+        public string FirstName { get; set; } = "";
+        public string LastName { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string? Phone { get; set; }
+        public string Password { get; set; } = "";
+        public bool MakeAdmin { get; set; }
+    }
+
     // ─── Audit Log ────────────────────────────────────────────────────────
     public class AdminAuditLogViewModel
     {
