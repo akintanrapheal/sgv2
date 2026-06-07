@@ -1,89 +1,196 @@
 @model SterlingLams.Web.Areas.Admin.ViewModels.AdminDiscountEditViewModel
 @{
     var isNew = Model.Id == 0;
+    ViewData["Title"] = isNew ? "New Discount" : "Edit Discount";
 }
 
-<div class="mb-6">
+<div class="flex items-center gap-3 mb-6">
     <a asp-area="Admin" asp-controller="Discounts" asp-action="Index"
-       class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors">← Back to Discount Codes</a>
+       class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors">← Discounts</a>
+    <span class="text-neutral-200">/</span>
+    <span class="text-xs text-neutral-600">@(isNew ? "New Discount" : Model.Code)</span>
 </div>
 
-<div class="max-w-lg">
+<div class="max-w-2xl">
     <form asp-area="Admin" asp-controller="Discounts" asp-action="Save" method="post" class="space-y-5">
         @Html.AntiForgeryToken()
         <input type="hidden" asp-for="Id" />
 
-        <div>
-            <label class="block text-xs text-neutral-500 mb-1">Code *</label>
-            <input asp-for="Code" required placeholder="e.g. SUMMER20"
-                   class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 font-mono uppercase" />
-            <p class="text-[10px] text-neutral-400 mt-1">Code will be auto-uppercased. Must be unique.</p>
+        <!-- ── Basics ─────────────────────────────────────────────────────── -->
+        <div class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label asp-for="Code" class="block text-xs text-neutral-500 mb-1">Code</label>
+                    <input asp-for="Code" placeholder="e.g. SUMMER20"
+                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm font-mono uppercase focus:outline-none focus:border-neutral-400" />
+                    <p class="text-[10px] text-neutral-400 mt-1">Leave blank only for automatic promos.</p>
+                </div>
+                <div>
+                    <label asp-for="Description" class="block text-xs text-neutral-500 mb-1">Description</label>
+                    <input asp-for="Description" placeholder="Shown to customer"
+                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                </div>
+            </div>
+
+            <!-- Automatic -->
+            <label class="flex items-start gap-2.5 cursor-pointer">
+                <input asp-for="IsAutomatic" type="checkbox" class="mt-0.5 rounded accent-neutral-900" />
+                <span>
+                    <span class="text-sm text-neutral-800">Automatic promotion (no code needed)</span>
+                    <span class="block text-[11px] text-neutral-400">Applies automatically at checkout for any qualifying cart — like a sale.</span>
+                </span>
+            </label>
         </div>
 
-        <div>
-            <label class="block text-xs text-neutral-500 mb-1">Description</label>
-            <input asp-for="Description"
-                   class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
-        </div>
-
-        <div class="grid grid-cols-2 gap-4">
-            <div>
-                <label class="block text-xs text-neutral-500 mb-1">Type *</label>
-                <select asp-for="Type"
-                        class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400">
-                    <option value="Percentage">Percentage (%)</option>
-                    <option value="FixedAmount">Fixed Amount (₦)</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs text-neutral-500 mb-1">Value *</label>
-                <input asp-for="Value" type="number" step="0.01" min="0" required
-                       class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
-            </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-4">
-            <div>
-                <label class="block text-xs text-neutral-500 mb-1">Minimum Order Amount (₦)</label>
-                <input asp-for="MinimumOrderAmount" type="number" step="100" min="0"
-                       placeholder="Leave blank for no minimum"
-                       class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
-            </div>
-            <div>
-                <label class="block text-xs text-neutral-500 mb-1">Max Uses</label>
-                <input asp-for="MaxUses" type="number" min="1"
-                       placeholder="Leave blank for unlimited"
-                       class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
-            </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-4">
-            <div>
-                <label class="block text-xs text-neutral-500 mb-1">Starts At</label>
-                <input asp-for="StartsAt" type="date"
-                       class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
-            </div>
-            <div>
-                <label class="block text-xs text-neutral-500 mb-1">Expires At</label>
-                <input asp-for="ExpiresAt" type="date"
-                       class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+        <!-- ── Discount type & value ──────────────────────────────────────── -->
+        <div class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
+            <h2 class="text-xs tracking-[0.15em] uppercase text-neutral-400">Discount</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label asp-for="Type" class="block text-xs text-neutral-500 mb-1">Type</label>
+                    <select asp-for="Type" id="type-select" onchange="onTypeChange()"
+                            class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 bg-white">
+                        <option value="Percentage">Percentage (%)</option>
+                        <option value="FixedAmount">Fixed Amount (₦)</option>
+                        <option value="FreeShipping">Free Shipping</option>
+                    </select>
+                </div>
+                <div id="value-field">
+                    <label asp-for="Value" class="block text-xs text-neutral-500 mb-1">Value</label>
+                    <input asp-for="Value" type="number" step="0.01" min="0"
+                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                </div>
             </div>
         </div>
 
-        <div class="flex items-center gap-2">
-            <input asp-for="IsActive" type="checkbox" class="accent-neutral-900" />
-            <label class="text-xs text-neutral-600">Active</label>
+        <!-- ── Applies to (scope) ─────────────────────────────────────────── -->
+        <div class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
+            <h2 class="text-xs tracking-[0.15em] uppercase text-neutral-400">Applies To</h2>
+            <select asp-for="Scope" id="scope-select" onchange="onScopeChange()"
+                    class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 bg-white">
+                <option value="EntireOrder">Entire order</option>
+                <option value="Categories">Specific categories</option>
+                <option value="Products">Specific products</option>
+            </select>
+
+            <!-- Categories picker -->
+            <div id="scope-categories" class="hidden">
+                <input type="text" placeholder="Search categories…" oninput="filterList('cat', this.value)"
+                       class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs mb-2 focus:outline-none focus:border-neutral-400" />
+                <div class="max-h-52 overflow-y-auto border border-neutral-100 rounded-sm p-2 space-y-0.5">
+                    @foreach (var c in Model.AllCategories)
+                    {
+                        <label class="cat-item flex items-center gap-2 px-2 py-1.5 rounded hover:bg-neutral-50 cursor-pointer" data-label="@c.Name.ToLower()">
+                            <input type="checkbox" name="categoryIds" value="@c.Id"
+                                   @(Model.SelectedCategoryIds.Contains(c.Id) ? "checked" : "")
+                                   class="rounded accent-neutral-900" />
+                            <span class="text-sm text-neutral-700">@c.Name</span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <!-- Products picker -->
+            <div id="scope-products" class="hidden">
+                <input type="text" placeholder="Search products…" oninput="filterList('prod', this.value)"
+                       class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs mb-2 focus:outline-none focus:border-neutral-400" />
+                <div class="max-h-60 overflow-y-auto border border-neutral-100 rounded-sm p-2 space-y-0.5">
+                    @foreach (var p in Model.AllProducts)
+                    {
+                        <label class="prod-item flex items-center gap-2 px-2 py-1.5 rounded hover:bg-neutral-50 cursor-pointer" data-label="@p.Name.ToLower()">
+                            <input type="checkbox" name="productIds" value="@p.Id"
+                                   @(Model.SelectedProductIds.Contains(p.Id) ? "checked" : "")
+                                   class="rounded accent-neutral-900" />
+                            <span class="text-sm text-neutral-700">@p.Name</span>
+                            <span class="text-[10px] text-neutral-400 ml-auto">₦@p.Price.ToString("N0")</span>
+                        </label>
+                    }
+                </div>
+            </div>
         </div>
 
-        <div class="flex gap-3 pt-2">
+        <!-- ── Conditions ─────────────────────────────────────────────────── -->
+        <div class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
+            <h2 class="text-xs tracking-[0.15em] uppercase text-neutral-400">Conditions & Limits</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label asp-for="MinimumOrderAmount" class="block text-xs text-neutral-500 mb-1">Minimum Order (₦)</label>
+                    <input asp-for="MinimumOrderAmount" type="number" step="100" min="0" placeholder="No minimum"
+                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                </div>
+                <div>
+                    <label asp-for="MinimumQuantity" class="block text-xs text-neutral-500 mb-1">Minimum Items</label>
+                    <input asp-for="MinimumQuantity" type="number" min="1" placeholder="No minimum"
+                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                </div>
+                <div>
+                    <label asp-for="MaxUses" class="block text-xs text-neutral-500 mb-1">Total Max Uses</label>
+                    <input asp-for="MaxUses" type="number" min="1" placeholder="Unlimited"
+                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                </div>
+                <div>
+                    <label asp-for="MaxUsesPerCustomer" class="block text-xs text-neutral-500 mb-1">Max Uses Per Customer</label>
+                    <input asp-for="MaxUsesPerCustomer" type="number" min="1" placeholder="Unlimited"
+                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                </div>
+                <div>
+                    <label asp-for="StartsAt" class="block text-xs text-neutral-500 mb-1">Starts</label>
+                    <input asp-for="StartsAt" type="date"
+                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                </div>
+                <div>
+                    <label asp-for="ExpiresAt" class="block text-xs text-neutral-500 mb-1">Expires</label>
+                    <input asp-for="ExpiresAt" type="date"
+                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-2 pt-1">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input asp-for="FirstOrderOnly" type="checkbox" class="rounded accent-neutral-900" />
+                    <span class="text-sm text-neutral-700">First order only <span class="text-[11px] text-neutral-400">(new customers)</span></span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input asp-for="IsActive" type="checkbox" class="rounded accent-neutral-900" />
+                    <span class="text-sm text-neutral-700">Active</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="flex gap-3">
             <button type="submit"
-                    class="px-6 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
-                @(isNew ? "Create Code" : "Save Changes")
+                    class="px-6 py-2.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">
+                @(isNew ? "Create Discount" : "Save Changes")
             </button>
             <a asp-area="Admin" asp-controller="Discounts" asp-action="Index"
-               class="px-6 py-2 border border-neutral-200 text-neutral-600 text-xs rounded-sm hover:border-neutral-400 transition-colors">
+               class="px-6 py-2.5 border border-neutral-200 text-neutral-600 text-sm rounded-sm hover:bg-neutral-50 transition-colors">
                 Cancel
             </a>
         </div>
     </form>
 </div>
+
+@section Scripts {
+<script>
+function onTypeChange() {
+    const t = document.getElementById('type-select').value;
+    // Free shipping has no numeric value
+    document.getElementById('value-field').style.display = (t === 'FreeShipping') ? 'none' : '';
+}
+function onScopeChange() {
+    const s = document.getElementById('scope-select').value;
+    document.getElementById('scope-categories').classList.toggle('hidden', s !== 'Categories');
+    document.getElementById('scope-products').classList.toggle('hidden', s !== 'Products');
+}
+function filterList(kind, q) {
+    const cls = kind === 'cat' ? '.cat-item' : '.prod-item';
+    const query = q.toLowerCase();
+    document.querySelectorAll(cls).forEach(el => {
+        el.style.display = el.dataset.label.includes(query) ? '' : 'none';
+    });
+}
+// init on load
+onTypeChange();
+onScopeChange();
+</script>
+}

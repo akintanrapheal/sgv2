@@ -22,6 +22,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
     public DbSet<Address> Addresses => Set<Address>();
     public DbSet<DiscountCode> DiscountCodes => Set<DiscountCode>();
+    public DbSet<DiscountCategory> DiscountCategories => Set<DiscountCategory>();
+    public DbSet<DiscountProduct> DiscountProducts => Set<DiscountProduct>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
@@ -146,6 +148,19 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             e.HasIndex(d => d.Code).IsUnique();
             e.Property(d => d.Value).HasPrecision(18, 2);
             e.Property(d => d.MinimumOrderAmount).HasPrecision(18, 2);
+
+            e.HasMany(d => d.Categories)
+             .WithOne(dc => dc.DiscountCode)
+             .HasForeignKey(dc => dc.DiscountCodeId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasMany(d => d.Products)
+             .WithOne(dp => dp.DiscountCode)
+             .HasForeignKey(dp => dp.DiscountCodeId)
+             .OnDelete(DeleteBehavior.Cascade);
         });
+
+        // ─── Order ───────────────────────────────────────────────────────────
+        builder.Entity<Order>().Property(o => o.DiscountAmount).HasPrecision(18, 2);
     }
 }

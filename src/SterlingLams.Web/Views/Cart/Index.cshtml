@@ -116,8 +116,8 @@
                 @if (Model.HasDiscount)
                 {
                     <div id="discount-line" class="flex justify-between text-sm mb-2">
-                        <span class="text-emerald-600">Discount (@Model.AppliedDiscountCode)</span>
-                        <span id="discount-amount-display" class="text-emerald-600">@Model.FormattedDiscount</span>
+                        <span class="text-emerald-600">@(Model.IsAutomaticDiscount ? "Promo" : "Discount") (@Model.DiscountDescription)</span>
+                        <span id="discount-amount-display" class="text-emerald-600">@(Model.FreeShipping && Model.DiscountAmount == 0 ? "Free shipping" : Model.FormattedDiscount)</span>
                     </div>
                 }
                 else

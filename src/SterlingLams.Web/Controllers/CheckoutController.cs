@@ -27,6 +27,7 @@ public class CheckoutController : Controller
     private readonly IERPNextService _erpNext;
     private readonly SterlingLams.Web.Services.ISettingsService _settings;
     private readonly SterlingLams.Web.Services.DeliveryZoneService _zones;
+    private readonly SterlingLams.Web.Services.IDiscountService _discounts;
 
     public CheckoutController(
         ApplicationDbContext db,
@@ -37,7 +38,8 @@ public class CheckoutController : Controller
         IWebHostEnvironment env,
         IERPNextService erpNext,
         SterlingLams.Web.Services.ISettingsService settings,
-        SterlingLams.Web.Services.DeliveryZoneService zones)
+        SterlingLams.Web.Services.DeliveryZoneService zones,
+        SterlingLams.Web.Services.IDiscountService discounts)
     {
         _db = db;
         _payment = payment;
@@ -48,6 +50,7 @@ public class CheckoutController : Controller
         _erpNext = erpNext;
         _settings = settings;
         _zones = zones;
+        _discounts = discounts;
     }
 
     [HttpGet]
@@ -56,8 +59,24 @@ public class CheckoutController : Controller
         var cart = GetCart();
         if (cart.IsEmpty) return RedirectToAction("Index", "Cart");
 
-        var stores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
         var user = await _userManager.GetUserAsync(User);
+
+        // Re-apply automatic promotion (in case the customer skipped the cart page)
+        if (string.IsNullOrEmpty(cart.AppliedDiscountCode) || cart.IsAutomaticDiscount)
+        {
+            var auto = await _discounts.FindAutomaticAsync(cart, user?.Id);
+            if (auto != null)
+            {
+                cart.AppliedDiscountCode = auto.Code;
+                cart.DiscountDescription = auto.Description;
+                cart.DiscountAmount      = auto.Amount;
+                cart.FreeShipping        = auto.FreeShipping;
+                cart.IsAutomaticDiscount = true;
+                SaveCart(cart);
+            }
+        }
+
+        var stores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
 
         // Build delivery pricing JSON for client-side zone detection
         var lagosExpressFee   = await _settings.GetDecimalAsync("shipping.lagos_abuja_express_fee",  4000);
@@ -144,10 +163,28 @@ public class CheckoutController : Controller
             return RedirectToAction("Index", "Cart");
         }
 
+        // Re-validate the discount server-side (never trust the cached cart amount)
+        decimal discountAmount = 0;
+        bool   freeShipping    = false;
+        string? discountCode   = null;
+        if (!string.IsNullOrEmpty(cart.AppliedDiscountCode))
+        {
+            var dr = cart.IsAutomaticDiscount
+                ? await _discounts.FindAutomaticAsync(cart, user.Id)
+                : await _discounts.EvaluateAsync(cart.AppliedDiscountCode, cart, user.Id);
+            if (dr != null && dr.Success)
+            {
+                discountCode   = dr.Code;
+                discountAmount = dr.Amount;
+                freeShipping   = dr.FreeShipping;
+            }
+        }
+
         // Calculate delivery fee server-side (never trust client-submitted amount)
         decimal deliveryFee = 0;
         if (vm.FulfillmentType == FulfillmentChoice.Delivery)
             deliveryFee = await _zones.CalculateFeeAsync(vm.DeliveryAddress.State, vm.SelectedDeliveryType);
+        if (freeShipping) deliveryFee = 0;   // free-shipping discount waives the fee
 
         // Build order
         var orderNumber = $"SL-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}";
@@ -162,7 +199,9 @@ public class CheckoutController : Controller
             PickupStoreId = vm.FulfillmentType == FulfillmentChoice.StorePickup ? vm.SelectedStoreId : null,
             Subtotal = cart.Subtotal,
             DeliveryFee = deliveryFee,
-            Total = cart.Subtotal - cart.DiscountAmount + deliveryFee,
+            DiscountCode = discountCode,
+            DiscountAmount = discountAmount,
+            Total = cart.Subtotal - discountAmount + deliveryFee,
             Items = cart.Items.Select(i => new OrderItem
             {
                 ProductId = i.ProductId,
@@ -252,6 +291,8 @@ public class CheckoutController : Controller
             order.PaymentProvider = _payment.ProviderName;
             await _db.SaveChangesAsync();
 
+            await IncrementDiscountUsageAsync(order);
+
             // Push stock deduction to ERPNext
             await PushOrderToERPNextAsync(order);
         }
@@ -290,11 +331,33 @@ public class CheckoutController : Controller
         order.PaymentProvider = "Simulated (Dev Only)";
         await _db.SaveChangesAsync();
 
+        await IncrementDiscountUsageAsync(order);
+
         // Push to ERPNext (SO + stock deduction)
         await PushOrderToERPNextAsync(order);
 
         HttpContext.Session.Remove(CartSessionKey);
         return RedirectToAction("Confirmation", new { orderNumber = order.OrderNumber });
+    }
+
+    /// <summary>Increments the global usage count on the discount code an order used.</summary>
+    private async Task IncrementDiscountUsageAsync(Order order)
+    {
+        if (string.IsNullOrEmpty(order.DiscountCode)) return;
+        try
+        {
+            var dc = await _db.DiscountCodes.FirstOrDefaultAsync(d => d.Code == order.DiscountCode);
+            if (dc != null)
+            {
+                dc.UsedCount++;
+                await _db.SaveChangesAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Failed to increment discount usage for {Code}: {Message}",
+                order.DiscountCode, ex.Message);
+        }
     }
 
     /// <summary>
@@ -403,4 +466,7 @@ public class CheckoutController : Controller
         if (string.IsNullOrEmpty(json)) return new CartViewModel();
         return JsonSerializer.Deserialize<CartViewModel>(json) ?? new CartViewModel();
     }
+
+    private void SaveCart(CartViewModel cart) =>
+        HttpContext.Session.SetString(CartSessionKey, JsonSerializer.Serialize(cart));
 }

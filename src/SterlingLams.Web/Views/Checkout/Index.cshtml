@@ -218,6 +218,7 @@
 const PRICING = @Html.Raw(Model.DeliveryPricingJson);
 const SUBTOTAL = @Model.Subtotal.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 const DISCOUNT = @Model.DiscountAmount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+const FREE_SHIPPING = @(Model.Cart.FreeShipping ? "true" : "false");
 
 // ── Fulfillment toggle ────────────────────────────────────────────────────
 function toggleFulfillment(type) {
@@ -292,6 +293,7 @@ function selectDeliveryType(type, fee) {
 }
 
 function updateSummary(fee) {
+    if (FREE_SHIPPING) fee = 0;   // free-shipping promo waives the delivery fee
     const total = parseFloat(SUBTOTAL) - parseFloat(DISCOUNT) + parseFloat(fee);
     document.getElementById('summary-delivery').textContent = fee === 0 ? 'Free' : '₦' + Number(fee).toLocaleString();
     document.getElementById('summary-total').textContent    = '₦' + Math.round(total).toLocaleString();

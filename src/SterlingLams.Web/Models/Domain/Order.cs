@@ -42,6 +42,9 @@ public class Order
     public decimal Total { get; set; }
     public string Currency { get; set; } = "NGN";
 
+    public string? DiscountCode { get; set; }
+    public decimal DiscountAmount { get; set; }
+
     public string? PaymentReference { get; set; }
     public string? PaymentProvider { get; set; }
     public bool IsPaid { get; set; }

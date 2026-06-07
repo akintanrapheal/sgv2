@@ -330,13 +330,46 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public int Id { get; set; }
         public string Code { get; set; } = "";
         public string? Description { get; set; }
-        public string Type { get; set; } = "Percentage";
+        public string Type { get; set; } = "Percentage";   // Percentage | FixedAmount | FreeShipping
         public decimal Value { get; set; }
+
+        public string Scope { get; set; } = "EntireOrder";  // EntireOrder | Categories | Products
+        public bool IsAutomatic { get; set; }
+
         public decimal? MinimumOrderAmount { get; set; }
+        public int? MinimumQuantity { get; set; }
         public int? MaxUses { get; set; }
+        public int? MaxUsesPerCustomer { get; set; }
+        public bool FirstOrderOnly { get; set; }
+
         public bool IsActive { get; set; } = true;
         public DateTime? StartsAt { get; set; }
         public DateTime? ExpiresAt { get; set; }
+
+        // Scope selections
+        public List<int> SelectedCategoryIds { get; set; } = new();
+        public List<int> SelectedProductIds { get; set; } = new();
+
+        // For rendering the pickers
+        public List<Category> AllCategories { get; set; } = new();
+        public List<Product> AllProducts { get; set; } = new();
+    }
+
+    public class AdminDiscountUsageViewModel
+    {
+        public DiscountCode Discount { get; set; } = null!;
+        public List<DiscountUsageRow> Usages { get; set; } = new();
+        public decimal TotalDiscounted { get; set; }
+    }
+
+    public class DiscountUsageRow
+    {
+        public string OrderNumber { get; set; } = "";
+        public int OrderId { get; set; }
+        public string CustomerName { get; set; } = "";
+        public decimal DiscountAmount { get; set; }
+        public decimal OrderTotal { get; set; }
+        public DateTime CreatedAt { get; set; }
     }
 
     // ─── Categories ───────────────────────────────────────────────────────

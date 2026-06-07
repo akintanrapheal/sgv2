@@ -1,7 +1,10 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
+using SterlingLams.Web.Models.Domain;
 using SterlingLams.Web.Models.ViewModels;
 using SterlingLams.Web.Data;
+using SterlingLams.Web.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace SterlingLams.Web.Controllers;
@@ -10,15 +13,21 @@ public class CartController : Controller
 {
     private const string CartSessionKey = "cart";
     private readonly ApplicationDbContext _db;
+    private readonly IDiscountService _discounts;
+    private readonly UserManager<ApplicationUser> _userManager;
 
-    public CartController(ApplicationDbContext db)
+    public CartController(ApplicationDbContext db, IDiscountService discounts,
+        UserManager<ApplicationUser> userManager)
     {
         _db = db;
+        _discounts = discounts;
+        _userManager = userManager;
     }
 
-    public IActionResult Index()
+    public async Task<IActionResult> Index()
     {
         var cart = GetCart();
+        await ApplyAutomaticDiscountAsync(cart);
         return View(cart);
     }
 
@@ -97,24 +106,18 @@ public class CartController : Controller
     [HttpPost]
     public async Task<IActionResult> ApplyDiscount(string code)
     {
-        if (string.IsNullOrWhiteSpace(code))
-            return Json(new { success = false, message = "Please enter a discount code." });
-
         var cart = GetCart();
-        var discount = await _db.DiscountCodes
-            .FirstOrDefaultAsync(d => d.Code == code.Trim().ToUpper());
+        var userId = _userManager.GetUserId(User);
 
-        if (discount == null || !discount.IsValid(cart.Subtotal))
-        {
-            string reason = "Invalid or expired discount code.";
-            if (discount != null && discount.MinimumOrderAmount.HasValue && cart.Subtotal < discount.MinimumOrderAmount.Value)
-                reason = $"Minimum order of ₦{discount.MinimumOrderAmount.Value:N0} required.";
-            return Json(new { success = false, message = reason });
-        }
+        var result = await _discounts.EvaluateAsync(code, cart, userId);
+        if (!result.Success)
+            return Json(new { success = false, message = result.Error });
 
-        cart.AppliedDiscountCode = discount.Code;
-        cart.DiscountDescription = discount.Description ?? discount.Code;
-        cart.DiscountAmount = discount.CalculateDiscount(cart.Subtotal);
+        cart.AppliedDiscountCode  = result.Code;
+        cart.DiscountDescription  = result.Description;
+        cart.DiscountAmount       = result.Amount;
+        cart.FreeShipping         = result.FreeShipping;
+        cart.IsAutomaticDiscount  = false;
         SaveCart(cart);
 
         return Json(new
@@ -123,6 +126,7 @@ public class CartController : Controller
             code = cart.AppliedDiscountCode,
             description = cart.DiscountDescription,
             discount = cart.FormattedDiscount,
+            freeShipping = cart.FreeShipping,
             total = cart.FormattedTotal
         });
     }
@@ -134,8 +138,46 @@ public class CartController : Controller
         cart.AppliedDiscountCode = null;
         cart.DiscountDescription = null;
         cart.DiscountAmount = 0;
+        cart.FreeShipping = false;
+        cart.IsAutomaticDiscount = false;
         SaveCart(cart);
         return Json(new { success = true, total = cart.FormattedTotal });
+    }
+
+    /// <summary>
+    /// Applies the best automatic (no-code) promotion if the customer hasn't already
+    /// applied a manual code. Re-evaluates each load so it stays correct as the cart changes.
+    /// </summary>
+    private async Task ApplyAutomaticDiscountAsync(CartViewModel cart)
+    {
+        if (cart.IsEmpty) return;
+
+        // Don't override a manually-applied code
+        if (!string.IsNullOrEmpty(cart.AppliedDiscountCode) && !cart.IsAutomaticDiscount)
+            return;
+
+        var userId = _userManager.GetUserId(User);
+        var auto = await _discounts.FindAutomaticAsync(cart, userId);
+
+        if (auto != null)
+        {
+            cart.AppliedDiscountCode = auto.Code;
+            cart.DiscountDescription = auto.Description;
+            cart.DiscountAmount      = auto.Amount;
+            cart.FreeShipping        = auto.FreeShipping;
+            cart.IsAutomaticDiscount = true;
+            SaveCart(cart);
+        }
+        else if (cart.IsAutomaticDiscount)
+        {
+            // A previously auto-applied promo no longer qualifies — clear it
+            cart.AppliedDiscountCode = null;
+            cart.DiscountDescription = null;
+            cart.DiscountAmount = 0;
+            cart.FreeShipping = false;
+            cart.IsAutomaticDiscount = false;
+            SaveCart(cart);
+        }
     }
 
     // Partial for mini-cart in nav dropdown

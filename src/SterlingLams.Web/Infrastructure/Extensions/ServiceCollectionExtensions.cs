@@ -45,6 +45,9 @@ public static class ServiceCollectionExtensions
         // ─── Roles & Permissions ───────────────────────────────────────────────
         services.AddScoped<IPermissionService, PermissionService>();
 
+        // ─── Discounts ──────────────────────────────────────────────────────────
+        services.AddScoped<IDiscountService, DiscountService>();
+
         // ─── Payment ─────────────────────────────────────────────────────────
         var paymentProvider = configuration["Payment:Provider"] ?? "Paystack";
 

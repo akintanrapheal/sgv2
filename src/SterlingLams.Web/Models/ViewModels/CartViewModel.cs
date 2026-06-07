@@ -28,7 +28,9 @@ public class CartViewModel
     public string? AppliedDiscountCode { get; set; }
     public string? DiscountDescription { get; set; }
     public decimal DiscountAmount { get; set; }
-    public bool HasDiscount => DiscountAmount > 0;
+    public bool FreeShipping { get; set; }
+    public bool IsAutomaticDiscount { get; set; }
+    public bool HasDiscount => DiscountAmount > 0 || FreeShipping;
     public string FormattedDiscount => $"-₦{DiscountAmount:N0}";
 
     public decimal Total => Subtotal - DiscountAmount;
