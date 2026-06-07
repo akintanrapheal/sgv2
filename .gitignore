@@ -28,3 +28,6 @@ appsettings.Local.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Local secrets — never commit
+appsettings.Development.json
