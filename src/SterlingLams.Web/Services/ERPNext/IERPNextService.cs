@@ -16,38 +16,32 @@ public interface IERPNextService
     /// </summary>
     Task<Dictionary<string, Dictionary<string, int>>> GetInventoryByWarehouseAsync(string[] itemCodes);
 
-    /// <summary>Creates a Sales Order in ERPNext and returns its name (SO-XXXX).</summary>
-    Task<string> CreateSalesOrderAsync(ERPNextCreateSalesOrderRequest request);
-
-    /// <summary>Submits (confirms) a Sales Order by setting docstatus to 1.</summary>
-    Task<bool> SubmitSalesOrderAsync(string salesOrderName);
-
     /// <summary>
-    /// Creates and immediately submits a Stock Entry (Material Issue) to deduct stock
-    /// from the specified warehouse. Returns the Stock Entry name (e.g. STE-00001).
+    /// Creates and submits a Sales Invoice with update_stock=1 — the same way ERPNext POS works.
+    /// This records the sale AND deducts stock in one document, keeping website and POS in sync.
+    /// Returns the invoice name (SINV-XXXX).
     /// </summary>
-    Task<string> CreateMaterialIssueAsync(List<ERPNextMaterialIssueItem> items, string? reference = null);
+    Task<string> CreateSalesInvoiceAsync(ERPNextSalesInvoiceRequest request);
 }
 
-public class ERPNextCreateSalesOrderRequest
+public class ERPNextSalesInvoiceRequest
 {
-    public string Customer { get; set; } = string.Empty;
-    public string DeliveryDate { get; set; } = DateTime.UtcNow.AddDays(7).ToString("yyyy-MM-dd");
-    public List<ERPNextSalesOrderItem> Items { get; set; } = new();
+    /// <summary>ERPNext Customer name — use "Walk-In Customer" for website orders.</summary>
+    public string Customer { get; set; } = "Walk-In Customer";
+
+    /// <summary>Website order number stored in ERPNext PO No field for easy cross-reference.</summary>
+    public string PoNo { get; set; } = string.Empty;
+
+    /// <summary>Human-readable remarks: customer name, email, fulfillment type.</summary>
+    public string Remarks { get; set; } = string.Empty;
+
+    public List<ERPNextInvoiceItem> Items { get; set; } = new();
 }
 
-public class ERPNextSalesOrderItem
+public class ERPNextInvoiceItem
 {
     public string ItemCode { get; set; } = string.Empty;
     public string Warehouse { get; set; } = string.Empty;
     public decimal Qty { get; set; }
     public decimal Rate { get; set; }
-}
-
-public class ERPNextMaterialIssueItem
-{
-    public string ItemCode { get; set; } = string.Empty;
-    public string SourceWarehouse { get; set; } = string.Empty;
-    public decimal Qty { get; set; }
-    public decimal BasicRate { get; set; }
 }

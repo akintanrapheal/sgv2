@@ -12,6 +12,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<ProductVariant> ProductVariants => Set<ProductVariant>();
     public DbSet<ProductImage> ProductImages => Set<ProductImage>();
     public DbSet<ProductTag> ProductTags => Set<ProductTag>();
+    public DbSet<ProductAttribute> ProductAttributes => Set<ProductAttribute>();
+    public DbSet<ProductAttributeValue> ProductAttributeValues => Set<ProductAttributeValue>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Store> Stores => Set<Store>();
     public DbSet<StoreInventory> StoreInventories => Set<StoreInventory>();
@@ -21,6 +23,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Address> Addresses => Set<Address>();
     public DbSet<DiscountCode> DiscountCodes => Set<DiscountCode>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
+    public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -56,7 +60,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<Store>(e =>
         {
             e.HasIndex(s => s.Slug).IsUnique();
-            e.HasIndex(s => s.ErpNextWarehouse).IsUnique();
+            // Only enforce uniqueness on non-empty warehouse codes
+            e.HasIndex(s => s.ErpNextWarehouse)
+             .IsUnique()
+             .HasFilter("\"ErpNextWarehouse\" <> ''");
         });
 
         // ─── StoreInventory ─────────────────────────────────────────────────
@@ -97,10 +104,41 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<StoreInventory>()
             .Ignore(si => si.AvailableQuantity);
 
+        // ─── ProductAttribute ────────────────────────────────────────────────────
+        builder.Entity<ProductAttribute>(e =>
+        {
+            e.HasIndex(a => a.Slug).IsUnique();
+            e.HasMany(a => a.Values)
+             .WithOne(v => v.Attribute)
+             .HasForeignKey(v => v.AttributeId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── ProductVariant ──────────────────────────────────────────────────────
+        builder.Entity<ProductVariant>(e =>
+        {
+            e.Property(v => v.PriceAdjustment).HasPrecision(18, 2);
+            e.HasMany(v => v.AttributeValues)
+             .WithMany(av => av.Variants)
+             .UsingEntity("ProductVariantAttributeValue");
+        });
+
         // ─── Product computed properties ────────────────────────────────────
         builder.Entity<Product>()
             .Ignore(p => p.TotalStock)
             .Ignore(p => p.IsAvailable);
+
+        // ─── SiteSetting ─────────────────────────────────────────────────────
+        builder.Entity<SiteSetting>(e =>
+        {
+            e.HasIndex(s => s.Key).IsUnique();
+        });
+
+        // ─── RolePermission ──────────────────────────────────────────────────
+        builder.Entity<RolePermission>(e =>
+        {
+            e.HasIndex(rp => new { rp.RoleName, rp.Section }).IsUnique();
+        });
 
         // ─── DiscountCode ────────────────────────────────────────────────────
         builder.Entity<DiscountCode>(e =>

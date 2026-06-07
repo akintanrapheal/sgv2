@@ -22,7 +22,7 @@ public class Order
 {
     public int Id { get; set; }
     public string OrderNumber { get; set; } = string.Empty;
-    public string? ErpNextSalesOrderName { get; set; }
+    public string? ErpNextInvoiceName { get; set; }
 
     public string UserId { get; set; } = string.Empty;
     public ApplicationUser User { get; set; } = null!;
@@ -47,6 +47,7 @@ public class Order
     public bool IsPaid { get; set; }
     public DateTime? PaidAt { get; set; }
 
+    public string? TrackingNumber { get; set; }
     public string? Notes { get; set; }
     public string? AdminNotes { get; set; }
 

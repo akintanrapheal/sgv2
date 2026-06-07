@@ -74,22 +74,55 @@
                 </div>
             }
 
-            <!-- ─── Variants ──────────────────────────────────────────── -->
+            <!-- ─── Variants / Option Selector ───────────────────────── -->
             @if (Model.Variants.Any())
             {
-                <div class="mb-8">
-                    <p class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-3">Size</p>
-                    <div class="flex flex-wrap gap-2">
-                        @foreach (var v in Model.Variants)
-                        {
-                            <button type="button"
-                                    class="variant-btn border border-neutral-300 text-xs px-4 py-2 hover:border-neutral-900 hover:text-neutral-900 transition-colors"
-                                    data-variant-id="@v.Id">
-                                @(v.Size ?? v.Name)
-                            </button>
-                        }
-                    </div>
+                var attributeNames = Model.Variants
+                    .SelectMany(v => v.AttributeLabels.Select(a => a.AttributeName))
+                    .Distinct().ToList();
+
+                <div class="mb-8 space-y-4" id="variant-selectors">
+                    @foreach (var attrName in attributeNames)
+                    {
+                        var distinctValues = Model.Variants
+                            .SelectMany(v => v.AttributeLabels.Where(a => a.AttributeName == attrName))
+                            .GroupBy(a => a.Value)
+                            .Select(g => g.First())
+                            .ToList();
+
+                        <div>
+                            <label class="block text-xs tracking-[0.2em] uppercase text-neutral-500 mb-2">
+                                @attrName
+                            </label>
+                            <select class="attr-select w-full border border-neutral-300 px-4 py-3 text-sm text-neutral-700
+                                           focus:outline-none focus:border-neutral-900 bg-white transition-colors appearance-none
+                                           cursor-pointer"
+                                    data-attr="@attrName"
+                                    onchange="onAttrSelectChange('@attrName', this.value)">
+                                <option value="">— Select @attrName —</option>
+                                @foreach (var val in distinctValues)
+                                {
+                                    <option value="@val.Value">@val.Value</option>
+                                }
+                            </select>
+                        </div>
+                    }
+
+                    <input type="hidden" id="selected-variant-id" value="" />
+                    <p id="variant-price-adj" class="text-xs text-neutral-400 hidden"></p>
+                    <p id="select-colour-prompt" class="text-xs text-amber-600 hidden">
+                        Please select all options before adding to bag.
+                    </p>
                 </div>
+
+                <script id="variants-data" type="application/json">
+                    @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Variants.Select(v => new {
+                        id = v.Id,
+                        name = v.Name,
+                        priceAdjustment = v.PriceAdjustment,
+                        attributes = v.AttributeLabels.ToDictionary(a => a.AttributeName, a => a.Value)
+                    })))
+                </script>
             }
 
             <!-- ─── Actions ───────────────────────────────────────────── -->
@@ -108,6 +141,7 @@
                 <div class="flex gap-3">
                     <button id="add-to-cart"
                             data-product-id="@Model.Id"
+                            data-has-variants="@(Model.Variants.Any() ? "true" : "false")"
                             @(!Model.IsAvailableAnywhere ? "disabled" : "")
                             class="flex-1 bg-neutral-900 text-white text-xs tracking-[0.2em] uppercase py-4 px-8 hover:bg-neutral-700 transition-colors duration-300 disabled:opacity-40 disabled:cursor-not-allowed">
                         @(Model.IsAvailableAnywhere ? "Add to Bag" : "Out of Stock")
@@ -133,30 +167,21 @@
             </a>
 
             <!-- ─── Specifications ─────────────────────────────────────── -->
-            @if (!string.IsNullOrEmpty(Model.Metal) || !string.IsNullOrEmpty(Model.GemstoneType) || !string.IsNullOrEmpty(Model.Carat))
+            @{
+                // Only show static colour detail if there are NO variants (variants show it interactively above)
+                var showColourDetail = !Model.Variants.Any() && !string.IsNullOrEmpty(Model.Metal);
+                var showDetails = showColourDetail || !string.IsNullOrEmpty(Model.Weight);
+            }
+            @if (showDetails)
             {
                 <div class="border-t border-neutral-100 pt-8">
                     <p class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-4">Details</p>
                     <dl class="space-y-2">
-                        @if (!string.IsNullOrEmpty(Model.Metal))
+                        @if (showColourDetail)
                         {
                             <div class="flex justify-between text-sm">
-                                <dt class="text-neutral-500 font-light">Metal</dt>
+                                <dt class="text-neutral-500 font-light">Colour</dt>
                                 <dd class="text-neutral-800">@Model.Metal</dd>
-                            </div>
-                        }
-                        @if (!string.IsNullOrEmpty(Model.GemstoneType))
-                        {
-                            <div class="flex justify-between text-sm">
-                                <dt class="text-neutral-500 font-light">Gemstone</dt>
-                                <dd class="text-neutral-800">@Model.GemstoneType</dd>
-                            </div>
-                        }
-                        @if (!string.IsNullOrEmpty(Model.Carat))
-                        {
-                            <div class="flex justify-between text-sm">
-                                <dt class="text-neutral-500 font-light">Carat</dt>
-                                <dd class="text-neutral-800">@Model.Carat</dd>
                             </div>
                         }
                         @if (!string.IsNullOrEmpty(Model.Weight))
@@ -213,14 +238,53 @@
         if (qty < 10) { qty++; qtyDisplay.textContent = qty; }
     });
 
-    // ── Variant selection ─────────────────────────────────────────────────
-    document.querySelectorAll('.variant-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('.variant-btn').forEach(b => b.classList.remove('border-neutral-900', 'bg-neutral-900', 'text-white'));
-            btn.classList.add('border-neutral-900', 'bg-neutral-900', 'text-white');
-            selectedVariantId = btn.dataset.variantId;
-        });
-    });
+    // ── Dropdown-based variant selection ──────────────────────────────────
+    const variantsDataEl = document.getElementById('variants-data');
+    const variants    = variantsDataEl ? JSON.parse(variantsDataEl.textContent) : [];
+    const selectedAttrs = {};
+    const hasVariants = document.getElementById('add-to-cart')?.dataset.hasVariants === 'true';
+
+    function onAttrSelectChange(attr, val) {
+        if (val) selectedAttrs[attr] = val;
+        else     delete selectedAttrs[attr];
+
+        document.getElementById('select-colour-prompt')?.classList.add('hidden');
+
+        // Count how many selects still need a value
+        const allSelects = document.querySelectorAll('.attr-select');
+        const allPicked  = [...allSelects].every(s => s.value !== '');
+
+        if (allPicked) {
+            const match = variants.find(v =>
+                Object.entries(selectedAttrs).every(([k, v2]) => v.attributes[k] === v2)
+            );
+            if (match) {
+                selectedVariantId = match.id;
+                const adjEl = document.getElementById('variant-price-adj');
+                if (match.priceAdjustment && match.priceAdjustment !== 0 && adjEl) {
+                    const sign = match.priceAdjustment > 0 ? '+' : '';
+                    adjEl.textContent = `${sign}₦${Math.abs(match.priceAdjustment).toLocaleString()} for this option`;
+                    adjEl.classList.remove('hidden');
+                } else if (adjEl) {
+                    adjEl.classList.add('hidden');
+                }
+            } else {
+                selectedVariantId = null; // combination not available
+            }
+        } else {
+            selectedVariantId = null;
+        }
+    }
+
+    // Validate all dropdowns are selected before add-to-cart
+    document.getElementById('add-to-cart')?.addEventListener('click', function(e) {
+        if (hasVariants && !selectedVariantId) {
+            e.stopImmediatePropagation();
+            document.getElementById('select-colour-prompt')?.classList.remove('hidden');
+            document.getElementById('variant-selectors')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            return false;
+        }
+    }, true);
 
     // ── Add to cart ───────────────────────────────────────────────────────
     document.getElementById('add-to-cart')?.addEventListener('click', async (e) => {

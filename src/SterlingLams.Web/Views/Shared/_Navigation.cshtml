@@ -1,13 +1,21 @@
+@using SterlingLams.Web.Services
+@inject ISettingsService SettingsService
 @{
     var cartCount = ViewBag.CartCount ?? 0;
     var wishlistCount = ViewBag.WishlistCount ?? 0;
+    var announcementEnabled = await SettingsService.GetBoolAsync("announcement.enabled", true);
+    var announcementText    = await SettingsService.GetAsync("announcement.text", "COMPLIMENTARY SHIPPING ON ORDERS OVER N150,000  |  IN-STORE PICKUP AVAILABLE");
+    var announcementBg      = await SettingsService.GetAsync("announcement.bg_color", "bg-neutral-900");
 }
 
 <header class="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-neutral-100">
     <!-- Top bar -->
-    <div class="bg-neutral-900 text-white text-xs text-center py-2 tracking-widest font-light">
-        COMPLIMENTARY SHIPPING ON ORDERS OVER ₦150,000 &nbsp;|&nbsp; IN-STORE PICKUP AVAILABLE
-    </div>
+    @if (announcementEnabled)
+    {
+        <div class="@announcementBg text-white text-xs text-center py-2 tracking-widest font-light">
+            @announcementText
+        </div>
+    }
 
     <!-- Row 1: Brand name + icons -->
     <div class="relative flex items-center justify-center px-6 py-4">
@@ -168,6 +176,6 @@
     </div>
 </div>
 
-<!-- Spacer for fixed nav -->
-<div style="height: 90px;" class="md:hidden" aria-hidden="true"></div>
-<div style="height: 126px;" class="hidden md:block" aria-hidden="true"></div>
+<!-- Spacer for fixed nav (shrinks when announcement bar is hidden) -->
+<div style="height: @(announcementEnabled ? "90px" : "62px");" class="md:hidden" aria-hidden="true"></div>
+<div style="height: @(announcementEnabled ? "126px" : "98px");" class="hidden md:block" aria-hidden="true"></div>

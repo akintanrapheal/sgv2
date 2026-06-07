@@ -71,16 +71,7 @@ public class WebhooksController : ControllerBase
                 order.PaymentProvider = "Paystack";
                 await _db.SaveChangesAsync();
 
-                // Submit to ERPNext async (fire & forget with error logging)
-                if (!string.IsNullOrEmpty(order.ErpNextSalesOrderName))
-                {
-                    var soName = order.ErpNextSalesOrderName;
-                    _ = Task.Run(async () =>
-                    {
-                        try { await _erpNext.SubmitSalesOrderAsync(soName); }
-                        catch (Exception ex) { _logger.LogError(ex, "Failed to submit ERPNext sales order for {OrderNumber}", order.OrderNumber); }
-                    });
-                }
+                // ERPNext invoice is created and submitted by CheckoutController — nothing extra needed here
 
                 _logger.LogInformation("Order {OrderNumber} marked as paid via webhook", order.OrderNumber);
             }

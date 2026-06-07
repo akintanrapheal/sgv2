@@ -87,51 +87,47 @@ public class ERPNextService : IERPNextService
         return result;
     }
 
-    // ─── Sales Orders ────────────────────────────────────────────────────────
+    // ─── Sales Invoice (matches ERPNext POS flow) ────────────────────────────
 
-    public async Task<string> CreateSalesOrderAsync(ERPNextCreateSalesOrderRequest request)
+    public async Task<string> CreateSalesInvoiceAsync(ERPNextSalesInvoiceRequest request)
     {
-        var response = await _http.PostAsJsonAsync("/api/resource/Sales Order", request, _json);
-        response.EnsureSuccessStatusCode();
-
-        var result = await response.Content.ReadFromJsonAsync<ERPNextSingleResponse<ERPNextNamedDocument>>(_json)
-            ?? throw new InvalidOperationException("Empty ERPNext response when creating Sales Order.");
-        return result.Data.Name;
-    }
-
-    public async Task<bool> SubmitSalesOrderAsync(string salesOrderName)
-    {
-        var url = $"/api/resource/Sales Order/{Uri.EscapeDataString(salesOrderName)}";
-        var body = new { docstatus = 1 };
-        var response = await _http.PutAsJsonAsync(url, body, _json);
-        return response.IsSuccessStatusCode;
-    }
-
-    // ─── Stock Entries ───────────────────────────────────────────────────────
-
-    public async Task<string> CreateMaterialIssueAsync(List<ERPNextMaterialIssueItem> items, string? reference = null)
-    {
+        // Step 1: create as draft
         var body = new
         {
-            stock_entry_type = "Material Issue",
-            company = "Sterlin Glams",
-            docstatus = 1,
-            remarks = reference ?? "Web order",
-            items = items.Select(i => new
+            customer      = request.Customer,
+            update_stock  = 1,          // deducts stock on submit — same as POS
+            po_no         = request.PoNo,
+            remarks       = request.Remarks,
+            items         = request.Items.Select(i => new
             {
                 item_code = i.ItemCode,
-                s_warehouse = i.SourceWarehouse,
-                qty = i.Qty,
-                basic_rate = i.BasicRate
+                warehouse = i.Warehouse,
+                qty       = i.Qty,
+                rate      = i.Rate,
             }).ToArray()
         };
 
-        var response = await _http.PostAsJsonAsync("/api/resource/Stock Entry", body);
-        response.EnsureSuccessStatusCode();
+        var createResp = await _http.PostAsJsonAsync("/api/resource/Sales Invoice", body, _json);
+        if (!createResp.IsSuccessStatusCode)
+        {
+            var err = await createResp.Content.ReadAsStringAsync();
+            throw new ERPNextException($"Failed to create Sales Invoice: {createResp.StatusCode} — {err}");
+        }
 
-        var result = await response.Content.ReadFromJsonAsync<ERPNextSingleResponse<ERPNextNamedDocument>>(_json)
-            ?? throw new InvalidOperationException("Empty response from ERPNext when creating Stock Entry.");
-        return result.Data.Name;
+        var created = await createResp.Content.ReadFromJsonAsync<ERPNextSingleResponse<ERPNextNamedDocument>>(_json)
+            ?? throw new InvalidOperationException("Empty ERPNext response when creating Sales Invoice.");
+        var invoiceName = created.Data.Name;
+
+        // Step 2: submit (sets docstatus = 1, triggers stock deduction)
+        var submitUrl = $"/api/resource/Sales Invoice/{Uri.EscapeDataString(invoiceName)}";
+        var submitResp = await _http.PutAsJsonAsync(submitUrl, new { docstatus = 1 }, _json);
+        if (!submitResp.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Sales Invoice {Invoice} created but submit failed: {Status}",
+                invoiceName, submitResp.StatusCode);
+        }
+
+        return invoiceName;
     }
 }
 

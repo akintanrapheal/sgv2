@@ -12,6 +12,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 {
     public class OrdersController : AdminBaseController
     {
+        protected override string Section => "Orders";
+
         private readonly ApplicationDbContext _db;
         private const int PageSize = 25;
 
@@ -57,13 +59,23 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 })
                 .ToListAsync();
 
+            // Count per status for tab badges
+            var allStatuses = new[] { "Pending","Confirmed","Processing","ReadyForPickup","Shipped","Delivered","Cancelled" };
+            var counts = await _db.Orders
+                .GroupBy(o => o.Status)
+                .Select(g => new { Status = g.Key.ToString(), Count = g.Count() })
+                .ToListAsync();
+            var statusCounts = allStatuses.ToDictionary(s => s, s => counts.FirstOrDefault(c => c.Status == s)?.Count ?? 0);
+            statusCounts[""] = await _db.Orders.CountAsync(); // "All" tab
+
             var vm = new AdminOrderListViewModel
             {
                 Orders = orders,
                 StatusFilter = status,
                 SearchQuery = q,
                 CurrentPage = page,
-                TotalPages = (int)Math.Ceiling(total / (double)PageSize)
+                TotalPages = (int)Math.Ceiling(total / (double)PageSize),
+                StatusCounts = statusCounts
             };
 
             return View(vm);
@@ -101,9 +113,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             if (Enum.TryParse<OrderStatus>(status, out var newStatus))
             {
+                var old = order.Status.ToString();
                 order.Status = newStatus;
                 order.UpdatedAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync();
+                await LogAsync("Update", "Order", order.Id.ToString(),
+                    $"Order {order.OrderNumber} status: {old} → {status}");
                 TempData["Success"] = $"Order {order.OrderNumber} updated to {status}.";
             }
 
@@ -122,6 +137,24 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             await _db.SaveChangesAsync();
 
             TempData["Success"] = "Note saved.";
+            return RedirectToAction(nameof(Detail), new { id });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> SaveTracking(int id, string trackingNumber)
+        {
+            var order = await _db.Orders.FindAsync(id);
+            if (order == null) return NotFound();
+
+            order.TrackingNumber = trackingNumber?.Trim();
+            order.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            await LogAsync("Update", "Order", order.Id.ToString(),
+                $"Set tracking number for {order.OrderNumber}: {order.TrackingNumber}");
+
+            TempData["Success"] = "Tracking number saved.";
             return RedirectToAction(nameof(Detail), new { id });
         }
 
@@ -146,6 +179,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
 
             await _db.SaveChangesAsync();
+            await LogAsync("Update", "Order", null,
+                $"Bulk updated {orders.Count} order(s) to {status}");
             TempData["Success"] = $"{orders.Count} order(s) updated to {status}.";
             return RedirectToAction(nameof(Index));
         }
@@ -178,7 +213,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     Fulfillment = o.FulfillmentType.ToString(),
                     o.IsPaid,
                     PaymentRef = o.PaymentReference ?? "",
-                    o.ErpNextSalesOrderName,
+                    o.ErpNextInvoiceName,
                     CreatedAt = o.CreatedAt.ToString("yyyy-MM-dd HH:mm")
                 })
                 .ToListAsync();
@@ -188,8 +223,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             foreach (var o in orders)
             {
-                sb.AppendLine($"\"{o.OrderNumber}\",\"{o.CustomerName}\",\"{o.CustomerEmail}\",{o.Total},{o.Subtotal},{o.DeliveryFee},{o.Status},{o.Fulfillment},{o.IsPaid},\"{o.PaymentRef}\",\"{o.ErpNextSalesOrderName ?? ""}\",\"{o.CreatedAt}\"");
+                sb.AppendLine($"\"{o.OrderNumber}\",\"{o.CustomerName}\",\"{o.CustomerEmail}\",{o.Total},{o.Subtotal},{o.DeliveryFee},{o.Status},{o.Fulfillment},{o.IsPaid},\"{o.PaymentRef}\",\"{o.ErpNextInvoiceName ?? ""}\",\"{o.CreatedAt}\"");
             }
+
+            await LogAsync("Export", "Order", null, $"Exported {orders.Count} order(s) to CSV");
 
             var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
             return File(bytes, "text/csv", $"orders_{DateTime.UtcNow:yyyyMMdd}.csv");

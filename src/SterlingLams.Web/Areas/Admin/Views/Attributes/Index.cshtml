@@ -1,0 +1,71 @@
+@model SterlingLams.Web.Areas.Admin.ViewModels.AdminAttributeListViewModel
+@{
+    ViewData["Title"] = "Attributes";
+}
+
+<div class="flex items-center justify-between mb-6">
+    <p class="text-xs text-neutral-400">Define reusable attributes (Colour, Alphabet, Length…) and their values. Assign them to products on the Variants tab.</p>
+    <a asp-area="Admin" asp-controller="Attributes" asp-action="Create"
+       class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+        + New Attribute
+    </a>
+</div>
+
+@if (!Model.Attributes.Any())
+{
+    <div class="bg-white border border-neutral-100 rounded-sm p-12 text-center">
+        <p class="text-neutral-400 text-sm">No attributes yet. Create your first one above.</p>
+        <p class="text-neutral-300 text-xs mt-1">Suggested: Colour, Alphabet, Combo, Length, Measurement</p>
+    </div>
+}
+else
+{
+    <div class="space-y-3">
+        @foreach (var attr in Model.Attributes)
+        {
+            <div class="bg-white border border-neutral-100 rounded-sm p-5">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center gap-3">
+                        <span class="text-sm font-medium text-neutral-800">@attr.Name</span>
+                        <span class="text-[10px] font-mono text-neutral-400 bg-neutral-50 px-2 py-0.5 rounded">@attr.Slug</span>
+                        @if (!attr.IsActive)
+                        {
+                            <span class="text-[10px] bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Inactive</span>
+                        }
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <a asp-area="Admin" asp-controller="Attributes" asp-action="Edit" asp-route-id="@attr.Id"
+                           class="text-xs text-neutral-500 hover:text-neutral-900 transition-colors">Edit</a>
+                        <form asp-area="Admin" asp-controller="Attributes" asp-action="Delete"
+                              asp-route-id="@attr.Id" method="post" class="inline"
+                              onsubmit="return confirm('Delete attribute @attr.Name and all its values?')">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="text-xs text-rose-400 hover:text-rose-700 transition-colors">Delete</button>
+                        </form>
+                    </div>
+                </div>
+
+                @if (attr.Values.Any())
+                {
+                    <div class="flex flex-wrap gap-2">
+                        @foreach (var val in attr.Values)
+                        {
+                            <span class="inline-flex items-center gap-1.5 text-xs border border-neutral-200 px-3 py-1 rounded-full text-neutral-700">
+                                @if (!string.IsNullOrEmpty(val.ColorHex))
+                                {
+                                    <span class="w-3 h-3 rounded-full border border-neutral-200 inline-block flex-shrink-0"
+                                          style="background-color: @val.ColorHex"></span>
+                                }
+                                @val.Value
+                            </span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="text-xs text-neutral-300 italic">No values yet — click Edit to add.</p>
+                }
+            </div>
+        }
+    </div>
+}

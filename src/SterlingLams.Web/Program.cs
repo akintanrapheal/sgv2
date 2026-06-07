@@ -133,6 +133,17 @@ app.MapControllers(); // API controllers (WebhooksController)
 try
 {
     await SterlingLams.Web.Infrastructure.SeedData.SeedAsync(app.Services);
+
+    // Seed product attributes (Colour, Alphabet, Size, Length, Combo) + admin user
+    using var attrScope   = app.Services.CreateScope();
+    var attrDb            = attrScope.ServiceProvider.GetRequiredService<SterlingLams.Web.Data.ApplicationDbContext>();
+    var attrLogger        = attrScope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var attrUserManager   = attrScope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+    var attrRoleManager   = attrScope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    await SterlingLams.Web.Infrastructure.RoleSeedData.SeedAsync(attrRoleManager, attrDb, attrLogger);
+    await SterlingLams.Web.Infrastructure.AttributeSeedData.SeedAdminUserAsync(attrUserManager, attrRoleManager, attrLogger);
+    await SterlingLams.Web.Infrastructure.AttributeSeedData.SeedAsync(attrDb, attrLogger);
+    await SterlingLams.Web.Infrastructure.SettingsSeedData.SeedAsync(attrDb, attrLogger);
 }
 catch (Exception ex)
 {

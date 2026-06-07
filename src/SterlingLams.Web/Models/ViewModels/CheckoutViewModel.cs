@@ -15,9 +15,20 @@ public class CheckoutViewModel
     // Delivery
     public DeliveryAddressViewModel DeliveryAddress { get; set; } = new();
 
+    // Delivery zone & type selection
+    public string SelectedDeliveryType { get; set; } = "Standard";
+    public List<DeliveryOptionViewModel> DeliveryOptions { get; set; } = new();
+
     // Payment
     public string PaymentProvider { get; set; } = "Paystack";
     public string? PaystackPublicKey { get; set; }
+
+    // All Nigerian states + Lagos LGAs for dropdowns (passed from controller)
+    public string[] NigerianStates { get; set; } = Array.Empty<string>();
+    public string[] LagosLGAs { get; set; } = Array.Empty<string>();
+
+    // Pricing data serialized to JSON for client-side zone detection
+    public string DeliveryPricingJson { get; set; } = "{}";
 
     // Totals
     public decimal Subtotal { get; set; }
@@ -31,6 +42,15 @@ public class CheckoutViewModel
     public string FormattedDeliveryFee => DeliveryFee == 0 ? "Free" : $"₦{DeliveryFee:N0}";
     public string FormattedDiscount => $"-₦{DiscountAmount:N0}";
     public bool HasDiscount => DiscountAmount > 0;
+}
+
+public class DeliveryOptionViewModel
+{
+    public string Type { get; set; } = "Standard";
+    public string Label { get; set; } = string.Empty;
+    public decimal Fee { get; set; }
+    public string Timeframe { get; set; } = string.Empty;
+    public string FormattedFee => $"₦{Fee:N0}";
 }
 
 public enum FulfillmentChoice

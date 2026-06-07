@@ -35,13 +35,16 @@ public static class SeedData
             // â”€â”€â”€ Categories â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             var categories = new[]
             {
-                new { Name = "Rings",      Slug = "rings",      Description = "Engagement, wedding, and fashion rings" },
-                new { Name = "Necklaces",  Slug = "necklaces",  Description = "Pendants, chains, and statement necklaces" },
-                new { Name = "Earrings",   Slug = "earrings",   Description = "Studs, hoops, and drop earrings" },
-                new { Name = "Bracelets",  Slug = "bracelets",  Description = "Bangles, cuffs, and tennis bracelets" },
-                new { Name = "Brooches",   Slug = "brooches",   Description = "Lapel pins and decorative brooches" },
-                new { Name = "Watches",    Slug = "watches",    Description = "Luxury timepieces and watch collections" },
-                new { Name = "Sets",       Slug = "sets",       Description = "Matching jewellery sets and gift collections" },
+                new { Name = "Rings",        Slug = "rings",        Description = "Engagement, wedding, and fashion rings" },
+                new { Name = "Necklaces",    Slug = "necklaces",    Description = "Pendants, chains, and statement necklaces" },
+                new { Name = "Earrings",     Slug = "earrings",     Description = "Studs, hoops, and drop earrings" },
+                new { Name = "Bracelets",    Slug = "bracelets",    Description = "Bangles, cuffs, and tennis bracelets" },
+                new { Name = "Brooches",     Slug = "brooches",     Description = "Lapel pins and decorative brooches" },
+                new { Name = "Watches",      Slug = "watches",      Description = "Luxury timepieces and watch collections" },
+                new { Name = "Sets",         Slug = "sets",         Description = "Matching jewellery sets and gift collections" },
+                new { Name = "Clutches",     Slug = "clutches",     Description = "Evening clutches and stoned bags" },
+                new { Name = "Sunglasses",   Slug = "sunglasses",   Description = "Fashion and crystal sunglasses" },
+                new { Name = "Accessories",  Slug = "accessories",  Description = "Hair accessories, waist chains, scarfs, and more" },
             };
 
             foreach (var cat in categories)

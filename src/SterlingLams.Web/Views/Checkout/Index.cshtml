@@ -10,6 +10,7 @@
 
     <form asp-action="PlaceOrder" method="post" id="checkout-form">
         @Html.AntiForgeryToken()
+        <input type="hidden" name="SelectedDeliveryType" id="selected-delivery-type" value="Standard" />
 
         <div class="grid md:grid-cols-5 gap-12">
 
@@ -19,22 +20,21 @@
                 <!-- Step 1: Fulfillment Type -->
                 <section>
                     <h2 class="font-cormorant text-2xl font-light mb-6">How would you like to receive your order?</h2>
-
                     <div class="grid grid-cols-2 gap-3">
                         <label class="fulfillment-option border border-neutral-300 p-5 cursor-pointer hover:border-neutral-900 transition-colors has-[:checked]:border-neutral-900 has-[:checked]:bg-neutral-50">
-                            <input type="radio" name="FulfillmentType" value="Delivery"
-                                   class="sr-only" @(Model.FulfillmentType == FulfillmentChoice.Delivery ? "checked" : "")
+                            <input type="radio" name="FulfillmentType" value="Delivery" class="sr-only"
+                                   @(Model.FulfillmentType == FulfillmentChoice.Delivery ? "checked" : "")
                                    onchange="toggleFulfillment('delivery')" />
                             <svg class="w-5 h-5 text-neutral-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12h12l1-12"/>
                             </svg>
                             <p class="text-sm font-medium text-neutral-800">Home Delivery</p>
-                            <p class="text-xs text-neutral-400 mt-1 font-light">3–5 business days</p>
+                            <p class="text-xs text-neutral-400 mt-1 font-light">Lagos, Abuja & Nationwide</p>
                         </label>
 
                         <label class="fulfillment-option border border-neutral-300 p-5 cursor-pointer hover:border-neutral-900 transition-colors has-[:checked]:border-neutral-900 has-[:checked]:bg-neutral-50">
-                            <input type="radio" name="FulfillmentType" value="StorePickup"
-                                   class="sr-only" @(Model.FulfillmentType == FulfillmentChoice.StorePickup ? "checked" : "")
+                            <input type="radio" name="FulfillmentType" value="StorePickup" class="sr-only"
+                                   @(Model.FulfillmentType == FulfillmentChoice.StorePickup ? "checked" : "")
                                    onchange="toggleFulfillment('pickup')" />
                             <svg class="w-5 h-5 text-neutral-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 00-1-1h-2a1 1 0 00-1 1v5m4 0H9"/>
@@ -62,6 +62,7 @@
                                 <span asp-validation-for="DeliveryAddress.Phone" class="text-xs text-red-500 mt-1 block"></span>
                             </div>
                         </div>
+
                         <div>
                             <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Address Line 1</label>
                             <input asp-for="DeliveryAddress.Line1" class="form-input" placeholder="Street address" autocomplete="address-line1" />
@@ -69,47 +70,74 @@
                         </div>
                         <div>
                             <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Address Line 2 <span class="text-neutral-300">(optional)</span></label>
-                            <input asp-for="DeliveryAddress.Line2" class="form-input" placeholder="Apartment, suite, etc." autocomplete="address-line2" />
+                            <input asp-for="DeliveryAddress.Line2" class="form-input" placeholder="Apartment, suite, estate, etc." autocomplete="address-line2" />
                         </div>
+
                         <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">City</label>
-                                <input asp-for="DeliveryAddress.City" class="form-input" placeholder="Lagos" autocomplete="address-level2" />
-                                <span asp-validation-for="DeliveryAddress.City" class="text-xs text-red-500 mt-1 block"></span>
-                            </div>
+                            <!-- State dropdown -->
                             <div>
                                 <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">State</label>
-                                <input asp-for="DeliveryAddress.State" class="form-input" placeholder="Lagos" />
+                                <select asp-for="DeliveryAddress.State" id="state-select"
+                                        onchange="onStateChanged(this.value)"
+                                        class="form-input bg-white">
+                                    <option value="">— Select state —</option>
+                                    @foreach (var state in Model.NigerianStates)
+                                    {
+                                        <option value="@state" selected="@(Model.DeliveryAddress.State == state)">@state</option>
+                                    }
+                                </select>
                                 <span asp-validation-for="DeliveryAddress.State" class="text-xs text-red-500 mt-1 block"></span>
                             </div>
+
+                            <!-- City — LGA dropdown when Lagos, free text otherwise -->
+                            <div>
+                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">City / Area</label>
+
+                                <!-- Lagos LGA dropdown (hidden unless Lagos selected) -->
+                                <select id="lagos-lga-select" class="form-input bg-white hidden"
+                                        onchange="document.getElementById('city-input').value = this.value">
+                                    <option value="">— Select area —</option>
+                                    @foreach (var lga in Model.LagosLGAs.OrderBy(x => x))
+                                    {
+                                        <option value="@lga">@lga</option>
+                                    }
+                                </select>
+
+                                <!-- Free text city input (shown by default) -->
+                                <input id="city-input" asp-for="DeliveryAddress.City"
+                                       class="form-input" placeholder="City" autocomplete="address-level2" />
+                                <span asp-validation-for="DeliveryAddress.City" class="text-xs text-red-500 mt-1 block"></span>
+                            </div>
                         </div>
+
                         <label class="flex items-center gap-2 text-sm text-neutral-500">
                             <input asp-for="DeliveryAddress.SaveAddress" type="checkbox" class="rounded-none border-neutral-300 text-neutral-900" />
                             Save this address for future orders
                         </label>
+                    </div>
+
+                    <!-- Delivery Type Selector (shown after state is picked) -->
+                    <div id="delivery-options-section" class="mt-8 hidden">
+                        <h3 class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-4">Select Delivery Option</h3>
+                        <div id="delivery-options-grid" class="grid grid-cols-1 gap-3 sm:grid-cols-2"></div>
+                        <p id="delivery-zone-note" class="text-xs text-neutral-400 mt-3"></p>
                     </div>
                 </section>
 
                 <!-- Step 2b: Store Pickup -->
                 <section id="pickup-section" class="@(Model.FulfillmentType == FulfillmentChoice.Delivery ? "hidden" : "")">
                     <h2 class="font-cormorant text-2xl font-light mb-6">Select a Store</h2>
-
                     <div class="space-y-3">
                         @foreach (var store in Model.AvailableStores)
                         {
                             <label class="flex gap-4 border border-neutral-200 p-5 cursor-pointer hover:border-neutral-900 transition-colors has-[:checked]:border-neutral-900 has-[:checked]:bg-neutral-50">
-                                <input type="radio" name="SelectedStoreId" value="@store.StoreId"
-                                       class="mt-1 text-neutral-900 focus:ring-0" />
+                                <input type="radio" name="SelectedStoreId" value="@store.StoreId" class="mt-1 text-neutral-900 focus:ring-0" />
                                 <div>
                                     <p class="text-sm font-medium text-neutral-800">@store.StoreName</p>
                                     <p class="text-xs text-neutral-400 font-light mt-0.5">@store.Address</p>
                                     @if (!string.IsNullOrEmpty(store.OpeningHours))
                                     {
                                         <p class="text-xs text-neutral-400 font-light">@store.OpeningHours</p>
-                                    }
-                                    @if (!store.AllItemsAvailable)
-                                    {
-                                        <p class="text-xs text-amber-600 mt-1">Some items may not be available at this location</p>
                                     }
                                 </div>
                             </label>
@@ -123,14 +151,11 @@
                 <div class="bg-neutral-50 p-6 sticky top-28">
                     <h2 class="font-cormorant text-xl font-light mb-6">Order Summary</h2>
 
-                    <!-- Items -->
                     <div class="space-y-4 mb-6 max-h-72 overflow-y-auto pr-1">
                         @foreach (var item in Model.Cart.Items)
                         {
                             <div class="flex gap-3">
-                                <img src="@item.ImageUrl" alt="@item.ProductName"
-                                     loading="lazy"
-                                     class="w-16 h-16 object-cover flex-shrink-0" />
+                                <img src="@item.ImageUrl" alt="@item.ProductName" loading="lazy" class="w-16 h-16 object-cover flex-shrink-0" />
                                 <div class="flex-1 min-w-0">
                                     <p class="text-xs text-neutral-700 leading-snug">@item.ProductName</p>
                                     @if (!string.IsNullOrEmpty(item.VariantName))
@@ -158,15 +183,14 @@
                         }
                         <div class="flex justify-between text-sm">
                             <span class="text-neutral-500 font-light">Delivery</span>
-                            <span>@Model.FormattedDeliveryFee</span>
+                            <span id="summary-delivery">—</span>
                         </div>
                         <div class="flex justify-between text-sm font-medium border-t border-neutral-200 pt-3 mt-3">
                             <span>Total</span>
-                            <span>@Model.FormattedTotal</span>
+                            <span id="summary-total">@Model.FormattedSubtotal</span>
                         </div>
                     </div>
 
-                    <!-- Security badges -->
                     <div class="flex items-center gap-2 text-xs text-neutral-400 mb-6">
                         <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
@@ -184,23 +208,99 @@
                     </p>
                 </div>
             </div>
-
         </div>
     </form>
 </div>
 
 @section Scripts {
 <script>
+// ── Pricing data from server ───────────────────────────────────────────────
+const PRICING = @Html.Raw(Model.DeliveryPricingJson);
+const SUBTOTAL = @Model.Subtotal.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+const DISCOUNT = @Model.DiscountAmount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+
+// ── Fulfillment toggle ────────────────────────────────────────────────────
 function toggleFulfillment(type) {
-    const delivery = document.getElementById('delivery-section');
-    const pickup = document.getElementById('pickup-section');
-    if (type === 'delivery') {
-        delivery.classList.remove('hidden');
-        pickup.classList.add('hidden');
-    } else {
-        pickup.classList.remove('hidden');
-        delivery.classList.add('hidden');
+    document.getElementById('delivery-section').classList.toggle('hidden', type !== 'delivery');
+    document.getElementById('pickup-section').classList.toggle('hidden', type !== 'pickup');
+    if (type === 'pickup') {
+        updateSummary(0);
     }
 }
+
+// ── State change → detect zone → show delivery options ────────────────────
+function onStateChanged(state) {
+    // Lagos LGA dropdown
+    const lagosSelect = document.getElementById('lagos-lga-select');
+    const cityInput   = document.getElementById('city-input');
+    const isLagos     = state === 'Lagos' || PRICING.lagosLGAs.some(lga => lga === state);
+
+    if (isLagos) {
+        lagosSelect.classList.remove('hidden');
+        cityInput.classList.add('hidden');
+    } else {
+        lagosSelect.classList.add('hidden');
+        cityInput.classList.remove('hidden');
+    }
+
+    // Detect zone
+    const isAbuja = PRICING.abujaKeywords.some(kw => state.includes(kw));
+    const zone    = isLagos ? 'lagos' : isAbuja ? 'abuja' : 'national';
+    const options = (zone === 'lagos' || zone === 'abuja') ? PRICING.lagosAbuja : PRICING.national;
+
+    renderDeliveryOptions(options, zone);
+}
+
+function renderDeliveryOptions(options, zone) {
+    const section = document.getElementById('delivery-options-section');
+    const grid    = document.getElementById('delivery-options-grid');
+    const note    = document.getElementById('delivery-zone-note');
+
+    grid.innerHTML = '';
+    section.classList.remove('hidden');
+
+    const zoneLabels = { lagos: 'Lagos', abuja: 'Abuja FCT', national: 'Nationwide' };
+    note.textContent = `Showing delivery options for ${zoneLabels[zone] || 'your area'}.`;
+
+    options.forEach((opt, i) => {
+        const card = document.createElement('label');
+        card.className = 'delivery-opt-card border border-neutral-300 p-4 cursor-pointer hover:border-neutral-900 transition-colors';
+        card.innerHTML = `
+            <input type="radio" name="_deliveryTypeUI" value="${opt.type}" class="sr-only" ${i === 0 ? 'checked' : ''}
+                   onchange="selectDeliveryType('${opt.type}', ${opt.fee})" />
+            <div class="flex items-start justify-between mb-1">
+                <p class="text-sm font-medium text-neutral-800">${opt.label}</p>
+                <p class="text-sm font-medium text-neutral-900">&#8358;${Number(opt.fee).toLocaleString()}</p>
+            </div>
+            <p class="text-xs text-neutral-400">${opt.timeframe}</p>
+        `;
+        card.addEventListener('click', () => {
+            document.querySelectorAll('.delivery-opt-card').forEach(c => c.classList.remove('border-neutral-900','bg-neutral-50'));
+            card.classList.add('border-neutral-900','bg-neutral-50');
+        });
+        grid.appendChild(card);
+    });
+
+    // Auto-select first option
+    if (options.length > 0) selectDeliveryType(options[0].type, options[0].fee);
+    document.querySelectorAll('.delivery-opt-card')[0]?.classList.add('border-neutral-900','bg-neutral-50');
+}
+
+function selectDeliveryType(type, fee) {
+    document.getElementById('selected-delivery-type').value = type;
+    updateSummary(fee);
+}
+
+function updateSummary(fee) {
+    const total = parseFloat(SUBTOTAL) - parseFloat(DISCOUNT) + parseFloat(fee);
+    document.getElementById('summary-delivery').textContent = fee === 0 ? 'Free' : '₦' + Number(fee).toLocaleString();
+    document.getElementById('summary-total').textContent    = '₦' + Math.round(total).toLocaleString();
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+(function init() {
+    const stateVal = document.getElementById('state-select').value;
+    if (stateVal) onStateChanged(stateVal);
+})();
 </script>
 }

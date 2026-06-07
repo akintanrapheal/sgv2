@@ -12,6 +12,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 {
     public class DashboardController : AdminBaseController
     {
+        protected override string Section => "Dashboard";
+
         private readonly ApplicationDbContext _db;
 
         public DashboardController(ApplicationDbContext db)
@@ -19,9 +21,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             _db = db;
         }
 
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(int days = 30)
         {
             ViewData["Title"] = "Dashboard";
+            if (days != 7 && days != 30 && days != 90) days = 30;
 
             var today = DateTime.UtcNow.Date;
             var monthStart = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -78,24 +81,40 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     .ToListAsync()
             };
 
-            // 30-day daily revenue chart
-            var thirtyDaysAgo = today.AddDays(-29);
+            // Revenue chart for selected day range
+            var chartStart = today.AddDays(-(days - 1));
             var revenueByDay = await _db.Orders
-                .Where(o => o.IsPaid && o.CreatedAt >= thirtyDaysAgo)
+                .Where(o => o.IsPaid && o.CreatedAt >= chartStart)
                 .GroupBy(o => o.CreatedAt.Date)
                 .Select(g => new { Date = g.Key, Amount = g.Sum(o => o.Total) })
                 .ToListAsync();
 
             var dailyRevenue = new List<DailyRevenueRow>();
-            for (int i = 29; i >= 0; i--)
+            for (int i = days - 1; i >= 0; i--)
             {
                 var date = today.AddDays(-i);
                 var amount = revenueByDay.FirstOrDefault(r => r.Date == date)?.Amount ?? 0;
                 dailyRevenue.Add(new DailyRevenueRow { Date = date.ToString("MMM dd"), Amount = amount });
             }
             vm.DailyRevenue = dailyRevenue;
+            vm.ChartDays = days;
 
-            vm.DailyRevenue = dailyRevenue;
+            // Top 5 selling products (by units sold, last 90 days)
+            var since90 = today.AddDays(-90);
+            vm.TopProducts = await _db.OrderItems
+                .Include(i => i.Product).ThenInclude(p => p.Category)
+                .Where(i => i.Product.IsActive && i.Order.IsPaid && i.Order.CreatedAt >= since90)
+                .GroupBy(i => new { i.ProductId, i.Product.Name, CategoryName = i.Product.Category.Name })
+                .Select(g => new TopProductRow
+                {
+                    ProductName  = g.Key.Name,
+                    CategoryName = g.Key.CategoryName,
+                    UnitsSold    = g.Sum(i => i.Quantity),
+                    Revenue      = g.Sum(i => i.Quantity * i.UnitPrice)
+                })
+                .OrderByDescending(r => r.UnitsSold)
+                .Take(5)
+                .ToListAsync();
 
             return View(vm);
         }

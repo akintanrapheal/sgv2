@@ -25,6 +25,8 @@ public class CheckoutController : Controller
     private readonly IConfiguration _config;
     private readonly IWebHostEnvironment _env;
     private readonly IERPNextService _erpNext;
+    private readonly SterlingLams.Web.Services.ISettingsService _settings;
+    private readonly SterlingLams.Web.Services.DeliveryZoneService _zones;
 
     public CheckoutController(
         ApplicationDbContext db,
@@ -33,7 +35,9 @@ public class CheckoutController : Controller
         ILogger<CheckoutController> logger,
         IConfiguration config,
         IWebHostEnvironment env,
-        IERPNextService erpNext)
+        IERPNextService erpNext,
+        SterlingLams.Web.Services.ISettingsService settings,
+        SterlingLams.Web.Services.DeliveryZoneService zones)
     {
         _db = db;
         _payment = payment;
@@ -42,6 +46,8 @@ public class CheckoutController : Controller
         _config = config;
         _env = env;
         _erpNext = erpNext;
+        _settings = settings;
+        _zones = zones;
     }
 
     [HttpGet]
@@ -53,6 +59,29 @@ public class CheckoutController : Controller
         var stores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
         var user = await _userManager.GetUserAsync(User);
 
+        // Build delivery pricing JSON for client-side zone detection
+        var lagosExpressFee   = await _settings.GetDecimalAsync("shipping.lagos_abuja_express_fee",  4000);
+        var lagosExpressDays  = await _settings.GetAsync("shipping.lagos_abuja_express_days",        "24 - 48 hours");
+        var lagosStdFee       = await _settings.GetDecimalAsync("shipping.lagos_abuja_standard_fee", 2000);
+        var lagosStdDays      = await _settings.GetAsync("shipping.lagos_abuja_standard_days",       "2 - 4 working days");
+        var natStdFee         = await _settings.GetDecimalAsync("shipping.national_standard_fee",    7500);
+        var natStdDays        = await _settings.GetAsync("shipping.national_standard_days",          "2 - 5 working days");
+
+        var pricingJson = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            lagosAbuja = new[]
+            {
+                new { type = "Express",  label = "Express Delivery",  fee = lagosExpressFee, timeframe = lagosExpressDays },
+                new { type = "Standard", label = "Standard Delivery", fee = lagosStdFee,     timeframe = lagosStdDays     },
+            },
+            national = new[]
+            {
+                new { type = "Standard", label = "Standard Delivery", fee = natStdFee, timeframe = natStdDays },
+            },
+            lagosLGAs       = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs,
+            abujaKeywords   = new[] { "FCT", "Abuja", "Federal Capital" },
+        });
+
         var vm = new CheckoutViewModel
         {
             Cart = cart,
@@ -60,7 +89,10 @@ public class CheckoutController : Controller
             DiscountAmount = cart.DiscountAmount,
             AppliedDiscountCode = cart.AppliedDiscountCode,
             DiscountDescription = cart.DiscountDescription,
-            DeliveryFee = 0,
+            DeliveryFee = 0,   // updated client-side when delivery type selected
+            DeliveryPricingJson = pricingJson,
+            NigerianStates = SterlingLams.Web.Services.DeliveryZoneService.NigerianStates,
+            LagosLGAs = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs,
             PaystackPublicKey = _config["Payment:Paystack:PublicKey"],
             AvailableStores = stores.Select(s => new StorePickupOptionViewModel
             {
@@ -112,6 +144,11 @@ public class CheckoutController : Controller
             return RedirectToAction("Index", "Cart");
         }
 
+        // Calculate delivery fee server-side (never trust client-submitted amount)
+        decimal deliveryFee = 0;
+        if (vm.FulfillmentType == FulfillmentChoice.Delivery)
+            deliveryFee = await _zones.CalculateFeeAsync(vm.DeliveryAddress.State, vm.SelectedDeliveryType);
+
         // Build order
         var orderNumber = $"SL-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}";
 
@@ -124,8 +161,8 @@ public class CheckoutController : Controller
                 : FulfillmentType.Delivery,
             PickupStoreId = vm.FulfillmentType == FulfillmentChoice.StorePickup ? vm.SelectedStoreId : null,
             Subtotal = cart.Subtotal,
-            DeliveryFee = vm.DeliveryFee,
-            Total = cart.Subtotal + vm.DeliveryFee,
+            DeliveryFee = deliveryFee,
+            Total = cart.Subtotal - cart.DiscountAmount + deliveryFee,
             Items = cart.Items.Select(i => new OrderItem
             {
                 ProductId = i.ProductId,
@@ -261,25 +298,25 @@ public class CheckoutController : Controller
     }
 
     /// <summary>
-    /// Pushes a confirmed order to ERPNext: creates a Sales Order and immediately
-    /// issues a Material Issue Stock Entry to deduct the sold quantities from the
-    /// pickup store's warehouse (or the first active store for delivery orders).
-    /// Failures are logged but never throw — order confirmation must not be blocked.
+    /// Pushes a confirmed website order to ERPNext as a Sales Invoice with update_stock=1.
+    /// This is the same document type ERPNext POS creates, so stock levels stay perfectly
+    /// in sync between the website and the POS terminal.
+    /// Failures are logged but never thrown — order confirmation must not be blocked.
     /// </summary>
     private async Task PushOrderToERPNextAsync(Order order)
     {
         try
         {
-            // Reload with items + store if not already included
-            if (!order.Items.Any())
-            {
-                order = await _db.Orders
-                    .Include(o => o.Items)
-                    .Include(o => o.PickupStore)
-                    .FirstAsync(o => o.Id == order.Id);
-            }
+            // Reload with items, store, user, and address if not already included
+            order = await _db.Orders
+                .Include(o => o.Items)
+                .Include(o => o.PickupStore)
+                .Include(o => o.User)
+                .FirstAsync(o => o.Id == order.Id);
 
-            // Determine warehouse — pickup store takes priority, else first active store
+            // Determine which warehouse to deduct from:
+            //   • Pickup orders  → the chosen store's warehouse
+            //   • Delivery orders → the first active store (acts as fulfilment hub)
             string warehouse;
             if (order.PickupStore?.ErpNextWarehouse is { Length: > 0 } pw)
             {
@@ -287,73 +324,62 @@ public class CheckoutController : Controller
             }
             else
             {
-                var firstStore = await _db.Stores.Where(s => s.IsActive).FirstOrDefaultAsync();
-                warehouse = firstStore?.ErpNextWarehouse ?? "Sterlin Glams Abuja - SG";
+                var hub = await _db.Stores.Where(s => s.IsActive).FirstOrDefaultAsync();
+                warehouse = hub?.ErpNextWarehouse ?? "Sterlin Glams Abuja - SG";
             }
 
-            // Resolve product → ERPNext item code
+            // Map product IDs → ERPNext item codes (skip products with no code)
             var productIds = order.Items.Select(i => i.ProductId).Distinct().ToList();
-            var itemCodes = await _db.Products
+            var itemCodes  = await _db.Products
                 .Where(p => productIds.Contains(p.Id) && !string.IsNullOrEmpty(p.ErpNextItemCode))
                 .ToDictionaryAsync(p => p.Id, p => p.ErpNextItemCode);
 
-            var eligibleItems = order.Items
+            var invoiceItems = order.Items
                 .Where(i => itemCodes.ContainsKey(i.ProductId))
+                .Select(i => new ERPNextInvoiceItem
+                {
+                    ItemCode  = itemCodes[i.ProductId],
+                    Warehouse = warehouse,
+                    Qty       = i.Quantity,
+                    Rate      = i.UnitPrice,
+                })
                 .ToList();
 
-            if (eligibleItems.Count == 0)
+            if (invoiceItems.Count == 0)
             {
-                _logger.LogWarning("No ERPNext item codes found for order {OrderNumber}. Skipping ERPNext push.", order.OrderNumber);
+                _logger.LogWarning("No ERPNext item codes found for order {OrderNumber} — skipping ERPNext push.",
+                    order.OrderNumber);
                 return;
             }
 
-            // 1. Create + submit Sales Order (creates reservation in ERPNext)
-            var customer = _config["ERPNext:DefaultCustomer"] ?? "Walk-In Customer";
+            // Build a rich remarks string so the invoice is identifiable in ERPNext
+            var customerName  = order.User?.FullName ?? "Website Customer";
+            var customerEmail = order.User?.Email ?? "";
+            var fulfillment   = order.FulfillmentType == FulfillmentType.StorePickup
+                ? $"Pickup: {order.PickupStore?.Name ?? "Store"}"
+                : "Delivery";
 
-            var soItems = eligibleItems.Select(i => new ERPNextSalesOrderItem
-            {
-                ItemCode  = itemCodes[i.ProductId],
-                Warehouse = warehouse,
-                Qty       = i.Quantity,
-                Rate      = i.UnitPrice
-            }).ToList();
+            var remarks = $"Website order {order.OrderNumber} | {fulfillment} | {customerName} <{customerEmail}>";
 
-            string soName;
-            try
+            var invoiceName = await _erpNext.CreateSalesInvoiceAsync(new ERPNextSalesInvoiceRequest
             {
-                soName = await _erpNext.CreateSalesOrderAsync(new ERPNextCreateSalesOrderRequest
-                {
-                    Customer     = customer,
-                    DeliveryDate = DateTime.UtcNow.AddDays(7).ToString("yyyy-MM-dd"),
-                    Items        = soItems
-                });
-                await _erpNext.SubmitSalesOrderAsync(soName);
-                order.ErpNextSalesOrderName = soName;
-                await _db.SaveChangesAsync();
-                _logger.LogInformation("ERPNext Sales Order {SoName} created for order {OrderNumber}", soName, order.OrderNumber);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning("ERPNext Sales Order failed for order {OrderNumber}: {Message}", order.OrderNumber, ex.Message);
-                soName = string.Empty;
-            }
+                Customer = _config["ERPNext:DefaultCustomer"] ?? "Walk-In Customer",
+                PoNo     = order.OrderNumber,   // visible in ERPNext PO No column for easy search
+                Remarks  = remarks,
+                Items    = invoiceItems,
+            });
 
-            // 2. Create + submit Material Issue to deduct actual stock
-            var miItems = eligibleItems.Select(i => new ERPNextMaterialIssueItem
-            {
-                ItemCode       = itemCodes[i.ProductId],
-                SourceWarehouse = warehouse,
-                Qty            = i.Quantity,
-                BasicRate      = i.UnitPrice
-            }).ToList();
+            order.ErpNextInvoiceName = invoiceName;
+            await _db.SaveChangesAsync();
 
-            var miName = await _erpNext.CreateMaterialIssueAsync(miItems, $"Web order {order.OrderNumber}");
-            _logger.LogInformation("ERPNext Material Issue {MiName} created for order {OrderNumber} (warehouse: {Warehouse})",
-                miName, order.OrderNumber, warehouse);
+            _logger.LogInformation(
+                "ERPNext Sales Invoice {Invoice} created for order {OrderNumber} (warehouse: {Warehouse})",
+                invoiceName, order.OrderNumber, warehouse);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning("ERPNext push failed for order {OrderNumber}: {Message}", order.OrderNumber, ex.Message);
+            _logger.LogWarning("ERPNext push failed for order {OrderNumber}: {Message}",
+                order.OrderNumber, ex.Message);
         }
     }
 

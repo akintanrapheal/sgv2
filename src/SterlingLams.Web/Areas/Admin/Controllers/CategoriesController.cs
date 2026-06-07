@@ -12,6 +12,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 {
     public class CategoriesController : AdminBaseController
     {
+        protected override string Section => "Categories";
+
         private readonly ApplicationDbContext _db;
 
         public CategoriesController(ApplicationDbContext db)
@@ -99,7 +101,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             category.SortOrder = vm.SortOrder;
             category.ParentId = vm.ParentId;
 
+            var isNew = vm.Id == 0;
             await _db.SaveChangesAsync();
+            await LogAsync(isNew ? "Create" : "Update", "Category", category.Id.ToString(),
+                $"{(isNew ? "Created" : "Updated")} category '{category.Name}'");
             TempData["Success"] = $"Category '{category.Name}' saved.";
             return RedirectToAction(nameof(Index));
         }
@@ -117,9 +122,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 return RedirectToAction(nameof(Index));
             }
 
+            var name = cat.Name;
             _db.Categories.Remove(cat);
             await _db.SaveChangesAsync();
-            TempData["Success"] = $"Category '{cat.Name}' deleted.";
+            await LogAsync("Delete", "Category", id.ToString(), $"Deleted category '{name}'");
+            TempData["Success"] = $"Category '{name}' deleted.";
             return RedirectToAction(nameof(Index));
         }
     }

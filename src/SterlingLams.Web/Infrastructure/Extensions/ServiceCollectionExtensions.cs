@@ -33,6 +33,17 @@ public static class ServiceCollectionExtensions
 
         // ─── Product Import ───────────────────────────────────────────────────
         services.AddScoped<IProductImportService, ProductImportService>();
+        services.AddScoped<IWooCommerceImportService, WooCommerceImportService>();
+
+        // ─── Site Settings ────────────────────────────────────────────────────
+        services.AddScoped<ISettingsService, SettingsService>();
+        services.AddScoped<DeliveryZoneService>();
+
+        // ─── Audit Log ────────────────────────────────────────────────────────
+        services.AddScoped<IAuditService, AuditService>();
+
+        // ─── Roles & Permissions ───────────────────────────────────────────────
+        services.AddScoped<IPermissionService, PermissionService>();
 
         // ─── Payment ─────────────────────────────────────────────────────────
         var paymentProvider = configuration["Payment:Provider"] ?? "Paystack";

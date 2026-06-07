@@ -23,16 +23,21 @@
     </a>
 </div>
 
-<!-- Status tabs -->
+<!-- Status tabs with counts -->
 <div class="flex gap-1 mb-4 flex-wrap">
     @foreach (var s in statuses)
     {
         var label = string.IsNullOrEmpty(s) ? "All" : s;
         var isActive = Model.StatusFilter == s;
+        var count = Model.StatusCounts.TryGetValue(s, out var c) ? c : 0;
         <a asp-area="Admin" asp-controller="Orders" asp-action="Index"
            asp-route-status="@s" asp-route-q="@Model.SearchQuery"
-           class="px-3 py-1.5 text-xs rounded-sm transition-colors @(isActive ? "bg-neutral-900 text-white" : "bg-white text-neutral-600 border border-neutral-200 hover:border-neutral-400")">
+           class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-sm transition-colors @(isActive ? "bg-neutral-900 text-white" : "bg-white text-neutral-600 border border-neutral-200 hover:border-neutral-400")">
             @label
+            @if (count > 0)
+            {
+                <span class="text-[10px] px-1.5 py-0.5 rounded-full @(isActive ? "bg-white/20" : "bg-neutral-100 text-neutral-500")">@count</span>
+            }
         </a>
     }
 </div>
