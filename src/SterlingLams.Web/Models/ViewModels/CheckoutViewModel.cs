@@ -42,6 +42,12 @@ public class CheckoutViewModel
     public string FormattedDeliveryFee => DeliveryFee == 0 ? "Free" : $"₦{DeliveryFee:N0}";
     public string FormattedDiscount => $"-₦{DiscountAmount:N0}";
     public bool HasDiscount => DiscountAmount > 0;
+
+    // Guest checkout fields (used when user is not signed in)
+    [EmailAddress]
+    public string? GuestEmail { get; set; }
+    public string? GuestName { get; set; }
+    public string? GuestPhone { get; set; }
 }
 
 public class DeliveryOptionViewModel

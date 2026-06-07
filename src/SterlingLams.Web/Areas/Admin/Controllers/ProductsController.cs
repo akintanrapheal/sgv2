@@ -21,18 +21,21 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly IInventoryService _inventory;
         private readonly IProductImportService _importer;
         private readonly IWooCommerceImportService _wooImporter;
+        private readonly IWebHostEnvironment _env;
         private const int PageSize = 30;
 
         public ProductsController(
             ApplicationDbContext db,
             IInventoryService inventory,
             IProductImportService importer,
-            IWooCommerceImportService wooImporter)
+            IWooCommerceImportService wooImporter,
+            IWebHostEnvironment env)
         {
             _db = db;
             _inventory = inventory;
             _importer = importer;
             _wooImporter = wooImporter;
+            _env = env;
         }
 
         public async Task<IActionResult> Index(
@@ -312,6 +315,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             await LogAsync(isNew ? "Create" : "Update", "Product", product.Id.ToString(),
                 $"{(isNew ? "Created" : "Updated")} product '{product.Name}' (₦{product.Price:N0})");
 
+            if (isNew)
+            {
+                TempData["Success"] = $"Product '{product.Name}' created. You can now upload images below.";
+                return RedirectToAction(nameof(Edit), new { id = product.Id });
+            }
+
             TempData["Success"] = $"Product '{product.Name}' saved.";
             return RedirectToAction(nameof(Index));
         }
@@ -468,10 +477,32 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> AddImage(int id, string imageUrl, string? altText, bool isPrimary)
+        public async Task<IActionResult> AddImage(int id, IFormFile? imageFile, string? imageUrl, string? altText, bool isPrimary)
         {
             var product = await _db.Products.FindAsync(id);
             if (product == null) return NotFound();
+
+            // Resolve image URL: file upload takes priority over URL text field
+            string resolvedUrl;
+            if (imageFile != null && imageFile.Length > 0)
+            {
+                var ext = Path.GetExtension(imageFile.FileName).ToLowerInvariant();
+                var dir = Path.Combine(_env.WebRootPath, "uploads", "products");
+                Directory.CreateDirectory(dir);
+                var fileName = $"{Guid.NewGuid():N}{ext}";
+                await using var stream = System.IO.File.Create(Path.Combine(dir, fileName));
+                await imageFile.CopyToAsync(stream);
+                resolvedUrl = $"/uploads/products/{fileName}";
+            }
+            else if (!string.IsNullOrWhiteSpace(imageUrl))
+            {
+                resolvedUrl = imageUrl.Trim();
+            }
+            else
+            {
+                TempData["Error"] = "Please upload a file or provide an image URL.";
+                return RedirectToAction(nameof(Edit), new { id });
+            }
 
             if (isPrimary)
             {
@@ -488,7 +519,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             _db.ProductImages.Add(new ProductImage
             {
                 ProductId = id,
-                Url = imageUrl.Trim(),
+                Url = resolvedUrl,
                 AltText = altText?.Trim(),
                 IsPrimary = isPrimary,
                 SortOrder = maxSort + 1

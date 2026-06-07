@@ -13,7 +13,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace SterlingLams.Web.Controllers;
 
-[Authorize]
 public class CheckoutController : Controller
 {
     private const string CartSessionKey = "cart";
@@ -127,6 +126,7 @@ public class CheckoutController : Controller
     }
 
     [HttpPost]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> PlaceOrder(CheckoutViewModel vm)
     {
         if (!ModelState.IsValid) return View("Index", vm);
@@ -134,8 +134,48 @@ public class CheckoutController : Controller
         var cart = GetCart();
         if (cart.IsEmpty) return RedirectToAction("Index", "Cart");
 
-        var user = await _userManager.GetUserAsync(User);
-        if (user == null) return Challenge();
+        // ── Resolve user (authenticated or guest) ──────────────────────────
+        ApplicationUser? user = await _userManager.GetUserAsync(User);
+
+        if (user == null)
+        {
+            // Guest checkout: require contact fields
+            if (string.IsNullOrWhiteSpace(vm.GuestEmail))
+            {
+                ModelState.AddModelError("GuestEmail", "Please enter your email address.");
+                vm.Cart = cart;
+                vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
+                    .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
+                return View("Index", vm);
+            }
+
+            // Look up existing user by email or create a guest account
+            user = await _userManager.FindByEmailAsync(vm.GuestEmail);
+            if (user == null)
+            {
+                var guestName = vm.GuestName?.Trim() ?? "Guest";
+                var nameParts = guestName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+                user = new ApplicationUser
+                {
+                    UserName  = vm.GuestEmail,
+                    Email     = vm.GuestEmail,
+                    FirstName = nameParts.Length > 0 ? nameParts[0] : "Guest",
+                    LastName  = nameParts.Length > 1 ? nameParts[1] : string.Empty,
+                    PhoneNumber = vm.GuestPhone,
+                    CreatedAt = DateTime.UtcNow
+                };
+                var createResult = await _userManager.CreateAsync(user, Guid.NewGuid().ToString("N") + "Aa1!");
+                if (!createResult.Succeeded)
+                {
+                    ModelState.AddModelError("", "Unable to process guest checkout. Please try again.");
+                    vm.Cart = cart;
+                    vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
+                        .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
+                    return View("Index", vm);
+                }
+                _logger.LogInformation("Guest account created for checkout: {Email}", vm.GuestEmail);
+            }
+        }
 
         // Validate store selection for pickup orders
         if (vm.FulfillmentType == FulfillmentChoice.StorePickup)
@@ -447,13 +487,16 @@ public class CheckoutController : Controller
     }
 
     [HttpGet]
+    [AllowAnonymous]
     public async Task<IActionResult> Confirmation(string orderNumber)
     {
+        var userId = _userManager.GetUserId(User);
         var order = await _db.Orders
             .Include(o => o.Items)
             .Include(o => o.PickupStore)
             .Include(o => o.DeliveryAddress)
-            .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber && o.UserId == _userManager.GetUserId(User));
+            .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber
+                && (userId == null || o.UserId == userId));
 
         if (order == null) return NotFound();
 

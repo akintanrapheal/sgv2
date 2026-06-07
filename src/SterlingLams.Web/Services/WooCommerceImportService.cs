@@ -92,7 +92,7 @@ public class WooCommerceImportService : IWooCommerceImportService
         {
             try
             {
-                var name = Get(row, "post_title");
+                var name = System.Net.WebUtility.HtmlDecode(Get(row, "post_title"));
                 if (string.IsNullOrWhiteSpace(name)) { result.Skipped++; continue; }
 
                 var priceStr = Get(row, "regular_price");
@@ -326,10 +326,10 @@ public class WooCommerceImportService : IWooCommerceImportService
     private static string StripHtml(string? html)
     {
         if (string.IsNullOrWhiteSpace(html)) return string.Empty;
-        return Regex.Replace(html, "<[^>]*>", " ")
-                    .Replace("&nbsp;", " ").Replace("&amp;", "&")
-                    .Replace("&lt;", "<").Replace("&gt;", ">")
-                    .Replace("&quot;", "\"").Trim();
+        var stripped = Regex.Replace(html, "<[^>]*>", " ");
+        // Decode HTML entities (&amp; &rsquo; &#8217; etc.) and collapse whitespace.
+        var decoded = System.Net.WebUtility.HtmlDecode(stripped);
+        return Regex.Replace(decoded, @"\s+", " ").Trim();
     }
 
     private async Task<string> UniqueSlugAsync(string baseSlug, HashSet<string>? inMemory = null)

@@ -12,6 +12,7 @@ public class ProductCardViewModel
     public bool IsAvailable { get; set; }
     public bool IsInWishlist { get; set; }
     public bool IsNewArrival { get; set; }
+    public bool HasVariants { get; set; }
     public string CategoryName { get; set; } = string.Empty;
 }
 

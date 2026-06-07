@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -15,10 +16,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         protected override string Section => "Categories";
 
         private readonly ApplicationDbContext _db;
+        private readonly IWebHostEnvironment _env;
 
-        public CategoriesController(ApplicationDbContext db)
+        public CategoriesController(ApplicationDbContext db, IWebHostEnvironment env)
         {
             _db = db;
+            _env = env;
         }
 
         public async Task<IActionResult> Index()
@@ -55,6 +58,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 Name = cat.Name,
                 Slug = cat.Slug,
                 Description = cat.Description,
+                ImageUrl = cat.ImageUrl,
                 IsActive = cat.IsActive,
                 SortOrder = cat.SortOrder,
                 ParentId = cat.ParentId,
@@ -68,7 +72,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Save(AdminCategoryEditViewModel vm)
+        public async Task<IActionResult> Save(AdminCategoryEditViewModel vm, IFormFile? imageFile)
         {
             vm.AllCategories = await _db.Categories
                 .Where(c => c.Id != vm.Id)
@@ -100,6 +104,22 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             category.IsActive = vm.IsActive;
             category.SortOrder = vm.SortOrder;
             category.ParentId = vm.ParentId;
+
+            // Image: a freshly uploaded file wins; otherwise keep the URL field value.
+            if (imageFile != null && imageFile.Length > 0)
+            {
+                var ext = Path.GetExtension(imageFile.FileName).ToLowerInvariant();
+                var dir = Path.Combine(_env.WebRootPath, "uploads", "categories");
+                Directory.CreateDirectory(dir);
+                var fileName = $"{Guid.NewGuid():N}{ext}";
+                await using var stream = System.IO.File.Create(Path.Combine(dir, fileName));
+                await imageFile.CopyToAsync(stream);
+                category.ImageUrl = $"/uploads/categories/{fileName}";
+            }
+            else
+            {
+                category.ImageUrl = string.IsNullOrWhiteSpace(vm.ImageUrl) ? null : vm.ImageUrl.Trim();
+            }
 
             var isNew = vm.Id == 0;
             await _db.SaveChangesAsync();

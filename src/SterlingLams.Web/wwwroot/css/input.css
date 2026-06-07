@@ -25,22 +25,32 @@
 /* ─── Components ─────────────────────────────────────────────────────────── */
 @layer components {
   .btn-primary {
+    @apply inline-block bg-brand-500 text-white text-xs tracking-[0.2em] uppercase px-10 py-4
+           hover:bg-brand-600 transition-colors duration-300;
+  }
+
+  .btn-primary-dark {
     @apply inline-block bg-neutral-900 text-white text-xs tracking-[0.2em] uppercase px-10 py-4
            hover:bg-neutral-700 transition-colors duration-300;
   }
 
   .btn-outline {
     @apply inline-block border border-neutral-900 text-neutral-900 text-xs tracking-[0.2em] uppercase px-10 py-4
-           hover:bg-neutral-900 hover:text-white transition-colors duration-300;
+           hover:bg-brand-500 hover:border-brand-500 hover:text-white transition-colors duration-300;
+  }
+
+  .btn-outline-brand {
+    @apply inline-block border border-brand-500 text-brand-500 text-xs tracking-[0.2em] uppercase px-10 py-4
+           hover:bg-brand-500 hover:text-white transition-colors duration-300;
   }
 
   .form-input {
     @apply w-full border border-neutral-200 px-4 py-3 text-sm
-           focus:outline-none focus:border-neutral-900 transition-colors;
+           focus:outline-none focus:border-brand-500 transition-colors;
   }
 
   .section-label {
-    @apply text-xs tracking-[0.3em] uppercase text-neutral-400 mb-3;
+    @apply text-xs tracking-[0.3em] uppercase text-brand-500 mb-3;
   }
 
   .section-heading {
@@ -50,5 +60,16 @@
   /* Product card hover effect */
   .product-card:hover .product-image {
     @apply scale-105;
+  }
+
+  /* Image zoom */
+  .zoom-container {
+    @apply relative overflow-hidden cursor-zoom-in;
+  }
+  .zoom-container img {
+    @apply transition-transform duration-300 origin-center;
+  }
+  .zoom-container.zoomed img {
+    @apply scale-150;
   }
 }

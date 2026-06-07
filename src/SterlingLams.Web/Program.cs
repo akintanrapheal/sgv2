@@ -151,4 +151,20 @@ catch (Exception ex)
     seedLogger.LogError(ex, "Seeding failed — database may not be available.");
 }
 
+// ─── CLI maintenance commands ────────────────────────────────────────────────
+// Usage: dotnet run -- migrate-woo "C:\path\to\product-export.csv"
+// Replaces all website products with the CSV export and reconciles ERPNext
+// (disables old Items, creates the imported ones), then exits without serving.
+if (args.Length >= 1 && args[0].Equals("migrate-woo", StringComparison.OrdinalIgnoreCase))
+{
+    if (args.Length < 2)
+    {
+        Console.Error.WriteLine("Usage: dotnet run -- migrate-woo \"<path-to-csv>\"");
+        return;
+    }
+    await SterlingLams.Web.Infrastructure.WooMigrationRunner.RunAsync(app.Services, args[1]);
+    Log.CloseAndFlush();
+    return;
+}
+
 await app.RunAsync();

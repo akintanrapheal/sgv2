@@ -254,6 +254,80 @@ public class AccountController : Controller
         return View(model);
     }
 
+    // ─── Forgot Password ─────────────────────────────────────────────────────
+
+    [HttpGet]
+    public IActionResult ForgotPassword() => View();
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ForgotPassword(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            ModelState.AddModelError("", "Please enter your email address.");
+            return View();
+        }
+
+        var user = await _userManager.FindByEmailAsync(email);
+
+        // Always show the confirmation view — don't reveal whether email exists
+        if (user != null)
+        {
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var resetLink = Url.Action(nameof(ResetPassword), "Account",
+                new { token, email = user.Email }, protocol: Request.Scheme)!;
+            _logger.LogInformation("Password reset requested for {Email}. Link: {Link}", email, resetLink);
+            // TODO: send resetLink via email service (e.g. SendGrid, Mailgun)
+        }
+
+        TempData["ForgotPasswordSent"] = true;
+        return RedirectToAction(nameof(ForgotPasswordConfirmation));
+    }
+
+    [HttpGet]
+    public IActionResult ForgotPasswordConfirmation() => View();
+
+    // ─── Reset Password ──────────────────────────────────────────────────────
+
+    [HttpGet]
+    public IActionResult ResetPassword(string? token, string? email)
+    {
+        if (token == null || email == null)
+            return RedirectToAction(nameof(Login));
+
+        return View(new ResetPasswordViewModel { Token = token, Email = email });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResetPassword(ResetPasswordViewModel model)
+    {
+        if (!ModelState.IsValid) return View(model);
+
+        var user = await _userManager.FindByEmailAsync(model.Email);
+        if (user == null)
+        {
+            // Don't reveal user existence — show success anyway
+            return RedirectToAction(nameof(ResetPasswordConfirmation));
+        }
+
+        var result = await _userManager.ResetPasswordAsync(user, model.Token, model.NewPassword);
+        if (result.Succeeded)
+        {
+            _logger.LogInformation("Password reset succeeded for {Email}", model.Email);
+            return RedirectToAction(nameof(ResetPasswordConfirmation));
+        }
+
+        foreach (var error in result.Errors)
+            ModelState.AddModelError("", error.Description);
+
+        return View(model);
+    }
+
+    [HttpGet]
+    public IActionResult ResetPasswordConfirmation() => View();
+
     // ─── Access Denied ───────────────────────────────────────────────────────
 
     public IActionResult AccessDenied() => View();

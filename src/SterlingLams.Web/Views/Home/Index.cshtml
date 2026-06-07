@@ -1,32 +1,56 @@
+@using SterlingLams.Web.Services
+@inject ISettingsService SettingsService
 @{
     ViewData["Title"] = "Luxury Jewellery";
     Layout = "_Layout";
     var featuredProducts = ViewBag.FeaturedProducts as List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> ?? new();
+
+    var heroImageUrl  = await SettingsService.GetAsync("homepage.hero_image_url", "");
+    var heroHeadline  = await SettingsService.GetAsync("homepage.hero_headline",  "Timeless Elegance");
+    var heroSubtext   = await SettingsService.GetAsync("homepage.hero_subtext",   "Luxury jewellery crafted for the discerning woman. Discover our newest arrivals.");
+    var heroCta       = await SettingsService.GetAsync("homepage.hero_cta",       "Shop Collection");
+    var hasHeroImage  = !string.IsNullOrWhiteSpace(heroImageUrl);
 }
 
 <!-- ─── Hero ──────────────────────────────────────────────────────────────── -->
 <section class="relative h-screen min-h-[600px] flex items-center overflow-hidden">
-    <div class="absolute inset-0 bg-neutral-100">
-        <!-- Hero image placeholder — replace with actual image -->
-        <div class="w-full h-full bg-gradient-to-br from-neutral-200 via-neutral-100 to-stone-100"></div>
+
+    <!-- Background: campaign image (admin-set) or gradient fallback -->
+    <div class="absolute inset-0">
+        @if (hasHeroImage)
+        {
+            <img src="@heroImageUrl" alt="Campaign"
+                 class="w-full h-full object-cover object-center" />
+            <!-- Dark overlay so text remains readable over any image -->
+            <div class="absolute inset-0 bg-black/40"></div>
+        }
+        else
+        {
+            <div class="w-full h-full bg-gradient-to-br from-neutral-200 via-neutral-100 to-stone-100"></div>
+        }
     </div>
 
     <div class="relative z-10 max-w-7xl mx-auto px-6 text-center">
-        <p class="text-xs tracking-[0.4em] uppercase text-neutral-500 mb-6">New Collection 2025</p>
-        <h1 class="font-cormorant text-6xl md:text-8xl font-light text-neutral-900 leading-none mb-6">
-            Timeless<br>
-            <em class="italic">Elegance</em>
+        <p class="text-xs tracking-[0.4em] uppercase @(hasHeroImage ? "text-brand-300" : "text-brand-500") mb-6">New Collection 2025</p>
+        <h1 class="font-cormorant text-6xl md:text-8xl font-light @(hasHeroImage ? "text-white" : "text-neutral-900") leading-none mb-6">
+            @{
+                var parts = heroHeadline.Split(' ', 2);
+                var firstWord = parts[0];
+                var rest = parts.Length > 1 ? parts[1] : "";
+            }
+            @firstWord<br>
+            <em class="italic @(hasHeroImage ? "text-brand-300" : "text-brand-500")">@rest</em>
         </h1>
-        <p class="text-base font-light text-neutral-500 tracking-wide max-w-md mx-auto mb-10">
-            Luxury jewellery crafted for the discerning woman. Discover our newest arrivals.
+        <p class="text-base font-light @(hasHeroImage ? "text-white/80" : "text-neutral-500") tracking-wide max-w-md mx-auto mb-10">
+            @heroSubtext
         </p>
         <div class="flex flex-col sm:flex-row gap-4 justify-center">
             <a asp-controller="Products" asp-action="Index"
-               class="inline-block bg-neutral-900 text-white text-xs tracking-[0.2em] uppercase px-10 py-4 hover:bg-neutral-700 transition-colors duration-300">
-                Shop Collection
+               class="inline-block bg-brand-500 text-white text-xs tracking-[0.2em] uppercase px-10 py-4 hover:bg-brand-600 transition-colors duration-300">
+                @heroCta
             </a>
             <a asp-controller="Home" asp-action="Collections"
-               class="inline-block border border-neutral-900 text-neutral-900 text-xs tracking-[0.2em] uppercase px-10 py-4 hover:bg-neutral-900 hover:text-white transition-colors duration-300">
+               class="inline-block border @(hasHeroImage ? "border-white text-white hover:bg-white hover:text-neutral-900" : "border-neutral-900 text-neutral-900 hover:bg-brand-500 hover:border-brand-500 hover:text-white") text-xs tracking-[0.2em] uppercase px-10 py-4 transition-colors duration-300">
                 Explore Lookbook
             </a>
         </div>
@@ -34,66 +58,87 @@
 
     <!-- Scroll indicator -->
     <div class="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2">
-        <div class="w-px h-12 bg-gradient-to-b from-transparent to-neutral-400"></div>
-        <span class="text-[10px] tracking-[0.3em] uppercase text-neutral-400">Scroll</span>
+        <div class="w-px h-12 bg-gradient-to-b from-transparent to-brand-400"></div>
+        <span class="text-[10px] tracking-[0.3em] uppercase text-brand-400">Scroll</span>
     </div>
 </section>
 
-<!-- ─── Category Nav ──────────────────────────────────────────────────────── -->
-<section class="py-20 bg-white">
+<!-- ─── Trust Bar ──────────────────────────────────────────────────────────── -->
+<section class="py-5 bg-brand-500">
     <div class="max-w-7xl mx-auto px-6">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            @foreach (var cat in new[] {
-                new { Name = "Rings", Slug = "rings" },
-                new { Name = "Necklaces", Slug = "necklaces" },
-                new { Name = "Bracelets", Slug = "bracelets" },
-                new { Name = "Earrings", Slug = "earrings" }
-            })
-            {
-                <a asp-controller="Products" asp-action="Index" asp-route-category="@cat.Slug"
-                   class="group flex flex-col items-center py-10 px-6 bg-neutral-50 hover:bg-neutral-900 transition-all duration-500 cursor-pointer">
-                    <div class="w-14 h-14 rounded-full bg-white group-hover:bg-neutral-800 transition-colors duration-500 flex items-center justify-center mb-4 shadow-sm">
-                        @if (cat.Slug == "rings")
-                        {
-                            <svg class="w-6 h-6 text-neutral-500 group-hover:text-neutral-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <circle cx="12" cy="12" r="7" stroke-width="1.5"/>
-                                <circle cx="12" cy="12" r="3" stroke-width="1.5"/>
-                            </svg>
-                        }
-                        else if (cat.Slug == "necklaces")
-                        {
-                            <svg class="w-6 h-6 text-neutral-500 group-hover:text-neutral-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 3C8 3 4 6 4 10c0 3 2 5.5 5 6.5V20h6v-3.5c3-1 5-3.5 5-6.5 0-4-4-7-8-7z"/>
-                            </svg>
-                        }
-                        else if (cat.Slug == "bracelets")
-                        {
-                            <svg class="w-6 h-6 text-neutral-500 group-hover:text-neutral-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.5 17.5A7 7 0 1 1 17.5 6.5"/>
-                                <circle cx="6" cy="18" r="1.5" fill="currentColor" stroke="none"/>
-                            </svg>
-                        }
-                        else
-                        {
-                            <svg class="w-6 h-6 text-neutral-500 group-hover:text-neutral-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 2l1.5 4H18l-3.5 2.5 1.5 4L12 10l-4 2.5 1.5-4L6 6h4.5L12 2z"/>
-                            </svg>
-                        }
-                    </div>
-                    <span class="text-xs tracking-[0.2em] uppercase text-neutral-600 group-hover:text-white transition-colors duration-500">
-                        @cat.Name
-                    </span>
-                </a>
-            }
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center text-white">
+            <div class="flex items-center justify-center gap-3">
+                <svg class="w-5 h-5 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                          d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                </svg>
+                <span class="text-xs tracking-[0.2em] uppercase font-light">Certified Authentic</span>
+            </div>
+            <div class="flex items-center justify-center gap-3">
+                <svg class="w-5 h-5 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+                <span class="text-xs tracking-[0.2em] uppercase font-light">Secure Checkout</span>
+            </div>
+            <div class="flex items-center justify-center gap-3">
+                <svg class="w-5 h-5 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                          d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z"/>
+                </svg>
+                <span class="text-xs tracking-[0.2em] uppercase font-light">Easy Returns</span>
+            </div>
         </div>
     </div>
 </section>
+
+<!-- ─── Shop by Category ──────────────────────────────────────────────────── -->
+@{
+    var shopCategories = ViewBag.ShopCategories as List<SterlingLams.Web.Models.Domain.Category> ?? new();
+}
+@if (shopCategories.Any())
+{
+    <section class="py-20 bg-white">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-14">
+                <h2 class="font-cormorant text-4xl font-light text-neutral-900">Shop by Category</h2>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-6">
+                @foreach (var cat in shopCategories)
+                {
+                    <a asp-controller="Products" asp-action="Index" asp-route-category="@cat.Slug"
+                       class="group block text-center">
+                        <div class="aspect-square overflow-hidden bg-neutral-100 mb-4">
+                            @if (!string.IsNullOrWhiteSpace(cat.ImageUrl))
+                            {
+                                <img src="@cat.ImageUrl" alt="@cat.Name" loading="lazy"
+                                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                            }
+                            else
+                            {
+                                <div class="w-full h-full bg-gradient-to-br from-neutral-200 via-neutral-100 to-stone-100 flex items-center justify-center">
+                                    <span class="font-cormorant text-2xl text-neutral-400">@cat.Name</span>
+                                </div>
+                            }
+                        </div>
+                        <span class="text-xs tracking-[0.2em] uppercase text-neutral-700 group-hover:text-neutral-900 transition-colors">
+                            @cat.Name
+                        </span>
+                        <!-- Brand-colour underline that grows on hover -->
+                        <div class="mx-auto mt-3 h-0.5 w-full max-w-[10rem] bg-brand-500 origin-center scale-x-0 group-hover:scale-x-100 transition-transform duration-300"></div>
+                    </a>
+                }
+            </div>
+        </div>
+    </section>
+}
 
 <!-- ─── Featured Products ─────────────────────────────────────────────────── -->
 <section class="py-20 bg-stone-50">
     <div class="max-w-7xl mx-auto px-6">
         <div class="text-center mb-14">
-            <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-3">Curated for you</p>
+            <p class="text-xs tracking-[0.3em] uppercase text-brand-500 mb-3">Curated for you</p>
             <h2 class="font-cormorant text-4xl font-light text-neutral-900">Featured Pieces</h2>
         </div>
 
@@ -133,7 +178,7 @@
 
         <div class="text-center mt-12">
             <a asp-controller="Products" asp-action="Index"
-               class="inline-block border border-neutral-900 text-neutral-900 text-xs tracking-[0.2em] uppercase px-12 py-4 hover:bg-neutral-900 hover:text-white transition-colors duration-300">
+               class="inline-block border border-brand-500 text-brand-500 text-xs tracking-[0.2em] uppercase px-12 py-4 hover:bg-brand-500 hover:text-white transition-colors duration-300">
                 View All
             </a>
         </div>
@@ -151,7 +196,7 @@
                 Our consultants are ready to help you find the perfect piece.
             </p>
             <a asp-controller="Stores" asp-action="Index"
-               class="inline-block border border-white text-white text-xs tracking-[0.2em] uppercase px-10 py-4 hover:bg-white hover:text-neutral-900 transition-colors duration-300">
+               class="inline-block border border-brand-500 text-brand-500 text-xs tracking-[0.2em] uppercase px-10 py-4 hover:bg-brand-500 hover:text-white transition-colors duration-300">
                 Find a Store
             </a>
         </div>

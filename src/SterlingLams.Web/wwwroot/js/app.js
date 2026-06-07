@@ -97,6 +97,43 @@ function showToast(message, duration = 3000) {
     }, duration);
 }
 
+// ─── Quick Add to Bag (list page) ─────────────────────────────────────────
+document.querySelectorAll('.add-to-bag-quick').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Products with options need a selection — send the shopper to the detail page.
+        if (btn.dataset.hasVariants === 'true') {
+            window.location.href = '/products/' + btn.dataset.productSlug;
+            return;
+        }
+
+        const productId = btn.dataset.productId;
+        const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+
+        btn.disabled = true;
+        try {
+            const res = await fetch('/Cart/Add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: `productId=${productId}&quantity=1&__RequestVerificationToken=${encodeURIComponent(token)}`
+            });
+            const data = await res.json();
+            if (data.success) {
+                updateCartBadge(data.cartCount);
+                showToast('Added to bag');
+            } else {
+                showToast(data.message || 'Could not add to bag');
+            }
+        } catch (err) {
+            console.error('Add to bag failed', err);
+        } finally {
+            btn.disabled = false;
+        }
+    });
+});
+
 // ─── Wishlist Toggle (list page) ──────────────────────────────────────────
 document.querySelectorAll('.wishlist-toggle').forEach(btn => {
     btn.addEventListener('click', async (e) => {

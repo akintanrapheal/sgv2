@@ -12,11 +12,24 @@ public static class SettingsSeedData
         var existingKeys = await db.SiteSettings.Select(s => s.Key).ToListAsync();
         var toAdd = definitions.Where(d => !existingKeys.Contains(d.Key)).ToList();
 
-        if (toAdd.Count == 0) return;
+        if (toAdd.Count > 0)
+        {
+            db.SiteSettings.AddRange(toAdd);
+            await db.SaveChangesAsync();
+            logger.LogInformation("Seeded {Count} site settings.", toAdd.Count);
+        }
 
-        db.SiteSettings.AddRange(toAdd);
+        // One-time migrations: update stale defaults / types
+        var announcementColor = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "announcement.bg_color");
+        if (announcementColor != null && (announcementColor.Value == "bg-neutral-900" || string.IsNullOrWhiteSpace(announcementColor.Value)))
+            announcementColor.Value = "bg-brand-500";
+
+        // Ensure hero_image_url uses type "image" so the admin shows a file picker
+        var heroImg = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "homepage.hero_image_url");
+        if (heroImg != null && heroImg.Type == "url")
+            heroImg.Type = "image";
+
         await db.SaveChangesAsync();
-        logger.LogInformation("Seeded {Count} site settings.", toAdd.Count);
     }
 
     private static List<SiteSetting> GetAllSettings() => new()
@@ -34,7 +47,7 @@ public static class SettingsSeedData
         // ── Announcement Bar ─────────────────────────────────────────────────
         new() { Key = "announcement.enabled",     Group = "Announcement Bar", Label = "Show Announcement Bar",  Type = "boolean",  Value = "true",  Description = "Toggle the top banner on all pages.",                         SortOrder = 1 },
         new() { Key = "announcement.text",        Group = "Announcement Bar", Label = "Announcement Text",      Type = "text",     Value = "COMPLIMENTARY SHIPPING ON ORDERS OVER ₦150,000  |  IN-STORE PICKUP AVAILABLE", Description = "Text shown in the top banner. Keep it short.", SortOrder = 2 },
-        new() { Key = "announcement.bg_color",    Group = "Announcement Bar", Label = "Background Colour",      Type = "text",     Value = "bg-neutral-900",  Description = "Tailwind class: bg-neutral-900, bg-red-600, bg-emerald-700, bg-amber-500, etc.", SortOrder = 3 },
+        new() { Key = "announcement.bg_color",    Group = "Announcement Bar", Label = "Background Colour",      Type = "text",     Value = "bg-brand-500",    Description = "Tailwind class: bg-brand-500, bg-neutral-900, bg-red-600, bg-emerald-700, etc.", SortOrder = 3 },
 
         // ── Shipping & Delivery ───────────────────────────────────────────────
         // Lagos & Abuja — Express
@@ -61,11 +74,12 @@ public static class SettingsSeedData
         new() { Key = "store.currency_symbol",     Group = "Store", Label = "Currency Symbol",          Type = "text",    Value = "N",     Description = "Symbol shown next to prices (e.g. N, $, PS).",                          SortOrder = 5 },
 
         // ── Homepage ──────────────────────────────────────────────────────────
-        new() { Key = "homepage.hero_headline",   Group = "Homepage", Label = "Hero Headline",       Type = "text",    Value = "Timeless Elegance",                                    Description = "Large text on the homepage hero section.",          SortOrder = 1 },
-        new() { Key = "homepage.hero_subtext",    Group = "Homepage", Label = "Hero Subtext",        Type = "text",    Value = "Luxury jewellery crafted for the discerning woman. Discover our newest arrivals.", Description = "Smaller text below the hero headline.", SortOrder = 2 },
-        new() { Key = "homepage.hero_cta",        Group = "Homepage", Label = "Hero Button Text",    Type = "text",    Value = "Shop Collection",                                      Description = "Text on the main call-to-action button.",           SortOrder = 3 },
-        new() { Key = "homepage.show_featured",   Group = "Homepage", Label = "Show Featured Section",Type = "boolean", Value = "true",                                                Description = "Show the Featured Pieces section.",                 SortOrder = 4 },
-        new() { Key = "homepage.featured_heading",Group = "Homepage", Label = "Featured Section Heading", Type = "text", Value = "Featured Pieces",                                   Description = "Heading for the featured products section.",        SortOrder = 5 },
-        new() { Key = "homepage.store_banner_text",Group = "Homepage", Label = "Store Banner Subtext",Type = "text",   Value = "Experience our jewellery in person at any of our three Lagos boutiques.",       Description = "Text in the dark store-finder banner.",             SortOrder = 6 },
+        new() { Key = "homepage.hero_headline",    Group = "Homepage", Label = "Hero Headline",          Type = "text",    Value = "Timeless Elegance",                                    Description = "Large text on the homepage hero section.",                              SortOrder = 1 },
+        new() { Key = "homepage.hero_subtext",     Group = "Homepage", Label = "Hero Subtext",           Type = "text",    Value = "Luxury jewellery crafted for the discerning woman. Discover our newest arrivals.", Description = "Smaller text below the hero headline.", SortOrder = 2 },
+        new() { Key = "homepage.hero_cta",         Group = "Homepage", Label = "Hero Button Text",       Type = "text",    Value = "Shop Collection",                                      Description = "Text on the main call-to-action button.",                               SortOrder = 3 },
+        new() { Key = "homepage.hero_image_url",   Group = "Homepage", Label = "Hero Campaign Image URL",Type = "image",   Value = "",                                                     Description = "Upload a campaign photo (or paste a URL). Replaces the hero gradient background. Recommended: full-width landscape, at least 1920×1080px.", SortOrder = 4 },
+        new() { Key = "homepage.show_featured",    Group = "Homepage", Label = "Show Featured Section",  Type = "boolean", Value = "true",                                                 Description = "Show the Featured Pieces section.",                                     SortOrder = 5 },
+        new() { Key = "homepage.featured_heading", Group = "Homepage", Label = "Featured Section Heading",Type = "text",  Value = "Featured Pieces",                                      Description = "Heading for the featured products section.",                             SortOrder = 6 },
+        new() { Key = "homepage.store_banner_text",Group = "Homepage", Label = "Store Banner Subtext",   Type = "text",   Value = "Experience our jewellery in person at any of our three Lagos boutiques.", Description = "Text in the dark store-finder banner.",              SortOrder = 7 },
     };
 }

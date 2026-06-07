@@ -27,6 +27,7 @@ public class ProductsController : Controller
             .Include(p => p.Category)
             .Include(p => p.Images)
             .Include(p => p.StoreInventories)
+            .Include(p => p.Variants)
             .Where(p => p.IsActive);
 
         if (!string.IsNullOrWhiteSpace(filters.Search))
@@ -87,6 +88,7 @@ public class ProductsController : Controller
                 IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0),
                 IsInWishlist = wishlistProductIds.Contains(p.Id),
                 IsNewArrival = p.IsNewArrival,
+                HasVariants = p.Variants.Any(v => v.IsActive),
                 CategoryName = p.Category.Name
             }).ToList(),
             Filters = filters,
@@ -211,6 +213,17 @@ public class ProductsController : Controller
             .ToListAsync();
 
         return Json(results);
+    }
+
+    // POST /Products/NotifyRestock  (back-in-stock email capture)
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult NotifyRestock(int productId, string email)
+    {
+        if (!string.IsNullOrWhiteSpace(email))
+            _logger.LogInformation("Restock notification requested: product {ProductId} for {Email}", productId, email);
+
+        return Json(new { success = true });
     }
 
     private string GetUserId() => User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;

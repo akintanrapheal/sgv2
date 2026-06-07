@@ -22,6 +22,30 @@ public interface IERPNextService
     /// Returns the invoice name (SINV-XXXX).
     /// </summary>
     Task<string> CreateSalesInvoiceAsync(ERPNextSalesInvoiceRequest request);
+
+    /// <summary>
+    /// Enables or disables an existing Item (sets the <c>disabled</c> flag). Disabling is the
+    /// safe alternative to deletion for items that already have stock or transactions, which
+    /// ERPNext refuses to delete. Returns true on success.
+    /// </summary>
+    Task<bool> SetItemDisabledAsync(string itemCode, bool disabled);
+
+    /// <summary>
+    /// Creates a new stock Item in ERPNext. If an item with the same code already exists it is
+    /// left untouched and the call reports success. Returns (created, error) — created is false
+    /// when the item already existed; error is non-null only on a real failure.
+    /// </summary>
+    Task<(bool Created, string? Error)> CreateItemAsync(ERPNextNewItemRequest request);
+}
+
+public class ERPNextNewItemRequest
+{
+    public string ItemCode { get; set; } = string.Empty;
+    public string ItemName { get; set; } = string.Empty;
+    public decimal StandardRate { get; set; }
+    public string? Description { get; set; }
+    public string ItemGroup { get; set; } = "Products";
+    public string StockUom { get; set; } = "Nos";
 }
 
 public class ERPNextSalesInvoiceRequest

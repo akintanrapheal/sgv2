@@ -129,6 +129,54 @@ public class ERPNextService : IERPNextService
 
         return invoiceName;
     }
+
+    // ─── Item writes (disable / create) ──────────────────────────────────────
+
+    public async Task<bool> SetItemDisabledAsync(string itemCode, bool disabled)
+    {
+        var url = $"/api/resource/Item/{Uri.EscapeDataString(itemCode)}";
+        var resp = await _http.PutAsJsonAsync(url, new { disabled = disabled ? 1 : 0 }, _json);
+        if (resp.IsSuccessStatusCode) return true;
+
+        var err = await resp.Content.ReadAsStringAsync();
+        _logger.LogWarning("Failed to set disabled={Disabled} on item {Item}: {Status} — {Err}",
+            disabled, itemCode, resp.StatusCode, Truncate(err));
+        return false;
+    }
+
+    public async Task<(bool Created, string? Error)> CreateItemAsync(ERPNextNewItemRequest request)
+    {
+        var body = new
+        {
+            item_code      = request.ItemCode,
+            item_name      = string.IsNullOrWhiteSpace(request.ItemName) ? request.ItemCode : request.ItemName,
+            item_group     = request.ItemGroup,
+            stock_uom      = request.StockUom,
+            is_stock_item  = 1,
+            is_sales_item  = 1,
+            standard_rate  = request.StandardRate,
+            description    = request.Description ?? string.Empty,
+            disabled       = 0
+        };
+
+        var resp = await _http.PostAsJsonAsync("/api/resource/Item", body, _json);
+        if (resp.IsSuccessStatusCode) return (true, null);
+
+        var err = await resp.Content.ReadAsStringAsync();
+
+        // ERPNext returns 409 Conflict (DuplicateEntryError) when the item already exists.
+        if (resp.StatusCode == System.Net.HttpStatusCode.Conflict ||
+            err.Contains("DuplicateEntry", StringComparison.OrdinalIgnoreCase) ||
+            err.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+        {
+            return (false, null); // already present — not an error
+        }
+
+        return (false, $"{(int)resp.StatusCode} {resp.StatusCode}: {Truncate(err)}");
+    }
+
+    private static string Truncate(string s, int max = 400) =>
+        string.IsNullOrEmpty(s) ? s : (s.Length <= max ? s : s[..max] + "…");
 }
 
 public class ERPNextException : Exception

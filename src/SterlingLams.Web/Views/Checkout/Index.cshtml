@@ -17,6 +17,47 @@
             <!-- ─── Left: Fulfillment + Details ─────────────────────────── -->
             <div class="md:col-span-3 space-y-10">
 
+                @* ── Guest Contact Section (unauthenticated only) ─────────── *@
+                @if (User.Identity?.IsAuthenticated != true)
+                {
+                    <section class="border border-brand-200 bg-brand-50 p-6">
+                        <div class="flex items-start gap-4 mb-5">
+                            <svg class="w-5 h-5 text-brand-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                            </svg>
+                            <div>
+                                <p class="text-xs tracking-[0.2em] uppercase text-brand-600 mb-1">Checking Out as Guest</p>
+                                <p class="text-sm text-neutral-600 font-light">
+                                    Already have an account?
+                                    <a asp-controller="Account" asp-action="Login" asp-route-returnUrl="/Checkout"
+                                       class="text-brand-500 hover:text-brand-700 underline underline-offset-2">Sign in</a>
+                                    for faster checkout and order tracking.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Full Name</label>
+                                <input asp-for="GuestName" type="text" autocomplete="name"
+                                       class="form-input" placeholder="Jane Smith" />
+                            </div>
+                            <div>
+                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Email <span class="text-red-400">*</span></label>
+                                <input asp-for="GuestEmail" type="email" autocomplete="email" required
+                                       class="form-input @(ViewData.ModelState["GuestEmail"]?.Errors.Any() == true ? "border-red-400" : "")"
+                                       placeholder="your@email.com" />
+                                <span asp-validation-for="GuestEmail" class="text-xs text-red-500 mt-1 block"></span>
+                            </div>
+                            <div>
+                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Phone</label>
+                                <input asp-for="GuestPhone" type="tel" autocomplete="tel"
+                                       class="form-input" placeholder="+234 800 000 0000" />
+                            </div>
+                        </div>
+                    </section>
+                }
+
                 <!-- Step 1: Fulfillment Type -->
                 <section>
                     <h2 class="font-cormorant text-2xl font-light mb-6">How would you like to receive your order?</h2>
@@ -199,7 +240,7 @@
                     </div>
 
                     <button type="submit"
-                            class="w-full bg-neutral-900 text-white text-xs tracking-[0.2em] uppercase py-4 hover:bg-neutral-700 transition-colors duration-300">
+                            class="w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-4 hover:bg-brand-600 transition-colors duration-300">
                         Proceed to Payment
                     </button>
 

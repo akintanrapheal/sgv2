@@ -5,6 +5,7 @@
 }
 
 <div class="max-w-7xl mx-auto px-6 py-12">
+    @Html.AntiForgeryToken()
 
     <!-- Page Header -->
     <div class="text-center mb-12">
@@ -85,13 +86,13 @@
                 </div>
 
                 <button type="submit"
-                        class="w-full bg-neutral-900 text-white text-xs tracking-[0.2em] uppercase py-3 hover:bg-neutral-700 transition-colors">
+                        class="w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 hover:bg-brand-600 transition-colors">
                     Apply Filters
                 </button>
 
                 @if (!string.IsNullOrEmpty(Model.Filters.Category) || !string.IsNullOrEmpty(Model.Filters.Metal) || Model.Filters.MinPrice.HasValue)
                 {
-                    <a asp-action="Index" class="block text-center mt-3 text-xs text-neutral-400 hover:text-neutral-700 transition-colors">
+                    <a asp-action="Index" class="block text-center mt-3 text-xs text-neutral-400 hover:text-brand-500 transition-colors">
                         Clear all
                     </a>
                 }
@@ -138,7 +139,7 @@
 
                                 @if (product.IsNewArrival)
                                 {
-                                    <span class="absolute top-3 left-3 bg-neutral-900 text-white text-[9px] tracking-widest uppercase px-2 py-1">
+                                    <span class="absolute top-3 left-3 bg-brand-500 text-white text-[9px] tracking-widest uppercase px-2 py-1">
                                         New
                                     </span>
                                 }
@@ -151,10 +152,23 @@
 
                                 <!-- Quick actions on hover -->
                                 <div class="absolute bottom-3 right-3 flex flex-col gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                    <button class="wishlist-toggle bg-white shadow p-2 hover:bg-neutral-900 hover:text-white transition-colors"
+                                    @if (product.IsAvailable)
+                                    {
+                                        <button class="add-to-bag-quick bg-white shadow p-2 hover:bg-brand-500 hover:text-white transition-colors"
+                                                data-product-id="@product.Id"
+                                                data-product-slug="@product.Slug"
+                                                data-has-variants="@(product.HasVariants ? "true" : "false")"
+                                                aria-label="Add to bag" title="Add to bag">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                                      d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-.534 1.872-1.683 1.872-2.946 0-1.66-1.34-3-3-3H6.272M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z"/>
+                                            </svg>
+                                        </button>
+                                    }
+                                    <button class="wishlist-toggle bg-white shadow p-2 hover:bg-brand-500 hover:text-white transition-colors"
                                             data-product-id="@product.Id"
                                             aria-label="Wishlist">
-                                        <svg class="w-4 h-4 @(product.IsInWishlist ? "fill-neutral-900" : "")"
+                                        <svg class="w-4 h-4 @(product.IsInWishlist ? "fill-brand-500 text-brand-500" : "")"
                                              fill="@(product.IsInWishlist ? "currentColor" : "none")"
                                              stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
@@ -186,7 +200,7 @@
                                asp-route-page="@i"
                                asp-route-category="@Model.Filters.Category"
                                asp-route-sortBy="@Model.Filters.SortBy"
-                               class="w-10 h-10 flex items-center justify-center text-xs border @(i == Model.Page ? "border-neutral-900 bg-neutral-900 text-white" : "border-neutral-200 text-neutral-600 hover:border-neutral-900") transition-colors">
+                               class="w-10 h-10 flex items-center justify-center text-xs border @(i == Model.Page ? "border-brand-500 bg-brand-500 text-white" : "border-neutral-200 text-neutral-600 hover:border-brand-500 hover:text-brand-500") transition-colors">
                                 @i
                             </a>
                         }

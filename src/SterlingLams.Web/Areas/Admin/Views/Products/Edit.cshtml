@@ -367,12 +367,28 @@
             }
 
             <form asp-area="Admin" asp-controller="Products" asp-action="AddImage"
-                  asp-route-id="@Model.Id" method="post" class="space-y-3">
+                  asp-route-id="@Model.Id" method="post" enctype="multipart/form-data" class="space-y-3">
                 @Html.AntiForgeryToken()
-                <div>
-                    <label class="block text-xs text-neutral-500 mb-1">Image URL *</label>
-                    <input name="imageUrl" type="url" required placeholder="https://…"
-                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                <div class="flex gap-4 items-start">
+                    <!-- Upload from computer -->
+                    <div class="flex-1">
+                        <label class="block text-xs text-neutral-500 mb-1">Upload from computer</label>
+                        <label class="flex items-center gap-2 cursor-pointer border border-neutral-200 rounded-sm px-3 py-2 text-sm text-neutral-500 hover:border-neutral-400 transition-colors w-full">
+                            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            <span id="prod-file-label">Choose image…</span>
+                            <input id="prod-file-input" type="file" name="imageFile" accept="image/*" class="hidden"
+                                   onchange="document.getElementById('prod-file-label').textContent = this.files[0]?.name ?? 'Choose image…'" />
+                        </label>
+                    </div>
+                    <div class="flex items-center text-xs text-neutral-400 mt-6">or</div>
+                    <!-- URL fallback -->
+                    <div class="flex-1">
+                        <label class="block text-xs text-neutral-500 mb-1">Image URL</label>
+                        <input name="imageUrl" type="url" placeholder="https://…"
+                               class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                    </div>
                 </div>
                 <div class="flex gap-4 items-end">
                     <div class="flex-1">
@@ -390,6 +406,17 @@
                     </button>
                 </div>
             </form>
+        </div>
+    }
+    else
+    {
+        <!-- New product: images & variants become available after the first save -->
+        <div class="mt-6 bg-white rounded-sm border border-dashed border-neutral-200 p-6 text-center">
+            <svg class="w-8 h-8 mx-auto text-neutral-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+            <p class="text-sm text-neutral-600">Save the product first to upload images from your computer and add variants.</p>
+            <p class="text-xs text-neutral-400 mt-1">Click “Save Product” above — you'll return here with image upload enabled.</p>
         </div>
     }
 </div>

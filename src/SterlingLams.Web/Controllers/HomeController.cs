@@ -40,6 +40,17 @@ public class HomeController : Controller
             IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0)
         }).ToList();
 
+        // "Shop by Category" — active top-level categories. Prefer those with an
+        // image (admin-curated); fall back to the first few so the section is never empty.
+        var topCategories = await _db.Categories
+            .Where(c => c.IsActive && c.ParentId == null)
+            .OrderBy(c => c.SortOrder)
+            .ThenBy(c => c.Name)
+            .ToListAsync();
+
+        var withImages = topCategories.Where(c => !string.IsNullOrWhiteSpace(c.ImageUrl)).ToList();
+        ViewBag.ShopCategories = withImages.Count > 0 ? withImages : topCategories.Take(5).ToList();
+
         return View();
     }
 

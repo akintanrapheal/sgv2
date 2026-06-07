@@ -19,17 +19,18 @@
 
         <!-- ─── Image Gallery ─────────────────────────────────────────── -->
         <div class="space-y-3">
-            <div class="aspect-square bg-neutral-50 overflow-hidden">
+            <!-- Zoom container: hover to zoom, click to toggle pinned zoom -->
+            <div class="aspect-square bg-neutral-50 overflow-hidden zoom-container cursor-zoom-in" id="zoom-container">
                 <img id="main-image" src="@Model.PrimaryImageUrl" alt="@Model.Name"
-                     class="w-full h-full object-cover object-center" />
+                     class="w-full h-full object-cover object-center transition-transform duration-300 will-change-transform" />
             </div>
             @if (Model.ImageUrls.Count > 1)
             {
                 <div class="grid grid-cols-4 gap-2">
                     @foreach (var (url, i) in Model.ImageUrls.Select((u, i) => (u, i)))
                     {
-                        <button onclick="document.getElementById('main-image').src = '@url'"
-                                class="aspect-square bg-neutral-50 overflow-hidden border-2 @(i == 0 ? "border-neutral-900" : "border-transparent") hover:border-neutral-400 transition-colors">
+                        <button onclick="switchMainImage('@url', this)"
+                                class="thumb-btn aspect-square bg-neutral-50 overflow-hidden border-2 @(i == 0 ? "border-brand-500" : "border-transparent") hover:border-brand-300 transition-colors">
                             <img src="@url" alt="@Model.Name view @(i+1)" class="w-full h-full object-cover" />
                         </button>
                     }
@@ -127,37 +128,80 @@
 
             <!-- ─── Actions ───────────────────────────────────────────── -->
             <div class="mb-8">
-                <!-- Quantity -->
-                <p class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-3">Quantity</p>
-                <div class="flex items-center gap-4 mb-4">
-                    <div class="flex items-center border border-neutral-300">
-                        <button id="qty-minus" type="button"
-                                class="w-10 h-10 flex items-center justify-center text-neutral-600 hover:bg-neutral-50 transition-colors text-lg leading-none">−</button>
-                        <span id="qty-display" class="w-12 text-center text-sm border-x border-neutral-300 py-2">1</span>
-                        <button id="qty-plus" type="button"
-                                class="w-10 h-10 flex items-center justify-center text-neutral-600 hover:bg-neutral-50 transition-colors text-lg leading-none">+</button>
+                @if (Model.IsAvailableAnywhere)
+                {
+                    <!-- Quantity -->
+                    <p class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-3">Quantity</p>
+                    <div class="flex items-center gap-4 mb-4">
+                        <div class="flex items-center border border-neutral-300">
+                            <button id="qty-minus" type="button"
+                                    class="w-10 h-10 flex items-center justify-center text-neutral-600 hover:bg-neutral-50 transition-colors text-lg leading-none">−</button>
+                            <span id="qty-display" class="w-12 text-center text-sm border-x border-neutral-300 py-2">1</span>
+                            <button id="qty-plus" type="button"
+                                    class="w-10 h-10 flex items-center justify-center text-neutral-600 hover:bg-neutral-50 transition-colors text-lg leading-none">+</button>
+                        </div>
                     </div>
-                </div>
-                <div class="flex gap-3">
-                    <button id="add-to-cart"
-                            data-product-id="@Model.Id"
-                            data-has-variants="@(Model.Variants.Any() ? "true" : "false")"
-                            @(!Model.IsAvailableAnywhere ? "disabled" : "")
-                            class="flex-1 bg-neutral-900 text-white text-xs tracking-[0.2em] uppercase py-4 px-8 hover:bg-neutral-700 transition-colors duration-300 disabled:opacity-40 disabled:cursor-not-allowed">
-                        @(Model.IsAvailableAnywhere ? "Add to Bag" : "Out of Stock")
-                    </button>
-                    <button id="wishlist-btn"
-                            data-product-id="@Model.Id"
-                            aria-label="@(Model.IsInWishlist ? "Remove from wishlist" : "Add to wishlist")"
-                            class="border border-neutral-300 px-4 hover:border-neutral-900 transition-colors">
-                        <svg class="w-5 h-5 @(Model.IsInWishlist ? "fill-neutral-900" : "")"
-                             fill="@(Model.IsInWishlist ? "currentColor" : "none")"
-                             stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
-                        </svg>
-                    </button>
-                </div>
+                    <div class="flex gap-3">
+                        <button id="add-to-cart"
+                                data-product-id="@Model.Id"
+                                data-has-variants="@(Model.Variants.Any() ? "true" : "false")"
+                                class="flex-1 bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-4 px-8 hover:bg-brand-600 transition-colors duration-300">
+                            Add to Bag
+                        </button>
+                        <button id="wishlist-btn"
+                                data-product-id="@Model.Id"
+                                aria-label="@(Model.IsInWishlist ? "Remove from wishlist" : "Add to wishlist")"
+                                class="border border-neutral-300 px-4 hover:border-brand-500 hover:text-brand-500 transition-colors">
+                            <svg class="w-5 h-5 @(Model.IsInWishlist ? "fill-brand-500 text-brand-500" : "")"
+                                 fill="@(Model.IsInWishlist ? "currentColor" : "none")"
+                                 stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                            </svg>
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <!-- Out of stock — back-in-stock email capture -->
+                    <div class="border border-neutral-200 p-6 bg-neutral-50">
+                        <p class="text-xs tracking-[0.2em] uppercase text-neutral-400 mb-1">Currently Unavailable</p>
+                        <p class="text-sm text-neutral-500 font-light mb-5">
+                            This piece is out of stock. Enter your email and we'll notify you the moment it's back.
+                        </p>
+                        <form id="notify-form" class="flex gap-2">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="productId" value="@Model.Id" />
+                            <input type="email" name="email" required
+                                   placeholder="your@email.com"
+                                   class="flex-1 border border-neutral-300 px-4 py-3 text-sm focus:outline-none focus:border-brand-500 transition-colors" />
+                            <button type="submit"
+                                    class="bg-brand-500 text-white text-xs tracking-[0.15em] uppercase px-6 py-3 hover:bg-brand-600 transition-colors whitespace-nowrap">
+                                Notify Me
+                            </button>
+                        </form>
+                        <p id="notify-success" class="hidden text-xs text-emerald-600 mt-3 tracking-wide">
+                            You're on the list! We'll email you when this item is restocked.
+                        </p>
+                    </div>
+                    <div class="flex gap-3 mt-4">
+                        <button disabled
+                                class="flex-1 bg-neutral-200 text-neutral-400 text-xs tracking-[0.2em] uppercase py-4 px-8 cursor-not-allowed">
+                            Out of Stock
+                        </button>
+                        <button id="wishlist-btn"
+                                data-product-id="@Model.Id"
+                                aria-label="@(Model.IsInWishlist ? "Remove from wishlist" : "Add to wishlist")"
+                                class="border border-neutral-300 px-4 hover:border-brand-500 hover:text-brand-500 transition-colors">
+                            <svg class="w-5 h-5 @(Model.IsInWishlist ? "fill-brand-500 text-brand-500" : "")"
+                                 fill="@(Model.IsInWishlist ? "currentColor" : "none")"
+                                 stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                            </svg>
+                        </button>
+                    </div>
+                }
             </div>
 
             <!-- Reserve for pickup -->
@@ -229,6 +273,38 @@
     let selectedVariantId = null;
     let qty = 1;
 
+    // ── Image zoom (mouse-move zoom within container) ─────────────────────────
+    const zoomContainer = document.getElementById('zoom-container');
+    const mainImg = document.getElementById('main-image');
+
+    if (zoomContainer && mainImg) {
+        zoomContainer.addEventListener('mousemove', (e) => {
+            const rect = zoomContainer.getBoundingClientRect();
+            const x = ((e.clientX - rect.left) / rect.width) * 100;
+            const y = ((e.clientY - rect.top) / rect.height) * 100;
+            mainImg.style.transformOrigin = `${x}% ${y}%`;
+            mainImg.style.transform = 'scale(1.9)';
+        });
+        zoomContainer.addEventListener('mouseleave', () => {
+            mainImg.style.transform = 'scale(1)';
+            mainImg.style.transformOrigin = 'center center';
+        });
+    }
+
+    // ── Thumbnail switch ──────────────────────────────────────────────────────
+    window.switchMainImage = function(url, btn) {
+        if (mainImg) {
+            mainImg.style.transform = 'scale(1)';
+            mainImg.src = url;
+        }
+        document.querySelectorAll('.thumb-btn').forEach(b => {
+            b.classList.remove('border-brand-500');
+            b.classList.add('border-transparent');
+        });
+        btn.classList.remove('border-transparent');
+        btn.classList.add('border-brand-500');
+    };
+
     // ── Qty selector ──────────────────────────────────────────────────────
     const qtyDisplay = document.getElementById('qty-display');
     document.getElementById('qty-minus')?.addEventListener('click', () => {
@@ -238,7 +314,7 @@
         if (qty < 10) { qty++; qtyDisplay.textContent = qty; }
     });
 
-    // ── Dropdown-based variant selection ──────────────────────────────────
+    // ── Dropdown-based variant selection ──────────────────────────────────────
     const variantsDataEl = document.getElementById('variants-data');
     const variants    = variantsDataEl ? JSON.parse(variantsDataEl.textContent) : [];
     const selectedAttrs = {};
@@ -250,7 +326,6 @@
 
         document.getElementById('select-colour-prompt')?.classList.add('hidden');
 
-        // Count how many selects still need a value
         const allSelects = document.querySelectorAll('.attr-select');
         const allPicked  = [...allSelects].every(s => s.value !== '');
 
@@ -269,7 +344,7 @@
                     adjEl.classList.add('hidden');
                 }
             } else {
-                selectedVariantId = null; // combination not available
+                selectedVariantId = null;
             }
         } else {
             selectedVariantId = null;
@@ -286,7 +361,7 @@
         }
     }, true);
 
-    // ── Add to cart ───────────────────────────────────────────────────────
+    // ── Add to cart ───────────────────────────────────────────────────────────
     document.getElementById('add-to-cart')?.addEventListener('click', async (e) => {
         const btn = e.currentTarget;
         btn.disabled = true;
@@ -310,13 +385,38 @@
         }
     });
 
-    // ── Wishlist toggle ───────────────────────────────────────────────────
+    // ── Wishlist toggle ───────────────────────────────────────────────────────
     document.getElementById('wishlist-btn')?.addEventListener('click', async () => {
         const productId = @Model.Id;
         const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
         const res = await fetch('/Wishlist/Toggle', { method: 'POST', body: new URLSearchParams({ productId, __RequestVerificationToken: token }) });
         const data = await res.json();
         if (data.success) location.reload();
+    });
+
+    // ── Back-in-stock notify form ─────────────────────────────────────────────
+    document.getElementById('notify-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const form = e.currentTarget;
+        const btn = form.querySelector('button[type="submit"]');
+        const token = form.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+        btn.disabled = true;
+        btn.textContent = 'Saving…';
+        try {
+            await fetch('/Products/NotifyRestock', {
+                method: 'POST',
+                body: new URLSearchParams({
+                    productId: form.productId.value,
+                    email: form.email.value,
+                    __RequestVerificationToken: token
+                })
+            });
+            document.getElementById('notify-success')?.classList.remove('hidden');
+            form.email.value = '';
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Notify Me';
+        }
     });
 })();
 </script>
