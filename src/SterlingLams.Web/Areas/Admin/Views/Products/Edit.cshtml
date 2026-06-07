@@ -29,10 +29,33 @@
 
         <div class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
 
+            <div asp-validation-summary="ModelOnly" class="text-xs text-red-500"></div>
+
+            <!-- Product Type -->
+            <div>
+                <label class="block text-xs text-neutral-500 mb-1.5">Product Type</label>
+                <div class="flex gap-3">
+                    <label class="flex-1 cursor-pointer">
+                        <input type="radio" asp-for="ProductType" value="simple" class="peer sr-only" />
+                        <div class="border border-neutral-200 rounded-sm px-4 py-3 peer-checked:border-brand-500 peer-checked:bg-brand-50 transition-colors">
+                            <span class="text-sm font-medium text-neutral-800">Simple product</span>
+                            <span class="block text-xs text-neutral-400 mt-0.5">One item, single price &amp; SKU.</span>
+                        </div>
+                    </label>
+                    <label class="flex-1 cursor-pointer">
+                        <input type="radio" asp-for="ProductType" value="variable" class="peer sr-only" />
+                        <div class="border border-neutral-200 rounded-sm px-4 py-3 peer-checked:border-brand-500 peer-checked:bg-brand-50 transition-colors">
+                            <span class="text-sm font-medium text-neutral-800">Variable product</span>
+                            <span class="block text-xs text-neutral-400 mt-0.5">Has options/variants (e.g. colour).</span>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
             <!-- Name -->
             <div>
                 <label asp-for="Name" class="block text-xs text-neutral-500 mb-1">Name <span class="text-red-400">*</span></label>
-                <input asp-for="Name" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                <input asp-for="Name" required class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
                 <span asp-validation-for="Name" class="text-xs text-red-500"></span>
             </div>
 
@@ -51,12 +74,13 @@
                     <span asp-validation-for="Price" class="text-xs text-red-500"></span>
                 </div>
                 <div>
-                    <label asp-for="CategoryId" class="block text-xs text-neutral-500 mb-1">Category</label>
-                    <select asp-for="CategoryId"
+                    <label asp-for="CategoryId" class="block text-xs text-neutral-500 mb-1">Category <span class="text-red-400">*</span></label>
+                    <select asp-for="CategoryId" required
                             asp-items="@(new SelectList(Model.Categories, "Id", "Name"))"
                             class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400">
                         <option value="">— Select —</option>
                     </select>
+                    <span asp-validation-for="CategoryId" class="text-xs text-red-500"></span>
                 </div>
             </div>
 
@@ -73,23 +97,18 @@
                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400"></textarea>
             </div>
 
-            <!-- Metal + Weight -->
+            <!-- SKU + ERPNext Item Code -->
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label asp-for="Colour" class="block text-xs text-neutral-500 mb-1">Colour</label>
-                    <input asp-for="Colour" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                    <label asp-for="Sku" class="block text-xs text-neutral-500 mb-1">SKU</label>
+                    <input asp-for="Sku" type="text"
+                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:border-neutral-400" />
                 </div>
                 <div>
-                    <label asp-for="Weight" class="block text-xs text-neutral-500 mb-1">Weight <span class="text-neutral-300">(e.g. 4.2g)</span></label>
-                    <input asp-for="Weight" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                    <label asp-for="ErpNextItemCode" class="block text-xs text-neutral-500 mb-1">ERPNext Item Code <span class="text-neutral-300">(optional)</span></label>
+                    <input asp-for="ErpNextItemCode" type="text"
+                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:border-neutral-400" />
                 </div>
-            </div>
-
-            <!-- ERPNext Item Code -->
-            <div>
-                <label asp-for="ErpNextItemCode" class="block text-xs text-neutral-500 mb-1">ERPNext Item Code</label>
-                <input asp-for="ErpNextItemCode" type="text"
-                       class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:border-neutral-400" />
             </div>
 
             <!-- Flags -->
@@ -123,8 +142,8 @@
 
     @if (!isNew)
     {
-        <!-- ── Variants Tab ─────────────────────────────────────────────────── -->
-        <div class="mt-6 bg-white rounded-sm border border-neutral-100 p-6">
+        <!-- ── Variants Tab (only for variable products) ──────────────────────── -->
+        <div id="variants-section" class="mt-6 bg-white rounded-sm border border-neutral-100 p-6 @(Model.ProductType == "variable" ? "" : "hidden")">
             <h2 class="text-sm font-medium mb-1">Variants</h2>
             <p class="text-xs text-neutral-400 mb-5">Select attribute values that apply to this product, then click Generate to create all combinations.</p>
 
@@ -419,4 +438,15 @@
             <p class="text-xs text-neutral-400 mt-1">Click “Save Product” above — you'll return here with image upload enabled.</p>
         </div>
     }
+
+    <script>
+        (function () {
+            var section = document.getElementById('variants-section');
+            document.querySelectorAll('input[name="ProductType"]').forEach(function (r) {
+                r.addEventListener('change', function () {
+                    if (section) section.classList.toggle('hidden', this.value !== 'variable');
+                });
+            });
+        }());
+    </script>
 </div>

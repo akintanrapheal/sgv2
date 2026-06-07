@@ -167,4 +167,12 @@ if (args.Length >= 1 && args[0].Equals("migrate-woo", StringComparison.OrdinalIg
     return;
 }
 
+// Usage: dotnet run -- clean-product-text  (decodes leftover HTML entities in descriptions)
+if (args.Length >= 1 && args[0].Equals("clean-product-text", StringComparison.OrdinalIgnoreCase))
+{
+    await SterlingLams.Web.Infrastructure.WooMigrationRunner.CleanProductTextAsync(app.Services);
+    Log.CloseAndFlush();
+    return;
+}
+
 await app.RunAsync();

@@ -119,6 +119,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 Id               = product.Id,
                 Name             = product.Name,
                 Slug             = product.Slug,
+                Sku              = product.Sku,
+                ProductType      = string.IsNullOrWhiteSpace(product.ProductType) ? "simple" : product.ProductType,
                 Description      = product.Description ?? "",
                 ShortDescription = product.ShortDescription,
                 Price            = product.Price,
@@ -276,6 +278,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         {
             vm.Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync();
 
+            // Required fields (the Category FK is non-nullable, so guard it explicitly).
+            if (string.IsNullOrWhiteSpace(vm.Name))
+                ModelState.AddModelError(nameof(vm.Name), "Name is required.");
+            if (vm.CategoryId is null or 0 || !vm.Categories.Any(c => c.Id == vm.CategoryId))
+                ModelState.AddModelError(nameof(vm.CategoryId), "Please select a category.");
+
             if (!ModelState.IsValid)
             {
                 ViewData["Title"] = vm.Id == 0 ? "New Product" : "Edit Product";
@@ -300,13 +308,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             product.Description = vm.Description;
             product.ShortDescription = vm.ShortDescription;
             product.Price = vm.Price;
-            product.Metal = vm.Colour;
-            product.Weight = vm.Weight;
+            product.Sku = string.IsNullOrWhiteSpace(vm.Sku) ? null : vm.Sku.Trim();
+            product.ProductType = vm.ProductType == "variable" ? "variable" : "simple";
             product.IsActive = vm.IsActive;
             product.IsFeatured = vm.IsFeatured;
             product.IsNewArrival = vm.IsNewArrival;
             product.ErpNextItemCode = vm.ErpNextItemCode?.Trim() ?? string.Empty;
-            product.CategoryId = vm.CategoryId ?? product.CategoryId;
+            product.CategoryId = vm.CategoryId!.Value;
             product.UpdatedAt = DateTime.UtcNow;
 
             var isNew = vm.Id == 0;

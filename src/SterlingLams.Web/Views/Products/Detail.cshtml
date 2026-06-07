@@ -1,8 +1,15 @@
 @model SterlingLams.Web.Models.ViewModels.ProductDetailViewModel
+@using SterlingLams.Web.Services
+@inject ISettingsService SettingsService
 @{
     ViewData["Title"] = Model.Name;
     ViewData["Description"] = Model.ShortDescription;
     Layout = "_Layout";
+
+    var fullDescription = !string.IsNullOrWhiteSpace(Model.Description)
+        ? Model.Description
+        : (Model.ShortDescription ?? "");
+    var shippingPolicy = await SettingsService.GetAsync("shipping.returns_policy", "");
 }
 
 <div class="max-w-7xl mx-auto px-6 py-12">
@@ -204,6 +211,30 @@
                 }
             </div>
 
+            <!-- ─── Wishlist link + meta (SKU / Category) ──────────────── -->
+            <div class="mb-8">
+                <button id="wishlist-link" type="button" data-product-id="@Model.Id"
+                        class="inline-flex items-center gap-2 text-sm text-neutral-600 hover:text-brand-500 transition-colors">
+                    <svg id="wishlist-link-icon" class="w-4 h-4 @(Model.IsInWishlist ? "fill-brand-500 text-brand-500" : "")"
+                         fill="@(Model.IsInWishlist ? "currentColor" : "none")" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/>
+                    </svg>
+                    <span id="wishlist-link-text">@(Model.IsInWishlist ? "In your wishlist" : "Add to wishlist")</span>
+                </button>
+
+                <div class="border-t border-neutral-100 mt-5 pt-5 space-y-1.5 text-sm">
+                    @if (!string.IsNullOrEmpty(Model.Sku))
+                    {
+                        <p class="text-neutral-500">SKU: <span class="text-neutral-700">@Model.Sku</span></p>
+                    }
+                    <p class="text-neutral-500">Category:
+                        <a asp-controller="Products" asp-action="Index" asp-route-category="@Model.CategorySlug"
+                           class="text-neutral-700 hover:text-brand-500 transition-colors">@Model.CategoryName</a>
+                    </p>
+                </div>
+            </div>
+
             <!-- Reserve for pickup -->
             <a asp-controller="Checkout" asp-action="Index"
                class="text-center text-xs tracking-[0.2em] uppercase border border-neutral-300 py-4 hover:border-neutral-900 transition-colors mb-8 block">
@@ -238,6 +269,56 @@
                     </dl>
                 </div>
             }
+        </div>
+    </div>
+
+    <!-- ─── Product Tabs ──────────────────────────────────────────────────── -->
+    <div class="mt-20 border-t border-neutral-100 pt-10" id="product-tabs">
+        <div class="flex justify-center gap-8 border-b border-neutral-100 mb-8">
+            <button type="button" data-tab="description"
+                    class="prod-tab-btn pb-3 text-xs tracking-[0.15em] uppercase border-b-2 border-brand-500 text-neutral-900 transition-colors">
+                Description
+            </button>
+            <button type="button" data-tab="reviews"
+                    class="prod-tab-btn pb-3 text-xs tracking-[0.15em] uppercase border-b-2 border-transparent text-neutral-400 hover:text-neutral-700 transition-colors">
+                Reviews (0)
+            </button>
+            <button type="button" data-tab="shipping"
+                    class="prod-tab-btn pb-3 text-xs tracking-[0.15em] uppercase border-b-2 border-transparent text-neutral-400 hover:text-neutral-700 transition-colors">
+                Shipping &amp; Return Policy
+            </button>
+        </div>
+
+        <div class="max-w-3xl mx-auto">
+            <!-- Description -->
+            <div class="prod-tab-panel" data-panel="description">
+                @if (!string.IsNullOrWhiteSpace(fullDescription))
+                {
+                    <div class="text-sm text-neutral-600 leading-relaxed font-light" style="white-space: pre-line;">@fullDescription</div>
+                }
+                else
+                {
+                    <p class="text-sm text-neutral-400">No description available for this product.</p>
+                }
+            </div>
+
+            <!-- Reviews -->
+            <div class="prod-tab-panel hidden text-center py-6" data-panel="reviews">
+                <p class="text-sm text-neutral-500">There are no reviews yet.</p>
+                <p class="text-xs text-neutral-400 mt-1">Be the first to review &ldquo;@Model.Name&rdquo;.</p>
+            </div>
+
+            <!-- Shipping & Return Policy -->
+            <div class="prod-tab-panel hidden" data-panel="shipping">
+                @if (!string.IsNullOrWhiteSpace(shippingPolicy))
+                {
+                    <div class="text-sm text-neutral-600 leading-relaxed font-light" style="white-space: pre-line;">@shippingPolicy</div>
+                }
+                else
+                {
+                    <p class="text-sm text-neutral-400">Shipping & return details are available at checkout.</p>
+                }
+            </div>
         </div>
     </div>
 
@@ -386,12 +467,31 @@
     });
 
     // ── Wishlist toggle ───────────────────────────────────────────────────────
-    document.getElementById('wishlist-btn')?.addEventListener('click', async () => {
+    async function toggleWishlist() {
         const productId = @Model.Id;
         const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
         const res = await fetch('/Wishlist/Toggle', { method: 'POST', body: new URLSearchParams({ productId, __RequestVerificationToken: token }) });
         const data = await res.json();
         if (data.success) location.reload();
+    }
+    document.getElementById('wishlist-btn')?.addEventListener('click', toggleWishlist);
+    document.getElementById('wishlist-link')?.addEventListener('click', toggleWishlist);
+
+    // ── Product tabs (Description / Reviews / Shipping & Return Policy) ─────────
+    document.querySelectorAll('.prod-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const target = btn.dataset.tab;
+            document.querySelectorAll('.prod-tab-btn').forEach(b => {
+                const active = b === btn;
+                b.classList.toggle('border-brand-500', active);
+                b.classList.toggle('text-neutral-900', active);
+                b.classList.toggle('border-transparent', !active);
+                b.classList.toggle('text-neutral-400', !active);
+            });
+            document.querySelectorAll('.prod-tab-panel').forEach(p => {
+                p.classList.toggle('hidden', p.dataset.panel !== target);
+            });
+        });
     });
 
     // ── Back-in-stock notify form ─────────────────────────────────────────────

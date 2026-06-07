@@ -105,8 +105,12 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
     {
         public int Id { get; set; }
         public string Name { get; set; } = "";
-        public string Slug { get; set; } = "";
-        public string Description { get; set; } = "";
+        // Optional fields are nullable so ASP.NET's implicit "non-nullable = required"
+        // validation doesn't block saving when they're left blank.
+        public string? Slug { get; set; }
+        public string? Sku { get; set; }
+        public string ProductType { get; set; } = "simple";
+        public string? Description { get; set; }
         public string? ShortDescription { get; set; }
         public decimal Price { get; set; }
         public string? Colour { get; set; }
@@ -114,7 +118,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public bool IsActive { get; set; } = true;
         public bool IsFeatured { get; set; }
         public bool IsNewArrival { get; set; }
-        public string ErpNextItemCode { get; set; } = string.Empty;
+        public string? ErpNextItemCode { get; set; }
         public int? CategoryId { get; set; }
         public List<Category> Categories { get; set; } = new();
         public List<ProductImage> Images { get; set; } = new();

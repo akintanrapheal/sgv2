@@ -35,6 +35,7 @@ public static class SettingsSeedData
     private static List<SiteSetting> GetAllSettings() => new()
     {
         // ── General ──────────────────────────────────────────────────────────
+        new() { Key = "general.logo_url",         Group = "General", Label = "Site Logo",          Type = "image",   Value = "",                                               Description = "Upload your logo (or paste a URL). Shown in the footer. Recommended: transparent PNG.", SortOrder = 0 },
         new() { Key = "general.site_name",       Group = "General", Label = "Site Name",          Type = "text",    Value = "Sterlin Glams",                                  Description = "Displayed in the browser tab and emails.",    SortOrder = 1 },
         new() { Key = "general.tagline",          Group = "General", Label = "Tagline",            Type = "text",    Value = "Luxury Jewellery. Timeless Elegance.",           Description = "Short brand tagline used in meta descriptions.", SortOrder = 2 },
         new() { Key = "general.contact_email",    Group = "General", Label = "Contact Email",      Type = "email",   Value = "info@sterlinglams.com",                          Description = "Displayed in the footer and contact page.",   SortOrder = 3 },
@@ -59,6 +60,7 @@ public static class SettingsSeedData
         // National — Standard
         new() { Key = "shipping.national_standard_fee",   Group = "Shipping", Label = "Nationwide Standard Fee (N)",           Type = "number", Value = "7500",               Description = "Delivery fee for all other Nigerian states.",                  SortOrder = 5 },
         new() { Key = "shipping.national_standard_days",  Group = "Shipping", Label = "Nationwide Standard Timeframe",         Type = "text",   Value = "2 - 5 working days", Description = "Timeframe shown to customers for nationwide standard delivery.", SortOrder = 6 },
+        new() { Key = "shipping.returns_policy",           Group = "Shipping", Label = "Shipping & Return Policy (product page)", Type = "textarea", Value = "Orders are processed within 1–2 business days. Delivery timeframes and fees depend on your location (see checkout for details).\n\nReturns are accepted within 7 days of delivery for unworn items in their original packaging. Earrings and custom pieces are non-returnable for hygiene reasons. Contact us to arrange a return.", Description = "Shown in the 'Shipping & Return Policy' tab on every product page.", SortOrder = 7 },
 
         // ── Notifications ─────────────────────────────────────────────────────
         new() { Key = "notifications.admin_email",     Group = "Notifications", Label = "Admin Email",                    Type = "email",   Value = "rapheal@sterlinglamslogistics.com", Description = "Receives new order and low stock alerts.",         SortOrder = 1 },

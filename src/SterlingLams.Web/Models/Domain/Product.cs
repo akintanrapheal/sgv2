@@ -24,6 +24,9 @@ public class Product
     public string? Carat { get; set; }
     public string? Weight { get; set; }
 
+    /// <summary>"simple" (no options) or "variable" (has variants/options).</summary>
+    public string ProductType { get; set; } = "simple";
+
     public bool IsActive { get; set; } = true;
     public bool IsFeatured { get; set; }
     public int LowStockThreshold { get; set; } = 3;

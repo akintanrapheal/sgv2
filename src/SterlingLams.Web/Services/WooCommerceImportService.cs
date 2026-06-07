@@ -326,10 +326,20 @@ public class WooCommerceImportService : IWooCommerceImportService
     private static string StripHtml(string? html)
     {
         if (string.IsNullOrWhiteSpace(html)) return string.Empty;
-        var stripped = Regex.Replace(html, "<[^>]*>", " ");
-        // Decode HTML entities (&amp; &rsquo; &#8217; etc.) and collapse whitespace.
+
+        // Preserve line breaks: turn block-level/break tags into newlines first.
+        var withBreaks = Regex.Replace(html, @"<\s*(br|/p|/div|/li|/h[1-6])\s*/?>", "\n",
+            RegexOptions.IgnoreCase);
+        var stripped = Regex.Replace(withBreaks, "<[^>]*>", " ");
+
+        // Decode HTML entities (&amp; &rsquo; &#8217; etc.).
         var decoded = System.Net.WebUtility.HtmlDecode(stripped);
-        return Regex.Replace(decoded, @"\s+", " ").Trim();
+
+        // Collapse spaces/tabs but keep newlines; trim blank lines.
+        decoded = Regex.Replace(decoded, @"[ \t]+", " ");
+        decoded = Regex.Replace(decoded, @"\n{3,}", "\n\n");
+        var lines = decoded.Split('\n').Select(l => l.Trim());
+        return string.Join("\n", lines).Trim();
     }
 
     private async Task<string> UniqueSlugAsync(string baseSlug, HashSet<string>? inMemory = null)

@@ -9,6 +9,7 @@
     var facebook   = await SettingsService.GetAsync("general.facebook_url");
     var tiktok     = await SettingsService.GetAsync("general.tiktok_url");
     var tagline    = await SettingsService.GetAsync("general.tagline", "Timeless luxury jewellery crafted with the finest materials.");
+    var logoUrl    = await SettingsService.GetAsync("general.logo_url");
 
     var activeStores = await Db.Stores
         .Where(s => s.IsActive)
@@ -23,9 +24,16 @@
             <!-- Brand -->
             <div class="md:col-span-1">
                 <a asp-controller="Home" asp-action="Index">
-                    <span class="font-cormorant text-2xl font-light tracking-[0.3em] uppercase">
-                        Sterlin Glams
-                    </span>
+                    @if (!string.IsNullOrEmpty(logoUrl))
+                    {
+                        <img src="@logoUrl" alt="Sterlin Glams" class="h-12 w-auto" />
+                    }
+                    else
+                    {
+                        <span class="font-cormorant text-2xl font-light tracking-[0.3em] uppercase">
+                            Sterlin Glams
+                        </span>
+                    }
                 </a>
                 <p class="mt-4 text-neutral-400 text-sm leading-relaxed font-light">@tagline</p>
 
@@ -119,7 +127,16 @@
             </div>
         </div>
 
-        <div class="border-t border-neutral-800 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+        @if (!string.IsNullOrEmpty(logoUrl))
+        {
+            <div class="border-t border-neutral-800 mt-12 pt-10 flex justify-center">
+                <a asp-controller="Home" asp-action="Index">
+                    <img src="@logoUrl" alt="Sterlin Glams" class="h-14 w-auto mx-auto" />
+                </a>
+            </div>
+        }
+
+        <div class="@(string.IsNullOrEmpty(logoUrl) ? "border-t border-neutral-800 " : "")mt-8 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
             <p class="text-xs text-neutral-500">&copy; @DateTime.UtcNow.Year Sterlin Glams. All rights reserved.</p>
             <div class="flex gap-6">
                 <a asp-controller="Home" asp-action="Privacy"        class="text-xs text-neutral-500 hover:text-brand-500 transition-colors">Privacy Policy</a>

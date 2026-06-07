@@ -13,6 +13,7 @@ public class ProductDetailViewModel
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;
+    public string? Sku { get; set; }
     public string? Description { get; set; }
     public string? ShortDescription { get; set; }
     public decimal Price { get; set; }

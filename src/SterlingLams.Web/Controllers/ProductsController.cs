@@ -131,6 +131,7 @@ public class ProductsController : Controller
             Id = product.Id,
             Name = product.Name,
             Slug = product.Slug,
+            Sku = product.Sku,
             Description = product.Description,
             ShortDescription = product.ShortDescription,
             Price = product.Price,

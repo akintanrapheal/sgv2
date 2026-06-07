@@ -36,7 +36,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<Product>(e =>
         {
             e.HasIndex(p => p.Slug).IsUnique();
-            e.HasIndex(p => p.ErpNextItemCode).IsUnique();
+            // Unique only for real codes — products created without an ERPNext code
+            // store "" and must not collide with each other.
+            e.HasIndex(p => p.ErpNextItemCode).IsUnique().HasFilter("\"ErpNextItemCode\" <> ''");
             e.Property(p => p.Price).HasPrecision(18, 2);
 
             e.HasOne(p => p.Category)
