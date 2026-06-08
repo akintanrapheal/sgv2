@@ -41,6 +41,9 @@ public class TillController : Controller
         return null;
     }
 
+    private Task<TillSession?> OpenSessionAsync(int registerId) =>
+        _db.TillSessions.FirstOrDefaultAsync(s => s.RegisterId == registerId && s.ClosedAt == null);
+
     public async Task<IActionResult> Index()
     {
         var register = await BoundRegisterAsync();
@@ -62,7 +65,81 @@ public class TillController : Controller
             return View("Login", cashiers);
         }
 
+        var session = await OpenSessionAsync(register.Id);
+        if (session == null) return View("OpenTill", register);
+
+        ViewData["Session"] = session;
         return View("Sell", register);
+    }
+
+    [Authorize, HttpPost]
+    public async Task<IActionResult> OpenSession(decimal openingFloat)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return RedirectToAction(nameof(Index));
+        if (await OpenSessionAsync(register.Id) == null)
+        {
+            _db.TillSessions.Add(new TillSession
+            {
+                RegisterId = register.Id,
+                OpenedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "",
+                OpenedAt = DateTime.UtcNow,
+                OpeningFloat = Math.Max(0, openingFloat)
+            });
+            await _db.SaveChangesAsync();
+        }
+        return RedirectToAction(nameof(Index));
+    }
+
+    [Authorize, HttpPost]
+    public async Task<IActionResult> CloseSession(decimal countedCash, string? note)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { success = false, message = "Till not set up." });
+        var session = await OpenSessionAsync(register.Id);
+        if (session == null) return Json(new { success = false, message = "No open till." });
+
+        session.ClosedAt = DateTime.UtcNow;
+        session.ClosedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        session.CountedCash = countedCash;
+        session.ClosingNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        await _db.SaveChangesAsync();
+        return Json(new { success = true, sessionId = session.Id });
+    }
+
+    public class ZreportVm
+    {
+        public TillSession Session { get; set; } = null!;
+        public int SaleCount { get; set; }
+        public decimal TotalSales { get; set; }
+        public decimal CashSales { get; set; }
+        public decimal CardSales { get; set; }
+        public decimal TransferSales { get; set; }
+        public decimal ExpectedCash { get; set; }
+    }
+
+    [Authorize]
+    public async Task<IActionResult> Zreport(int id)
+    {
+        var session = await _db.TillSessions
+            .Include(s => s.Register).ThenInclude(r => r.Store)
+            .FirstOrDefaultAsync(s => s.Id == id);
+        if (session == null) return NotFound();
+
+        var sales = await _db.Orders.Where(o => o.TillSessionId == id).ToListAsync();
+        decimal SumOf(string m) => sales.Where(o => o.PaymentProvider == m).Sum(o => o.Total);
+        var cash = SumOf("Cash");
+
+        return View(new ZreportVm
+        {
+            Session = session,
+            SaleCount = sales.Count,
+            TotalSales = sales.Sum(o => o.Total),
+            CashSales = cash,
+            CardSales = SumOf("Card"),
+            TransferSales = SumOf("Transfer"),
+            ExpectedCash = session.OpeningFloat + cash
+        });
     }
 
     [HttpPost]
@@ -151,6 +228,9 @@ public class TillController : Controller
         if (register == null) return Json(new { success = false, message = "This till isn't set up. Pick a register." });
         if (req.Items == null || req.Items.Count == 0) return Json(new { success = false, message = "Cart is empty." });
 
+        var session = await OpenSessionAsync(register.Id);
+        if (session == null) return Json(new { success = false, message = "Open the till before selling." });
+
         var storeId = register.StoreId;
         var productIds = req.Items.Select(i => i.ProductId).Distinct().ToList();
         var products = await _db.Products.Include(p => p.Variants)
@@ -178,6 +258,7 @@ public class TillController : Controller
             FulfillmentType = FulfillmentType.StorePickup,
             PickupStoreId = storeId,
             RegisterId = register.Id,
+            TillSessionId = session.Id,
             UserId = userId,
             Status = OrderStatus.Delivered,
             IsPaid = true,

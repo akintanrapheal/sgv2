@@ -19,6 +19,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<StoreInventory> StoreInventories => Set<StoreInventory>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<Register> Registers => Set<Register>();
+    public DbSet<TillSession> TillSessions => Set<TillSession>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
     public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
@@ -83,6 +84,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         {
             e.HasOne(r => r.Store).WithMany().HasForeignKey(r => r.StoreId)
              .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── TillSession (cashier shift) ────────────────────────────────────
+        builder.Entity<TillSession>(e =>
+        {
+            e.HasIndex(s => new { s.RegisterId, s.ClosedAt });
+            e.Property(s => s.OpeningFloat).HasPrecision(18, 2);
+            e.Property(s => s.CountedCash).HasPrecision(18, 2);
+            e.HasOne(s => s.Register).WithMany().HasForeignKey(s => s.RegisterId)
+             .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(s => s.Orders).WithOne(o => o.TillSession).HasForeignKey(o => o.TillSessionId)
+             .OnDelete(DeleteBehavior.SetNull);
         });
 
         // ─── StockMovement (stock ledger) ───────────────────────────────────

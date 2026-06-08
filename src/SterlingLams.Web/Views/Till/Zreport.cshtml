@@ -1,0 +1,55 @@
+@model SterlingLams.Web.Controllers.TillController.ZreportVm
+@{
+    ViewData["Title"] = "Z-Report";
+    var s = Model.Session;
+    var counted = s.CountedCash ?? 0;
+    var variance = counted - Model.ExpectedCash;
+}
+
+<div class="min-h-full flex items-center justify-center p-6">
+    <div class="w-full max-w-md">
+        <div id="zreport" class="bg-white rounded-xl border border-neutral-200 p-6">
+            <div class="text-center mb-5">
+                <h1 class="font-cormorant text-2xl font-light text-neutral-900">Z-Report</h1>
+                <p class="text-xs text-neutral-400">@s.Register?.Name · @s.Register?.Store?.Name</p>
+            </div>
+
+            <div class="text-xs text-neutral-500 space-y-1 mb-4">
+                <div class="flex justify-between"><span>Opened</span><span>@s.OpenedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span></div>
+                <div class="flex justify-between"><span>Closed</span><span>@(s.ClosedAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? "—")</span></div>
+            </div>
+
+            <div class="border-t border-neutral-100 pt-4 space-y-2 text-sm">
+                <div class="flex justify-between"><span class="text-neutral-500">Sales</span><span>@Model.SaleCount</span></div>
+                <div class="flex justify-between"><span class="text-neutral-500">Cash</span><span>₦@Model.CashSales.ToString("N0")</span></div>
+                <div class="flex justify-between"><span class="text-neutral-500">Card</span><span>₦@Model.CardSales.ToString("N0")</span></div>
+                <div class="flex justify-between"><span class="text-neutral-500">Transfer</span><span>₦@Model.TransferSales.ToString("N0")</span></div>
+                <div class="flex justify-between font-medium text-neutral-900 border-t border-neutral-100 pt-2 mt-2"><span>Total sales</span><span>₦@Model.TotalSales.ToString("N0")</span></div>
+            </div>
+
+            <div class="border-t border-neutral-100 pt-4 mt-4 space-y-2 text-sm">
+                <p class="text-xs uppercase tracking-wide text-neutral-400 mb-1">Cash drawer</p>
+                <div class="flex justify-between"><span class="text-neutral-500">Opening float</span><span>₦@s.OpeningFloat.ToString("N0")</span></div>
+                <div class="flex justify-between"><span class="text-neutral-500">+ Cash sales</span><span>₦@Model.CashSales.ToString("N0")</span></div>
+                <div class="flex justify-between font-medium"><span>Expected in drawer</span><span>₦@Model.ExpectedCash.ToString("N0")</span></div>
+                <div class="flex justify-between"><span class="text-neutral-500">Counted</span><span>₦@counted.ToString("N0")</span></div>
+                <div class="flex justify-between font-medium @(variance == 0 ? "text-emerald-600" : "text-red-600")">
+                    <span>@(variance == 0 ? "Balanced" : variance > 0 ? "Over" : "Short")</span>
+                    <span>@(variance >= 0 ? "+" : "")₦@variance.ToString("N0")</span>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(s.ClosingNote))
+            {
+                <p class="text-xs text-neutral-500 border-t border-neutral-100 pt-3 mt-3">Note: @s.ClosingNote</p>
+            }
+        </div>
+
+        <div class="flex gap-2 mt-4">
+            <button onclick="window.print()" class="flex-1 border border-neutral-200 bg-white rounded-lg py-2.5 text-sm text-neutral-700 hover:border-neutral-400">Print</button>
+            <form asp-controller="Till" asp-action="Logout" method="post" class="flex-1">
+                <button class="w-full bg-neutral-900 text-white rounded-lg py-2.5 text-sm hover:bg-neutral-700">Sign out</button>
+            </form>
+        </div>
+    </div>
+</div>

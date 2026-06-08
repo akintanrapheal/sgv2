@@ -47,6 +47,10 @@ public class Order
     public int? RegisterId { get; set; }
     public Register? Register { get; set; }
 
+    /// <summary>The cashier shift this sale belongs to (POS sales).</summary>
+    public int? TillSessionId { get; set; }
+    public TillSession? TillSession { get; set; }
+
     public int? PickupStoreId { get; set; }
     public Store? PickupStore { get; set; }
 

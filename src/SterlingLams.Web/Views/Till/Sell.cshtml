@@ -1,5 +1,8 @@
 @model SterlingLams.Web.Models.Domain.Register
-@{ ViewData["Title"] = "Till"; }
+@{
+    ViewData["Title"] = "Till";
+    var session = ViewData["Session"] as SterlingLams.Web.Models.Domain.TillSession;
+}
 
 @Html.AntiForgeryToken()
 
@@ -11,7 +14,9 @@
             <span class="text-xs text-neutral-400">@Model.Store?.Name</span>
         </div>
         <div class="flex items-center gap-4">
+            <span class="text-xs text-neutral-400">Opened @(session?.OpenedAt.ToLocalTime().ToString("HH:mm"))</span>
             <span class="text-xs text-neutral-300">@User.Identity?.Name</span>
+            <button type="button" id="till-cashup-btn" class="text-xs text-amber-300 hover:text-amber-100">Cash up</button>
             <form asp-controller="Till" asp-action="Logout" method="post">
                 <button class="text-xs text-neutral-300 hover:text-white">Sign out</button>
             </form>
@@ -51,6 +56,24 @@
                     Charge
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cash-up modal -->
+<div id="till-cashup" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl p-6 max-w-sm w-full">
+        <h3 class="text-lg font-medium text-neutral-900 mb-1">Cash up &amp; close till</h3>
+        <p class="text-sm text-neutral-500 mb-5">Count the cash in the drawer and enter the total. You'll get a Z-report.</p>
+        <label class="block text-xs text-neutral-500 mb-1">Counted cash (₦)</label>
+        <input id="cashup-counted" type="number" min="0" step="any"
+               class="w-full border border-neutral-300 rounded-lg px-3 py-2.5 text-base mb-3 focus:outline-none focus:border-brand-500" />
+        <label class="block text-xs text-neutral-500 mb-1">Note (optional)</label>
+        <input id="cashup-note" type="text"
+               class="w-full border border-neutral-300 rounded-lg px-3 py-2.5 text-sm mb-5 focus:outline-none focus:border-brand-500" />
+        <div class="flex gap-2">
+            <button type="button" id="cashup-cancel" class="flex-1 border border-neutral-200 rounded-lg py-2.5 text-sm text-neutral-600 hover:border-neutral-400">Cancel</button>
+            <button type="button" id="cashup-confirm" class="flex-1 bg-neutral-900 text-white rounded-lg py-2.5 text-sm hover:bg-neutral-700">Close till</button>
         </div>
     </div>
 </div>
@@ -176,6 +199,26 @@
     });
 
     runSearch();
+})();
+
+// Cash up / close till
+(function () {
+    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+    const modal = document.getElementById('till-cashup');
+    document.getElementById('till-cashup-btn').addEventListener('click', () => modal.classList.remove('hidden'));
+    document.getElementById('cashup-cancel').addEventListener('click', () => modal.classList.add('hidden'));
+    document.getElementById('cashup-confirm').addEventListener('click', async () => {
+        const counted = parseFloat(document.getElementById('cashup-counted').value) || 0;
+        const note = document.getElementById('cashup-note').value;
+        const res = await fetch('/Till/CloseSession', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token },
+            body: `countedCash=${counted}&note=${encodeURIComponent(note)}`
+        });
+        const data = await res.json();
+        if (data.success) location.href = '/Till/Zreport/' + data.sessionId;
+        else alert(data.message || 'Could not close the till.');
+    });
 })();
 </script>
 }
