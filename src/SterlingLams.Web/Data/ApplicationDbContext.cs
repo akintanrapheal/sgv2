@@ -22,6 +22,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<TillSession> TillSessions => Set<TillSession>();
     public DbSet<Refund> Refunds => Set<Refund>();
     public DbSet<RefundItem> RefundItems => Set<RefundItem>();
+    public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
+    public DbSet<StockTransferItem> StockTransferItems => Set<StockTransferItem>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
     public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
@@ -110,6 +112,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
              .OnDelete(DeleteBehavior.Cascade);
         });
         builder.Entity<RefundItem>(e => e.Property(i => i.UnitPrice).HasPrecision(18, 2));
+
+        // ─── StockTransfer ──────────────────────────────────────────────────
+        builder.Entity<StockTransfer>(e =>
+        {
+            e.HasOne(t => t.FromStore).WithMany().HasForeignKey(t => t.FromStoreId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(t => t.ToStore).WithMany().HasForeignKey(t => t.ToStoreId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(t => t.Items).WithOne(i => i.StockTransfer).HasForeignKey(i => i.StockTransferId).OnDelete(DeleteBehavior.Cascade);
+        });
 
         // ─── StockMovement (stock ledger) ───────────────────────────────────
         builder.Entity<StockMovement>(e =>

@@ -1,0 +1,109 @@
+@{
+    ViewData["Title"] = "New Transfer";
+    var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
+}
+
+@Html.AntiForgeryToken()
+
+<div class="flex items-center gap-3 mb-6">
+    <a asp-area="Admin" asp-controller="Transfers" asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← Transfers</a>
+    <span class="text-neutral-200">/</span>
+    <h1 class="text-lg font-medium text-neutral-800">New Transfer</h1>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <div class="lg:col-span-2">
+        <div class="bg-white border border-neutral-100 rounded-sm p-5 mb-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs text-neutral-500 mb-1">From branch <span class="text-red-400">*</span></label>
+                    <select id="t-from" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm">
+                        <option value="">— Select —</option>
+                        @foreach (var s in stores) { <option value="@s.Id">@s.Name</option> }
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-neutral-500 mb-1">To branch <span class="text-red-400">*</span></label>
+                    <select id="t-to" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm">
+                        <option value="">— Select —</option>
+                        @foreach (var s in stores) { <option value="@s.Id">@s.Name</option> }
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <input id="t-search" type="text" autocomplete="off" placeholder="Search products at the source branch…"
+               class="w-full border border-neutral-200 rounded-sm px-4 py-2.5 text-sm mb-4 focus:outline-none focus:border-neutral-400" disabled />
+        <div id="t-results" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <p class="col-span-full text-sm text-neutral-400">Choose a source branch to load its stock.</p>
+        </div>
+    </div>
+
+    <!-- Transfer cart -->
+    <div class="bg-white border border-neutral-100 rounded-sm p-4 flex flex-col h-fit">
+        <h2 class="text-sm font-medium text-neutral-800 mb-3">Items to move</h2>
+        <div id="t-cart" class="divide-y divide-neutral-100 mb-3"><p class="text-sm text-neutral-400 py-4 text-center">No items yet.</p></div>
+        <input id="t-note" type="text" placeholder="Note (optional)" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm mb-3 focus:outline-none focus:border-neutral-400" />
+        <button id="t-submit" type="button" disabled
+                class="w-full bg-neutral-900 text-white text-sm rounded-sm py-2.5 hover:bg-neutral-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Transfer stock</button>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+    const fromSel = document.getElementById('t-from'), toSel = document.getElementById('t-to');
+    const searchBox = document.getElementById('t-search'), resultsEl = document.getElementById('t-results');
+    const cartEl = document.getElementById('t-cart'), submitBtn = document.getElementById('t-submit');
+    let cart = [], debounce;
+
+    fromSel.addEventListener('change', () => { cart = []; renderCart(); searchBox.disabled = !fromSel.value; searchBox.value = ''; if (fromSel.value) runSearch(); else resultsEl.innerHTML = ''; });
+    searchBox.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(runSearch, 180); });
+    toSel.addEventListener('change', updateSubmit);
+
+    async function runSearch() {
+        if (!fromSel.value) return;
+        const res = await fetch(`/Admin/Transfers/SearchStock?fromStoreId=${fromSel.value}&q=${encodeURIComponent(searchBox.value.trim())}`);
+        const items = await res.json();
+        if (!items.length) { resultsEl.innerHTML = '<p class="col-span-full text-sm text-neutral-400">No products with stock here.</p>'; return; }
+        resultsEl.innerHTML = items.map(p => `<button type="button" class="t-prod text-left border border-neutral-200 rounded-sm p-3 hover:border-brand-500 transition-colors" data-p='${encodeURIComponent(JSON.stringify(p))}'>
+            <p class="text-xs text-neutral-800 leading-snug line-clamp-2">${p.name}</p>
+            <p class="text-[10px] text-emerald-600 mt-1">${p.stock} in stock</p></button>`).join('');
+        resultsEl.querySelectorAll('.t-prod').forEach(b => b.addEventListener('click', () => add(JSON.parse(decodeURIComponent(b.dataset.p)))));
+    }
+    function add(p) {
+        const ex = cart.find(c => c.productId === p.id);
+        if ((ex ? ex.qty : 0) + 1 > p.stock) { alert('Not enough stock at source.'); return; }
+        if (ex) ex.qty++; else cart.push({ productId: p.id, name: p.name, qty: 1, stock: p.stock });
+        renderCart();
+    }
+    function renderCart() {
+        if (!cart.length) cartEl.innerHTML = '<p class="text-sm text-neutral-400 py-4 text-center">No items yet.</p>';
+        else cartEl.innerHTML = cart.map((c, i) => `<div class="py-2 flex items-center gap-2">
+            <div class="flex-1 min-w-0"><p class="text-xs text-neutral-800 truncate">${c.name}</p><p class="text-[10px] text-neutral-400">${c.stock} available</p></div>
+            <div class="flex items-center border border-neutral-200 rounded"><button type="button" data-dec="${i}" class="w-6 h-6 text-neutral-500">−</button><span class="w-7 text-center text-xs">${c.qty}</span><button type="button" data-inc="${i}" class="w-6 h-6 text-neutral-500">+</button></div>
+            <button type="button" data-del="${i}" class="text-neutral-300 hover:text-red-500">×</button></div>`).join('');
+        cartEl.querySelectorAll('[data-inc]').forEach(b => b.addEventListener('click', () => qty(+b.dataset.inc, 1)));
+        cartEl.querySelectorAll('[data-dec]').forEach(b => b.addEventListener('click', () => qty(+b.dataset.dec, -1)));
+        cartEl.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => { cart.splice(+b.dataset.del, 1); renderCart(); }));
+        updateSubmit();
+    }
+    function qty(i, d) { const c = cart[i]; if (d > 0 && c.qty + 1 > c.stock) { alert('Not enough stock.'); return; } c.qty += d; if (c.qty <= 0) cart.splice(i, 1); renderCart(); }
+    function updateSubmit() { submitBtn.disabled = !(cart.length && fromSel.value && toSel.value && fromSel.value !== toSel.value); }
+
+    submitBtn.addEventListener('click', async () => {
+        if (fromSel.value === toSel.value) { alert('Pick two different branches.'); return; }
+        submitBtn.disabled = true; submitBtn.textContent = 'Transferring…';
+        try {
+            const res = await fetch('/Admin/Transfers/Save', { method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                body: JSON.stringify({ fromStoreId: +fromSel.value, toStoreId: +toSel.value, note: document.getElementById('t-note').value, items: cart.map(c => ({ productId: c.productId, quantity: c.qty })) }) });
+            const data = await res.json();
+            if (data.success) location.href = '/Admin/Transfers/Detail/' + data.id;
+            else { alert(data.message || 'Transfer failed.'); }
+        } finally { submitBtn.textContent = 'Transfer stock'; updateSubmit(); }
+    });
+})();
+</script>
+}
