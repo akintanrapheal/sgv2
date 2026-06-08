@@ -115,6 +115,8 @@ public class TillController : Controller
         public decimal CashSales { get; set; }
         public decimal CardSales { get; set; }
         public decimal TransferSales { get; set; }
+        public decimal RefundsTotal { get; set; }
+        public decimal CashRefunds { get; set; }
         public decimal ExpectedCash { get; set; }
     }
 
@@ -130,6 +132,9 @@ public class TillController : Controller
         decimal SumOf(string m) => sales.Where(o => o.PaymentProvider == m).Sum(o => o.Total);
         var cash = SumOf("Cash");
 
+        var refunds = await _db.Refunds.Where(r => r.TillSessionId == id).ToListAsync();
+        var cashRefunds = refunds.Where(r => r.RefundMethod == "Cash").Sum(r => r.Amount);
+
         return View(new ZreportVm
         {
             Session = session,
@@ -138,8 +143,117 @@ public class TillController : Controller
             CashSales = cash,
             CardSales = SumOf("Card"),
             TransferSales = SumOf("Transfer"),
-            ExpectedCash = session.OpeningFloat + cash
+            RefundsTotal = refunds.Sum(r => r.Amount),
+            CashRefunds = cashRefunds,
+            ExpectedCash = session.OpeningFloat + cash - cashRefunds
         });
+    }
+
+    // ── Refunds / returns ─────────────────────────────────────────────────────
+    [Authorize, HttpGet]
+    public async Task<IActionResult> RefundLookup(string orderNumber)
+    {
+        orderNumber = (orderNumber ?? "").Trim();
+        var order = await _db.Orders.Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber && o.Channel == OrderChannel.Pos);
+        if (order == null) return Json(new { found = false });
+
+        var refundIds = _db.Refunds.Where(r => r.OriginalOrderId == order.Id).Select(r => r.Id);
+        var refunded = await _db.RefundItems.Where(ri => refundIds.Contains(ri.RefundId))
+            .GroupBy(ri => new { ri.ProductId, ri.ProductVariantId })
+            .Select(g => new { g.Key.ProductId, g.Key.ProductVariantId, Qty = g.Sum(x => x.Quantity) })
+            .ToListAsync();
+        int Done(int pid, int? vid) => refunded.FirstOrDefault(r => r.ProductId == pid && r.ProductVariantId == vid)?.Qty ?? 0;
+
+        var items = order.Items.Select(i => new
+        {
+            productId = i.ProductId,
+            variantId = i.ProductVariantId,
+            name = i.ProductName,
+            variantName = i.VariantName,
+            unitPrice = i.UnitPrice,
+            sold = i.Quantity,
+            refundable = i.Quantity - Done(i.ProductId, i.ProductVariantId)
+        }).ToList();
+
+        return Json(new { found = true, orderId = order.Id, orderNumber = order.OrderNumber, total = order.Total, items });
+    }
+
+    public class RefundLine { public int ProductId { get; set; } public int? VariantId { get; set; } public int Quantity { get; set; } }
+    public class RefundRequest
+    {
+        public int OrderId { get; set; }
+        public string Method { get; set; } = "Cash";
+        public string? Reason { get; set; }
+        public List<RefundLine> Items { get; set; } = new();
+    }
+
+    [Authorize, HttpPost]
+    public async Task<IActionResult> RefundProcess([FromBody] RefundRequest req)
+    {
+        var register = await BoundRegisterAsync();
+        var order = await _db.Orders.Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Id == req.OrderId && o.Channel == OrderChannel.Pos);
+        if (order == null) return Json(new { success = false, message = "Sale not found." });
+
+        var lines = (req.Items ?? new()).Where(l => l.Quantity > 0).ToList();
+        if (lines.Count == 0) return Json(new { success = false, message = "Choose at least one item to return." });
+
+        var refundIds = _db.Refunds.Where(r => r.OriginalOrderId == order.Id).Select(r => r.Id);
+        var refunded = await _db.RefundItems.Where(ri => refundIds.Contains(ri.RefundId))
+            .GroupBy(ri => new { ri.ProductId, ri.ProductVariantId })
+            .Select(g => new { g.Key.ProductId, g.Key.ProductVariantId, Qty = g.Sum(x => x.Quantity) })
+            .ToListAsync();
+        int Done(int pid, int? vid) => refunded.FirstOrDefault(r => r.ProductId == pid && r.ProductVariantId == vid)?.Qty ?? 0;
+
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        var now = DateTime.UtcNow;
+        var session = register != null ? await OpenSessionAsync(register.Id) : null;
+        var storeId = order.PickupStoreId ?? register?.StoreId ?? 0;
+        var refundNumber = $"REF-{now:yyMMdd}-{now:HHmmssfff}";
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
+        var refund = new Refund
+        {
+            RefundNumber = refundNumber,
+            OriginalOrderId = order.Id,
+            RegisterId = register?.Id,
+            TillSessionId = session?.Id,
+            CashierUserId = userId,
+            RefundMethod = req.Method,
+            Reason = string.IsNullOrWhiteSpace(req.Reason) ? null : req.Reason.Trim(),
+            CreatedAt = now
+        };
+
+        decimal amount = 0;
+        foreach (var l in lines)
+        {
+            var oi = order.Items.FirstOrDefault(i => i.ProductId == l.ProductId && i.ProductVariantId == l.VariantId);
+            if (oi == null) continue;
+            var qty = Math.Min(l.Quantity, oi.Quantity - Done(l.ProductId, l.VariantId));
+            if (qty <= 0) continue;
+
+            amount += oi.UnitPrice * qty;
+            refund.Items.Add(new RefundItem
+            {
+                ProductId = oi.ProductId, ProductVariantId = oi.ProductVariantId,
+                ProductName = oi.ProductName, VariantName = oi.VariantName,
+                Quantity = qty, UnitPrice = oi.UnitPrice
+            });
+            if (storeId > 0)
+                await _stock.ApplyAsync(oi.ProductId, oi.ProductVariantId, storeId, qty,
+                    StockMovementType.Return, refundNumber, userId: userId);
+        }
+
+        if (refund.Items.Count == 0) return Json(new { success = false, message = "Nothing left to refund on this sale." });
+
+        refund.Amount = amount;
+        _db.Refunds.Add(refund);
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        return Json(new { success = true, refundNumber, amount });
     }
 
     [HttpPost]

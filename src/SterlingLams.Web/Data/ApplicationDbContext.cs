@@ -20,6 +20,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<Register> Registers => Set<Register>();
     public DbSet<TillSession> TillSessions => Set<TillSession>();
+    public DbSet<Refund> Refunds => Set<Refund>();
+    public DbSet<RefundItem> RefundItems => Set<RefundItem>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
     public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
@@ -97,6 +99,17 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             e.HasMany(s => s.Orders).WithOne(o => o.TillSession).HasForeignKey(o => o.TillSessionId)
              .OnDelete(DeleteBehavior.SetNull);
         });
+
+        // ─── Refund / RefundItem ────────────────────────────────────────────
+        builder.Entity<Refund>(e =>
+        {
+            e.Property(r => r.Amount).HasPrecision(18, 2);
+            e.HasOne(r => r.OriginalOrder).WithMany().HasForeignKey(r => r.OriginalOrderId)
+             .OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(r => r.Items).WithOne(i => i.Refund).HasForeignKey(i => i.RefundId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<RefundItem>(e => e.Property(i => i.UnitPrice).HasPrecision(18, 2));
 
         // ─── StockMovement (stock ledger) ───────────────────────────────────
         builder.Entity<StockMovement>(e =>

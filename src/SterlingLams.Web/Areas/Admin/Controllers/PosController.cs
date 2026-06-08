@@ -188,6 +188,52 @@ public class PosController : AdminBaseController
         return View(order);
     }
 
+    public class SessionRow
+    {
+        public TillSession Session { get; set; } = null!;
+        public int SaleCount { get; set; }
+        public decimal Sales { get; set; }
+        public decimal ExpectedCash { get; set; }
+        public decimal? Variance { get; set; }
+    }
+
+    // ── Till sessions oversight (cash-ups / Z-reports) ────────────────────────
+    public async Task<IActionResult> Sessions()
+    {
+        ViewData["Title"] = "Till Sessions";
+        var sessions = await _db.TillSessions
+            .Include(s => s.Register).ThenInclude(r => r.Store)
+            .OrderByDescending(s => s.OpenedAt).Take(100).ToListAsync();
+        var ids = sessions.Select(s => s.Id).ToList();
+
+        var sales = await _db.Orders.Where(o => o.TillSessionId != null && ids.Contains(o.TillSessionId!.Value))
+            .GroupBy(o => o.TillSessionId!.Value)
+            .Select(g => new { Id = g.Key, Total = g.Sum(x => x.Total), Count = g.Count(),
+                               Cash = g.Where(x => x.PaymentProvider == "Cash").Sum(x => x.Total) })
+            .ToListAsync();
+        var refunds = await _db.Refunds.Where(r => r.TillSessionId != null && ids.Contains(r.TillSessionId!.Value))
+            .GroupBy(r => r.TillSessionId!.Value)
+            .Select(g => new { Id = g.Key, CashRef = g.Where(x => x.RefundMethod == "Cash").Sum(x => x.Amount) })
+            .ToListAsync();
+
+        var rows = sessions.Select(s =>
+        {
+            var sa = sales.FirstOrDefault(x => x.Id == s.Id);
+            var rf = refunds.FirstOrDefault(x => x.Id == s.Id);
+            var expected = s.OpeningFloat + (sa?.Cash ?? 0) - (rf?.CashRef ?? 0);
+            return new SessionRow
+            {
+                Session = s,
+                SaleCount = sa?.Count ?? 0,
+                Sales = sa?.Total ?? 0,
+                ExpectedCash = expected,
+                Variance = s.ClosedAt.HasValue ? (s.CountedCash ?? 0) - expected : (decimal?)null
+            };
+        }).ToList();
+
+        return View(rows);
+    }
+
     // ── POS sales history ─────────────────────────────────────────────────────
     public async Task<IActionResult> Sales()
     {

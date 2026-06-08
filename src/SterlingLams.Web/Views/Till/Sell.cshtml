@@ -16,6 +16,7 @@
         <div class="flex items-center gap-4">
             <span class="text-xs text-neutral-400">Opened @(session?.OpenedAt.ToLocalTime().ToString("HH:mm"))</span>
             <span class="text-xs text-neutral-300">@User.Identity?.Name</span>
+            <button type="button" id="till-refund-btn" class="text-xs text-neutral-300 hover:text-white">Refund</button>
             <button type="button" id="till-cashup-btn" class="text-xs text-amber-300 hover:text-amber-100">Cash up</button>
             <form asp-controller="Till" asp-action="Logout" method="post">
                 <button class="text-xs text-neutral-300 hover:text-white">Sign out</button>
@@ -56,6 +57,34 @@
                     Charge
                 </button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Refund modal -->
+<div id="till-refund" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <h3 class="text-lg font-medium text-neutral-900 mb-1">Refund a sale</h3>
+        <p class="text-sm text-neutral-500 mb-4">Enter the receipt number, pick what's coming back.</p>
+        <div class="flex gap-2 mb-4">
+            <input id="refund-order" type="text" placeholder="POS-…" class="flex-1 border border-neutral-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-brand-500" />
+            <button type="button" id="refund-find" class="px-4 bg-neutral-900 text-white rounded-lg text-sm hover:bg-neutral-700">Find</button>
+        </div>
+        <div id="refund-body" class="hidden">
+            <div id="refund-items" class="divide-y divide-neutral-100 mb-4"></div>
+            <label class="block text-xs text-neutral-500 mb-1">Refund method</label>
+            <div class="flex gap-2 mb-3" id="refund-methods">
+                <button type="button" data-method="Cash" class="refund-method flex-1 border-2 border-brand-500 bg-brand-50 rounded-lg py-2 text-sm">Cash</button>
+                <button type="button" data-method="Card" class="refund-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-2 text-sm">Card</button>
+                <button type="button" data-method="Transfer" class="refund-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-2 text-sm">Transfer</button>
+            </div>
+            <input id="refund-reason" type="text" placeholder="Reason (optional)" class="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:border-brand-500" />
+            <div class="flex justify-between text-base font-medium text-neutral-900 mb-3"><span>Refund total</span><span id="refund-total">₦0</span></div>
+        </div>
+        <p id="refund-msg" class="text-xs text-red-500 mb-3"></p>
+        <div class="flex gap-2">
+            <button type="button" id="refund-cancel" class="flex-1 border border-neutral-200 rounded-lg py-2.5 text-sm text-neutral-600 hover:border-neutral-400">Close</button>
+            <button type="button" id="refund-confirm" class="flex-1 bg-red-600 text-white rounded-lg py-2.5 text-sm hover:bg-red-700 disabled:opacity-40" disabled>Process refund</button>
         </div>
     </div>
 </div>
@@ -218,6 +247,73 @@
         const data = await res.json();
         if (data.success) location.href = '/Till/Zreport/' + data.sessionId;
         else alert(data.message || 'Could not close the till.');
+    });
+})();
+
+// Refunds
+(function () {
+    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+    const fmt = n => '₦' + Number(n || 0).toLocaleString('en-NG', { maximumFractionDigits: 0 });
+    const modal = document.getElementById('till-refund');
+    const body = document.getElementById('refund-body');
+    const itemsEl = document.getElementById('refund-items');
+    const totalEl = document.getElementById('refund-total');
+    const msgEl = document.getElementById('refund-msg');
+    const confirmBtn = document.getElementById('refund-confirm');
+    let orderId = null, lines = [], method = 'Cash';
+
+    function open() { modal.classList.remove('hidden'); document.getElementById('refund-order').focus(); }
+    function close() { modal.classList.add('hidden'); body.classList.add('hidden'); itemsEl.innerHTML = ''; msgEl.textContent = ''; lines = []; orderId = null; confirmBtn.disabled = true; document.getElementById('refund-order').value = ''; }
+    document.getElementById('till-refund-btn').addEventListener('click', open);
+    document.getElementById('refund-cancel').addEventListener('click', close);
+
+    document.getElementById('refund-find').addEventListener('click', findOrder);
+    async function findOrder() {
+        msgEl.textContent = '';
+        const num = document.getElementById('refund-order').value.trim();
+        if (!num) return;
+        const res = await fetch('/Till/RefundLookup?orderNumber=' + encodeURIComponent(num));
+        const data = await res.json();
+        if (!data.found) { body.classList.add('hidden'); msgEl.textContent = 'No POS sale with that number.'; return; }
+        orderId = data.orderId;
+        lines = data.items.map(i => ({ ...i, qty: 0 }));
+        itemsEl.innerHTML = lines.map((i, idx) => `
+            <div class="py-2.5 flex items-center gap-2">
+                <div class="flex-1 min-w-0"><p class="text-sm text-neutral-800 truncate">${i.name}${i.variantName ? ` (${i.variantName})` : ''}</p>
+                <p class="text-xs text-neutral-500">${fmt(i.unitPrice)} · ${i.refundable} refundable</p></div>
+                <div class="flex items-center border border-neutral-200 rounded">
+                    <button type="button" data-rdec="${idx}" class="w-7 h-7 text-neutral-500">−</button>
+                    <span id="rq-${idx}" class="w-7 text-center text-sm">0</span>
+                    <button type="button" data-rinc="${idx}" class="w-7 h-7 text-neutral-500">+</button>
+                </div></div>`).join('');
+        itemsEl.querySelectorAll('[data-rinc]').forEach(b => b.addEventListener('click', () => chg(+b.dataset.rinc, 1)));
+        itemsEl.querySelectorAll('[data-rdec]').forEach(b => b.addEventListener('click', () => chg(+b.dataset.rdec, -1)));
+        body.classList.remove('hidden'); recalc();
+    }
+    function chg(i, d) { const l = lines[i]; l.qty = Math.max(0, Math.min(l.refundable, l.qty + d)); document.getElementById('rq-' + i).textContent = l.qty; recalc(); }
+    function recalc() {
+        const total = lines.reduce((s, l) => s + l.unitPrice * l.qty, 0);
+        totalEl.textContent = fmt(total);
+        confirmBtn.disabled = total <= 0;
+    }
+    document.querySelectorAll('.refund-method').forEach(b => b.addEventListener('click', () => {
+        method = b.dataset.method;
+        document.querySelectorAll('.refund-method').forEach(x => { const on = x === b;
+            x.classList.toggle('border-2', on); x.classList.toggle('border-brand-500', on); x.classList.toggle('bg-brand-50', on);
+            x.classList.toggle('border', !on); x.classList.toggle('border-neutral-200', !on); x.classList.toggle('text-neutral-600', !on); });
+    }));
+    confirmBtn.addEventListener('click', async () => {
+        const items = lines.filter(l => l.qty > 0).map(l => ({ productId: l.productId, variantId: l.variantId, quantity: l.qty }));
+        if (!items.length) return;
+        confirmBtn.disabled = true; confirmBtn.textContent = 'Processing…';
+        try {
+            const res = await fetch('/Till/RefundProcess', { method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                body: JSON.stringify({ orderId, method, reason: document.getElementById('refund-reason').value, items }) });
+            const data = await res.json();
+            if (data.success) { alert('Refunded ' + fmt(data.amount) + ' (' + data.refundNumber + ')'); close(); }
+            else { msgEl.textContent = data.message || 'Refund failed.'; }
+        } finally { confirmBtn.textContent = 'Process refund'; confirmBtn.disabled = false; }
     });
 })();
 </script>

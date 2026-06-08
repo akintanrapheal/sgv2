@@ -25,12 +25,21 @@
                 <div class="flex justify-between"><span class="text-neutral-500">Card</span><span>₦@Model.CardSales.ToString("N0")</span></div>
                 <div class="flex justify-between"><span class="text-neutral-500">Transfer</span><span>₦@Model.TransferSales.ToString("N0")</span></div>
                 <div class="flex justify-between font-medium text-neutral-900 border-t border-neutral-100 pt-2 mt-2"><span>Total sales</span><span>₦@Model.TotalSales.ToString("N0")</span></div>
+                @if (Model.RefundsTotal > 0)
+                {
+                    <div class="flex justify-between text-red-600"><span>Refunds</span><span>−₦@Model.RefundsTotal.ToString("N0")</span></div>
+                    <div class="flex justify-between font-medium"><span>Net</span><span>₦@((Model.TotalSales - Model.RefundsTotal).ToString("N0"))</span></div>
+                }
             </div>
 
             <div class="border-t border-neutral-100 pt-4 mt-4 space-y-2 text-sm">
                 <p class="text-xs uppercase tracking-wide text-neutral-400 mb-1">Cash drawer</p>
                 <div class="flex justify-between"><span class="text-neutral-500">Opening float</span><span>₦@s.OpeningFloat.ToString("N0")</span></div>
                 <div class="flex justify-between"><span class="text-neutral-500">+ Cash sales</span><span>₦@Model.CashSales.ToString("N0")</span></div>
+                @if (Model.CashRefunds > 0)
+                {
+                    <div class="flex justify-between text-red-600"><span>− Cash refunds</span><span>₦@Model.CashRefunds.ToString("N0")</span></div>
+                }
                 <div class="flex justify-between font-medium"><span>Expected in drawer</span><span>₦@Model.ExpectedCash.ToString("N0")</span></div>
                 <div class="flex justify-between"><span class="text-neutral-500">Counted</span><span>₦@counted.ToString("N0")</span></div>
                 <div class="flex justify-between font-medium @(variance == 0 ? "text-emerald-600" : "text-red-600")">
