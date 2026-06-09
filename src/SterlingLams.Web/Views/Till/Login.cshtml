@@ -1,41 +1,59 @@
-@model List<SterlingLams.Web.Controllers.TillCashier>
+@model List<SterlingLams.Web.Controllers.TillController.TillCashier>
 @{
     ViewData["Title"] = "Sign in";
     var register = ViewData["Register"] as SterlingLams.Web.Models.Domain.Register;
 }
 
-<div class="min-h-full flex flex-col">
-    <header class="flex items-center justify-between px-6 py-4 bg-white border-b border-neutral-100">
-        <div>
-            <p class="text-sm font-medium text-neutral-800">@register?.Name</p>
-            <p class="text-xs text-neutral-400">@register?.Store?.Name</p>
-        </div>
+<div class="min-h-screen bg-neutral-50 flex flex-col">
+    <!-- Top bar -->
+    <header class="flex items-center justify-between px-6 py-3 bg-white border-b border-neutral-100">
         <form asp-controller="Till" asp-action="ChangeRegister" method="post">
-            <button class="text-xs text-neutral-400 hover:text-neutral-700">Change till</button>
+            <button class="flex items-center gap-2 text-xs text-neutral-500 hover:text-neutral-800 border border-neutral-200 rounded-full px-4 py-2 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+                Change till
+            </button>
         </form>
+        <!-- Live clock in header -->
+        <p class="text-xs text-neutral-400 tabular-nums" id="till-clock-top"></p>
+        <div class="w-[120px]"></div>
     </header>
 
-    <div class="flex-1 flex items-center justify-center p-6">
-        <!-- Cashier picker -->
-        <div id="cashier-step" class="w-full max-w-xl">
-            <h1 class="font-cormorant text-3xl font-light text-center text-neutral-900 mb-8">Who's serving?</h1>
+    <!-- Brand hero -->
+    <div class="bg-white border-b border-neutral-100 py-8 text-center">
+        <div class="w-20 h-20 rounded-full bg-brand-500 text-white flex items-center justify-center mx-auto mb-3 shadow-lg">
+            <span class="font-cormorant text-4xl font-light tracking-wide">S</span>
+        </div>
+        <h1 class="font-cormorant text-3xl font-light tracking-[0.15em] uppercase text-neutral-900">Sterlin Glams</h1>
+        @if (register != null)
+        {
+            <p class="text-sm text-neutral-500 mt-1">@register.Name &nbsp;·&nbsp; @register.Store?.Name</p>
+        }
+        <!-- Big live clock -->
+        <p class="text-4xl font-light tabular-nums text-neutral-800 mt-4 tracking-widest" id="till-clock-big"></p>
+        <p class="text-sm text-neutral-400 mt-1" id="till-date"></p>
+    </div>
+
+    <div class="flex-1 flex overflow-hidden">
+        <!-- Cashier grid -->
+        <div class="flex-1 p-8 overflow-y-auto">
+            <p class="text-center text-xs uppercase tracking-[0.2em] text-neutral-400 mb-8">Select your name</p>
             @if (!Model.Any())
             {
-                <p class="text-center text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-4">
-                    No cashiers have a PIN yet. Set one in Admin → Users.
+                <p class="text-center text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-4 max-w-md mx-auto">
+                    No staff have a PIN yet. An admin sets one in Admin → Users → "Set PIN".
                 </p>
             }
             else
             {
-                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-w-3xl mx-auto">
                     @foreach (var c in Model)
                     {
-                        <button type="button" class="cashier-btn bg-white border border-neutral-200 rounded-lg py-6 hover:border-brand-500 transition-colors"
+                        <button type="button" class="cashier-btn bg-white border border-neutral-200 rounded-xl px-3 py-6 text-center hover:border-brand-400 hover:shadow-md transition-all duration-200"
                                 data-id="@c.Id" data-name="@c.Name">
-                            <span class="block w-12 h-12 mx-auto rounded-full bg-brand-50 text-brand-600 flex items-center justify-center text-lg font-medium mb-2">
-                                @(string.IsNullOrEmpty(c.Name) ? "?" : c.Name.Substring(0,1).ToUpper())
-                            </span>
-                            <span class="text-sm text-neutral-700">@c.Name</span>
+                            <div class="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center mx-auto mb-2 text-neutral-500 font-medium text-sm">
+                                @(string.IsNullOrEmpty(c.Name) ? "?" : c.Name.Substring(0, 1).ToUpper())
+                            </div>
+                            <span class="text-sm text-neutral-700 leading-tight">@(string.IsNullOrEmpty(c.Name) ? "—" : c.Name)</span>
                         </button>
                     }
                 </div>
@@ -43,20 +61,29 @@
         </div>
 
         <!-- PIN pad -->
-        <div id="pin-step" class="hidden w-full max-w-xs text-center">
-            <p class="text-sm text-neutral-500 mb-1">Enter PIN for</p>
-            <p id="pin-name" class="text-lg font-medium text-neutral-800 mb-4"></p>
-            <div id="pin-dots" class="flex justify-center gap-3 mb-2 h-4"></div>
-            <p id="pin-error" class="text-xs text-red-500 h-4 mb-3"></p>
-            <div class="grid grid-cols-3 gap-3">
+        <div class="w-full max-w-sm bg-white border-l border-neutral-100 p-8 flex flex-col">
+            <p class="text-center text-xs uppercase tracking-[0.2em] text-neutral-400 mb-2">Enter your PIN</p>
+            <p id="pin-name" class="text-center text-base font-medium text-neutral-800 h-6 mb-4">&nbsp;</p>
+
+            <div class="border-b-2 border-neutral-300 h-12 flex items-center justify-center gap-3 mb-2" id="pin-dots"></div>
+            <p id="pin-error" class="text-center text-xs text-red-500 h-4 mb-4"></p>
+
+            <div class="grid grid-cols-3 gap-3 mb-6">
                 @for (int n = 1; n <= 9; n++)
                 {
-                    <button type="button" class="pin-key bg-white border border-neutral-200 rounded-lg py-4 text-xl text-neutral-800 hover:border-brand-500 transition-colors" data-k="@n">@n</button>
+                    <button type="button" class="pin-key bg-neutral-50 border border-neutral-200 rounded-xl py-5 text-2xl text-neutral-700 hover:bg-brand-50 hover:border-brand-400 transition-colors font-light" data-k="@n">@n</button>
                 }
-                <button type="button" id="pin-back" class="bg-white border border-neutral-200 rounded-lg py-4 text-sm text-neutral-500 hover:border-neutral-400">←</button>
-                <button type="button" class="pin-key bg-white border border-neutral-200 rounded-lg py-4 text-xl text-neutral-800 hover:border-brand-500 transition-colors" data-k="0">0</button>
-                <button type="button" id="pin-cancel" class="bg-white border border-neutral-200 rounded-lg py-4 text-sm text-neutral-500 hover:border-neutral-400">Cancel</button>
+                <span></span>
+                <button type="button" class="pin-key bg-neutral-50 border border-neutral-200 rounded-xl py-5 text-2xl text-neutral-700 hover:bg-brand-50 hover:border-brand-400 transition-colors font-light" data-k="0">0</button>
+                <button type="button" id="pin-back" class="bg-neutral-50 border border-neutral-200 rounded-xl py-5 text-neutral-500 hover:bg-neutral-100 transition-colors flex items-center justify-center">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 14l-2-2m0 0l-2-2m2 2l2-2m-2 2l-2 2M3 12l6.414-6.414A2 2 0 0110.828 5H19a2 2 0 012 2v10a2 2 0 01-2 2h-8.172a2 2 0 01-1.414-.586L3 12z"/></svg>
+                </button>
             </div>
+
+            <button id="pin-login" type="button"
+                    class="w-full bg-brand-500 text-white text-base font-medium uppercase tracking-wide py-4 rounded-xl hover:bg-brand-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                Sign In
+            </button>
         </div>
     </div>
 </div>
@@ -66,31 +93,61 @@
 <script>
 (function () {
     const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
-    const cashierStep = document.getElementById('cashier-step');
-    const pinStep = document.getElementById('pin-step');
+    const nameEl = document.getElementById('pin-name');
     const dots = document.getElementById('pin-dots');
     const errEl = document.getElementById('pin-error');
+    const loginBtn = document.getElementById('pin-login');
     let userId = null, pin = '';
 
-    function showPin(name) {
-        document.getElementById('pin-name').textContent = name;
-        pin = ''; renderDots(); errEl.textContent = '';
-        cashierStep.classList.add('hidden'); pinStep.classList.remove('hidden');
+    // Live clock — big display + small header
+    function tick() {
+        const now = new Date();
+        const time = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const date = now.toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const timeShort = now.toLocaleDateString('en-GB') + '  ' + now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        const bigEl = document.getElementById('till-clock-big');
+        const dateEl = document.getElementById('till-date');
+        const topEl = document.getElementById('till-clock-top');
+        if (bigEl) bigEl.textContent = time;
+        if (dateEl) dateEl.textContent = date;
+        if (topEl) topEl.textContent = timeShort;
     }
-    function backToCashiers() { pinStep.classList.add('hidden'); cashierStep.classList.remove('hidden'); }
+    tick(); setInterval(tick, 1000);
+
     function renderDots() {
-        dots.innerHTML = Array.from({length: Math.max(4, pin.length)}).map((_, i) =>
-            `<span class="w-3 h-3 rounded-full ${i < pin.length ? 'bg-brand-500' : 'bg-neutral-200'}"></span>`).join('');
+        dots.innerHTML = Array.from({ length: pin.length }).map(() =>
+            '<span class="w-3.5 h-3.5 rounded-full bg-neutral-700 inline-block"></span>'
+        ).join('');
+        loginBtn.disabled = !(userId && pin.length >= 4);
     }
 
-    document.querySelectorAll('.cashier-btn').forEach(b =>
-        b.addEventListener('click', () => { userId = b.dataset.id; showPin(b.dataset.name); }));
-    document.querySelectorAll('.pin-key').forEach(b =>
-        b.addEventListener('click', () => { if (pin.length < 8) { pin += b.dataset.k; renderDots(); if (pin.length >= 4) submit(); } }));
+    document.querySelectorAll('.cashier-btn').forEach(b => b.addEventListener('click', () => {
+        document.querySelectorAll('.cashier-btn').forEach(x => {
+            x.classList.remove('border-brand-500', 'bg-brand-50', 'border-2', 'shadow-md');
+        });
+        b.classList.add('border-brand-500', 'bg-brand-50', 'border-2');
+        userId = b.dataset.id; nameEl.textContent = b.dataset.name; pin = ''; renderDots(); errEl.textContent = '';
+    }));
+
+    document.querySelectorAll('.pin-key').forEach(b => b.addEventListener('click', () => {
+        if (pin.length < 8) { pin += b.dataset.k; errEl.textContent = ''; renderDots(); }
+    }));
     document.getElementById('pin-back').addEventListener('click', () => { pin = pin.slice(0, -1); renderDots(); });
-    document.getElementById('pin-cancel').addEventListener('click', backToCashiers);
+
+    loginBtn.addEventListener('click', submit);
+
+    // Enter key submits
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !loginBtn.disabled) submit();
+        if (e.key === 'Backspace') { pin = pin.slice(0, -1); renderDots(); }
+        if (/^\d$/.test(e.key) && pin.length < 8) { pin += e.key; renderDots(); }
+    });
 
     async function submit() {
+        if (!userId) { errEl.textContent = 'Select your name first.'; return; }
+        if (pin.length < 4) return;
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Signing in…';
         const res = await fetch('/Till/Login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token },
@@ -98,8 +155,13 @@
         });
         const data = await res.json();
         if (data.success) { location.href = '/Till'; }
-        else { errEl.textContent = data.message || 'Wrong PIN.'; pin = ''; renderDots(); }
+        else {
+            errEl.textContent = data.message || 'Wrong PIN.';
+            pin = ''; renderDots();
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Sign In';
+        }
     }
-})();
+}());
 </script>
 }

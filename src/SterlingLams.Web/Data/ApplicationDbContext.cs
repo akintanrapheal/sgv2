@@ -31,6 +31,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<DiscountCode> DiscountCodes => Set<DiscountCode>();
     public DbSet<DiscountCategory> DiscountCategories => Set<DiscountCategory>();
     public DbSet<DiscountProduct> DiscountProducts => Set<DiscountProduct>();
+    public DbSet<PosDiscountReason> PosDiscountReasons => Set<PosDiscountReason>();
+    public DbSet<PosDiscountPreset> PosDiscountPresets => Set<PosDiscountPreset>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
@@ -152,7 +154,19 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<OrderItem>(e =>
         {
             e.Property(oi => oi.UnitPrice).HasPrecision(18, 2);
+            e.Property(oi => oi.DiscountAmount).HasPrecision(18, 2);
             e.Ignore(oi => oi.LineTotal);
+        });
+
+        // ─── PosDiscountReason / PosDiscountPreset ──────────────────────────
+        builder.Entity<PosDiscountReason>(e =>
+        {
+            e.HasMany(r => r.Presets).WithOne(p => p.Reason)
+             .HasForeignKey(p => p.ReasonId).OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<PosDiscountPreset>(e =>
+        {
+            e.Property(p => p.Value).HasPrecision(18, 2);
         });
 
         // ─── WishlistItem ───────────────────────────────────────────────────

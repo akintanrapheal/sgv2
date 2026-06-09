@@ -1,29 +1,64 @@
 @model SterlingLams.Web.Models.Domain.Register
-@{ ViewData["Title"] = "Open Till"; }
+@{
+    ViewData["Title"] = "Open Till";
+    var uid = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+}
 
-<div class="min-h-full flex flex-col">
-    <header class="flex items-center justify-between px-6 py-4 bg-white border-b border-neutral-100">
-        <div>
-            <p class="text-sm font-medium text-neutral-800">@Model.Name</p>
-            <p class="text-xs text-neutral-400">@Model.Store?.Name · @User.Identity?.Name</p>
+<div class="min-h-full flex flex-col bg-neutral-50">
+    <header class="flex items-center justify-between px-6 py-3 bg-white border-b border-neutral-100">
+        <div class="flex items-center gap-3">
+            <div class="w-7 h-7 rounded-full bg-brand-500 text-white flex items-center justify-center">
+                <span class="font-cormorant text-base font-light">S</span>
+            </div>
+            <div>
+                <p class="text-sm font-medium text-neutral-800">@Model.Store?.Name</p>
+                <p class="text-xs text-neutral-400">@Model.Name</p>
+            </div>
         </div>
+        <p class="text-sm font-light tabular-nums text-neutral-500" id="till-clock"></p>
         <form asp-controller="Till" asp-action="Logout" method="post">
-            <button class="text-xs text-neutral-400 hover:text-neutral-700">Sign out</button>
+            <button class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors border border-neutral-200 rounded-full px-4 py-2">Sign out</button>
         </form>
     </header>
 
     <div class="flex-1 flex items-center justify-center p-6">
-        <form asp-controller="Till" asp-action="OpenSession" method="post" class="w-full max-w-sm text-center">
-            @Html.AntiForgeryToken()
-            <div class="w-14 h-14 rounded-full bg-brand-50 text-brand-600 flex items-center justify-center mx-auto mb-4">
-                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2m-2-3h4a1 1 0 011 1v2a1 1 0 01-1 1h-4v-4z"/></svg>
+        <div class="w-full max-w-sm">
+            <!-- Icon -->
+            <div class="w-16 h-16 rounded-full bg-brand-500 text-white flex items-center justify-center mx-auto mb-5 shadow-lg">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-2m-2-3h4a1 1 0 011 1v2a1 1 0 01-1 1h-4v-4z"/>
+                </svg>
             </div>
-            <h1 class="font-cormorant text-3xl font-light text-neutral-900 mb-1">Open the till</h1>
-            <p class="text-sm text-neutral-500 mb-6">How much cash is in the drawer to start?</p>
-            <label class="block text-xs text-neutral-500 mb-1 text-left">Opening float (₦)</label>
-            <input name="openingFloat" type="number" min="0" step="any" value="0" autofocus
-                   class="w-full border border-neutral-300 rounded-lg px-4 py-3 text-lg text-center focus:outline-none focus:border-brand-500 mb-5" />
-            <button type="submit" class="w-full bg-brand-500 text-white text-base font-medium uppercase tracking-wide py-3.5 rounded-lg hover:bg-brand-600 transition-colors">Start selling</button>
-        </form>
+
+            <h1 class="font-cormorant text-4xl font-light text-neutral-900 text-center mb-1">Open the Till</h1>
+            <p class="text-sm text-neutral-400 text-center mb-8">Count the cash in the drawer and enter the opening float to begin today's session.</p>
+
+            <form asp-controller="Till" asp-action="OpenSession" method="post" class="space-y-5">
+                @Html.AntiForgeryToken()
+
+                <div class="bg-white border border-neutral-200 rounded-xl p-5 shadow-sm">
+                    <label class="block text-xs uppercase tracking-[0.15em] text-neutral-400 mb-3 text-center">Opening Cash Float (₦)</label>
+                    <input name="openingFloat" type="number" min="0" step="any" value="0" autofocus
+                           class="w-full border-0 border-b-2 border-neutral-300 focus:border-brand-500 bg-transparent text-4xl font-light text-center text-neutral-900 py-2 focus:outline-none transition-colors tabular-nums" />
+                    <p class="text-xs text-neutral-400 text-center mt-3">Enter ₦0 if the drawer is empty</p>
+                </div>
+
+                <button type="submit"
+                        class="w-full bg-brand-500 text-white text-base font-medium uppercase tracking-widest py-4 rounded-xl hover:bg-brand-600 transition-colors shadow-md">
+                    Start Selling
+                </button>
+            </form>
+        </div>
     </div>
 </div>
+
+@section Scripts {
+<script>
+    function tick() {
+        const now = new Date();
+        const el = document.getElementById('till-clock');
+        if (el) el.textContent = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+    tick(); setInterval(tick, 1000);
+</script>
+}

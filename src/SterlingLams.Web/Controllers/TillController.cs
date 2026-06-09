@@ -9,12 +9,7 @@ using SterlingLams.Web.Services;
 
 namespace SterlingLams.Web.Controllers;
 
-/// <summary>
-/// The dedicated full-screen till / register app. Runs on the counter device: bind it to a
-/// register (branch) once, then cashiers sign in with a PIN and ring up sales. Shares the same
-/// products, stock ledger and orders as the rest of the system.
-/// </summary>
-[AllowAnonymous]
+// No class-level [AllowAnonymous] — each action declares its own policy
 public class TillController : Controller
 {
     private const string RegisterCookie = "till_register";
@@ -44,6 +39,7 @@ public class TillController : Controller
     private Task<TillSession?> OpenSessionAsync(int registerId) =>
         _db.TillSessions.FirstOrDefaultAsync(s => s.RegisterId == registerId && s.ClosedAt == null);
 
+    [AllowAnonymous]
     public async Task<IActionResult> Index()
     {
         var register = await BoundRegisterAsync();
@@ -68,11 +64,19 @@ public class TillController : Controller
         var session = await OpenSessionAsync(register.Id);
         if (session == null) return View("OpenTill", register);
 
+        // Pass display name so Sell view shows first name rather than email
+        var uid = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var cashier = uid != null
+            ? await _db.Users.Where(u => u.Id == uid)
+                .Select(u => (u.FirstName + " " + u.LastName).Trim())
+                .FirstOrDefaultAsync()
+            : null;
+        ViewData["CashierName"] = string.IsNullOrWhiteSpace(cashier) ? User.Identity?.Name : cashier;
         ViewData["Session"] = session;
         return View("Sell", register);
     }
 
-    [Authorize, HttpPost]
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> OpenSession(decimal openingFloat)
     {
         var register = await BoundRegisterAsync();
@@ -91,7 +95,7 @@ public class TillController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    [Authorize, HttpPost]
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> CloseSession(decimal countedCash, string? note)
     {
         var register = await BoundRegisterAsync();
@@ -188,7 +192,7 @@ public class TillController : Controller
         public List<RefundLine> Items { get; set; } = new();
     }
 
-    [Authorize, HttpPost]
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> RefundProcess([FromBody] RefundRequest req)
     {
         var register = await BoundRegisterAsync();
@@ -256,7 +260,7 @@ public class TillController : Controller
         return Json(new { success = true, refundNumber, amount });
     }
 
-    [HttpPost]
+    [AllowAnonymous, HttpPost, ValidateAntiForgeryToken]
     public IActionResult SetRegister(int registerId)
     {
         Response.Cookies.Append(RegisterCookie, registerId.ToString(),
@@ -264,14 +268,14 @@ public class TillController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost]
+    [AllowAnonymous, HttpPost, ValidateAntiForgeryToken]
     public IActionResult ChangeRegister()
     {
         Response.Cookies.Delete(RegisterCookie);
         return RedirectToAction(nameof(Index));
     }
 
-    [HttpPost]
+    [AllowAnonymous, HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Login(string userId, string pin)
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.PinHash != null);
@@ -284,16 +288,69 @@ public class TillController : Controller
         return Json(new { success = false, message = "Wrong PIN." });
     }
 
-    [Authorize, HttpPost]
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Logout()
     {
         await _signIn.SignOutAsync();
         return RedirectToAction(nameof(Index));
     }
 
+    // ── Discount reasons (configurable from admin) ────────────────────────────
+    [Authorize, HttpGet]
+    public async Task<IActionResult> DiscountReasons()
+    {
+        var reasons = await _db.PosDiscountReasons
+            .Where(r => r.IsActive)
+            .Include(r => r.Presets.OrderBy(p => p.SortOrder))
+            .OrderBy(r => r.SortOrder)
+            .Select(r => new
+            {
+                id = r.Id,
+                name = r.Name,
+                presets = r.Presets.Select(p => new { id = p.Id, label = p.Label, type = p.Type, value = p.Value })
+            })
+            .ToListAsync();
+        return Json(reasons);
+    }
+
+    // ── Recent orders for this register (Orders tab) ──────────────────────────
+    [Authorize, HttpGet]
+    public async Task<IActionResult> RecentOrders()
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(Array.Empty<object>());
+
+        var orders = await _db.Orders
+            .Where(o => o.Channel == OrderChannel.Pos && o.RegisterId == register.Id)
+            .OrderByDescending(o => o.CreatedAt)
+            .Take(25)
+            .Select(o => new
+            {
+                id = o.Id,
+                orderNumber = o.OrderNumber,
+                total = o.Total,
+                method = o.PaymentProvider,
+                createdAt = o.CreatedAt,
+                itemCount = o.Items.Sum(i => i.Quantity)
+            })
+            .ToListAsync();
+        return Json(orders);
+    }
+
+    // ── Categories ────────────────────────────────────────────────────────────
+    [Authorize, HttpGet]
+    public async Task<IActionResult> Categories()
+    {
+        var cats = await _db.Categories.Where(c => c.IsActive)
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+            .Select(c => new { id = c.Id, name = c.Name, imageUrl = c.ImageUrl })
+            .ToListAsync();
+        return Json(cats);
+    }
+
     // ── Product search for the bound register's store ─────────────────────────
     [Authorize, HttpGet]
-    public async Task<IActionResult> Search(string? q)
+    public async Task<IActionResult> Search(string? q, int? categoryId)
     {
         var register = await BoundRegisterAsync();
         if (register == null) return Json(Array.Empty<object>());
@@ -301,6 +358,8 @@ public class TillController : Controller
         q = (q ?? "").Trim();
 
         var query = _db.Products.Where(p => p.IsActive);
+        if (categoryId.HasValue)
+            query = query.Where(p => p.CategoryId == categoryId.Value);
         if (q.Length > 0)
             query = query.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
                                   || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
@@ -327,15 +386,25 @@ public class TillController : Controller
         return Json(products);
     }
 
-    public class TillLine { public int ProductId { get; set; } public int? VariantId { get; set; } public int Quantity { get; set; } }
+    public class TillLine
+    {
+        public int ProductId { get; set; }
+        public int? VariantId { get; set; }
+        public int Quantity { get; set; }
+        public string? Note { get; set; }
+        public decimal DiscountAmount { get; set; }
+        public string? DiscountReason { get; set; }
+        public string? DiscountType { get; set; }
+    }
     public class TillCheckout
     {
         public string PaymentMethod { get; set; } = "Cash";
         public decimal AmountTendered { get; set; }
         public List<TillLine> Items { get; set; } = new();
     }
+    public class TillCashier { public string Id { get; set; } = ""; public string Name { get; set; } = ""; }
 
-    [Authorize, HttpPost]
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Checkout([FromBody] TillCheckout req)
     {
         var register = await BoundRegisterAsync();
@@ -383,13 +452,16 @@ public class TillController : Controller
         };
 
         decimal subtotal = 0;
+        decimal totalDiscount = 0;
         foreach (var line in req.Items)
         {
             var prod = products[line.ProductId];
             var qty = Math.Max(1, line.Quantity);
             var variant = line.VariantId.HasValue ? prod.Variants.FirstOrDefault(v => v.Id == line.VariantId) : null;
             var unitPrice = prod.Price + (variant?.PriceAdjustment ?? 0);
+            var lineDiscount = Math.Max(0, Math.Min(line.DiscountAmount, unitPrice * qty));
             subtotal += unitPrice * qty;
+            totalDiscount += lineDiscount;
 
             order.Items.Add(new OrderItem
             {
@@ -397,22 +469,28 @@ public class TillController : Controller
                 ProductVariantId = variant?.Id,
                 ProductName = prod.Name,
                 VariantName = variant?.Name,
+                ProductSku = prod.Sku,
                 Quantity = qty,
-                UnitPrice = unitPrice
+                UnitPrice = unitPrice,
+                DiscountAmount = lineDiscount,
+                DiscountReason = string.IsNullOrWhiteSpace(line.DiscountReason) ? null : line.DiscountReason.Trim(),
+                DiscountType = string.IsNullOrWhiteSpace(line.DiscountType) ? null : line.DiscountType.Trim(),
+                ItemNote = string.IsNullOrWhiteSpace(line.Note) ? null : line.Note.Trim()
             });
             await _stock.ApplyAsync(prod.Id, variant?.Id, storeId, -qty, StockMovementType.Sale, orderNumber, userId: userId);
         }
 
         order.Subtotal = subtotal;
-        order.Total = subtotal;
-        order.AmountTendered = req.AmountTendered > 0 ? req.AmountTendered : subtotal;
-        order.ChangeGiven = Math.Max(0, (order.AmountTendered ?? subtotal) - subtotal);
+        order.DiscountAmount = totalDiscount;
+        order.Total = subtotal - totalDiscount;
+        order.AmountTendered = req.AmountTendered > 0 ? req.AmountTendered : order.Total;
+        order.ChangeGiven = Math.Max(0, (order.AmountTendered ?? order.Total) - order.Total);
 
         _db.Orders.Add(order);
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
 
-        return Json(new { success = true, orderId = order.Id, orderNumber, total = subtotal, change = order.ChangeGiven });
+        return Json(new { success = true, orderId = order.Id, orderNumber, total = order.Total, change = order.ChangeGiven });
     }
 
     [Authorize]
@@ -424,5 +502,3 @@ public class TillController : Controller
         return View(order);
     }
 }
-
-public class TillCashier { public string Id { get; set; } = ""; public string Name { get; set; } = ""; }

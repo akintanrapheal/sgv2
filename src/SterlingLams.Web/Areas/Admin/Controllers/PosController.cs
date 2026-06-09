@@ -176,6 +176,74 @@ public class PosController : AdminBaseController
         });
     }
 
+    // ── Discount Reasons config ───────────────────────────────────────────────
+    public async Task<IActionResult> DiscountReasons()
+    {
+        ViewData["Title"] = "POS Discount Reasons";
+        var reasons = await _db.PosDiscountReasons
+            .Include(r => r.Presets.OrderBy(p => p.SortOrder))
+            .OrderBy(r => r.SortOrder)
+            .ToListAsync();
+        return View(reasons);
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreateReason(string name)
+    {
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            var maxSort = await _db.PosDiscountReasons.MaxAsync(r => (int?)r.SortOrder) ?? 0;
+            _db.PosDiscountReasons.Add(new PosDiscountReason { Name = name.Trim(), SortOrder = maxSort + 10, IsActive = true });
+            await _db.SaveChangesAsync();
+        }
+        return RedirectToAction(nameof(DiscountReasons));
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditReason(int id, string name, bool isActive)
+    {
+        var reason = await _db.PosDiscountReasons.FindAsync(id);
+        if (reason != null && !string.IsNullOrWhiteSpace(name))
+        {
+            reason.Name = name.Trim();
+            reason.IsActive = isActive;
+            await _db.SaveChangesAsync();
+        }
+        return RedirectToAction(nameof(DiscountReasons));
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteReason(int id)
+    {
+        var reason = await _db.PosDiscountReasons.FindAsync(id);
+        if (reason != null) { _db.PosDiscountReasons.Remove(reason); await _db.SaveChangesAsync(); }
+        return RedirectToAction(nameof(DiscountReasons));
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> CreatePreset(int reasonId, string label, string type, decimal value)
+    {
+        if (!string.IsNullOrWhiteSpace(label) && value > 0)
+        {
+            var maxSort = await _db.PosDiscountPresets.Where(p => p.ReasonId == reasonId).MaxAsync(p => (int?)p.SortOrder) ?? 0;
+            _db.PosDiscountPresets.Add(new PosDiscountPreset
+            {
+                ReasonId = reasonId, Label = label.Trim(),
+                Type = type, Value = value, SortOrder = maxSort + 10
+            });
+            await _db.SaveChangesAsync();
+        }
+        return RedirectToAction(nameof(DiscountReasons));
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeletePreset(int id)
+    {
+        var preset = await _db.PosDiscountPresets.FindAsync(id);
+        if (preset != null) { _db.PosDiscountPresets.Remove(preset); await _db.SaveChangesAsync(); }
+        return RedirectToAction(nameof(DiscountReasons));
+    }
+
     // ── Printable receipt ─────────────────────────────────────────────────────
     public async Task<IActionResult> Receipt(int id)
     {

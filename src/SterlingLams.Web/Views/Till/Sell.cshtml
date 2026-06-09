@@ -2,98 +2,353 @@
 @{
     ViewData["Title"] = "Till";
     var session = ViewData["Session"] as SterlingLams.Web.Models.Domain.TillSession;
+    var cashierName = ViewData["CashierName"]?.ToString() ?? User.Identity?.Name ?? "";
 }
 
 @Html.AntiForgeryToken()
 
-<div class="h-screen flex flex-col">
-    <!-- Top bar -->
-    <header class="flex items-center justify-between px-4 py-2.5 bg-neutral-900 text-white flex-shrink-0">
-        <div class="flex items-center gap-3">
-            <span class="font-cormorant text-lg tracking-wide">@Model.Name</span>
-            <span class="text-xs text-neutral-400">@Model.Store?.Name</span>
+<div class="h-screen flex flex-col bg-neutral-100 overflow-hidden select-none">
+
+    <!-- ── Top bar ───────────────────────────────────────────────────────── -->
+    <header class="flex items-center gap-3 px-4 py-2 bg-neutral-900 text-white flex-shrink-0">
+        <!-- Logo -->
+        <div class="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center flex-shrink-0">
+            <span class="font-cormorant text-base font-light">S</span>
+        </div>
+        <div class="flex-1 min-w-0">
+            <p class="text-xs font-medium text-white leading-none">@Model.Store?.Name</p>
+            <p class="text-[10px] text-neutral-400 leading-none mt-0.5">@Model.Name</p>
         </div>
         <div class="flex items-center gap-4">
-            <span class="text-xs text-neutral-400">Opened @(session?.OpenedAt.ToLocalTime().ToString("HH:mm"))</span>
-            <span class="text-xs text-neutral-300">@User.Identity?.Name</span>
-            <button type="button" id="till-refund-btn" class="text-xs text-neutral-300 hover:text-white">Refund</button>
-            <button type="button" id="till-cashup-btn" class="text-xs text-amber-300 hover:text-amber-100">Cash up</button>
-            <form asp-controller="Till" asp-action="Logout" method="post">
-                <button class="text-xs text-neutral-300 hover:text-white">Sign out</button>
-            </form>
+            <div class="text-right">
+                <p class="text-xs text-neutral-300 tabular-nums" id="till-clock"></p>
+                <p class="text-[10px] text-neutral-500" id="till-date-top"></p>
+            </div>
+            <div class="h-5 w-px bg-neutral-700"></div>
+            <div class="flex items-center gap-1.5">
+                <div class="w-6 h-6 rounded-full bg-brand-500 flex items-center justify-center text-[10px] font-medium">
+                    @(cashierName.Length > 0 ? cashierName.Substring(0, 1).ToUpper() : "?")
+                </div>
+                <span class="text-xs text-neutral-300">@cashierName</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="button" id="till-refund-btn"
+                        class="text-[11px] text-neutral-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-neutral-800">Refund</button>
+                <button type="button" id="till-cashup-btn"
+                        class="text-[11px] text-amber-400 hover:text-amber-200 transition-colors px-2 py-1 rounded hover:bg-neutral-800">Cash up</button>
+                <form asp-controller="Till" asp-action="Logout" method="post" class="inline">
+                    <button class="text-[11px] text-neutral-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-neutral-800">Sign out</button>
+                </form>
+            </div>
         </div>
     </header>
 
+    <!-- ── Body ──────────────────────────────────────────────────────────── -->
     <div class="flex-1 flex overflow-hidden">
-        <!-- Products -->
-        <div class="flex-1 flex flex-col p-4 overflow-hidden">
-            <input id="till-search" type="text" autocomplete="off" autofocus
-                   placeholder="Scan barcode or search by name / SKU…"
-                   class="w-full border border-neutral-300 rounded-lg px-4 py-3 text-base focus:outline-none focus:border-brand-500 mb-4 flex-shrink-0" />
-            <div id="till-results" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 overflow-y-auto pr-1"></div>
+
+        <!-- ── Left panel: categories / products ─────────────────────────── -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+
+            <!-- Search bar + breadcrumb -->
+            <div class="flex items-center gap-2 px-3 py-2 bg-white border-b border-neutral-200 flex-shrink-0">
+                <button type="button" id="home-btn"
+                        class="hidden flex-shrink-0 items-center gap-1 text-xs text-brand-500 hover:text-brand-700 transition-colors font-medium">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                    </svg>
+                    Categories
+                </button>
+                <div id="breadcrumb-divider" class="hidden text-neutral-300 text-sm">›</div>
+                <span id="breadcrumb-cat" class="hidden text-xs font-medium text-neutral-700 truncate"></span>
+                <div class="flex-1 relative">
+                    <svg class="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    <input id="till-search" type="text" autocomplete="off" placeholder="Search or scan barcode…"
+                           class="w-full pl-9 pr-4 py-2 text-sm bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:border-brand-500 focus:bg-white transition-colors" />
+                </div>
+            </div>
+
+            <!-- Category grid / product grid -->
+            <div class="flex-1 overflow-y-auto p-3">
+
+                <!-- Category tiles -->
+                <div id="cat-grid" class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2.5"></div>
+
+                <!-- Product grid (hidden initially) -->
+                <div id="till-results" class="hidden grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5"></div>
+
+            </div>
         </div>
 
-        <!-- Cart -->
-        <div class="w-full max-w-sm bg-white border-l border-neutral-200 flex flex-col flex-shrink-0">
-            <div id="till-cart" class="flex-1 overflow-y-auto divide-y divide-neutral-100 px-4">
-                <p class="text-sm text-neutral-400 py-8 text-center">No items yet.</p>
-            </div>
-            <div class="border-t border-neutral-200 p-4 space-y-3 flex-shrink-0">
-                <div class="flex justify-between text-xl font-semibold text-neutral-900">
-                    <span>Total</span><span id="till-total">₦0</span>
-                </div>
-                <div class="flex gap-2" id="till-methods">
-                    <button type="button" data-method="Cash" class="till-method flex-1 border-2 border-brand-500 bg-brand-50 rounded-lg py-2.5 text-sm">Cash</button>
-                    <button type="button" data-method="Card" class="till-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-2.5 text-sm">Card</button>
-                    <button type="button" data-method="Transfer" class="till-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-2.5 text-sm">Transfer</button>
-                </div>
-                <div id="till-cash-row">
-                    <input id="till-tendered" type="number" min="0" step="any" placeholder="Amount received (₦)"
-                           class="w-full border border-neutral-300 rounded-lg px-3 py-2.5 text-base focus:outline-none focus:border-brand-500" />
-                    <p class="text-xs text-neutral-500 mt-1 text-right">Change: <span id="till-change" class="font-medium text-neutral-800">₦0</span></p>
-                </div>
-                <button id="till-pay" type="button" disabled
-                        class="w-full bg-brand-500 text-white text-base font-medium uppercase tracking-wide py-3.5 rounded-lg hover:bg-brand-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                    Charge
+        <!-- ── Right panel: tabs + cart ──────────────────────────────────── -->
+        <div class="w-72 xl:w-80 bg-white border-l border-neutral-200 flex flex-col flex-shrink-0">
+
+            <!-- Tab bar -->
+            <div class="flex border-b border-neutral-200 flex-shrink-0">
+                <button type="button" data-tab="products" class="till-tab flex-1 flex flex-col items-center py-2.5 gap-0.5 border-b-2 border-brand-500 text-brand-500">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+                    </svg>
+                    <span class="text-[10px] font-medium uppercase tracking-wide">Products</span>
+                </button>
+                <button type="button" data-tab="customers" class="till-tab flex-1 flex flex-col items-center py-2.5 gap-0.5 border-b-2 border-transparent text-neutral-400 hover:text-neutral-600 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    <span class="text-[10px] font-medium uppercase tracking-wide">Customers</span>
+                </button>
+                <button type="button" data-tab="orders" class="till-tab flex-1 flex flex-col items-center py-2.5 gap-0.5 border-b-2 border-transparent text-neutral-400 hover:text-neutral-600 transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                    </svg>
+                    <span class="text-[10px] font-medium uppercase tracking-wide">Orders</span>
                 </button>
             </div>
+
+            <!-- PRODUCTS tab (cart) -->
+            <div id="tab-products" class="flex-1 flex flex-col overflow-hidden">
+                <!-- Cart line items -->
+                <div id="till-cart" class="flex-1 overflow-y-auto">
+                    <div id="cart-empty" class="flex flex-col items-center justify-center h-full text-center px-6 py-8">
+                        <svg class="w-12 h-12 text-neutral-200 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-1.5 6h13M9 21a1 1 0 100-2 1 1 0 000 2zm10 0a1 1 0 100-2 1 1 0 000 2z"/>
+                        </svg>
+                        <p class="text-sm font-medium text-neutral-400">Add an item</p>
+                        <p class="text-xs text-neutral-300 mt-1">Tap a product to add to the transaction</p>
+                    </div>
+                    <div id="cart-items" class="hidden divide-y divide-neutral-100 px-3 py-1"></div>
+                </div>
+
+                <!-- Cart summary -->
+                <div class="border-t border-neutral-200 flex-shrink-0">
+                    <div class="px-4 py-2 space-y-1 text-xs text-neutral-500 bg-neutral-50">
+                        <div class="flex justify-between">
+                            <span>ITEMS</span>
+                            <span id="cart-count" class="font-medium text-neutral-700">0</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>TOTAL DISCOUNT</span>
+                            <span id="cart-total-discount" class="font-medium text-emerald-600">₦0</span>
+                        </div>
+                        <div class="flex justify-between text-sm font-semibold text-neutral-900 border-t border-neutral-200 pt-1.5 mt-1.5">
+                            <span>TOTAL</span>
+                            <span id="till-total">₦0</span>
+                        </div>
+                        <div class="flex justify-between font-medium text-neutral-700">
+                            <span>DUE</span>
+                            <span id="till-due">₦0</span>
+                        </div>
+                    </div>
+
+                    <!-- Cash tendered row (cash method only) -->
+                    <div id="till-cash-row" class="px-3 pb-2 bg-neutral-50">
+                        <div class="flex gap-2 items-center">
+                            <input id="till-tendered" type="number" min="0" step="any" placeholder="Cash received (₦)"
+                                   class="flex-1 border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500 bg-white" />
+                            <span class="text-xs text-neutral-400">Change: <span id="till-change" class="font-medium text-neutral-700">₦0</span></span>
+                        </div>
+                    </div>
+
+                    <!-- Payment method -->
+                    <div class="px-3 pb-2 bg-neutral-50">
+                        <div class="flex gap-1.5" id="till-methods">
+                            <button type="button" data-method="Cash" class="till-method flex-1 border-2 border-brand-500 bg-brand-50 text-brand-700 rounded-lg py-1.5 text-xs font-medium">Cash</button>
+                            <button type="button" data-method="Card" class="till-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-1.5 text-xs font-medium hover:border-neutral-300">Card</button>
+                            <button type="button" data-method="Transfer" class="till-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-1.5 text-xs font-medium hover:border-neutral-300">Transfer</button>
+                        </div>
+                    </div>
+
+                    <!-- Action buttons: DELETE | HOLD | PAY -->
+                    <div class="flex gap-0 border-t border-neutral-200">
+                        <button type="button" id="till-void-btn"
+                                class="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-red-400 hover:bg-red-50 transition-colors border-r border-neutral-200">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                            </svg>
+                            <span class="text-[10px] font-medium uppercase tracking-wide">Delete</span>
+                        </button>
+                        <button type="button" id="till-hold-btn"
+                                class="flex-1 flex flex-col items-center justify-center gap-1 py-3 text-neutral-400 hover:bg-neutral-50 transition-colors border-r border-neutral-200">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span class="text-[10px] font-medium uppercase tracking-wide">Hold</span>
+                        </button>
+                        <button id="till-pay" type="button" disabled
+                                class="flex-2 w-28 flex flex-col items-center justify-center gap-1 py-3 bg-brand-500 text-white hover:bg-brand-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+                            </svg>
+                            <span class="text-[10px] font-semibold uppercase tracking-wide">Pay</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CUSTOMERS tab -->
+            <div id="tab-customers" class="hidden flex-1 flex flex-col items-center justify-center text-center px-6 py-8">
+                <svg class="w-12 h-12 text-neutral-200 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                <p class="text-sm font-medium text-neutral-400">No customer</p>
+                <p class="text-xs text-neutral-300 mt-1">Customer accounts coming soon</p>
+            </div>
+
+            <!-- ORDERS tab -->
+            <div id="tab-orders" class="hidden flex-1 flex flex-col overflow-hidden">
+                <div class="px-3 py-2 border-b border-neutral-100">
+                    <p class="text-xs font-medium uppercase tracking-wide text-neutral-400">Recent orders</p>
+                </div>
+                <div id="orders-list" class="flex-1 overflow-y-auto divide-y divide-neutral-100 text-xs">
+                    <p class="text-center text-neutral-400 py-6">Loading…</p>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Refund modal -->
+<!-- ── Item Note / Discount modal ────────────────────────────────────────── -->
+<div id="item-modal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4">
+    <div class="bg-white rounded-xl w-full max-w-sm overflow-hidden">
+        <!-- Header -->
+        <div class="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
+            <p id="modal-item-name" class="text-sm font-semibold text-neutral-800 truncate flex-1 mr-3"></p>
+            <button type="button" id="item-modal-close" class="text-neutral-400 hover:text-neutral-700 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <!-- Tabs -->
+        <div class="flex border-b border-neutral-100">
+            <button type="button" id="modal-tab-notes" class="flex-1 py-3 text-sm font-semibold tracking-wide text-brand-600 border-b-2 border-brand-500 transition-colors">NOTES</button>
+            <button type="button" id="modal-tab-discount" class="flex-1 py-3 text-sm font-semibold tracking-wide text-neutral-400 transition-colors">DISCOUNT</button>
+        </div>
+
+        <!-- Notes panel -->
+        <div id="modal-notes-panel" class="p-5">
+            <p class="text-xs font-medium text-neutral-500 mb-2">Note</p>
+            <div class="relative">
+                <textarea id="item-note-input" rows="3" placeholder="Add a note…"
+                    class="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500 resize-none pr-8"></textarea>
+                <button type="button" id="item-note-clear" class="absolute right-2 top-2 text-neutral-300 hover:text-neutral-500 transition-colors">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>
+                </button>
+            </div>
+            <button type="button" id="item-note-done" class="mt-3 w-full bg-brand-500 text-white rounded-lg py-3 text-sm font-semibold hover:bg-brand-600 transition-colors">DONE</button>
+        </div>
+
+        <!-- Discount panel -->
+        <div id="modal-discount-panel" class="hidden">
+            <!-- Step 1: Select reason -->
+            <div id="discount-step1">
+                <p class="px-4 py-3 text-xs font-semibold text-neutral-500 uppercase tracking-wide border-b border-neutral-100">Select Discount Reason</p>
+                <div id="discount-reasons-list" class="max-h-64 overflow-y-auto"></div>
+            </div>
+            <!-- Step 2: Select type -->
+            <div id="discount-step2" class="hidden">
+                <div class="flex items-center gap-2 px-4 py-3 border-b border-neutral-100">
+                    <button type="button" id="discount-step2-back" class="text-neutral-400 hover:text-neutral-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                    </button>
+                    <p id="discount-step2-title" class="text-sm font-semibold text-neutral-800"></p>
+                </div>
+                <div id="discount-types-list" class="max-h-64 overflow-y-auto"></div>
+            </div>
+            <!-- Step 3: Numpad -->
+            <div id="discount-step3" class="hidden">
+                <div class="flex items-center gap-2 px-4 py-3 border-b border-neutral-100">
+                    <button type="button" id="discount-step3-back" class="text-neutral-400 hover:text-neutral-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                    </button>
+                    <p id="discount-step3-title" class="text-sm font-semibold text-neutral-800 flex-1"></p>
+                    <span id="discount-type-label" class="text-sm font-bold text-blue-700">%</span>
+                </div>
+                <div class="px-4 py-2 border-b border-neutral-100">
+                    <p id="numpad-display" class="text-2xl font-semibold text-neutral-800 text-right min-h-[2rem]"></p>
+                </div>
+                <div class="grid grid-cols-3 divide-x divide-y divide-neutral-100 border-b border-neutral-100">
+                    @foreach (var n in new[]{"1","2","3","4","5","6","7","8","9",".","0"})
+                    {
+                        <button type="button" data-num="@n" class="py-4 text-base font-medium text-neutral-700 hover:bg-neutral-50 transition-colors">@n</button>
+                    }
+                    <button type="button" id="numpad-backspace" class="py-4 flex items-center justify-center text-neutral-400 hover:bg-neutral-50 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z"/></svg>
+                    </button>
+                </div>
+                <div class="p-4">
+                    <button type="button" id="discount-update" class="w-full border-2 border-brand-500 text-brand-600 rounded-lg py-3 text-sm font-semibold hover:bg-brand-50 transition-colors">UPDATE</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Variant picker modal ──────────────────────────────────────────────── -->
+<div id="variant-modal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4">
+    <div class="bg-white rounded-xl p-6 w-full max-w-sm">
+        <h3 id="variant-title" class="text-base font-medium text-neutral-900 mb-1"></h3>
+        <p class="text-xs text-neutral-400 mb-4">Choose an option to add to the cart.</p>
+        <div id="variant-list" class="space-y-2 max-h-60 overflow-y-auto mb-4"></div>
+        <button type="button" id="variant-cancel"
+                class="w-full border border-neutral-200 rounded-lg py-2.5 text-sm text-neutral-600 hover:border-neutral-400 transition-colors">
+            Cancel
+        </button>
+    </div>
+</div>
+
+<!-- ── Refund modal ──────────────────────────────────────────────────────── -->
 <div id="till-refund" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <h3 class="text-lg font-medium text-neutral-900 mb-1">Refund a sale</h3>
-        <p class="text-sm text-neutral-500 mb-4">Enter the receipt number, pick what's coming back.</p>
-        <div class="flex gap-2 mb-4">
-            <input id="refund-order" type="text" placeholder="POS-…" class="flex-1 border border-neutral-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-brand-500" />
-            <button type="button" id="refund-find" class="px-4 bg-neutral-900 text-white rounded-lg text-sm hover:bg-neutral-700">Find</button>
-        </div>
-        <div id="refund-body" class="hidden">
-            <div id="refund-items" class="divide-y divide-neutral-100 mb-4"></div>
-            <label class="block text-xs text-neutral-500 mb-1">Refund method</label>
-            <div class="flex gap-2 mb-3" id="refund-methods">
-                <button type="button" data-method="Cash" class="refund-method flex-1 border-2 border-brand-500 bg-brand-50 rounded-lg py-2 text-sm">Cash</button>
-                <button type="button" data-method="Card" class="refund-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-2 text-sm">Card</button>
-                <button type="button" data-method="Transfer" class="refund-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-2 text-sm">Transfer</button>
+        <div id="refund-search-state">
+            <h3 class="text-lg font-medium text-neutral-900 mb-1">Refund a sale</h3>
+            <p class="text-sm text-neutral-500 mb-4">Enter the receipt number, pick what's coming back.</p>
+            <div class="flex gap-2 mb-4">
+                <input id="refund-order" type="text" placeholder="POS-…"
+                       class="flex-1 border border-neutral-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-brand-500" />
+                <button type="button" id="refund-find"
+                        class="px-4 bg-neutral-900 text-white rounded-lg text-sm hover:bg-neutral-700 transition-colors">Find</button>
             </div>
-            <input id="refund-reason" type="text" placeholder="Reason (optional)" class="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:border-brand-500" />
-            <div class="flex justify-between text-base font-medium text-neutral-900 mb-3"><span>Refund total</span><span id="refund-total">₦0</span></div>
+            <div id="refund-body" class="hidden">
+                <div id="refund-items" class="divide-y divide-neutral-100 mb-4"></div>
+                <label class="block text-xs text-neutral-500 mb-1">Refund method</label>
+                <div class="flex gap-2 mb-3" id="refund-methods">
+                    <button type="button" data-method="Cash" class="refund-method flex-1 border-2 border-brand-500 bg-brand-50 rounded-lg py-2 text-sm">Cash</button>
+                    <button type="button" data-method="Card" class="refund-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-2 text-sm">Card</button>
+                    <button type="button" data-method="Transfer" class="refund-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-2 text-sm">Transfer</button>
+                </div>
+                <input id="refund-reason" type="text" placeholder="Reason (optional)"
+                       class="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:border-brand-500" />
+                <div class="flex justify-between text-base font-medium text-neutral-900 mb-3">
+                    <span>Refund total</span><span id="refund-total">₦0</span>
+                </div>
+            </div>
+            <p id="refund-msg" class="text-xs text-red-500 mb-3"></p>
+            <div class="flex gap-2">
+                <button type="button" id="refund-cancel"
+                        class="flex-1 border border-neutral-200 rounded-lg py-2.5 text-sm text-neutral-600 hover:border-neutral-400 transition-colors">Close</button>
+                <button type="button" id="refund-confirm"
+                        class="flex-1 bg-red-600 text-white rounded-lg py-2.5 text-sm hover:bg-red-700 transition-colors disabled:opacity-40" disabled>Process refund</button>
+            </div>
         </div>
-        <p id="refund-msg" class="text-xs text-red-500 mb-3"></p>
-        <div class="flex gap-2">
-            <button type="button" id="refund-cancel" class="flex-1 border border-neutral-200 rounded-lg py-2.5 text-sm text-neutral-600 hover:border-neutral-400">Close</button>
-            <button type="button" id="refund-confirm" class="flex-1 bg-red-600 text-white rounded-lg py-2.5 text-sm hover:bg-red-700 disabled:opacity-40" disabled>Process refund</button>
+        <div id="refund-success-state" class="hidden text-center py-4">
+            <div class="w-14 h-14 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 13l4 4L19 7"/>
+                </svg>
+            </div>
+            <p class="text-base font-medium text-neutral-900 mb-1">Refund processed</p>
+            <p id="refund-success-detail" class="text-sm text-neutral-500 mb-6"></p>
+            <button type="button" id="refund-done"
+                    class="w-full bg-neutral-900 text-white rounded-lg py-3 text-sm hover:bg-neutral-700 transition-colors">Done</button>
         </div>
     </div>
 </div>
 
-<!-- Cash-up modal -->
+<!-- ── Cash-up modal ─────────────────────────────────────────────────────── -->
 <div id="till-cashup" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white rounded-xl p-6 max-w-sm w-full">
         <h3 class="text-lg font-medium text-neutral-900 mb-1">Cash up &amp; close till</h3>
-        <p class="text-sm text-neutral-500 mb-5">Count the cash in the drawer and enter the total. You'll get a Z-report.</p>
+        <p class="text-sm text-neutral-500 mb-5">Count the cash in the drawer and enter the total.</p>
         <label class="block text-xs text-neutral-500 mb-1">Counted cash (₦)</label>
         <input id="cashup-counted" type="number" min="0" step="any"
                class="w-full border border-neutral-300 rounded-lg px-3 py-2.5 text-base mb-3 focus:outline-none focus:border-brand-500" />
@@ -101,22 +356,28 @@
         <input id="cashup-note" type="text"
                class="w-full border border-neutral-300 rounded-lg px-3 py-2.5 text-sm mb-5 focus:outline-none focus:border-brand-500" />
         <div class="flex gap-2">
-            <button type="button" id="cashup-cancel" class="flex-1 border border-neutral-200 rounded-lg py-2.5 text-sm text-neutral-600 hover:border-neutral-400">Cancel</button>
-            <button type="button" id="cashup-confirm" class="flex-1 bg-neutral-900 text-white rounded-lg py-2.5 text-sm hover:bg-neutral-700">Close till</button>
+            <button type="button" id="cashup-cancel"
+                    class="flex-1 border border-neutral-200 rounded-lg py-2.5 text-sm text-neutral-600 hover:border-neutral-400 transition-colors">Cancel</button>
+            <button type="button" id="cashup-confirm"
+                    class="flex-1 bg-neutral-900 text-white rounded-lg py-2.5 text-sm hover:bg-neutral-700 transition-colors">Close till</button>
         </div>
     </div>
 </div>
 
-<!-- Done modal -->
+<!-- ── Sale complete modal ───────────────────────────────────────────────── -->
 <div id="till-done" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white rounded-xl p-8 max-w-sm w-full text-center">
         <div class="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-4">
-            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 13l4 4L19 7"/></svg>
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 13l4 4L19 7"/>
+            </svg>
         </div>
         <p id="till-done-info" class="text-base text-neutral-700 mb-6"></p>
         <div class="flex gap-2">
-            <a id="till-receipt" href="#" target="_blank" class="flex-1 border border-neutral-200 rounded-lg py-3 text-sm hover:border-neutral-400">Receipt</a>
-            <button id="till-new" type="button" class="flex-1 bg-neutral-900 text-white rounded-lg py-3 text-sm hover:bg-neutral-700">Next sale</button>
+            <a id="till-receipt" href="#" target="_blank"
+               class="flex-1 border border-neutral-200 rounded-lg py-3 text-sm hover:border-neutral-400 transition-colors">Receipt</a>
+            <button id="till-new" type="button"
+                    class="flex-1 bg-neutral-900 text-white rounded-lg py-3 text-sm hover:bg-neutral-700 transition-colors">Next sale</button>
         </div>
     </div>
 </div>
@@ -126,32 +387,174 @@
 (function () {
     const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
     const fmt = n => '₦' + Number(n || 0).toLocaleString('en-NG', { maximumFractionDigits: 0 });
-    const searchBox = document.getElementById('till-search');
-    const resultsEl = document.getElementById('till-results');
-    const cartEl = document.getElementById('till-cart');
-    const totalEl = document.getElementById('till-total');
-    const tenderedEl = document.getElementById('till-tendered');
-    const changeEl = document.getElementById('till-change');
-    const payBtn = document.getElementById('till-pay');
-    let cart = [], method = 'Cash', debounce, lastResults = [];
+    // Cart is persisted per register + session so an accidental refresh / crash doesn't lose an in-progress sale.
+    const TILL_CART_KEY = 'till_cart_@(Model.Id)_@(session?.Id ?? 0)';
 
-    searchBox.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(runSearch, 150); });
+    // ── Clock ─────────────────────────────────────────────────────────────────
+    function tick() {
+        const now = new Date();
+        const t = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        const d = now.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+        const c = document.getElementById('till-clock');
+        const dt = document.getElementById('till-date-top');
+        if (c) c.textContent = t;
+        if (dt) dt.textContent = d;
+    }
+    tick(); setInterval(tick, 1000);
+
+    // ── Tabs ──────────────────────────────────────────────────────────────────
+    const tabPanels = { products: document.getElementById('tab-products'), customers: document.getElementById('tab-customers'), orders: document.getElementById('tab-orders') };
+    document.querySelectorAll('.till-tab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const name = btn.dataset.tab;
+            document.querySelectorAll('.till-tab').forEach(b => {
+                b.classList.remove('border-brand-500', 'text-brand-500');
+                b.classList.add('border-transparent', 'text-neutral-400');
+            });
+            btn.classList.remove('border-transparent', 'text-neutral-400');
+            btn.classList.add('border-brand-500', 'text-brand-500');
+            Object.values(tabPanels).forEach(p => p.classList.add('hidden'));
+            tabPanels[name].classList.remove('hidden');
+            if (name === 'orders') loadOrders();
+        });
+    });
+
+    // ── Category palette ──────────────────────────────────────────────────────
+    const palettes = [
+        'bg-brand-500 text-white', 'bg-neutral-800 text-white', 'bg-violet-600 text-white',
+        'bg-sky-600 text-white', 'bg-emerald-600 text-white', 'bg-amber-500 text-white',
+        'bg-rose-600 text-white', 'bg-indigo-600 text-white', 'bg-teal-600 text-white',
+        'bg-orange-500 text-white', 'bg-pink-600 text-white', 'bg-cyan-600 text-white',
+    ];
+
+    const catGrid = document.getElementById('cat-grid');
+    const resultsEl = document.getElementById('till-results');
+    const searchBox = document.getElementById('till-search');
+    const homeBtn = document.getElementById('home-btn');
+    const breadcrumbDivider = document.getElementById('breadcrumb-divider');
+    const breadcrumbCat = document.getElementById('breadcrumb-cat');
+    let activeCategoryId = null, debounce, lastResults = [];
+
+    async function loadCategories() {
+        const res = await fetch('/Till/Categories');
+        const cats = await res.json();
+        if (!cats.length) {
+            catGrid.innerHTML = '<p class="col-span-full text-sm text-neutral-400 py-8 text-center">No categories found. Products will show below.</p>';
+            showAllProducts();
+            return;
+        }
+        catGrid.innerHTML = cats.map((c, i) => {
+            const palette = palettes[i % palettes.length];
+            return `<button type="button" class="cat-tile ${palette} rounded-xl p-4 flex flex-col items-center justify-center gap-2 min-h-[90px] text-center hover:opacity-90 active:scale-95 transition-all shadow-sm" data-id="${c.id}" data-name="${c.name}">
+                <span class="text-3xl">${catEmoji(c.name)}</span>
+                <span class="text-xs font-semibold uppercase tracking-wide leading-tight">${c.name}</span>
+            </button>`;
+        }).join('');
+        catGrid.querySelectorAll('.cat-tile').forEach(b => b.addEventListener('click', () => {
+            activeCategoryId = +b.dataset.id;
+            showCategoryProducts(activeCategoryId, b.dataset.name);
+        }));
+    }
+
+    function catEmoji(name) {
+        const n = name.toLowerCase();
+        if (n.includes('ring')) return '💍';
+        if (n.includes('necklace') || n.includes('chain')) return '📿';
+        if (n.includes('earring') || n.includes('ear')) return '✨';
+        if (n.includes('bracelet') || n.includes('bangle')) return '🔮';
+        if (n.includes('watch')) return '⌚';
+        if (n.includes('brooch') || n.includes('pin')) return '🔹';
+        if (n.includes('pendant')) return '💎';
+        if (n.includes('anklet')) return '🦋';
+        if (n.includes('hair')) return '🌸';
+        if (n.includes('bag') || n.includes('purse')) return '👜';
+        return '✦';
+    }
+
+    async function showCategoryProducts(catId, catName) {
+        catGrid.classList.add('hidden');
+        resultsEl.classList.remove('hidden');
+        homeBtn.classList.remove('hidden');
+        homeBtn.classList.add('flex');
+        breadcrumbDivider.classList.remove('hidden');
+        breadcrumbCat.classList.remove('hidden');
+        breadcrumbCat.textContent = catName;
+        resultsEl.innerHTML = '<p class="col-span-full text-sm text-neutral-400 py-6 text-center">Loading…</p>';
+        const res = await fetch('/Till/Search?categoryId=' + catId);
+        lastResults = await res.json();
+        renderProducts(lastResults);
+    }
+
+    async function showAllProducts() {
+        catGrid.classList.add('hidden');
+        resultsEl.classList.remove('hidden');
+        homeBtn.classList.add('hidden');
+        homeBtn.classList.remove('flex');
+        breadcrumbDivider.classList.add('hidden');
+        breadcrumbCat.classList.add('hidden');
+        activeCategoryId = null;
+        const res = await fetch('/Till/Search?q=' + encodeURIComponent(searchBox.value.trim()));
+        lastResults = await res.json();
+        renderProducts(lastResults);
+    }
+
+    homeBtn.addEventListener('click', () => {
+        catGrid.classList.remove('hidden');
+        resultsEl.classList.add('hidden');
+        homeBtn.classList.add('hidden');
+        homeBtn.classList.remove('flex');
+        breadcrumbDivider.classList.add('hidden');
+        breadcrumbCat.classList.add('hidden');
+        activeCategoryId = null;
+        searchBox.value = '';
+    });
+
+    searchBox.addEventListener('input', () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(() => {
+            if (searchBox.value.trim()) {
+                activeCategoryId = null;
+                catGrid.classList.add('hidden');
+                resultsEl.classList.remove('hidden');
+                homeBtn.classList.add('hidden');
+                homeBtn.classList.remove('flex');
+                breadcrumbDivider.classList.add('hidden');
+                breadcrumbCat.classList.add('hidden');
+                runSearch();
+            } else if (activeCategoryId === null) {
+                catGrid.classList.remove('hidden');
+                resultsEl.classList.add('hidden');
+            }
+        }, 180);
+    });
     searchBox.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); onScan(searchBox.value.trim()); } });
 
     async function runSearch() {
-        const res = await fetch('/Till/Search?q=' + encodeURIComponent(searchBox.value.trim()));
+        const q = searchBox.value.trim();
+        const url = '/Till/Search?q=' + encodeURIComponent(q) + (activeCategoryId ? '&categoryId=' + activeCategoryId : '');
+        const res = await fetch(url);
         lastResults = await res.json();
-        render(lastResults);
+        renderProducts(lastResults);
     }
-    function render(items) {
-        if (!items.length) { resultsEl.innerHTML = '<p class="col-span-full text-sm text-neutral-400 py-6">No products.</p>'; return; }
+
+    function renderProducts(items) {
+        if (!items.length) {
+            resultsEl.innerHTML = '<p class="col-span-full text-sm text-neutral-400 py-8 text-center">No products found.</p>';
+            return;
+        }
         resultsEl.innerHTML = items.map(p => {
             const out = p.stock <= 0;
-            return `<button type="button" ${out ? 'disabled' : ''} class="till-prod text-left bg-white border border-neutral-200 rounded-lg overflow-hidden hover:border-brand-500 transition-colors ${out ? 'opacity-40' : ''}" data-p='${encodeURIComponent(JSON.stringify(p))}'>
-                <div class="aspect-square bg-neutral-50">${p.image ? `<img src="${p.image}" class="w-full h-full object-cover">` : ''}</div>
-                <div class="p-2"><p class="text-xs text-neutral-800 leading-snug line-clamp-2">${p.name}</p>
-                <p class="text-sm text-neutral-700 mt-1">${fmt(p.price)}</p>
-                <p class="text-[10px] ${out ? 'text-red-500' : 'text-emerald-600'}">${out ? 'Out of stock' : p.stock + ' in stock'}</p></div></button>`;
+            return `<button type="button" ${out ? 'disabled' : ''} class="till-prod text-left bg-white border border-neutral-200 rounded-xl overflow-hidden hover:border-brand-400 hover:shadow-md transition-all ${out ? 'opacity-40' : ''}" data-p='${encodeURIComponent(JSON.stringify(p))}'>
+                <div class="aspect-square bg-neutral-50 relative">${p.image ? `<img src="${p.image}" class="w-full h-full object-cover">` : '<div class="w-full h-full flex items-center justify-center text-neutral-300"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></div>'}
+                    ${out ? '<div class="absolute inset-0 bg-white/60 flex items-center justify-center"><span class="text-[10px] text-red-500 font-medium">Out of stock</span></div>' : ''}
+                </div>
+                <div class="p-2.5">
+                    ${p.sku ? `<p class="text-[10px] text-neutral-400 font-mono leading-none mb-0.5">${p.sku}</p>` : ''}
+                    <p class="text-xs text-neutral-800 leading-snug line-clamp-2 font-medium">${p.name}</p>
+                    <p class="text-sm text-neutral-700 mt-1 font-semibold">${fmt(p.price)}</p>
+                    <p class="text-[10px] ${out ? 'text-red-400' : 'text-emerald-600'} mt-0.5">${out ? 'Out of stock' : p.stock + ' in stock'}</p>
+                </div>
+            </button>`;
         }).join('');
         resultsEl.querySelectorAll('.till-prod').forEach(b => b.addEventListener('click', () => add(JSON.parse(decodeURIComponent(b.dataset.p)))));
     }
@@ -161,76 +564,433 @@
         const res = await fetch('/Till/Search?q=' + encodeURIComponent(code));
         const items = await res.json();
         const exact = items.find(p => (p.barcode && p.barcode.toLowerCase() === code.toLowerCase()) || (p.sku && p.sku.toLowerCase() === code.toLowerCase()));
-        if (exact && exact.stock > 0) { add(exact); searchBox.value = ''; render([]); }
-        else { lastResults = items; render(items); }
+        if (exact && exact.stock > 0) { add(exact); searchBox.value = ''; }
+        else { lastResults = items; catGrid.classList.add('hidden'); resultsEl.classList.remove('hidden'); renderProducts(items); }
     }
 
-    function add(p) {
+    // ── Variant picker ────────────────────────────────────────────────────────
+    const variantModal = document.getElementById('variant-modal');
+    const variantTitle = document.getElementById('variant-title');
+    const variantList = document.getElementById('variant-list');
+    document.getElementById('variant-cancel').addEventListener('click', () => variantModal.classList.add('hidden'));
+    variantModal.addEventListener('click', e => { if (e.target === variantModal) variantModal.classList.add('hidden'); });
+
+    function pickVariant(p) {
+        return new Promise(resolve => {
+            variantTitle.textContent = p.name;
+            variantList.innerHTML = p.variants.map((v, i) => {
+                const price = p.price + (v.priceAdjustment || 0);
+                return `<button type="button" class="variant-opt w-full flex justify-between items-center border border-neutral-200 rounded-lg px-4 py-3 hover:border-brand-500 hover:bg-brand-50 transition-colors text-left" data-idx="${i}">
+                    <span class="text-sm text-neutral-800">${v.name}</span>
+                    <span class="text-sm font-medium text-neutral-700">${fmt(price)}</span>
+                </button>`;
+            }).join('');
+            variantList.querySelectorAll('.variant-opt').forEach(b => b.addEventListener('click', () => {
+                variantModal.classList.add('hidden');
+                resolve(p.variants[+b.dataset.idx]);
+            }));
+            variantModal.classList.remove('hidden');
+        });
+    }
+
+    // ── Cart ──────────────────────────────────────────────────────────────────
+    const cartEmpty = document.getElementById('cart-empty');
+    const cartItems = document.getElementById('cart-items');
+    const cartCountEl = document.getElementById('cart-count');
+    const totalDiscountEl = document.getElementById('cart-total-discount');
+    const totalEl = document.getElementById('till-total');
+    const dueEl = document.getElementById('till-due');
+    const tenderedEl = document.getElementById('till-tendered');
+    const changeEl = document.getElementById('till-change');
+    const payBtn = document.getElementById('till-pay');
+    const voidBtn = document.getElementById('till-void-btn');
+    let cart = [], method = 'Cash';
+
+    // ── Cart persistence ────────────────────────────────────────────────────────
+    function saveCart() {
+        try { localStorage.setItem(TILL_CART_KEY, JSON.stringify({ cart, method, tendered: tenderedEl.value })); } catch (e) {}
+    }
+    function clearSavedCart() { try { localStorage.removeItem(TILL_CART_KEY); } catch (e) {} }
+    function selectMethod(m) {
+        method = m;
+        document.querySelectorAll('.till-method').forEach(x => {
+            const on = x.dataset.method === m;
+            x.classList.toggle('border-2', on); x.classList.toggle('border-brand-500', on); x.classList.toggle('bg-brand-50', on); x.classList.toggle('text-brand-700', on);
+            x.classList.toggle('border', !on); x.classList.toggle('border-neutral-200', !on); x.classList.toggle('text-neutral-600', !on);
+        });
+        document.getElementById('till-cash-row').style.display = m === 'Cash' ? '' : 'none';
+    }
+    function loadCart() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(TILL_CART_KEY) || 'null');
+            if (!saved) return;
+            if (Array.isArray(saved.cart)) cart = saved.cart;
+            if (saved.method) selectMethod(saved.method);
+            if (saved.tendered) tenderedEl.value = saved.tendered;
+        } catch (e) {}
+    }
+
+    async function add(p) {
         let variantId = null, variantName = null, unitPrice = p.price;
         if (p.variants && p.variants.length) {
-            const names = p.variants.map((v, i) => `${i + 1}. ${v.name}`).join('\n');
-            const idx = parseInt(prompt(`Option for ${p.name}:\n${names}\n\nNumber:`), 10) - 1;
-            if (isNaN(idx) || idx < 0 || idx >= p.variants.length) return;
-            const v = p.variants[idx]; variantId = v.id; variantName = v.name; unitPrice = p.price + (v.priceAdjustment || 0);
+            const v = await pickVariant(p);
+            if (!v) return;
+            variantId = v.id; variantName = v.name; unitPrice = p.price + (v.priceAdjustment || 0);
         }
         const key = p.id + '-' + (variantId ?? '');
         const ex = cart.find(c => c.key === key);
-        if ((ex ? ex.qty : 0) + 1 > p.stock) { alert('Not enough stock.'); return; }
-        if (ex) ex.qty++; else cart.push({ key, productId: p.id, variantId, name: p.name, variantName, unitPrice, qty: 1, stock: p.stock });
+        if ((ex ? ex.qty : 0) + 1 > p.stock) { showError('Not enough stock.'); return; }
+        if (ex) ex.qty++;
+        else cart.push({ key, productId: p.id, variantId, sku: p.sku, name: p.name, variantName, unitPrice, qty: 1, stock: p.stock, note: null, discountAmount: 0, discountReason: null, discountType: null });
         renderCart();
     }
 
     function renderCart() {
-        if (!cart.length) cartEl.innerHTML = '<p class="text-sm text-neutral-400 py-8 text-center">No items yet.</p>';
-        else cartEl.innerHTML = cart.map((c, i) => `<div class="py-3 flex items-center gap-2">
-            <div class="flex-1 min-w-0"><p class="text-sm text-neutral-800 truncate">${c.name}${c.variantName ? ` <span class="text-neutral-400">(${c.variantName})</span>` : ''}</p>
-            <p class="text-xs text-neutral-500">${fmt(c.unitPrice)}</p></div>
-            <div class="flex items-center border border-neutral-200 rounded"><button type="button" data-dec="${i}" class="w-7 h-7 text-neutral-500">−</button><span class="w-7 text-center text-sm">${c.qty}</span><button type="button" data-inc="${i}" class="w-7 h-7 text-neutral-500">+</button></div>
-            <span class="text-sm w-16 text-right">${fmt(c.unitPrice * c.qty)}</span>
-            <button type="button" data-del="${i}" class="text-neutral-300 hover:text-red-500 text-lg">×</button></div>`).join('');
-        cartEl.querySelectorAll('[data-inc]').forEach(b => b.addEventListener('click', () => qty(+b.dataset.inc, 1)));
-        cartEl.querySelectorAll('[data-dec]').forEach(b => b.addEventListener('click', () => qty(+b.dataset.dec, -1)));
-        cartEl.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => { cart.splice(+b.dataset.del, 1); renderCart(); }));
-        const total = cart.reduce((s, c) => s + c.unitPrice * c.qty, 0);
-        totalEl.textContent = fmt(total); payBtn.disabled = !cart.length; updateChange();
+        const totalDiscount = cart.reduce((s, c) => s + (c.discountAmount || 0), 0);
+        const total = cart.reduce((s, c) => s + c.unitPrice * c.qty - (c.discountAmount || 0), 0);
+        const count = cart.reduce((s, c) => s + c.qty, 0);
+
+        if (!cart.length) {
+            cartEmpty.classList.remove('hidden');
+            cartItems.classList.add('hidden');
+            cartItems.innerHTML = '';
+        } else {
+            cartEmpty.classList.add('hidden');
+            cartItems.classList.remove('hidden');
+            cartItems.innerHTML = cart.map((c, i) => {
+                const lineTotal = c.unitPrice * c.qty - (c.discountAmount || 0);
+                const hasDiscount = (c.discountAmount || 0) > 0;
+                const hasNote = !!c.note;
+                return `
+                <div class="py-2.5">
+                    <div class="flex items-start gap-2">
+                        <div class="flex-1 min-w-0">
+                            ${c.sku ? `<p class="text-[10px] text-neutral-400 font-mono leading-none mb-0.5">${c.sku}</p>` : ''}
+                            <p class="text-xs text-neutral-800 font-medium leading-snug">${c.name}${c.variantName ? `<span class="text-neutral-400 font-normal"> · ${c.variantName}</span>` : ''}</p>
+                            <p class="text-[11px] text-neutral-500 mt-0.5">${fmt(c.unitPrice)} each${hasDiscount ? ` &nbsp;<span class="text-emerald-600">-${fmt(c.discountAmount)}</span>${c.discountReason ? ` · ${c.discountReason}` : ''}` : ''}</p>
+                            ${hasNote ? `<p class="text-[10px] text-brand-500 mt-0.5 italic truncate">"${c.note}"</p>` : ''}
+                        </div>
+                        <div class="flex items-center border border-neutral-200 rounded-lg overflow-hidden flex-shrink-0">
+                            <button type="button" data-dec="${i}" class="w-6 h-6 text-neutral-500 hover:bg-neutral-50 text-sm leading-none">−</button>
+                            <span class="w-6 text-center text-xs font-medium">${c.qty}</span>
+                            <button type="button" data-inc="${i}" class="w-6 h-6 text-neutral-500 hover:bg-neutral-50 text-sm leading-none">+</button>
+                        </div>
+                        <span class="text-xs font-semibold text-neutral-800 w-14 text-right flex-shrink-0">${fmt(lineTotal)}</span>
+                        <button type="button" data-del="${i}" class="text-neutral-300 hover:text-red-400 transition-colors flex-shrink-0 mt-0.5">
+                            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                        </button>
+                    </div>
+                    <div class="flex gap-1.5 mt-1.5">
+                        <button type="button" data-note-open="${i}" class="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border transition-colors ${hasNote ? 'border-brand-300 bg-brand-50 text-brand-600' : 'border-neutral-200 text-neutral-400 hover:text-neutral-600'}">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                            NOTE
+                        </button>
+                        <button type="button" data-disc-open="${i}" class="flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border transition-colors ${hasDiscount ? 'border-emerald-300 bg-emerald-50 text-emerald-600' : 'border-neutral-200 text-neutral-400 hover:text-neutral-600'}">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"/></svg>
+                            DISCOUNT${hasDiscount ? ` (${fmt(c.discountAmount)})` : ''}
+                        </button>
+                    </div>
+                </div>`;
+            }).join('');
+            cartItems.querySelectorAll('[data-inc]').forEach(b => b.addEventListener('click', () => qty(+b.dataset.inc, 1)));
+            cartItems.querySelectorAll('[data-dec]').forEach(b => b.addEventListener('click', () => qty(+b.dataset.dec, -1)));
+            cartItems.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => { cart.splice(+b.dataset.del, 1); renderCart(); }));
+            cartItems.querySelectorAll('[data-note-open]').forEach(b => b.addEventListener('click', () => openItemModal(+b.dataset.noteOpen, 'notes')));
+            cartItems.querySelectorAll('[data-disc-open]').forEach(b => b.addEventListener('click', () => openItemModal(+b.dataset.discOpen, 'discount')));
+        }
+
+        cartCountEl.textContent = count;
+        totalDiscountEl.textContent = totalDiscount > 0 ? '-' + fmt(totalDiscount) : fmt(0);
+        totalEl.textContent = fmt(total);
+        dueEl.textContent = fmt(total);
+        payBtn.disabled = !cart.length;
+        updateChange();
+        saveCart();
     }
-    function qty(i, d) { const c = cart[i]; if (d > 0 && c.qty + 1 > c.stock) { alert('Not enough stock.'); return; } c.qty += d; if (c.qty <= 0) cart.splice(i, 1); renderCart(); }
 
+    function qty(i, d) {
+        const c = cart[i];
+        if (d > 0 && c.qty + 1 > c.stock) { showError('Not enough stock.'); return; }
+        c.qty += d; if (c.qty <= 0) cart.splice(i, 1); renderCart();
+    }
+
+    voidBtn.addEventListener('click', () => { cart = []; tenderedEl.value = ''; renderCart(); });
+    document.getElementById('till-hold-btn').addEventListener('click', () => showError('Hold feature coming soon.'));
+
+    // ── Payment method ────────────────────────────────────────────────────────
     document.querySelectorAll('.till-method').forEach(b => b.addEventListener('click', () => {
-        method = b.dataset.method;
-        document.querySelectorAll('.till-method').forEach(x => { const on = x === b;
-            x.classList.toggle('border-2', on); x.classList.toggle('border-brand-500', on); x.classList.toggle('bg-brand-50', on);
-            x.classList.toggle('border', !on); x.classList.toggle('border-neutral-200', !on); x.classList.toggle('text-neutral-600', !on); });
-        document.getElementById('till-cash-row').style.display = method === 'Cash' ? '' : 'none'; updateChange();
+        selectMethod(b.dataset.method);
+        updateChange(); saveCart();
     }));
-    tenderedEl.addEventListener('input', updateChange);
-    function updateChange() { const t = cart.reduce((s, c) => s + c.unitPrice * c.qty, 0); changeEl.textContent = fmt(Math.max(0, (parseFloat(tenderedEl.value) || 0) - t)); }
+    tenderedEl.addEventListener('input', () => { updateChange(); saveCart(); });
+    function updateChange() {
+        const t = cart.reduce((s, c) => s + c.unitPrice * c.qty - (c.discountAmount || 0), 0);
+        changeEl.textContent = fmt(Math.max(0, (parseFloat(tenderedEl.value) || 0) - t));
+    }
 
+    // ── Keyboard shortcuts ────────────────────────────────────────────────────
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.target.closest('input, button, [contenteditable]') && !payBtn.disabled) {
+            e.preventDefault(); payBtn.click();
+        }
+        if (e.key === 'Escape') {
+            variantModal.classList.add('hidden');
+            document.getElementById('till-done').classList.add('hidden');
+        }
+    });
+
+    // ── Scan anywhere ───────────────────────────────────────────────────────────
+    // Hardware scanners type a burst of characters then Enter. Capture that burst
+    // wherever focus is (so the cashier needn't click the search box first) and route
+    // it to onScan. Capture phase + stopImmediatePropagation keeps it from triggering
+    // the Enter-to-pay shortcut above.
+    let scanBuf = '', scanLast = 0;
+    document.addEventListener('keydown', e => {
+        const inField = !!e.target.closest('input, textarea, [contenteditable]');
+        const now = Date.now();
+        if (e.key === 'Enter') {
+            if (!inField && scanBuf.length >= 3 && now - scanLast < 120) {
+                e.preventDefault(); e.stopImmediatePropagation();
+                const code = scanBuf;
+                onScan(code);
+            }
+            scanBuf = '';
+            return;
+        }
+        if (inField) { scanBuf = ''; return; }
+        if (e.key.length === 1) {
+            if (now - scanLast > 120) scanBuf = '';
+            scanBuf += e.key; scanLast = now;
+        }
+    }, true);
+
+    // ── Checkout ──────────────────────────────────────────────────────────────
     payBtn.addEventListener('click', async () => {
-        if (!cart.length) return; payBtn.disabled = true; payBtn.textContent = 'Processing…';
+        if (!cart.length) return;
+        payBtn.disabled = true; payBtn.querySelector('span').textContent = '…';
         try {
-            const res = await fetch('/Till/Checkout', { method: 'POST',
+            const res = await fetch('/Till/Checkout', {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
                 body: JSON.stringify({ paymentMethod: method, amountTendered: parseFloat(tenderedEl.value) || 0,
-                    items: cart.map(c => ({ productId: c.productId, variantId: c.variantId, quantity: c.qty })) }) });
+                    items: cart.map(c => ({ productId: c.productId, variantId: c.variantId, quantity: c.qty, note: c.note || null, discountAmount: c.discountAmount || 0, discountReason: c.discountReason || null, discountType: c.discountType || null })) })
+            });
             const data = await res.json();
             if (data.success) {
-                document.getElementById('till-done-info').innerHTML = `<span class="font-medium">${fmt(data.total)}</span> · ${data.orderNumber}` + (data.change > 0 ? `<br>Change due: <span class="font-medium">${fmt(data.change)}</span>` : '');
+                document.getElementById('till-done-info').innerHTML =
+                    `<span class="font-medium">${fmt(data.total)}</span> · ${data.orderNumber}` +
+                    (data.change > 0 ? `<br>Change due: <span class="font-medium text-emerald-600">${fmt(data.change)}</span>` : '');
                 document.getElementById('till-receipt').href = '/Till/Receipt/' + data.orderId;
+                cart = []; tenderedEl.value = ''; clearSavedCart(); renderCart();
                 document.getElementById('till-done').classList.remove('hidden');
-            } else alert(data.message || 'Could not complete the sale.');
-        } finally { payBtn.textContent = 'Charge'; payBtn.disabled = !cart.length; }
+            } else showError(data.message || 'Could not complete the sale.');
+        } finally { payBtn.querySelector('span').textContent = 'Pay'; payBtn.disabled = !cart.length; }
     });
 
     document.getElementById('till-new').addEventListener('click', () => {
-        cart = []; tenderedEl.value = ''; searchBox.value = '';
-        document.getElementById('till-done').classList.add('hidden'); renderCart(); runSearch(); searchBox.focus();
+        cart = []; tenderedEl.value = '';
+        document.getElementById('till-done').classList.add('hidden');
+        renderCart();
     });
 
-    runSearch();
-})();
+    // ── Orders tab ────────────────────────────────────────────────────────────
+    async function loadOrders() {
+        const el = document.getElementById('orders-list');
+        el.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">Loading…</p>';
+        try {
+            const res = await fetch('/Till/RecentOrders');
+            const orders = await res.json();
+            if (!orders.length) {
+                el.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">No sales yet on this till.</p>';
+                return;
+            }
+            el.innerHTML = orders.map(o => {
+                const dt = new Date(o.createdAt);
+                const when = dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' +
+                             dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                return `<div class="px-3 py-2.5 flex items-center gap-2">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-medium text-neutral-800 truncate">${o.orderNumber}</p>
+                        <p class="text-[11px] text-neutral-400">${when} · ${o.itemCount} item${o.itemCount === 1 ? '' : 's'} · ${o.method}</p>
+                    </div>
+                    <span class="font-semibold text-neutral-800 flex-shrink-0">${fmt(o.total)}</span>
+                    <a href="/Till/Receipt/${o.id}" target="_blank" title="Reprint receipt"
+                       class="flex-shrink-0 text-neutral-400 hover:text-brand-500 transition-colors p-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                    </a>
+                    <button type="button" data-refund="${o.orderNumber}" title="Refund this sale"
+                            class="flex-shrink-0 text-neutral-400 hover:text-red-500 transition-colors p-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h10a4 4 0 014 4v1m-4-9l-4 4 4 4"/></svg>
+                    </button>
+                </div>`;
+            }).join('');
+            el.querySelectorAll('[data-refund]').forEach(b =>
+                b.addEventListener('click', () => window.tillOpenRefund?.(b.dataset.refund)));
+        } catch { el.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">Could not load orders.</p>'; }
+    }
 
-// Cash up / close till
+    function showError(msg) {
+        const el = document.createElement('div');
+        el.className = 'fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white text-sm px-5 py-3 rounded-lg shadow-lg z-[100] transition-opacity';
+        el.textContent = msg;
+        document.body.appendChild(el);
+        setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 2500);
+    }
+
+    // ── Item note/discount modal ──────────────────────────────────────────────
+    let discountReasons = [];
+    let modalItemIdx = -1;
+
+    async function loadDiscountReasons() {
+        try {
+            const res = await fetch('/Till/DiscountReasons');
+            discountReasons = await res.json();
+        } catch { discountReasons = []; }
+    }
+
+    const itemModal = document.getElementById('item-modal');
+    const modalItemName = document.getElementById('modal-item-name');
+
+    function openItemModal(idx, tab) {
+        modalItemIdx = idx;
+        const c = cart[idx];
+        modalItemName.textContent = (c.sku ? c.sku + ' · ' : '') + c.name + (c.variantName ? ' · ' + c.variantName : '');
+        switchModalTab(tab);
+        itemModal.classList.remove('hidden');
+    }
+
+    function switchModalTab(tab) {
+        document.getElementById('modal-tab-notes').classList.toggle('border-b-2', tab === 'notes');
+        document.getElementById('modal-tab-notes').classList.toggle('border-brand-500', tab === 'notes');
+        document.getElementById('modal-tab-notes').classList.toggle('text-brand-600', tab === 'notes');
+        document.getElementById('modal-tab-notes').classList.toggle('text-neutral-400', tab !== 'notes');
+        document.getElementById('modal-tab-discount').classList.toggle('border-b-2', tab === 'discount');
+        document.getElementById('modal-tab-discount').classList.toggle('border-brand-500', tab === 'discount');
+        document.getElementById('modal-tab-discount').classList.toggle('text-brand-600', tab === 'discount');
+        document.getElementById('modal-tab-discount').classList.toggle('text-neutral-400', tab !== 'discount');
+        document.getElementById('modal-notes-panel').classList.toggle('hidden', tab !== 'notes');
+        document.getElementById('modal-discount-panel').classList.toggle('hidden', tab !== 'discount');
+
+        if (tab === 'notes') {
+            document.getElementById('item-note-input').value = cart[modalItemIdx]?.note || '';
+        } else {
+            showDiscountStep1();
+        }
+    }
+
+    document.getElementById('modal-tab-notes').addEventListener('click', () => switchModalTab('notes'));
+    document.getElementById('modal-tab-discount').addEventListener('click', () => switchModalTab('discount'));
+    document.getElementById('item-modal-close').addEventListener('click', () => itemModal.classList.add('hidden'));
+    itemModal.addEventListener('click', e => { if (e.target === itemModal) itemModal.classList.add('hidden'); });
+
+    document.getElementById('item-note-clear').addEventListener('click', () => { document.getElementById('item-note-input').value = ''; });
+    document.getElementById('item-note-done').addEventListener('click', () => {
+        if (modalItemIdx >= 0) {
+            cart[modalItemIdx].note = document.getElementById('item-note-input').value.trim() || null;
+            renderCart();
+        }
+        itemModal.classList.add('hidden');
+    });
+
+    // Discount flow
+    function showDiscountStep1() {
+        document.getElementById('discount-step1').classList.remove('hidden');
+        document.getElementById('discount-step2').classList.add('hidden');
+        document.getElementById('discount-step3').classList.add('hidden');
+        const list = document.getElementById('discount-reasons-list');
+        if (!discountReasons.length) {
+            list.innerHTML = '<p class="px-4 py-6 text-sm text-neutral-400 text-center">No discount reasons configured.<br>Add them in Admin → POS → Discount Reasons.</p>';
+            return;
+        }
+        list.innerHTML = discountReasons.map(r =>
+            `<button type="button" data-rid="${r.id}" class="w-full text-left px-4 py-3 border-b border-neutral-100 text-sm text-blue-700 hover:bg-neutral-50 transition-colors">${r.name}</button>`
+        ).join('');
+        list.querySelectorAll('[data-rid]').forEach(b => b.addEventListener('click', () => showDiscountStep2(+b.dataset.rid)));
+    }
+
+    function showDiscountStep2(reasonId) {
+        const reason = discountReasons.find(r => r.id === reasonId);
+        if (!reason) return;
+        document.getElementById('discount-step1').classList.add('hidden');
+        document.getElementById('discount-step2').classList.remove('hidden');
+        document.getElementById('discount-step3').classList.add('hidden');
+        document.getElementById('discount-step2-title').textContent = reason.name;
+        document.getElementById('discount-step2-back').onclick = showDiscountStep1;
+
+        const customOptions = [
+            { label: 'Discount by Percentage', type: 'Percentage' },
+            { label: 'Discount by Amount', type: 'Amount' },
+            { label: 'Set New Price', type: 'NewPrice' },
+        ];
+        const presetOptions = (reason.presets || []).map(p => ({ label: p.label, type: p.type, value: p.value, isPreset: true }));
+        const allOptions = [...customOptions, ...presetOptions];
+
+        const list = document.getElementById('discount-types-list');
+        list.innerHTML = allOptions.map((opt, i) =>
+            `<button type="button" data-oidx="${i}" class="w-full text-left px-4 py-3 border-b border-neutral-100 text-sm text-blue-700 hover:bg-neutral-50 transition-colors">${opt.label}</button>`
+        ).join('');
+        list.querySelectorAll('[data-oidx]').forEach(b => b.addEventListener('click', () => {
+            const opt = allOptions[+b.dataset.oidx];
+            if (opt.isPreset) { applyDiscount(reason.name, opt.type, opt.value); itemModal.classList.add('hidden'); renderCart(); }
+            else showDiscountStep3(reason.name, opt.type);
+        }));
+    }
+
+    let numpadValue = '';
+    let numpadReasonName = '', numpadType = '';
+
+    function showDiscountStep3(reasonName, type) {
+        document.getElementById('discount-step1').classList.add('hidden');
+        document.getElementById('discount-step2').classList.add('hidden');
+        document.getElementById('discount-step3').classList.remove('hidden');
+        document.getElementById('discount-step3-title').textContent = reasonName;
+        document.getElementById('discount-type-label').textContent = type === 'Amount' ? '₦' : type === 'NewPrice' ? '₦ new' : '%';
+        numpadValue = ''; numpadReasonName = reasonName; numpadType = type;
+        document.getElementById('numpad-display').textContent = '';
+
+        const reason = discountReasons.find(r => r.name === reasonName);
+        document.getElementById('discount-step3-back').onclick = () => { if (reason) showDiscountStep2(reason.id); else showDiscountStep1(); };
+        document.getElementById('discount-update').onclick = () => {
+            const val = parseFloat(numpadValue) || 0;
+            if (val <= 0) { showError('Enter a value.'); return; }
+            applyDiscount(numpadReasonName, numpadType, val);
+            itemModal.classList.add('hidden');
+            renderCart();
+        };
+    }
+
+    document.querySelectorAll('[data-num]').forEach(b => b.addEventListener('click', () => {
+        if (b.dataset.num === '.' && numpadValue.includes('.')) return;
+        if (numpadValue.length >= 9) return;
+        numpadValue += b.dataset.num;
+        document.getElementById('numpad-display').textContent = numpadValue;
+    }));
+    document.getElementById('numpad-backspace').addEventListener('click', () => {
+        numpadValue = numpadValue.slice(0, -1);
+        document.getElementById('numpad-display').textContent = numpadValue;
+    });
+
+    function applyDiscount(reasonName, type, value) {
+        const c = cart[modalItemIdx];
+        if (!c) return;
+        const lineTotal = c.unitPrice * c.qty;
+        let discountAmount = 0;
+        if (type === 'Percentage') discountAmount = lineTotal * (value / 100);
+        else if (type === 'Amount') discountAmount = value;
+        else if (type === 'NewPrice') discountAmount = Math.max(0, lineTotal - value * c.qty);
+        c.discountAmount = Math.min(Math.max(0, discountAmount), lineTotal);
+        c.discountReason = reasonName;
+        c.discountType = type;
+    }
+
+    // Boot
+    loadCategories();
+    loadDiscountReasons();
+    loadCart();
+    renderCart();
+}());
+
+// ── Cash up ───────────────────────────────────────────────────────────────────
 (function () {
     const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
     const modal = document.getElementById('till-cashup');
@@ -246,15 +1006,23 @@
         });
         const data = await res.json();
         if (data.success) location.href = '/Till/Zreport/' + data.sessionId;
-        else alert(data.message || 'Could not close the till.');
+        else {
+            const el = document.createElement('div');
+            el.className = 'fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white text-sm px-5 py-3 rounded-lg shadow-lg z-[100]';
+            el.textContent = data.message || 'Could not close the till.';
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 3000);
+        }
     });
-})();
+}());
 
-// Refunds
+// ── Refunds ───────────────────────────────────────────────────────────────────
 (function () {
     const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
     const fmt = n => '₦' + Number(n || 0).toLocaleString('en-NG', { maximumFractionDigits: 0 });
     const modal = document.getElementById('till-refund');
+    const searchState = document.getElementById('refund-search-state');
+    const successState = document.getElementById('refund-success-state');
     const body = document.getElementById('refund-body');
     const itemsEl = document.getElementById('refund-items');
     const totalEl = document.getElementById('refund-total');
@@ -262,12 +1030,31 @@
     const confirmBtn = document.getElementById('refund-confirm');
     let orderId = null, lines = [], method = 'Cash';
 
-    function open() { modal.classList.remove('hidden'); document.getElementById('refund-order').focus(); }
-    function close() { modal.classList.add('hidden'); body.classList.add('hidden'); itemsEl.innerHTML = ''; msgEl.textContent = ''; lines = []; orderId = null; confirmBtn.disabled = true; document.getElementById('refund-order').value = ''; }
+    function open() { modal.classList.remove('hidden'); searchState.classList.remove('hidden'); successState.classList.add('hidden'); document.getElementById('refund-order').focus(); }
+    function close() {
+        modal.classList.add('hidden');
+        body.classList.add('hidden'); itemsEl.innerHTML = ''; msgEl.textContent = '';
+        lines = []; orderId = null; confirmBtn.disabled = true;
+        document.getElementById('refund-order').value = '';
+        document.getElementById('refund-reason').value = '';
+        successState.classList.add('hidden'); searchState.classList.remove('hidden');
+    }
+
+    // Let the Orders tab open the refund flow pre-filled with a receipt number.
+    window.tillOpenRefund = function (orderNumber) {
+        open();
+        if (orderNumber) {
+            document.getElementById('refund-order').value = orderNumber;
+            findOrder();
+        }
+    };
+
     document.getElementById('till-refund-btn').addEventListener('click', open);
     document.getElementById('refund-cancel').addEventListener('click', close);
-
+    document.getElementById('refund-done').addEventListener('click', close);
     document.getElementById('refund-find').addEventListener('click', findOrder);
+    document.getElementById('refund-order').addEventListener('keydown', e => { if (e.key === 'Enter') findOrder(); });
+
     async function findOrder() {
         msgEl.textContent = '';
         const num = document.getElementById('refund-order').value.trim();
@@ -279,42 +1066,58 @@
         lines = data.items.map(i => ({ ...i, qty: 0 }));
         itemsEl.innerHTML = lines.map((i, idx) => `
             <div class="py-2.5 flex items-center gap-2">
-                <div class="flex-1 min-w-0"><p class="text-sm text-neutral-800 truncate">${i.name}${i.variantName ? ` (${i.variantName})` : ''}</p>
-                <p class="text-xs text-neutral-500">${fmt(i.unitPrice)} · ${i.refundable} refundable</p></div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm text-neutral-800 truncate">${i.name}${i.variantName ? ` (${i.variantName})` : ''}</p>
+                    <p class="text-xs text-neutral-500">${fmt(i.unitPrice)} · ${i.refundable} refundable</p>
+                </div>
                 <div class="flex items-center border border-neutral-200 rounded">
-                    <button type="button" data-rdec="${idx}" class="w-7 h-7 text-neutral-500">−</button>
+                    <button type="button" data-rdec="${idx}" class="w-7 h-7 text-neutral-500 hover:bg-neutral-50">−</button>
                     <span id="rq-${idx}" class="w-7 text-center text-sm">0</span>
-                    <button type="button" data-rinc="${idx}" class="w-7 h-7 text-neutral-500">+</button>
-                </div></div>`).join('');
+                    <button type="button" data-rinc="${idx}" class="w-7 h-7 text-neutral-500 hover:bg-neutral-50">+</button>
+                </div>
+            </div>`).join('');
         itemsEl.querySelectorAll('[data-rinc]').forEach(b => b.addEventListener('click', () => chg(+b.dataset.rinc, 1)));
         itemsEl.querySelectorAll('[data-rdec]').forEach(b => b.addEventListener('click', () => chg(+b.dataset.rdec, -1)));
         body.classList.remove('hidden'); recalc();
     }
-    function chg(i, d) { const l = lines[i]; l.qty = Math.max(0, Math.min(l.refundable, l.qty + d)); document.getElementById('rq-' + i).textContent = l.qty; recalc(); }
+
+    function chg(i, d) {
+        const l = lines[i];
+        l.qty = Math.max(0, Math.min(l.refundable, l.qty + d));
+        document.getElementById('rq-' + i).textContent = l.qty; recalc();
+    }
     function recalc() {
         const total = lines.reduce((s, l) => s + l.unitPrice * l.qty, 0);
-        totalEl.textContent = fmt(total);
-        confirmBtn.disabled = total <= 0;
+        totalEl.textContent = fmt(total); confirmBtn.disabled = total <= 0;
     }
+
     document.querySelectorAll('.refund-method').forEach(b => b.addEventListener('click', () => {
         method = b.dataset.method;
-        document.querySelectorAll('.refund-method').forEach(x => { const on = x === b;
+        document.querySelectorAll('.refund-method').forEach(x => {
+            const on = x === b;
             x.classList.toggle('border-2', on); x.classList.toggle('border-brand-500', on); x.classList.toggle('bg-brand-50', on);
-            x.classList.toggle('border', !on); x.classList.toggle('border-neutral-200', !on); x.classList.toggle('text-neutral-600', !on); });
+            x.classList.toggle('border', !on); x.classList.toggle('border-neutral-200', !on); x.classList.toggle('text-neutral-600', !on);
+        });
     }));
+
     confirmBtn.addEventListener('click', async () => {
         const items = lines.filter(l => l.qty > 0).map(l => ({ productId: l.productId, variantId: l.variantId, quantity: l.qty }));
         if (!items.length) return;
         confirmBtn.disabled = true; confirmBtn.textContent = 'Processing…';
         try {
-            const res = await fetch('/Till/RefundProcess', { method: 'POST',
+            const res = await fetch('/Till/RefundProcess', {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
-                body: JSON.stringify({ orderId, method, reason: document.getElementById('refund-reason').value, items }) });
+                body: JSON.stringify({ orderId, method, reason: document.getElementById('refund-reason').value, items })
+            });
             const data = await res.json();
-            if (data.success) { alert('Refunded ' + fmt(data.amount) + ' (' + data.refundNumber + ')'); close(); }
-            else { msgEl.textContent = data.message || 'Refund failed.'; }
+            if (data.success) {
+                searchState.classList.add('hidden');
+                document.getElementById('refund-success-detail').textContent = fmt(data.amount) + ' refunded · ' + data.refundNumber;
+                successState.classList.remove('hidden');
+            } else msgEl.textContent = data.message || 'Refund failed.';
         } finally { confirmBtn.textContent = 'Process refund'; confirmBtn.disabled = false; }
     });
-})();
+}());
 </script>
 }
