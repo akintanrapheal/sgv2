@@ -7,6 +7,40 @@
     var announcementText    = await SettingsService.GetAsync("announcement.text", "COMPLIMENTARY SHIPPING ON ORDERS OVER N150,000  |  IN-STORE PICKUP AVAILABLE");
     var announcementBg      = await SettingsService.GetAsync("announcement.bg_color", "bg-brand-500");
     if (string.IsNullOrWhiteSpace(announcementBg)) { announcementBg = "bg-brand-500"; }
+
+    // Top-bar mega-menu: heading → category sub-items (slug). Empty Items = a direct link.
+    var megaMenu = new (string Label, string Href, (string Label, string Slug)[] Items)[]
+    {
+        ("New In", "/Products?sortBy=newest", System.Array.Empty<(string, string)>()),
+        ("Jewelry", null, new (string, string)[]
+        {
+            ("Sets", "sets"), ("Earrings", "earrings"), ("Rings", "rings"),
+            ("Bracelets & Bangles", "bracelets-bangles"), ("Necklaces & Pendants", "necklaces-pendants"),
+        }),
+        ("Accessories", null, new (string, string)[]
+        {
+            ("Anklets", "anklets"), ("Waist Chains", "waist-chains"), ("Key Rings", "key-rings"),
+            ("Hair Accessories", "hair-accessories"), ("Scarfs & Caps", "scarfs-caps"), ("Belts", "belts"),
+            ("Sunglasses", "sunglasses"), ("Brooches", "brooches"), ("Extenders", "extenders"),
+        }),
+        ("Watches", null, new (string, string)[]
+        {
+            ("Bracelet Watches", "bracelet-watches"), ("Strap Watches", "strap-watches"),
+        }),
+        ("Gifts", null, new (string, string)[]
+        {
+            ("Gift Boxes", "gift-boxes"), ("Gifts Combo Packages", "gifts-combo-packages"),
+        }),
+        ("Mens", null, new (string, string)[]
+        {
+            ("Bracelets", "bracelets"), ("Cufflinks", "cufflinks"), ("Unisex Brooches", "unisex-brooches"),
+            ("Trouser Chains", "trouser-chains"), ("MenKind", "menkind"),
+        }),
+        ("Clutches", null, new (string, string)[]
+        {
+            ("Stoned Clutches", "stoned-clutches"), ("None Stone Clutches", "none-stone-clutches"),
+        }),
+    };
 }
 
 <header class="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-neutral-100">
@@ -100,42 +134,67 @@
         </div>
     </div>
 
-    <!-- Row 2: Category nav (desktop only) -->
-    <nav class="hidden md:flex items-center justify-center gap-10 border-t border-neutral-100 py-3">
-        <a asp-controller="Products" asp-action="Index" asp-route-category="rings"
-           class="text-xs tracking-widest uppercase text-neutral-500 hover:text-brand-500 transition-colors duration-200">
-            Rings
-        </a>
-        <a asp-controller="Products" asp-action="Index" asp-route-category="necklaces"
-           class="text-xs tracking-widest uppercase text-neutral-500 hover:text-brand-500 transition-colors duration-200">
-            Necklaces
-        </a>
-        <a asp-controller="Products" asp-action="Index" asp-route-category="bracelets"
-           class="text-xs tracking-widest uppercase text-neutral-500 hover:text-brand-500 transition-colors duration-200">
-            Bracelets
-        </a>
-        <a asp-controller="Products" asp-action="Index" asp-route-category="earrings"
-           class="text-xs tracking-widest uppercase text-neutral-500 hover:text-brand-500 transition-colors duration-200">
-            Earrings
-        </a>
-        <a asp-controller="Home" asp-action="Collections"
-           class="text-xs tracking-widest uppercase text-neutral-500 hover:text-brand-500 transition-colors duration-200">
-            Collections
-        </a>
+    <!-- Row 2: Mega-menu category nav (desktop only) -->
+    <nav class="hidden md:flex items-center justify-center gap-7 lg:gap-9 border-t border-neutral-100 py-3">
+        @foreach (var m in megaMenu)
+        {
+            if (m.Items.Length == 0)
+            {
+                <a href="@m.Href" class="relative text-xs tracking-widest uppercase text-neutral-600 hover:text-brand-500 transition-colors">
+                    @if (m.Label == "New In")
+                    {
+                        <span class="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-green-500 text-white text-[8px] leading-none px-1.5 py-0.5 rounded tracking-wider">LATEST</span>
+                    }
+                    @m.Label
+                </a>
+            }
+            else
+            {
+                <div class="relative group">
+                    <button type="button" class="flex items-center gap-1 text-xs tracking-widest uppercase text-neutral-600 group-hover:text-brand-500 transition-colors">
+                        @m.Label
+                        <svg class="w-3 h-3 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    </button>
+                    <!-- pt-3 forms a hover bridge so the panel stays open between button and list -->
+                    <div class="absolute left-1/2 -translate-x-1/2 top-full pt-3 hidden group-hover:block z-50">
+                        <div class="bg-neutral-900 min-w-[230px] py-2 shadow-xl">
+                            @foreach (var (label, slug) in m.Items)
+                            {
+                                <a asp-controller="Products" asp-action="Index" asp-route-category="@slug"
+                                   class="block px-5 py-2.5 text-sm text-neutral-200 hover:bg-neutral-800 hover:text-white transition-colors whitespace-nowrap">@label</a>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        }
     </nav>
 
-    <!-- Mobile menu -->
-    <div id="mobile-menu" class="md:hidden hidden border-t border-neutral-100 bg-white px-6 py-6 flex flex-col gap-5">
-        <a asp-controller="Products" asp-action="Index" asp-route-category="rings"
-           class="text-sm tracking-[0.15em] uppercase text-neutral-700">Rings</a>
-        <a asp-controller="Products" asp-action="Index" asp-route-category="necklaces"
-           class="text-sm tracking-[0.15em] uppercase text-neutral-700">Necklaces</a>
-        <a asp-controller="Products" asp-action="Index" asp-route-category="bracelets"
-           class="text-sm tracking-[0.15em] uppercase text-neutral-700">Bracelets</a>
-        <a asp-controller="Products" asp-action="Index" asp-route-category="earrings"
-           class="text-sm tracking-[0.15em] uppercase text-neutral-700">Earrings</a>
-        <a asp-controller="Stores" asp-action="Index"
-           class="text-sm tracking-[0.15em] uppercase text-neutral-700">Our Stores</a>
+    <!-- Mobile menu (accordion) -->
+    <div id="mobile-menu" class="md:hidden hidden border-t border-neutral-100 bg-white px-6 py-2 flex flex-col max-h-[70vh] overflow-y-auto">
+        @foreach (var m in megaMenu)
+        {
+            if (m.Items.Length == 0)
+            {
+                <a href="@m.Href" class="py-3.5 text-sm tracking-[0.15em] uppercase text-neutral-700 border-b border-neutral-100">@m.Label</a>
+            }
+            else
+            {
+                <details class="border-b border-neutral-100 group">
+                    <summary class="cursor-pointer list-none py-3.5 flex items-center justify-between text-sm tracking-[0.15em] uppercase text-neutral-700">
+                        @m.Label
+                        <svg class="w-4 h-4 text-neutral-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 9l-7 7-7-7"/></svg>
+                    </summary>
+                    <div class="pb-3 pl-3 flex flex-col">
+                        @foreach (var (label, slug) in m.Items)
+                        {
+                            <a asp-controller="Products" asp-action="Index" asp-route-category="@slug" class="py-2 text-sm text-neutral-500">@label</a>
+                        }
+                    </div>
+                </details>
+            }
+        }
+        <a asp-controller="Stores" asp-action="Index" class="py-3.5 text-sm tracking-[0.15em] uppercase text-neutral-700">Our Stores</a>
     </div>
 </header>
 
