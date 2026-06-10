@@ -70,6 +70,18 @@ public class ProductsController : Controller
                 .ToListAsync()
             : new List<int>();
 
+        // Category navigation with live product counts (sidebar on desktop, top nav on mobile).
+        filters.Categories = await _db.Categories
+            .Where(c => c.IsActive && c.Products.Any(p => p.IsActive))
+            .OrderBy(c => c.Name)
+            .Select(c => new CategoryFilterOption
+            {
+                Name = c.Name,
+                Slug = c.Slug,
+                Count = c.Products.Count(p => p.IsActive)
+            })
+            .ToListAsync();
+
         var vm = new ProductListViewModel
         {
             Products = products.Select(p => new ProductCardViewModel

@@ -102,6 +102,38 @@
         <!-- ─── Product Grid ───────────────────────────────────────────────── -->
         <div class="flex-1 min-w-0">
 
+            <!-- Mobile category nav (the sidebar is hidden on phones/tablets) -->
+            @if (Model.Filters.Categories.Any())
+            {
+                <details class="lg:hidden mb-6 border border-neutral-200 rounded-sm group" open="@(!string.IsNullOrEmpty(Model.Filters.Category))">
+                    <summary class="cursor-pointer list-none px-4 py-3 flex items-center justify-between">
+                        <span class="text-xs tracking-[0.2em] uppercase text-neutral-500">
+                            Category@(string.IsNullOrEmpty(Model.Filters.Category) ? "" : ": " + (Model.Filters.Categories.FirstOrDefault(c => c.Slug == Model.Filters.Category)?.Name ?? ""))
+                        </span>
+                        <svg class="w-4 h-4 text-neutral-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </summary>
+                    <ul class="px-4 pb-3 pt-1 space-y-2.5 max-h-72 overflow-y-auto border-t border-neutral-100">
+                        <li>
+                            <a asp-action="Index" class="flex justify-between text-sm @(string.IsNullOrEmpty(Model.Filters.Category) ? "text-neutral-900 font-medium" : "text-neutral-500") hover:text-neutral-900 transition-colors">
+                                <span>All Pieces</span>
+                            </a>
+                        </li>
+                        @foreach (var cat in Model.Filters.Categories)
+                        {
+                            <li>
+                                <a asp-action="Index" asp-route-category="@cat.Slug"
+                                   class="flex justify-between text-sm @(Model.Filters.Category == cat.Slug ? "text-neutral-900 font-medium" : "text-neutral-500") hover:text-neutral-900 transition-colors">
+                                    <span>@cat.Name</span>
+                                    <span class="text-neutral-300">@cat.Count</span>
+                                </a>
+                            </li>
+                        }
+                    </ul>
+                </details>
+            }
+
             <!-- Sort bar -->
             <div class="flex items-center justify-between mb-8 pb-4 border-b border-neutral-100">
                 <p class="text-xs text-neutral-400">
