@@ -9,7 +9,7 @@ namespace SterlingLams.Web.Services;
 
 public interface ICatalogImportService
 {
-    Task<CatalogImportResult> ImportAsync(string jsonPath, bool wipeFirst, IProgress<string>? progress = null);
+    Task<CatalogImportResult> ImportAsync(string jsonPath, bool wipeFirst, bool skipUncategorized, IProgress<string>? progress = null);
 }
 
 public class CatalogImportResult
@@ -51,7 +51,7 @@ public class CatalogImportService : ICatalogImportService
         ["measurement"] = "Measurement", ["signs"] = "Signs", ["combo"] = "Combo",
     };
 
-    public async Task<CatalogImportResult> ImportAsync(string jsonPath, bool wipeFirst, IProgress<string>? progress = null)
+    public async Task<CatalogImportResult> ImportAsync(string jsonPath, bool wipeFirst, bool skipUncategorized, IProgress<string>? progress = null)
     {
         var result = new CatalogImportResult();
         void Log(string m) { progress?.Report(m); _logger.LogInformation("[catalog-import] {Msg}", m); }
@@ -133,7 +133,11 @@ public class CatalogImportService : ICatalogImportService
                 if (string.IsNullOrWhiteSpace(cp.title)) { result.Skipped++; continue; }
                 decimal.TryParse(cp.price, NumberStyles.Any, CultureInfo.InvariantCulture, out var price);
 
-                var category = cp.categories.Count > 0 ? await CategoryAsync(cp.categories[0]) : uncategorized;
+                var realCats = cp.categories
+                    .Where(c => !string.IsNullOrWhiteSpace(c) && !c.Equals("Uncategorized", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (skipUncategorized && realCats.Count == 0) { result.Skipped++; continue; }
+                var category = realCats.Count > 0 ? await CategoryAsync(realCats[0]) : uncategorized;
                 var slug = await UniqueSlugAsync(Slugify(cp.title), usedSlugs);
                 usedSlugs.Add(slug);
 

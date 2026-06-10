@@ -1,6 +1,8 @@
 import json, html, re
 DB = r"C:\Users\DELL\AppData\Local\Temp\wp_database.sql"
 BACKSLASH = bytes([92]); QUOTE = b"'"
+# MySQL string-literal escapes — translate so \r\n becomes real CR/LF (not the letters "rn")
+ESCAPES = {b'n': b'\n', b'r': b'\r', b't': b'\t', b'0': b'\x00', b'b': b'\x08', b'Z': b'\x1a'}
 
 def tuples_for(table_bytes, data):
     marker = b"INSERT INTO `" + table_bytes + b"` VALUES "
@@ -16,7 +18,10 @@ def tuples_for(table_bytes, data):
             while k < n:
                 c = data[k:k+1]
                 if inq:
-                    if c == BACKSLASH: cur += data[k+1:k+2]; k += 2; continue
+                    if c == BACKSLASH:
+                        nxt = data[k+1:k+2]
+                        cur += ESCAPES.get(nxt, nxt)   # translate \n \r \t etc. (else keep literal)
+                        k += 2; continue
                     if c == QUOTE: inq = False; k += 1; continue
                     cur += c; k += 1; continue
                 else:
@@ -32,6 +37,7 @@ def tuples_for(table_bytes, data):
 def dec(b): return b.decode('utf-8','replace') if isinstance(b,(bytes,bytearray)) else b
 def strip_html(s):
     if not s: return ''
+    s = s.replace('\r\n', '\n').replace('\r', '\n')
     s = re.sub(r'<\s*(br|/p|/div|/li|/h[1-6])\s*/?>', '\n', s, flags=re.I)
     s = re.sub(r'<[^>]*>', ' ', s)
     s = html.unescape(s)

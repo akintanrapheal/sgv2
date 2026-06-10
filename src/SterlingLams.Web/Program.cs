@@ -181,7 +181,7 @@ if (args.Length >= 1 && args[0].Equals("import-catalog", StringComparison.Ordina
     var path = args.Length >= 2 ? args[1] : "";
     using var scope = app.Services.CreateScope();
     var svc = scope.ServiceProvider.GetRequiredService<SterlingLams.Web.Services.ICatalogImportService>();
-    var res = await svc.ImportAsync(path, wipeFirst: true, new Progress<string>(Console.WriteLine));
+    var res = await svc.ImportAsync(path, wipeFirst: true, skipUncategorized: true, new Progress<string>(Console.WriteLine));
     Console.WriteLine("RESULT: " + res.Summary);
     foreach (var e in res.Errors.Take(25)) Console.WriteLine("  ERR: " + e);
     Log.CloseAndFlush();

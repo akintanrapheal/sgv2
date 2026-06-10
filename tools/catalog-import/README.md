@@ -16,9 +16,10 @@ WooCommerce site into the in-house DB.
    ```
    dotnet run -- import-catalog "tools/catalog-import/catalog.json"
    ```
-   This **wipes existing products** (cascades to variants/images/inventory) and re-imports the full
-   catalog. Stock is imported as **zero** — set per-branch quantities afterwards in admin/Inventory.
-   Keyed on `ExternalCode` = `WC-{sku}`. Implemented by `Services/CatalogImportService.cs`.
+   This **wipes existing products** (cascades to variants/images/inventory) and re-imports the
+   catalog. **Uncategorized products are skipped** (`skipUncategorized: true`). Stock is imported as
+   **zero** — set per-branch quantities afterwards in admin/Inventory. Keyed on `ExternalCode` =
+   `WC-{sku}`. Implemented by `Services/CatalogImportService.cs`.
 
 ## Notes
 - ~2,021 published products, ~2,644 variants. Variant attributes: Color, Size, Alphabet,
