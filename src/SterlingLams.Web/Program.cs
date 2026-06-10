@@ -62,11 +62,6 @@ builder.Services.AddSession(options =>
 // ─── Application Services ───────────────────────────────────────────────────
 builder.Services.AddSterlingLamsServices(builder.Configuration);
 
-// ─── Background Services ─────────────────────────────────────────────────────
-// ERPNext inventory sync is disabled — the website's own Stock Ledger is now the
-// source of truth for inventory (POS / Purchases / Transfers update it directly).
-// builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.InventorySyncHostedService>();
-
 // ─── MVC ────────────────────────────────────────────────────────────────────
 builder.Services.AddControllersWithViews()
     .AddJsonOptions(opts =>
@@ -155,8 +150,7 @@ catch (Exception ex)
 
 // ─── CLI maintenance commands ────────────────────────────────────────────────
 // Usage: dotnet run -- migrate-woo "C:\path\to\product-export.csv"
-// Replaces all website products with the CSV export and reconciles ERPNext
-// (disables old Items, creates the imported ones), then exits without serving.
+// Replaces all website products with the CSV export, then exits without serving.
 if (args.Length >= 1 && args[0].Equals("migrate-woo", StringComparison.OrdinalIgnoreCase))
 {
     if (args.Length < 2)
@@ -173,22 +167,6 @@ if (args.Length >= 1 && args[0].Equals("migrate-woo", StringComparison.OrdinalIg
 if (args.Length >= 1 && args[0].Equals("clean-product-text", StringComparison.OrdinalIgnoreCase))
 {
     await SterlingLams.Web.Infrastructure.WooMigrationRunner.CleanProductTextAsync(app.Services);
-    Log.CloseAndFlush();
-    return;
-}
-
-// Usage: dotnet run -- erpnext-ping  (tests the configured ERPNext connection)
-if (args.Length >= 1 && args[0].Equals("erpnext-ping", StringComparison.OrdinalIgnoreCase))
-{
-    await SterlingLams.Web.Infrastructure.ErpNextPing.RunAsync(app.Services);
-    Log.CloseAndFlush();
-    return;
-}
-
-// Usage: dotnet run -- erpnext-push-items  (creates all website products as ERPNext Items)
-if (args.Length >= 1 && args[0].Equals("erpnext-push-items", StringComparison.OrdinalIgnoreCase))
-{
-    await SterlingLams.Web.Infrastructure.WooMigrationRunner.PushAllItemsToErpNextAsync(app.Services);
     Log.CloseAndFlush();
     return;
 }

@@ -20,14 +20,6 @@
         </label>
         <button type="submit" class="hidden"></button>
     </form>
-    <form asp-area="Admin" asp-controller="Products" asp-action="SyncFromERPNext" method="post"
-          onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Syncing…';">
-        @Html.AntiForgeryToken()
-        <button type="submit"
-                class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:bg-neutral-50 transition-colors">
-            ↺ Sync Inventory
-        </button>
-    </form>
     <a asp-area="Admin" asp-controller="Products" asp-action="Create"
        class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
         + New Product

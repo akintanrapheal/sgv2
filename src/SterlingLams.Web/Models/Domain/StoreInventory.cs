@@ -1,6 +1,7 @@
 namespace SterlingLams.Web.Models.Domain;
 
-/// <summary>Real-time inventory snapshot synced from Odoo per store.</summary>
+/// <summary>On-hand stock per product per store, maintained through the StockMovement ledger
+/// (POS sales, transfers, adjustments, online fulfilment).</summary>
 public class StoreInventory
 {
     public int Id { get; set; }

@@ -3,20 +3,17 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.ViewModels;
-using SterlingLams.Web.Services.Inventory;
 
 namespace SterlingLams.Web.Controllers;
 
 public class ProductsController : Controller
 {
     private readonly ApplicationDbContext _db;
-    private readonly IInventoryService _inventory;
     private readonly ILogger<ProductsController> _logger;
 
-    public ProductsController(ApplicationDbContext db, IInventoryService inventory, ILogger<ProductsController> logger)
+    public ProductsController(ApplicationDbContext db, ILogger<ProductsController> logger)
     {
         _db = db;
-        _inventory = inventory;
         _logger = logger;
     }
 
@@ -178,18 +175,6 @@ public class ProductsController : Controller
         };
 
         return View(vm);
-    }
-
-    // GET /api/products/{id}/inventory (AJAX - requires login)
-    [HttpGet("api/products/{id:int}/inventory")]
-    [Authorize]
-    public async Task<IActionResult> GetInventory(int id)
-    {
-        var product = await _db.Products.FindAsync(id);
-        if (product == null) return NotFound();
-
-        var inventory = await _inventory.GetStoreInventoryForProductAsync(product.ErpNextItemCode);
-        return Json(inventory);
     }
 
     // GET /api/search?q=diamond  (live search suggestions — separate route to avoid slug conflict)

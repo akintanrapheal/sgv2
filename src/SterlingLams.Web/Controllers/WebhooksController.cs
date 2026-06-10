@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.Domain;
-using SterlingLams.Web.Services.ERPNext;
 using SterlingLams.Web.Services.Payment;
 using Microsoft.EntityFrameworkCore;
 using System.IO;
@@ -15,18 +14,15 @@ public class WebhooksController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly IPaymentService _payment;
-    private readonly IERPNextService _erpNext;
     private readonly ILogger<WebhooksController> _logger;
 
     public WebhooksController(
         ApplicationDbContext db,
         IPaymentService payment,
-        IERPNextService erpNext,
         ILogger<WebhooksController> logger)
     {
         _db = db;
         _payment = payment;
-        _erpNext = erpNext;
         _logger = logger;
     }
 
@@ -71,7 +67,8 @@ public class WebhooksController : ControllerBase
                 order.PaymentProvider = "Paystack";
                 await _db.SaveChangesAsync();
 
-                // ERPNext invoice is created and submitted by CheckoutController — nothing extra needed here
+                // NOTE: stock fulfilment runs in CheckoutController.PaymentCallback. A webhook-only
+                // confirmation (browser closed before callback) currently won't deduct stock — TODO.
 
                 _logger.LogInformation("Order {OrderNumber} marked as paid via webhook", order.OrderNumber);
             }

@@ -213,17 +213,16 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     Fulfillment = o.FulfillmentType.ToString(),
                     o.IsPaid,
                     PaymentRef = o.PaymentReference ?? "",
-                    o.ErpNextInvoiceName,
                     CreatedAt = o.CreatedAt.ToString("yyyy-MM-dd HH:mm")
                 })
                 .ToListAsync();
 
             var sb = new StringBuilder();
-            sb.AppendLine("Order #,Customer Name,Customer Email,Total,Subtotal,Delivery Fee,Status,Fulfillment,Paid,Payment Ref,ERPNext Order,Created At");
+            sb.AppendLine("Order #,Customer Name,Customer Email,Total,Subtotal,Delivery Fee,Status,Fulfillment,Paid,Payment Ref,Created At");
 
             foreach (var o in orders)
             {
-                sb.AppendLine($"\"{o.OrderNumber}\",\"{o.CustomerName}\",\"{o.CustomerEmail}\",{o.Total},{o.Subtotal},{o.DeliveryFee},{o.Status},{o.Fulfillment},{o.IsPaid},\"{o.PaymentRef}\",\"{o.ErpNextInvoiceName ?? ""}\",\"{o.CreatedAt}\"");
+                sb.AppendLine($"\"{o.OrderNumber}\",\"{o.CustomerName}\",\"{o.CustomerEmail}\",{o.Total},{o.Subtotal},{o.DeliveryFee},{o.Status},{o.Fulfillment},{o.IsPaid},\"{o.PaymentRef}\",\"{o.CreatedAt}\"");
             }
 
             await LogAsync("Export", "Order", null, $"Exported {orders.Count} order(s) to CSV");

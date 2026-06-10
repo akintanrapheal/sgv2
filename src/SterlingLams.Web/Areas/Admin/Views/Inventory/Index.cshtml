@@ -6,10 +6,6 @@
 <!-- Header bar -->
 <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
     <div>
-        @if (Model.LastSyncedAt.HasValue)
-        {
-            <p class="text-xs text-neutral-400">Last ERPNext sync: @Model.LastSyncedAt.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm")</p>
-        }
         <p class="text-xs text-neutral-500 mt-0.5">
             <strong>@Model.TotalCount</strong> active products &nbsp;·&nbsp;
             <strong>@Model.Stores.Count</strong> stores
@@ -22,14 +18,6 @@
             <button type="submit"
                     class="px-4 py-2 border border-blue-300 text-blue-700 text-xs rounded-sm hover:bg-blue-50 transition-colors">
                 ⊕ Create Missing Records
-            </button>
-        </form>
-        <!-- Sync from ERPNext -->
-        <form asp-area="Admin" asp-controller="Inventory" asp-action="Sync" method="post">
-            @Html.AntiForgeryToken()
-            <button type="submit"
-                    class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
-                ↺ Sync from ERPNext
             </button>
         </form>
     </div>

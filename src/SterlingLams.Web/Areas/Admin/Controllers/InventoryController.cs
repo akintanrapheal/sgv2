@@ -9,7 +9,6 @@ using SterlingLams.Web.Areas.Admin.ViewModels;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.Domain;
 using SterlingLams.Web.Services;
-using SterlingLams.Web.Services.Inventory;
 
 namespace SterlingLams.Web.Areas.Admin.Controllers
 {
@@ -18,14 +17,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         protected override string Section => "Inventory";
 
         private readonly ApplicationDbContext _db;
-        private readonly IInventoryService _inventory;
         private readonly IStockService _stock;
         private const int PageSize = 30;
 
-        public InventoryController(ApplicationDbContext db, IInventoryService inventory, IStockService stock)
+        public InventoryController(ApplicationDbContext db, IStockService stock)
         {
             _db = db;
-            _inventory = inventory;
             _stock = stock;
         }
 
@@ -189,23 +186,6 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             if (created > 0)
                 await LogAsync("Update", "Inventory", null, $"Created {created} missing inventory record(s)");
             TempData["Success"] = $"Created {created} missing inventory record(s). All products now appear in the grid.";
-            return RedirectToAction(nameof(Index));
-        }
-
-        // ── Sync from ERPNext ─────────────────────────────────────────────────────
-        [HttpPost, ValidateAntiForgeryToken]
-        public async Task<IActionResult> Sync()
-        {
-            try
-            {
-                await _inventory.SyncAllAsync();
-                await LogAsync("Update", "Inventory", null, "Synced inventory from ERPNext");
-                TempData["Success"] = "Inventory synced from ERPNext.";
-            }
-            catch (Exception ex)
-            {
-                TempData["Error"] = $"Sync failed: {ex.Message}";
-            }
             return RedirectToAction(nameof(Index));
         }
 

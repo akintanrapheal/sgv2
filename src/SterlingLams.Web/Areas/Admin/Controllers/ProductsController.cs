@@ -9,7 +9,6 @@ using SterlingLams.Web.Areas.Admin.ViewModels;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.Domain;
 using SterlingLams.Web.Services;
-using SterlingLams.Web.Services.Inventory;
 
 namespace SterlingLams.Web.Areas.Admin.Controllers
 {
@@ -18,22 +17,16 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         protected override string Section => "Products";
 
         private readonly ApplicationDbContext _db;
-        private readonly IInventoryService _inventory;
-        private readonly IProductImportService _importer;
         private readonly IWooCommerceImportService _wooImporter;
         private readonly IWebHostEnvironment _env;
         private const int PageSize = 30;
 
         public ProductsController(
             ApplicationDbContext db,
-            IInventoryService inventory,
-            IProductImportService importer,
             IWooCommerceImportService wooImporter,
             IWebHostEnvironment env)
         {
             _db = db;
-            _inventory = inventory;
-            _importer = importer;
             _wooImporter = wooImporter;
             _env = env;
         }
@@ -425,42 +418,6 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             catch (Exception ex)
             {
                 TempData["Error"] = $"Import failed: {ex.Message}";
-            }
-
-            return RedirectToAction(nameof(Index));
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> SyncFromERPNext()
-        {
-            try
-            {
-                await _inventory.SyncAllAsync();
-                TempData["Success"] = "ERPNext inventory sync completed successfully.";
-            }
-            catch (Exception ex)
-            {
-                TempData["Error"] = $"Inventory sync failed: {ex.Message}";
-            }
-
-            return RedirectToAction(nameof(Index));
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ImportFromERPNext()
-        {
-            try
-            {
-                var result = await _importer.ImportAllFromERPNextAsync();
-                TempData[result.Success ? "Success" : "Warning"] =
-                    $"ERPNext product import complete: {result.Summary}" +
-                    (result.Errors.Any() ? $" — First error: {result.Errors[0]}" : "");
-            }
-            catch (Exception ex)
-            {
-                TempData["Error"] = $"Product import failed: {ex.Message}";
             }
 
             return RedirectToAction(nameof(Index));

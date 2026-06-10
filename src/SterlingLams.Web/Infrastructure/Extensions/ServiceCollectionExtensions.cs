@@ -1,7 +1,5 @@
 using Microsoft.Extensions.Caching.Memory;
 using SterlingLams.Web.Services;
-using SterlingLams.Web.Services.ERPNext;
-using SterlingLams.Web.Services.Inventory;
 using SterlingLams.Web.Services.Payment;
 
 namespace SterlingLams.Web.Infrastructure.Extensions;
@@ -12,28 +10,11 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // ─── ERPNext ─────────────────────────────────────────────────────────
-        var erpSettings = configuration.GetSection("ERPNext").Get<ERPNextSettings>()
-            ?? throw new InvalidOperationException("ERPNext configuration is missing.");
-
-        services.AddSingleton(erpSettings);
-
-        services.AddHttpClient<IERPNextService, ERPNextService>(client =>
-        {
-            client.BaseAddress = new Uri(erpSettings.BaseUrl);
-            client.DefaultRequestHeaders.Add(
-                "Authorization",
-                $"token {erpSettings.ApiKey}:{erpSettings.ApiSecret}");
-            client.Timeout = TimeSpan.FromSeconds(30);
-        });
-
         // ─── Inventory ───────────────────────────────────────────────────────
         services.AddMemoryCache();
-        services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<IStockService, StockService>();
 
-        // ─── Product Import ───────────────────────────────────────────────────
-        services.AddScoped<IProductImportService, ProductImportService>();
+        // ─── Product Import (WooCommerce CSV) ─────────────────────────────────
         services.AddScoped<IWooCommerceImportService, WooCommerceImportService>();
 
         // ─── Site Settings ────────────────────────────────────────────────────
