@@ -104,11 +104,12 @@ public class CartController : Controller
         return Json(new { success = true, cartCount = cart.TotalItems, subtotal = cart.FormattedSubtotal });
     }
 
-    /// <summary>Combined on-hand across all active branches for a product (the orderable ceiling).</summary>
+    /// <summary>Combined AVAILABLE stock (on-hand minus reservations held by unpaid orders) across
+    /// all active branches for a product — the orderable ceiling.</summary>
     private async Task<int> CombinedAvailableAsync(int productId) =>
         await _db.StoreInventories
             .Where(si => si.ProductId == productId && si.Store.IsActive)
-            .SumAsync(si => (int?)si.QuantityOnHand) ?? 0;
+            .SumAsync(si => (int?)(si.QuantityOnHand - si.QuantityReserved)) ?? 0;
 
     [HttpPost]
     public IActionResult Remove(int productId, int? variantId = null)

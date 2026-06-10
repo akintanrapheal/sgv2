@@ -21,6 +21,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Register> Registers => Set<Register>();
     public DbSet<TillSession> TillSessions => Set<TillSession>();
     public DbSet<ParkedSale> ParkedSales => Set<ParkedSale>();
+    public DbSet<StockReservation> StockReservations => Set<StockReservation>();
     public DbSet<Refund> Refunds => Set<Refund>();
     public DbSet<RefundItem> RefundItems => Set<RefundItem>();
     public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
@@ -166,6 +167,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         {
             e.Property(p => p.Total).HasPrecision(18, 2);
             e.HasIndex(p => new { p.StoreId, p.CreatedAt });
+        });
+
+        // ─── StockReservation (soft holds for unpaid online orders) ─────────
+        builder.Entity<StockReservation>(e =>
+        {
+            e.HasIndex(r => r.OrderId);
+            e.HasOne(r => r.Order).WithMany().HasForeignKey(r => r.OrderId)
+             .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ─── OrderItem ──────────────────────────────────────────────────────

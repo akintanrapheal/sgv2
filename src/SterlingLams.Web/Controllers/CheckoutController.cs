@@ -201,24 +201,8 @@ public class CheckoutController : Controller
             return RedirectToAction("Index", "Cart");
         }
 
-        // Authoritative overselling guard: total cart qty per product must not exceed the
-        // combined on-hand across active branches (the engine can fulfil from any branch).
-        var combinedStock = await _db.StoreInventories
-            .Where(si => productIds.Contains(si.ProductId) && si.Store.IsActive)
-            .GroupBy(si => si.ProductId)
-            .Select(g => new { ProductId = g.Key, Qty = g.Sum(x => x.QuantityOnHand) })
-            .ToDictionaryAsync(x => x.ProductId, x => x.Qty);
-
-        foreach (var grp in cart.Items.GroupBy(i => i.ProductId))
-        {
-            var wanted = grp.Sum(i => i.Quantity);
-            combinedStock.TryGetValue(grp.Key, out var have);
-            if (wanted > have)
-            {
-                TempData["Error"] = $"Only {have} of \"{grp.First().ProductName}\" {(have == 1 ? "is" : "are")} available. Please adjust your bag.";
-                return RedirectToAction("Index", "Cart");
-            }
-        }
+        // Overselling is guarded by reserving stock once the order is saved (see below) — that
+        // hold is atomic and blocks concurrent orders from claiming the same units.
 
         // Re-validate the discount server-side (never trust the cached cart amount)
         decimal discountAmount = 0;
@@ -292,6 +276,16 @@ public class CheckoutController : Controller
         _db.Orders.Add(order);
         await _db.SaveChangesAsync();
 
+        // Reserve the stock (atomic hold across branches). If another order claimed the last
+        // units between cart and here, this fails — cancel and send the customer back to the bag.
+        if (!await _fulfilment.TryReserveAsync(order.Id))
+        {
+            order.Status = OrderStatus.Cancelled;
+            await _db.SaveChangesAsync();
+            TempData["Error"] = "Sorry — one or more items just sold out. Please review your bag.";
+            return RedirectToAction("Index", "Cart");
+        }
+
         // Initiate payment
         var callbackUrl = Url.Action("PaymentCallback", "Checkout", null, Request.Scheme) ?? string.Empty;
         var result = await _payment.InitiatePaymentAsync(new InitiatePaymentRequest
@@ -334,6 +328,9 @@ public class CheckoutController : Controller
 
         if (!result.IsPaid)
         {
+            // Payment failed — free the reserved stock so it returns to sale.
+            var failed = await _db.Orders.FirstOrDefaultAsync(o => o.OrderNumber == result.OrderNumber);
+            if (failed != null) await _fulfilment.ReleaseReservationAsync(failed.Id);
             TempData["Error"] = "Payment could not be verified. Please contact support.";
             return RedirectToAction("Index", "Cart");
         }

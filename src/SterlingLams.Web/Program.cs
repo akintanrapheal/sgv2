@@ -62,6 +62,10 @@ builder.Services.AddSession(options =>
 // ─── Application Services ───────────────────────────────────────────────────
 builder.Services.AddSterlingLamsServices(builder.Configuration);
 
+// ─── Background Services ─────────────────────────────────────────────────────
+// Frees stock reserved by abandoned (unpaid) online orders so it returns to sale.
+builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.ReservationSweeper>();
+
 // ─── MVC ────────────────────────────────────────────────────────────────────
 builder.Services.AddControllersWithViews()
     .AddJsonOptions(opts =>

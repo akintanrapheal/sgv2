@@ -6,6 +6,14 @@ namespace SterlingLams.Web.Services;
 
 public interface IOrderFulfilmentService
 {
+    /// <summary>Reserves stock for a freshly-placed (unpaid) order so concurrent orders can't
+    /// oversell the same units before payment. Returns false (reserving nothing) if combined
+    /// available stock can't cover the order.</summary>
+    Task<bool> TryReserveAsync(int orderId);
+
+    /// <summary>Frees an order's reservation (e.g. payment failed or the order was abandoned).</summary>
+    Task ReleaseReservationAsync(int orderId);
+
     /// <summary>Fulfils a paid online order against the in-house stock ledger. Idempotent and
     /// safe to call from every payment-confirmation path (browser callback and webhook).</summary>
     Task FulfilPaidOrderAsync(int orderId);
@@ -25,11 +33,121 @@ public class OrderFulfilmentService : IOrderFulfilmentService
         _logger = logger;
     }
 
+    // ── Allocation ────────────────────────────────────────────────────────────
+    // Spreads an order's lines across branches: the fulfilment branch first (pickup store, or
+    // nearest to the customer), then the next-nearest. `avail(productId, storeId)` supplies the
+    // usable quantity at each branch. Returns the per-(store,product) allocation and the first
+    // line that couldn't be fully covered (null = success). StoreInventory is per-product.
+    private static (Store fulfilStore, Dictionary<(int store, int product), int> alloc, OrderItem? shortLine)
+        Allocate(Order order, List<Store> activeStores, List<Store> ranked, Func<int, int, int> avail)
+    {
+        Store fulfilStore = (order.FulfillmentType == FulfillmentType.StorePickup
+                ? activeStores.FirstOrDefault(s => s.Id == order.PickupStoreId)
+                : null)
+            ?? ranked.First();
+
+        var storeOrder = new List<int> { fulfilStore.Id };
+        storeOrder.AddRange(ranked.Where(s => s.Id != fulfilStore.Id).Select(s => s.Id));
+
+        var remaining = new Dictionary<(int product, int store), int>();
+        int Remaining(int pid, int sid)
+        {
+            var k = (pid, sid);
+            if (!remaining.TryGetValue(k, out var v)) { v = avail(pid, sid); remaining[k] = v; }
+            return v;
+        }
+
+        var alloc = new Dictionary<(int store, int product), int>();
+        foreach (var line in order.Items)
+        {
+            var need = line.Quantity;
+            foreach (var sid in storeOrder)
+            {
+                if (need <= 0) break;
+                var take = Math.Min(need, Remaining(line.ProductId, sid));
+                if (take <= 0) continue;
+                remaining[(line.ProductId, sid)] = Remaining(line.ProductId, sid) - take;
+                alloc.TryGetValue((sid, line.ProductId), out var acc);
+                alloc[(sid, line.ProductId)] = acc + take;
+                need -= take;
+            }
+            if (need > 0) return (fulfilStore, alloc, line);
+        }
+        return (fulfilStore, alloc, null);
+    }
+
+    // ── Reserve / release ──────────────────────────────────────────────────────
+    public async Task<bool> TryReserveAsync(int orderId)
+    {
+        var order = await _db.Orders.Include(o => o.Items).Include(o => o.DeliveryAddress)
+            .FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order == null || order.Items.Count == 0) return false;
+
+        // Idempotent: a re-submit of the same order keeps its existing hold.
+        if (await _db.StockReservations.AnyAsync(r => r.OrderId == orderId)) return true;
+
+        var activeStores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
+        if (activeStores.Count == 0) return false;
+        var ranked = DeliveryZoneService.RankStoresByProximity(
+            activeStores, order.DeliveryAddress?.State, order.DeliveryAddress?.City);
+
+        var productIds = order.Items.Select(i => i.ProductId).Distinct().ToList();
+        var storeIds = activeStores.Select(s => s.Id).ToList();
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
+        var invMap = (await _db.StoreInventories
+                .Where(si => productIds.Contains(si.ProductId) && storeIds.Contains(si.StoreId))
+                .ToListAsync())
+            .ToDictionary(si => (si.ProductId, si.StoreId));
+        int Available(int pid, int sid) =>
+            invMap.TryGetValue((pid, sid), out var si) ? Math.Max(0, si.QuantityOnHand - si.QuantityReserved) : 0;
+
+        var (_, alloc, shortLine) = Allocate(order, activeStores, ranked, Available);
+        if (shortLine != null) return false; // not enough available — caller blocks checkout
+
+        var now = DateTime.UtcNow;
+        foreach (var ((sid, pid), qty) in alloc)
+        {
+            invMap[(pid, sid)].QuantityReserved += qty;
+            _db.StockReservations.Add(new StockReservation
+            {
+                OrderId = orderId, StoreId = sid, ProductId = pid, Quantity = qty, CreatedAt = now
+            });
+        }
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+        return true;
+    }
+
+    public async Task ReleaseReservationAsync(int orderId)
+    {
+        var rows = await _db.StockReservations.Where(r => r.OrderId == orderId).ToListAsync();
+        if (rows.Count == 0) return;
+        await ReleaseRowsAsync(rows);
+    }
+
+    private async Task ReleaseRowsAsync(List<StockReservation> rows)
+    {
+        var pids = rows.Select(r => r.ProductId).Distinct().ToList();
+        var sids = rows.Select(r => r.StoreId).Distinct().ToList();
+        var invMap = (await _db.StoreInventories
+                .Where(si => pids.Contains(si.ProductId) && sids.Contains(si.StoreId))
+                .ToListAsync())
+            .ToDictionary(si => (si.ProductId, si.StoreId));
+        foreach (var r in rows)
+            if (invMap.TryGetValue((r.ProductId, r.StoreId), out var si))
+                si.QuantityReserved = Math.Max(0, si.QuantityReserved - r.Quantity);
+        _db.StockReservations.RemoveRange(rows);
+        await _db.SaveChangesAsync();
+    }
+
+    // ── Fulfil ─────────────────────────────────────────────────────────────────
     /// <summary>
     /// Picks the branch nearest the customer, transfers in any units it lacks from other
     /// branches (transfer-then-sell so every branch balance stays correct), then sells the
-    /// whole order from that branch. Idempotent — does nothing if already fulfilled.
-    /// Failures are logged, never thrown — the customer has already paid.
+    /// whole order from that branch — releasing this order's own reservation as it goes.
+    /// Idempotent. Failures are logged, never thrown — the customer has already paid.
     /// </summary>
     public async Task FulfilPaidOrderAsync(int orderId)
     {
@@ -51,64 +169,52 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                 _logger.LogError("No active stores — cannot fulfil order {OrderNumber}.", order.OrderNumber);
                 return;
             }
-
-            // 1) Fulfilment branch: pickup → chosen store; delivery → nearest to the customer.
             var ranked = DeliveryZoneService.RankStoresByProximity(
                 activeStores, order.DeliveryAddress?.State, order.DeliveryAddress?.City);
-            Store fulfilStore = (order.FulfillmentType == FulfillmentType.StorePickup
-                    ? activeStores.FirstOrDefault(s => s.Id == order.PickupStoreId)
-                    : null)
-                ?? ranked.First();
 
-            // Order of stores to pull from: fulfilment branch first, then nearest others.
-            var storeOrder = new List<int> { fulfilStore.Id };
-            storeOrder.AddRange(ranked.Where(s => s.Id != fulfilStore.Id).Select(s => s.Id));
-
-            // 2) Allocate each line across branches (StoreInventory is per-product).
             var productIds = order.Items.Select(i => i.ProductId).Distinct().ToList();
             var storeIds = activeStores.Select(s => s.Id).ToList();
-            var onHand = (await _db.StoreInventories
+            var invMap = (await _db.StoreInventories
                     .Where(si => productIds.Contains(si.ProductId) && storeIds.Contains(si.StoreId))
                     .ToListAsync())
-                .ToDictionary(si => (si.ProductId, si.StoreId), si => si.QuantityOnHand);
-            int OnHand(int pid, int sid) => onHand.TryGetValue((pid, sid), out var q) ? q : 0;
+                .ToDictionary(si => (si.ProductId, si.StoreId));
 
-            // transfers[(sourceStore, product)] = qty to move into the fulfilment branch
-            var transfers = new Dictionary<(int store, int product), int>();
-            foreach (var line in order.Items)
+            // This order's own reservation — added back into availability so the sale draws on the
+            // units we already held (other orders' reservations stay off-limits).
+            var resRows = await _db.StockReservations.Where(r => r.OrderId == orderId).ToListAsync();
+            var ownRes = new Dictionary<(int product, int store), int>();
+            foreach (var r in resRows)
             {
-                var need = line.Quantity;
-                foreach (var sid in storeOrder)
-                {
-                    if (need <= 0) break;
-                    var take = Math.Min(need, OnHand(line.ProductId, sid));
-                    if (take <= 0) continue;
-                    onHand[(line.ProductId, sid)] = OnHand(line.ProductId, sid) - take; // reserve so repeat products don't double-allocate
-                    if (sid != fulfilStore.Id)
-                    {
-                        transfers.TryGetValue((sid, line.ProductId), out var acc);
-                        transfers[(sid, line.ProductId)] = acc + take;
-                    }
-                    need -= take;
-                }
-                // 3) Shortfall (shouldn't happen — blocked at checkout): hold for staff, don't go negative.
-                if (need > 0)
-                {
-                    order.AdminNotes = $"Fulfilment held {DateTime.UtcNow:yyyy-MM-dd HH:mm}: insufficient stock for {line.ProductName}.";
-                    await _db.SaveChangesAsync();
-                    _logger.LogWarning("Order {OrderNumber} held — short {Qty} of product {ProductId}.",
-                        order.OrderNumber, need, line.ProductId);
-                    return;
-                }
+                ownRes.TryGetValue((r.ProductId, r.StoreId), out var a);
+                ownRes[(r.ProductId, r.StoreId)] = a + r.Quantity;
+            }
+            int SaleAvail(int pid, int sid)
+            {
+                if (!invMap.TryGetValue((pid, sid), out var si)) return 0;
+                ownRes.TryGetValue((pid, sid), out var mine);
+                return Math.Max(0, si.QuantityOnHand - si.QuantityReserved + mine);
             }
 
-            // 4) Apply: transfers (remote → fulfilment) then the sale (whole order from fulfilment).
+            var (fulfilStore, alloc, shortLine) = Allocate(order, activeStores, ranked, SaleAvail);
+            if (shortLine != null)
+            {
+                order.AdminNotes = $"Fulfilment held {DateTime.UtcNow:yyyy-MM-dd HH:mm}: insufficient stock for {shortLine.ProductName}.";
+                await _db.SaveChangesAsync();
+                _logger.LogWarning("Order {OrderNumber} held — insufficient stock for product {ProductId}.",
+                    order.OrderNumber, shortLine.ProductId);
+                return;
+            }
+
             var products = await _db.Products.Where(p => productIds.Contains(p.Id))
                 .ToDictionaryAsync(p => p.Id, p => p.Name);
             var now = DateTime.UtcNow;
             await using var tx = await _db.Database.BeginTransactionAsync();
 
-            foreach (var bySource in transfers.GroupBy(kv => kv.Key.store))
+            // Free this order's hold (units are now being sold, not just reserved).
+            if (resRows.Count > 0) await ReleaseRowsAsync(resRows);
+
+            // Transfers: every allocation that isn't already at the fulfilment branch moves in.
+            foreach (var bySource in alloc.Where(kv => kv.Key.store != fulfilStore.Id).GroupBy(kv => kv.Key.store))
             {
                 var sourceStore = activeStores.First(s => s.Id == bySource.Key);
                 var transferNumber = $"TRF-{now:yyMMdd}-{now:HHmmssfff}-{sourceStore.Id}";
@@ -139,6 +245,7 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                 _db.StockTransfers.Add(transfer);
             }
 
+            // Sell the whole order from the fulfilment branch (everything is consolidated there now).
             foreach (var line in order.Items)
                 await _stock.ApplyAsync(line.ProductId, line.ProductVariantId, fulfilStore.Id,
                     -line.Quantity, StockMovementType.Sale, order.OrderNumber,
@@ -153,7 +260,8 @@ public class OrderFulfilmentService : IOrderFulfilmentService
 
             _logger.LogInformation(
                 "Order {OrderNumber} fulfilled from {Store} ({Transfers} transfer(s)).",
-                order.OrderNumber, fulfilStore.Name, transfers.GroupBy(t => t.Key.store).Count());
+                order.OrderNumber, fulfilStore.Name,
+                alloc.Count(kv => kv.Key.store != fulfilStore.Id));
         }
         catch (Exception ex)
         {
