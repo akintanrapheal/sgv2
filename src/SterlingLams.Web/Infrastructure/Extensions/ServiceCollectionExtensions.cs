@@ -13,6 +13,7 @@ public static class ServiceCollectionExtensions
         // ─── Inventory ───────────────────────────────────────────────────────
         services.AddMemoryCache();
         services.AddScoped<IStockService, StockService>();
+        services.AddScoped<IOrderFulfilmentService, OrderFulfilmentService>();
 
         // ─── Product Import (WooCommerce CSV) ─────────────────────────────────
         services.AddScoped<IWooCommerceImportService, WooCommerceImportService>();

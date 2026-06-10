@@ -14,15 +14,18 @@ public class WebhooksController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly IPaymentService _payment;
+    private readonly SterlingLams.Web.Services.IOrderFulfilmentService _fulfilment;
     private readonly ILogger<WebhooksController> _logger;
 
     public WebhooksController(
         ApplicationDbContext db,
         IPaymentService payment,
+        SterlingLams.Web.Services.IOrderFulfilmentService fulfilment,
         ILogger<WebhooksController> logger)
     {
         _db = db;
         _payment = payment;
+        _fulfilment = fulfilment;
         _logger = logger;
     }
 
@@ -67,8 +70,10 @@ public class WebhooksController : ControllerBase
                 order.PaymentProvider = "Paystack";
                 await _db.SaveChangesAsync();
 
-                // NOTE: stock fulfilment runs in CheckoutController.PaymentCallback. A webhook-only
-                // confirmation (browser closed before callback) currently won't deduct stock — TODO.
+                // Deduct stock through the in-house ledger. Idempotent, so it's safe whether the
+                // browser callback already fulfilled this order or the webhook is the only path
+                // that fires (e.g. customer closed the tab right after paying).
+                await _fulfilment.FulfilPaidOrderAsync(order.Id);
 
                 _logger.LogInformation("Order {OrderNumber} marked as paid via webhook", order.OrderNumber);
             }
