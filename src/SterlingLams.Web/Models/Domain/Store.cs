@@ -3,7 +3,6 @@ namespace SterlingLams.Web.Models.Domain;
 public class Store
 {
     public int Id { get; set; }
-    public string ErpNextWarehouse { get; set; } = string.Empty;
 
     public string Name { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;

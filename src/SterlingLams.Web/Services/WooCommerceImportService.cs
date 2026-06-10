@@ -128,7 +128,7 @@ public class WooCommerceImportService : IWooCommerceImportService
                 usedSlugs.Add(slug);
                 var product = new Product
                 {
-                    ErpNextItemCode  = code,
+                    ExternalCode     = code,
                     Sku              = sku,
                     Name             = name,
                     Slug             = slug,

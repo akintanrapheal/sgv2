@@ -118,7 +118,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public bool IsActive { get; set; } = true;
         public bool IsFeatured { get; set; }
         public bool IsNewArrival { get; set; }
-        public string? ErpNextItemCode { get; set; }
+        public string? ExternalCode { get; set; }
         public int? CategoryId { get; set; }
         public List<Category> Categories { get; set; } = new();
         public List<ProductImage> Images { get; set; } = new();
@@ -402,7 +402,6 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string? Phone { get; set; }
         public string? Email { get; set; }
         public string? OpeningHours { get; set; }
-        public string ErpNextWarehouse { get; set; } = "";
         public double? Latitude { get; set; }
         public double? Longitude { get; set; }
         public bool IsActive { get; set; } = true;

@@ -46,9 +46,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<Product>(e =>
         {
             e.HasIndex(p => p.Slug).IsUnique();
-            // Unique only for real codes — products created without an ERPNext code
+            // Unique only for real codes — products created without an external code
             // store "" and must not collide with each other.
-            e.HasIndex(p => p.ErpNextItemCode).IsUnique().HasFilter("\"ErpNextItemCode\" <> ''");
+            e.HasIndex(p => p.ExternalCode).IsUnique().HasFilter("\"ExternalCode\" <> ''");
             e.Property(p => p.Price).HasPrecision(18, 2);
 
             e.HasOne(p => p.Category)
@@ -74,10 +74,6 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<Store>(e =>
         {
             e.HasIndex(s => s.Slug).IsUnique();
-            // Only enforce uniqueness on non-empty warehouse codes
-            e.HasIndex(s => s.ErpNextWarehouse)
-             .IsUnique()
-             .HasFilter("\"ErpNextWarehouse\" <> ''");
         });
 
         // ─── StoreInventory ─────────────────────────────────────────────────

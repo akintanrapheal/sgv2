@@ -64,7 +64,6 @@ public static class SeedData
             await db.SaveChangesAsync();
 
             // â”€â”€â”€ Stores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            // OdooWarehouseId matches appsettings.json Odoo:Stores mapping
             var stores = new[]
             {
                 new Store
@@ -77,7 +76,6 @@ public static class SeedData
                     Phone           = "+234 1 234 5678",
                     Email           = "abuja@sterlinglams.com",
                     OpeningHours    = "Monâ€“Sat: 8amâ€“8pm, Sun: 12pmâ€“8pm",
-                    ErpNextWarehouse = "Sterlin Glams Abuja - SG",
                     IsActive        = true,
                     Latitude        = 9.0563,
                     Longitude       = 7.4985
@@ -92,7 +90,6 @@ public static class SeedData
                     Phone           = "+234 1 234 5679",
                     Email           = "allen@sterlinglams.com",
                     OpeningHours    = "Monâ€“Sat: 8amâ€“8pm, Sun: 12pmâ€“8pm",
-                    ErpNextWarehouse = "Sterlin Glams Allen - SG",
                     IsActive        = true,
                     Latitude        = 6.6085,
                     Longitude       = 3.3521
@@ -107,7 +104,6 @@ public static class SeedData
                     Phone           = "+234 1 234 5680",
                     Email           = "ikota@sterlinglams.com",
                     OpeningHours    = "Monâ€“Sat: 8amâ€“8pm, Sun: 12pmâ€“8pm",
-                    ErpNextWarehouse = "Sterlin Glams Ikota - SG",
                     IsActive        = true,
                     Latitude        = 6.4369,
                     Longitude       = 3.5676
@@ -163,7 +159,7 @@ public static class SeedData
             // â”€â”€ Rings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             new()
             {
-                ErpNextItemCode  = "SL-RING-001",
+                ExternalCode     = "SL-RING-001",
                 Name             = "Diamond Solitaire Ring",
                 Slug             = "diamond-solitaire-ring",
                 ShortDescription = "A timeless 1.0ct round brilliant diamond set in 18K white gold.",
@@ -193,7 +189,7 @@ public static class SeedData
             },
             new()
             {
-                ErpNextItemCode  = "SL-RING-002",
+                ExternalCode     = "SL-RING-002",
                 Name             = "18K Gold Wedding Band",
                 Slug             = "18k-gold-wedding-band",
                 ShortDescription = "A classic 4mm 18K yellow gold wedding band with a high-polish finish.",
@@ -220,7 +216,7 @@ public static class SeedData
             },
             new()
             {
-                ErpNextItemCode  = "SL-RING-003",
+                ExternalCode     = "SL-RING-003",
                 Name             = "Ruby Halo Engagement Ring",
                 Slug             = "ruby-halo-engagement-ring",
                 ShortDescription = "A 1.2ct Burmese ruby encircled by a diamond halo in 18K rose gold.",
@@ -251,7 +247,7 @@ public static class SeedData
             // â”€â”€ Necklaces â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             new()
             {
-                ErpNextItemCode  = "SL-NECK-001",
+                ExternalCode     = "SL-NECK-001",
                 Name             = "South Sea Pearl Necklace",
                 Slug             = "south-sea-pearl-necklace",
                 ShortDescription = "A 16-inch strand of luminous South Sea pearls with an 18K gold clasp.",
@@ -279,7 +275,7 @@ public static class SeedData
             },
             new()
             {
-                ErpNextItemCode  = "SL-NECK-002",
+                ExternalCode     = "SL-NECK-002",
                 Name             = "Diamond Pendant Necklace",
                 Slug             = "diamond-pendant-necklace",
                 ShortDescription = "A 0.5ct pear-shaped diamond pendant on an 18-inch 18K white gold chain.",
@@ -310,7 +306,7 @@ public static class SeedData
             // â”€â”€ Earrings â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             new()
             {
-                ErpNextItemCode  = "SL-EARR-001",
+                ExternalCode     = "SL-EARR-001",
                 Name             = "Diamond Stud Earrings",
                 Slug             = "diamond-stud-earrings",
                 ShortDescription = "Classic 0.50ct tw round brilliant diamond studs in 18K white gold.",
@@ -339,7 +335,7 @@ public static class SeedData
             },
             new()
             {
-                ErpNextItemCode  = "SL-EARR-002",
+                ExternalCode     = "SL-EARR-002",
                 Name             = "18K Gold Hoop Earrings",
                 Slug             = "18k-gold-hoop-earrings",
                 ShortDescription = "Timeless 30mm hoops crafted in polished 18K yellow gold.",
@@ -368,7 +364,7 @@ public static class SeedData
             // â”€â”€ Bracelets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             new()
             {
-                ErpNextItemCode  = "SL-BRAC-001",
+                ExternalCode     = "SL-BRAC-001",
                 Name             = "Diamond Tennis Bracelet",
                 Slug             = "diamond-tennis-bracelet",
                 ShortDescription = "A brilliant 3.0ct total weight diamond tennis bracelet in 18K white gold.",
@@ -397,7 +393,7 @@ public static class SeedData
             },
             new()
             {
-                ErpNextItemCode  = "SL-BRAC-002",
+                ExternalCode     = "SL-BRAC-002",
                 Name             = "Gold Bangle Set",
                 Slug             = "gold-bangle-set",
                 ShortDescription = "A set of three stackable 18K yellow gold bangles in varying widths.",

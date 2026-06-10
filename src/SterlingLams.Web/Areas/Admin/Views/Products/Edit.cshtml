@@ -97,7 +97,7 @@
                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400"></textarea>
             </div>
 
-            <!-- SKU + ERPNext Item Code -->
+            <!-- SKU + External Code -->
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label asp-for="Sku" class="block text-xs text-neutral-500 mb-1">SKU</label>
@@ -105,8 +105,8 @@
                            class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:border-neutral-400" />
                 </div>
                 <div>
-                    <label asp-for="ErpNextItemCode" class="block text-xs text-neutral-500 mb-1">ERPNext Item Code <span class="text-neutral-300">(optional)</span></label>
-                    <input asp-for="ErpNextItemCode" type="text"
+                    <label asp-for="ExternalCode" class="block text-xs text-neutral-500 mb-1">External / Import Code <span class="text-neutral-300">(optional)</span></label>
+                    <input asp-for="ExternalCode" type="text"
                            class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:border-neutral-400" />
                 </div>
             </div>

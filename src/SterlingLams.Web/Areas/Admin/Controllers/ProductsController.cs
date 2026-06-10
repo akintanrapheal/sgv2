@@ -122,7 +122,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 IsActive         = product.IsActive,
                 IsFeatured       = product.IsFeatured,
                 IsNewArrival     = product.IsNewArrival,
-                ErpNextItemCode  = product.ErpNextItemCode,
+                ExternalCode     = product.ExternalCode,
                 CategoryId       = product.CategoryId,
                 Categories       = await _db.Categories.OrderBy(c => c.Name).ToListAsync(),
                 Images           = product.Images.OrderBy(i => i.SortOrder).ToList(),
@@ -306,7 +306,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             product.IsActive = vm.IsActive;
             product.IsFeatured = vm.IsFeatured;
             product.IsNewArrival = vm.IsNewArrival;
-            product.ErpNextItemCode = vm.ErpNextItemCode?.Trim() ?? string.Empty;
+            product.ExternalCode = vm.ExternalCode?.Trim() ?? string.Empty;
             product.CategoryId = vm.CategoryId!.Value;
             product.UpdatedAt = DateTime.UtcNow;
 
@@ -343,7 +343,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             {
                 Name             = source.Name + " (Copy)",
                 Slug             = slug,
-                ErpNextItemCode  = $"COPY-{Guid.NewGuid():N}"[..20],
+                ExternalCode     = $"COPY-{Guid.NewGuid():N}"[..20],
                 Description      = source.Description,
                 ShortDescription = source.ShortDescription,
                 Price            = source.Price,

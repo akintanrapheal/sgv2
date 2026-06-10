@@ -4,8 +4,8 @@ public class Product
 {
     public int Id { get; set; }
 
-    /// <summary>ERPNext item code (source of truth)</summary>
-    public string ErpNextItemCode { get; set; } = string.Empty;
+    /// <summary>Stable external/import code (e.g. the WooCommerce SKU-derived key). Unique upsert key for imports.</summary>
+    public string ExternalCode { get; set; } = string.Empty;
 
     public string Name { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;
