@@ -17,6 +17,7 @@ public static class ServiceCollectionExtensions
 
         // ─── Product Import (WooCommerce CSV) ─────────────────────────────────
         services.AddScoped<IWooCommerceImportService, WooCommerceImportService>();
+        services.AddScoped<ICatalogImportService, CatalogImportService>();
 
         // ─── Site Settings ────────────────────────────────────────────────────
         services.AddScoped<ISettingsService, SettingsService>();
