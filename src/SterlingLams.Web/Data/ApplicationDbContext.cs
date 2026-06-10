@@ -150,6 +150,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
              .HasForeignKey(o => o.PickupStoreId)
              .IsRequired(false);
 
+            // Branch that fulfilled a paid online order (no inverse nav; don't cascade).
+            e.HasOne(o => o.FulfillingStore)
+             .WithMany()
+             .HasForeignKey(o => o.FulfillingStoreId)
+             .OnDelete(DeleteBehavior.Restrict)
+             .IsRequired(false);
+
             // POS buyer (distinct from User, which is the cashier on POS sales).
             e.HasOne(o => o.Customer)
              .WithMany()

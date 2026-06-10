@@ -71,6 +71,31 @@ public class DeliveryZoneService
         return match.Fee;
     }
 
+    // ── Rank branches by proximity to a customer (for online fulfilment) ──────
+    // Pure function so the service stays DB-free: the caller supplies the active
+    // stores. Order: same delivery zone first, then a city/area match within the
+    // zone, then everything else; stable tiebreak by Id.
+    public static List<Models.Domain.Store> RankStoresByProximity(
+        IEnumerable<Models.Domain.Store> stores, string? customerState, string? customerCity)
+    {
+        var customerZone = GetZone(customerState ?? "");
+        var city = (customerCity ?? "").Trim();
+
+        bool CityMatches(Models.Domain.Store s)
+        {
+            if (city.Length == 0 || string.IsNullOrWhiteSpace(s.City)) return false;
+            var sc = s.City.Trim();
+            return sc.Contains(city, StringComparison.OrdinalIgnoreCase)
+                || city.Contains(sc, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return stores
+            .OrderBy(s => GetZone(s.State) == customerZone ? 0 : 1)
+            .ThenBy(s => CityMatches(s) ? 0 : 1)
+            .ThenBy(s => s.Id)
+            .ToList();
+    }
+
     // ── All Nigerian states (for the dropdown) ────────────────────────────────
     public static readonly string[] NigerianStates =
     {

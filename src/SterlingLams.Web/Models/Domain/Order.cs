@@ -59,6 +59,12 @@ public class Order
     public int? PickupStoreId { get; set; }
     public Store? PickupStore { get; set; }
 
+    /// <summary>The branch that fulfils a paid online order (nearest to the customer). Set by the
+    /// fulfilment engine on payment — also doubles as the "already fulfilled" idempotency flag
+    /// (null = stock not yet deducted). Pickup orders use the chosen store.</summary>
+    public int? FulfillingStoreId { get; set; }
+    public Store? FulfillingStore { get; set; }
+
     public int? DeliveryAddressId { get; set; }
     public Address? DeliveryAddress { get; set; }
 

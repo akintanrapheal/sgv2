@@ -42,12 +42,19 @@ public class CartController : Controller
         if (product == null)
             return Json(new { success = false, message = "Product not found." });
 
+        // Combined stock across all active branches is the ceiling (online fulfilment can
+        // pull from any branch). StoreInventory is per-product, same as the POS ledger.
+        var available = await CombinedAvailableAsync(productId);
+        if (available <= 0)
+            return Json(new { success = false, message = "This item is out of stock." });
+
         var cart = GetCart();
         var existing = cart.Items.FirstOrDefault(i => i.ProductId == productId && i.VariantId == variantId);
 
         if (existing != null)
         {
-            existing.Quantity = Math.Min(existing.Quantity + quantity, existing.MaxQuantity);
+            existing.MaxQuantity = available;
+            existing.Quantity = Math.Min(existing.Quantity + quantity, available);
         }
         else
         {
@@ -61,7 +68,8 @@ public class CartController : Controller
                 Slug = product.Slug,
                 ImageUrl = product.Images.FirstOrDefault(i => i.IsPrimary)?.Url ?? "/images/placeholder.jpg",
                 UnitPrice = product.Price + (variant?.PriceAdjustment ?? 0),
-                Quantity = quantity
+                Quantity = Math.Min(Math.Max(1, quantity), available),
+                MaxQuantity = available
             });
         }
 
@@ -76,7 +84,7 @@ public class CartController : Controller
     }
 
     [HttpPost]
-    public IActionResult UpdateQuantity(int productId, int quantity, int? variantId = null)
+    public async Task<IActionResult> UpdateQuantity(int productId, int quantity, int? variantId = null)
     {
         var cart = GetCart();
         var item = cart.Items.FirstOrDefault(i => i.ProductId == productId && i.VariantId == variantId);
@@ -86,12 +94,21 @@ public class CartController : Controller
             if (quantity <= 0)
                 cart.Items.Remove(item);
             else
-                item.Quantity = Math.Min(quantity, item.MaxQuantity);
+            {
+                item.MaxQuantity = await CombinedAvailableAsync(productId); // refresh against live stock
+                item.Quantity = Math.Min(quantity, Math.Max(1, item.MaxQuantity));
+            }
         }
 
         SaveCart(cart);
         return Json(new { success = true, cartCount = cart.TotalItems, subtotal = cart.FormattedSubtotal });
     }
+
+    /// <summary>Combined on-hand across all active branches for a product (the orderable ceiling).</summary>
+    private async Task<int> CombinedAvailableAsync(int productId) =>
+        await _db.StoreInventories
+            .Where(si => si.ProductId == productId && si.Store.IsActive)
+            .SumAsync(si => (int?)si.QuantityOnHand) ?? 0;
 
     [HttpPost]
     public IActionResult Remove(int productId, int? variantId = null)
