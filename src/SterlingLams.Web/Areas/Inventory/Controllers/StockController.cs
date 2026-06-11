@@ -75,14 +75,22 @@ public class StockController : InventoryAreaController
         public int StoreId { get; set; }
         public int Quantity { get; set; }
     }
-
-    // Bulk: set stock for many product×store cells, each as a traceable ledger Adjustment.
-    [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> SetAll([FromBody] List<StockEdit> edits)
+    public class BulkStockRequest
     {
+        public string? Reason { get; set; }
+        public List<StockEdit> Edits { get; set; } = new();
+    }
+
+    // Bulk: set stock for many product×store cells, each as a traceable ledger Adjustment
+    // tagged with the chosen reason (stock count / received / damage / loss / correction).
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetAll([FromBody] BulkStockRequest req)
+    {
+        var edits = req?.Edits;
         if (edits == null || edits.Count == 0)
             return Json(new { success = true, count = 0 });
 
+        var reason = string.IsNullOrWhiteSpace(req!.Reason) ? "Stock update" : req.Reason.Trim();
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var validStoreIds = (await _db.Stores.Where(s => s.IsActive).Select(s => s.Id).ToListAsync()).ToHashSet();
         var validProductIds = (await _db.Products
@@ -100,12 +108,14 @@ public class StockController : InventoryAreaController
             if (delta != 0)
             {
                 await _stock.ApplyAsync(e.ProductId, null, e.StoreId, delta,
-                    StockMovementType.Adjustment, "Inventory stock update", userId: userId);
+                    StockMovementType.Adjustment, reason, userId: userId);
                 applied++;
             }
         }
 
         await _db.SaveChangesAsync();
+        if (applied > 0)
+            await LogAsync("Update", "Inventory", null, $"Stock adjustment ({reason}) — {applied} change(s)");
         return Json(new { success = true, count = applied });
     }
 
