@@ -1,0 +1,52 @@
+@model List<SterlingLams.Web.Areas.Inventory.Controllers.MovementHistoryRow>
+@{
+    ViewData["Title"] = "Stock history";
+    string productName = ViewBag.ProductName;
+    int productId = ViewBag.ProductId;
+    string TypeColour(string t) => t switch
+    {
+        "Sale" => "text-red-600",
+        "Purchase" => "text-emerald-600",
+        "Return" => "text-emerald-600",
+        "Transfer" => "text-indigo-600",
+        _ => "text-neutral-600"
+    };
+}
+
+<div class="flex items-center gap-3 mb-6">
+    <a asp-area="Inventory" asp-controller="Products" asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← Products</a>
+    <span class="text-neutral-200">/</span>
+    <h1 class="text-lg font-medium text-neutral-800">@productName</h1>
+    <a asp-area="Inventory" asp-controller="Products" asp-action="Edit" asp-route-id="@productId" class="text-xs text-emerald-600 hover:text-emerald-700">Edit</a>
+</div>
+
+<p class="text-xs text-neutral-400 mb-3">Every stock movement for this product, newest first.</p>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[720px]">
+        <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+            <tr>
+                <th class="text-left font-medium px-4 py-3">When</th>
+                <th class="text-left font-medium px-4 py-3">Branch</th>
+                <th class="text-left font-medium px-4 py-3">Type</th>
+                <th class="text-right font-medium px-4 py-3">Change</th>
+                <th class="text-right font-medium px-4 py-3">Balance</th>
+                <th class="text-left font-medium px-4 py-3">Reference / note</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-100">
+            @if (!Model.Any()) { <tr><td colspan="6" class="px-4 py-10 text-center text-neutral-400">No movements recorded yet.</td></tr> }
+            @foreach (var m in Model)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-2.5 text-xs text-neutral-500 whitespace-nowrap">@m.Date.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-700">@m.Store</td>
+                    <td class="px-4 py-2.5 text-xs font-medium @TypeColour(m.Type)">@m.Type</td>
+                    <td class="px-4 py-2.5 text-right text-xs font-medium @(m.Change >= 0 ? "text-emerald-600" : "text-red-600")">@(m.Change >= 0 ? "+" : "")@m.Change</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-neutral-700">@m.Balance</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-500">@m.Reference@(string.IsNullOrEmpty(m.Note) ? "" : (string.IsNullOrEmpty(m.Reference) ? "" : " · ") + m.Note)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

@@ -119,6 +119,31 @@ public class ProductsController : InventoryAreaController
         return View(products);
     }
 
+    // Full stock-movement ledger for one product (every sale / adjustment / transfer).
+    public async Task<IActionResult> History(int id)
+    {
+        var product = await _db.Products.FindAsync(id);
+        if (product == null) return NotFound();
+        ViewData["Title"] = "Stock history";
+        ViewBag.ProductName = product.Name;
+        ViewBag.ProductId = id;
+        var moves = await _db.StockMovements.Where(m => m.ProductId == id)
+            .Include(m => m.Store)
+            .OrderByDescending(m => m.Id).Take(300)
+            .Select(m => new MovementHistoryRow
+            {
+                Date = m.CreatedAt,
+                Store = m.Store.Name.Replace("Sterlin Glams ", ""),
+                Type = m.Type.ToString(),
+                Change = m.QuantityChange,
+                Balance = m.BalanceAfter,
+                Reference = m.Reference,
+                Note = m.Note
+            })
+            .ToListAsync();
+        return View(moves);
+    }
+
     // Look up a product by exact barcode (for scan boxes). Returns id/name or 404.
     [HttpGet]
     public async Task<IActionResult> Lookup(string barcode)
@@ -168,6 +193,17 @@ public class LabelRow
     public string Name { get; set; } = "";
     public decimal Price { get; set; }
     public string Code { get; set; } = "";
+}
+
+public class MovementHistoryRow
+{
+    public DateTime Date { get; set; }
+    public string Store { get; set; } = "";
+    public string Type { get; set; } = "";
+    public int Change { get; set; }
+    public int Balance { get; set; }
+    public string? Reference { get; set; }
+    public string? Note { get; set; }
 }
 
 public class InvProductRow

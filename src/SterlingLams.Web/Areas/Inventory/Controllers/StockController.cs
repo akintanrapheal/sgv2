@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Areas.Admin.ViewModels;
@@ -106,5 +107,41 @@ public class StockController : InventoryAreaController
 
         await _db.SaveChangesAsync();
         return Json(new { success = true, count = applied });
+    }
+
+    // Export per-branch stock levels to CSV.
+    public async Task<IActionResult> ExportCsv(string q = "")
+    {
+        var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        var pq = _db.Products.Where(p => p.IsActive);
+        if (!string.IsNullOrWhiteSpace(q))
+            pq = pq.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
+                            || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
+                            || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%"));
+
+        var all = await pq.OrderBy(p => p.Name).ToListAsync();
+        var ids = all.Select(p => p.Id).ToList();
+        var inv = ids.Count > 0
+            ? await _db.StoreInventories.Where(si => ids.Contains(si.ProductId)).ToListAsync()
+            : new List<StoreInventory>();
+
+        static string Csv(string? s) => "\"" + (s ?? "").Replace("\"", "\"\"") + "\"";
+
+        var sb = new StringBuilder();
+        sb.Append("Product,SKU,Barcode");
+        foreach (var s in stores) sb.Append(',').Append(Csv(s.Name.Replace("Sterlin Glams ", "")));
+        sb.AppendLine(",Total");
+
+        foreach (var p in all)
+        {
+            var byStore = stores.Select(s => inv.FirstOrDefault(si => si.ProductId == p.Id && si.StoreId == s.Id)?.QuantityOnHand ?? 0).ToList();
+            sb.Append(Csv(p.Name)).Append(',').Append(Csv(p.Sku)).Append(',').Append(Csv(p.Barcode));
+            foreach (var v in byStore) sb.Append(',').Append(v);
+            sb.Append(',').Append(byStore.Sum()).AppendLine();
+        }
+
+        await LogAsync("Export", "Inventory", null, $"Exported stock for {all.Count} product(s) to CSV");
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        return File(bytes, "text/csv", $"stock_{DateTime.UtcNow:yyyyMMdd_HHmm}.csv");
     }
 }

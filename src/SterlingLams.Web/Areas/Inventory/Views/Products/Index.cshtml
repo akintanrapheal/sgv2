@@ -62,7 +62,10 @@
                         @if (p.IsActive) { <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Active</span> }
                         else { <span class="text-[10px] px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500">Hidden</span> }
                     </td>
-                    <td class="px-4 py-3 text-right"><a asp-area="Inventory" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id" class="text-xs text-emerald-600 hover:text-emerald-700">Edit</a></td>
+                    <td class="px-4 py-3 text-right whitespace-nowrap">
+                        <a asp-area="Inventory" asp-controller="Products" asp-action="History" asp-route-id="@p.Id" class="text-xs text-neutral-400 hover:text-neutral-700 mr-3">History</a>
+                        <a asp-area="Inventory" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id" class="text-xs text-emerald-600 hover:text-emerald-700">Edit</a>
+                    </td>
                 </tr>
             }
         </tbody>

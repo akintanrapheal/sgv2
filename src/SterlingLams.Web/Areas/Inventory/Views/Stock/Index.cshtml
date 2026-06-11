@@ -12,10 +12,14 @@
                class="w-72 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
         <button type="submit" class="px-4 py-2 text-sm border border-neutral-200 rounded-sm hover:border-neutral-400">Search</button>
     </form>
-    <button type="button" id="save-all-stock"
-            class="px-4 py-2 bg-emerald-600 text-white text-xs rounded-sm hover:bg-emerald-700 transition-colors">
-        Save all changes<span id="stock-change-count"></span>
-    </button>
+    <div class="flex gap-2">
+        <a asp-area="Inventory" asp-controller="Stock" asp-action="ExportCsv" asp-route-q="@Model.SearchQuery"
+           class="px-4 py-2 border border-neutral-200 text-neutral-700 text-xs rounded-sm hover:border-neutral-400 transition-colors">Export CSV</a>
+        <button type="button" id="save-all-stock"
+                class="px-4 py-2 bg-emerald-600 text-white text-xs rounded-sm hover:bg-emerald-700 transition-colors">
+            Save all changes<span id="stock-change-count"></span>
+        </button>
+    </div>
 </div>
 
 @if (!Model.Products.Any())
