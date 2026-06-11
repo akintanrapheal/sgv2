@@ -167,10 +167,21 @@
                 @foreach (var blk in featBlocks)
                 {
                     <div class="text-center">
-                        <div class="aspect-[4/5] overflow-hidden bg-neutral-100 mb-6 group">
-                            <img src="@blk.Image" alt="@blk.Title" loading="lazy"
-                                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                        </div>
+                        @if (!string.IsNullOrWhiteSpace(blk.Category))
+                        {
+                            <a asp-controller="Products" asp-action="Index" asp-route-category="@blk.Category"
+                               class="block aspect-[4/5] overflow-hidden bg-neutral-100 mb-6 group">
+                                <img src="@blk.Image" alt="@blk.Title" loading="lazy"
+                                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                            </a>
+                        }
+                        else
+                        {
+                            <div class="aspect-[4/5] overflow-hidden bg-neutral-100 mb-6 group">
+                                <img src="@blk.Image" alt="@blk.Title" loading="lazy"
+                                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                            </div>
+                        }
                         @if (!string.IsNullOrWhiteSpace(blk.Title))
                         {
                             <h3 class="font-cormorant text-2xl font-light text-neutral-900 mb-2">@blk.Title</h3>
