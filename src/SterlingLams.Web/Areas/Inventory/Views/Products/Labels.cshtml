@@ -1,0 +1,65 @@
+@model List<SterlingLams.Web.Areas.Inventory.Controllers.LabelRow>
+@{
+    Layout = null;
+    var json = System.Text.Json.JsonSerializer.Serialize(
+        Model.Select(p => new { name = p.Name, code = p.Code, price = p.Price }));
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Barcode labels</title>
+    <script src="~/js/jsbarcode.min.js" asp-append-version="true"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #f5f5f4; color: #1c1917; }
+        .toolbar { position: sticky; top: 0; background: #0a0a0a; color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 14px; font-size: 13px; }
+        .toolbar input { width: 60px; padding: 5px; border: 1px solid #555; border-radius: 3px; background: #fff; }
+        .toolbar button { padding: 7px 16px; border: 0; border-radius: 3px; cursor: pointer; font-size: 13px; }
+        .btn-print { background: #059669; color: #fff; }
+        .btn-gen { background: #ffffff22; color: #fff; border: 1px solid #ffffff44 !important; }
+        .sheet { padding: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
+        .label { width: 200px; border: 1px solid #d6d3d1; border-radius: 4px; padding: 8px; text-align: center; background: #fff; page-break-inside: avoid; }
+        .lname { font-size: 11px; line-height: 1.2; height: 26px; overflow: hidden; margin-bottom: 4px; }
+        .lprice { font-size: 13px; font-weight: bold; margin-top: 2px; }
+        @@media print {
+            .no-print { display: none !important; }
+            body { background: #fff; }
+            .sheet { padding: 0; gap: 4px; }
+            .label { border: 1px dashed #bbb; }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar no-print">
+        <span>Copies each:</span>
+        <input id="copies" type="number" value="1" min="1" max="50" />
+        <button class="btn-gen" onclick="render()">Apply</button>
+        <button class="btn-print" onclick="window.print()">🖨 Print</button>
+        <span id="info" style="opacity:.6"></span>
+    </div>
+    <div id="sheet" class="sheet"></div>
+
+    <script id="data" type="application/json">@Html.Raw(json)</script>
+    <script>
+        const products = JSON.parse(document.getElementById('data').textContent);
+        function esc(s) { return String(s).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])); }
+        function render() {
+            const copies = Math.min(50, Math.max(1, parseInt(document.getElementById('copies').value) || 1));
+            const sheet = document.getElementById('sheet'); sheet.innerHTML = '';
+            products.forEach(p => {
+                for (let i = 0; i < copies; i++) {
+                    const el = document.createElement('div'); el.className = 'label';
+                    el.innerHTML = `<div class="lname">${esc(p.name)}</div><svg class="bc"></svg><div class="lprice">₦${(+p.price).toLocaleString()}</div>`;
+                    sheet.appendChild(el);
+                    try { JsBarcode(el.querySelector('.bc'), p.code, { format: 'CODE128', width: 1.5, height: 38, fontSize: 11, margin: 2 }); } catch (e) { }
+                }
+            });
+            document.getElementById('info').textContent = (products.length * copies) + ' label(s)';
+        }
+        render();
+    </script>
+</body>
+</html>

@@ -107,6 +107,18 @@ public class ProductsController : InventoryAreaController
         return RedirectToAction(nameof(Index));
     }
 
+    // Printable barcode label sheet for the selected products.
+    public async Task<IActionResult> Labels(string ids)
+    {
+        var idList = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => int.TryParse(s, out var n) ? n : 0).Where(n => n > 0).Distinct().ToList();
+        var products = await _db.Products.Where(p => idList.Contains(p.Id))
+            .Select(p => new LabelRow { Name = p.Name, Price = p.Price, Code = p.Barcode ?? p.Sku ?? ("P" + p.Id) })
+            .ToListAsync();
+        ViewData["Title"] = "Barcode Labels";
+        return View(products);
+    }
+
     // Look up a product by exact barcode (for scan boxes). Returns id/name or 404.
     [HttpGet]
     public async Task<IActionResult> Lookup(string barcode)
@@ -149,6 +161,13 @@ public class ProductsController : InventoryAreaController
         while (await _db.Products.AnyAsync(p => p.Slug == slug)) slug = $"{baseSlug}-{++n}";
         return slug;
     }
+}
+
+public class LabelRow
+{
+    public string Name { get; set; } = "";
+    public decimal Price { get; set; }
+    public string Code { get; set; } = "";
 }
 
 public class InvProductRow

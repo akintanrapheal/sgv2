@@ -16,8 +16,11 @@
         </div>
         <button type="submit" class="px-4 py-2 text-sm border border-neutral-200 rounded-sm hover:border-neutral-400">Search</button>
     </form>
-    <a asp-area="Inventory" asp-controller="Products" asp-action="Create"
-       class="px-4 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">+ New Product</a>
+    <div class="flex gap-2">
+        <button type="button" id="print-labels" class="px-4 py-2 border border-neutral-200 text-neutral-700 text-sm rounded-sm hover:border-neutral-400">Print labels<span id="label-count"></span></button>
+        <a asp-area="Inventory" asp-controller="Products" asp-action="Create"
+           class="px-4 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">+ New Product</a>
+    </div>
 </div>
 
 <p class="text-xs text-neutral-400 mb-3">@total product(s)@(string.IsNullOrEmpty(q) ? "" : $" matching “{q}”")</p>
@@ -26,6 +29,7 @@
     <table class="w-full text-sm min-w-[760px]">
         <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
             <tr>
+                <th class="px-4 py-3 w-10"><input type="checkbox" id="lbl-all" class="align-middle cursor-pointer" /></th>
                 <th class="px-4 py-3 w-12"></th>
                 <th class="text-left font-medium px-4 py-3">Name</th>
                 <th class="text-left font-medium px-4 py-3">Barcode</th>
@@ -37,10 +41,11 @@
             </tr>
         </thead>
         <tbody class="divide-y divide-neutral-100">
-            @if (!Model.Any()) { <tr><td colspan="8" class="px-4 py-12 text-center text-neutral-400">No products found.</td></tr> }
+            @if (!Model.Any()) { <tr><td colspan="9" class="px-4 py-12 text-center text-neutral-400">No products found.</td></tr> }
             @foreach (var p in Model)
             {
                 <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-2"><input type="checkbox" class="lbl-check align-middle cursor-pointer" value="@p.Id" /></td>
                     <td class="px-4 py-2">
                         @if (!string.IsNullOrEmpty(p.ImageUrl)) { <img src="@p.ImageUrl" alt="" class="w-9 h-9 object-cover rounded-sm border border-neutral-100" onerror="this.style.display='none'" /> }
                         else { <div class="w-9 h-9 rounded-sm bg-neutral-100"></div> }
@@ -72,3 +77,22 @@
         @if (pg < totalPages) { <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-route-q="@q" asp-route-page="@(pg+1)" class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">Next ›</a> }
     </div>
 }
+
+<script>
+(function () {
+    const all = document.getElementById('lbl-all');
+    const btn = document.getElementById('print-labels');
+    const countEl = document.getElementById('label-count');
+    const rows = () => [...document.querySelectorAll('.lbl-check')];
+    const sel = () => rows().filter(r => r.checked).map(r => r.value);
+    function refresh() { const n = sel().length; countEl.textContent = n ? ' (' + n + ')' : ''; if (all) all.checked = n > 0 && n === rows().length; }
+    if (all) all.addEventListener('change', () => { rows().forEach(r => r.checked = all.checked); refresh(); });
+    document.addEventListener('change', e => { if (e.target.classList && e.target.classList.contains('lbl-check')) refresh(); });
+    btn.addEventListener('click', () => {
+        const ids = sel();
+        if (!ids.length) { alert('Tick the products you want labels for.'); return; }
+        window.open('/Inventory/Products/Labels?ids=' + ids.join(','), '_blank');
+    });
+    refresh();
+})();
+</script>
