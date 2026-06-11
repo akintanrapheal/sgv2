@@ -1,0 +1,130 @@
+@model List<SterlingLams.Web.Areas.Inventory.Controllers.StocktakeRow>
+@{
+    ViewData["Title"] = "Stock-take";
+    var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
+    int? storeId = ViewBag.StoreId;
+    string q = ViewBag.Q ?? "";
+    int pg = ViewBag.Page ?? 1;
+    int totalPages = ViewBag.TotalPages ?? 1;
+    var storeName = stores.FirstOrDefault(s => s.Id == storeId)?.Name;
+}
+@Html.AntiForgeryToken()
+
+<div class="mb-2">
+    <h1 class="text-lg font-medium text-neutral-800">Stock-take</h1>
+    <p class="text-xs text-neutral-400">Count a branch, enter the physical quantities, and reconcile any variance through the ledger.</p>
+</div>
+
+<!-- Branch + search picker -->
+<form asp-area="Inventory" asp-controller="Stocktake" asp-action="Index" method="get" class="flex flex-wrap items-end gap-3 bg-white border border-neutral-100 rounded-sm p-4 mb-4">
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">Branch</label>
+        <select name="storeId" onchange="this.form.submit()" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white">
+            <option value="">— Select a branch —</option>
+            @foreach (var s in stores)
+            {
+                <option value="@s.Id" selected="@(storeId == s.Id)">@s.Name</option>
+            }
+        </select>
+    </div>
+    @if (storeId != null)
+    {
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">Search</label>
+            <input type="text" name="q" value="@q" placeholder="Product name…" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm" />
+        </div>
+        <button type="submit" class="px-4 py-2 text-sm border border-neutral-200 rounded-sm hover:border-neutral-400">Go</button>
+    }
+</form>
+
+@if (storeId == null)
+{
+    <div class="bg-white border border-neutral-100 rounded-sm p-12 text-center text-sm text-neutral-400">Choose a branch to start counting.</div>
+}
+else
+{
+    <div class="flex items-center justify-between mb-3">
+        <p class="text-xs text-neutral-500">Counting <strong>@storeName</strong> — <span id="entered-count">0</span> counted</p>
+        <button type="button" id="apply-stocktake" class="px-4 py-2 bg-emerald-600 text-white text-xs rounded-sm hover:bg-emerald-700 transition-colors">Apply stock-take</button>
+    </div>
+
+    <div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+                <tr>
+                    <th class="text-left font-medium px-4 py-3">Product</th>
+                    <th class="text-right font-medium px-4 py-3">System</th>
+                    <th class="text-center font-medium px-4 py-3">Counted</th>
+                    <th class="text-right font-medium px-4 py-3">Variance</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-100">
+                @if (!Model.Any()) { <tr><td colspan="4" class="px-4 py-10 text-center text-neutral-400">No products.</td></tr> }
+                @foreach (var r in Model)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5">
+                            <p class="text-xs text-neutral-800">@r.Name</p>
+                            @if (!string.IsNullOrEmpty(r.Sku)) { <p class="text-[10px] text-neutral-400 font-mono">@r.Sku</p> }
+                        </td>
+                        <td class="px-4 py-2.5 text-right text-neutral-600">@r.System</td>
+                        <td class="px-4 py-2.5 text-center">
+                            <input type="number" min="0" placeholder="—"
+                                   data-pid="@r.ProductId" data-system="@r.System"
+                                   class="count-cell w-20 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-emerald-400" />
+                        </td>
+                        <td class="px-4 py-2.5 text-right text-xs variance-cell" data-pid="@r.ProductId">—</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (totalPages > 1)
+    {
+        <div class="flex items-center justify-center gap-1.5 mt-4 flex-wrap text-xs text-neutral-500">
+            <span>Page @pg of @totalPages</span>
+            @if (pg > 1) { <a asp-area="Inventory" asp-controller="Stocktake" asp-action="Index" asp-route-storeId="@storeId" asp-route-q="@q" asp-route-page="@(pg-1)" class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">‹ Prev</a> }
+            @if (pg < totalPages) { <a asp-area="Inventory" asp-controller="Stocktake" asp-action="Index" asp-route-storeId="@storeId" asp-route-q="@q" asp-route-page="@(pg+1)" class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">Next ›</a> }
+        </div>
+        <p class="text-center text-[11px] text-amber-600 mt-2">Counts you enter are saved only when you click “Apply stock-take”. Apply before changing page.</p>
+    }
+
+    <script>
+    (function () {
+        const storeId = @storeId;
+        const btn = document.getElementById('apply-stocktake');
+        const enteredEl = document.getElementById('entered-count');
+        const token = document.querySelector('input[name="__RequestVerificationToken"]');
+        const counted = () => [...document.querySelectorAll('input.count-cell')].filter(i => i.value !== '');
+        function refresh() {
+            enteredEl.textContent = counted().length;
+            document.querySelectorAll('input.count-cell').forEach(i => {
+                const vc = document.querySelector(`.variance-cell[data-pid="${i.dataset.pid}"]`);
+                if (i.value === '') { vc.textContent = '—'; vc.className = 'px-4 py-2.5 text-right text-xs variance-cell text-neutral-300'; return; }
+                const v = (+i.value) - (+i.dataset.system);
+                vc.textContent = (v > 0 ? '+' : '') + v;
+                vc.className = 'px-4 py-2.5 text-right text-xs variance-cell ' + (v === 0 ? 'text-neutral-400' : v > 0 ? 'text-emerald-600' : 'text-red-600');
+            });
+        }
+        document.addEventListener('input', e => { if (e.target.classList && e.target.classList.contains('count-cell')) refresh(); });
+        refresh();
+        btn.addEventListener('click', async () => {
+            const counts = counted().map(i => ({ productId: +i.dataset.pid, counted: +i.value }));
+            if (!counts.length) { alert('Enter at least one count.'); return; }
+            if (!confirm('Reconcile ' + counts.length + ' product(s) to the counted quantities? This adjusts stock via the ledger.')) return;
+            btn.disabled = true; btn.textContent = 'Applying…';
+            try {
+                const res = await fetch('/Inventory/Stocktake/Apply', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token ? token.value : '' },
+                    body: JSON.stringify({ storeId: storeId, counts: counts })
+                });
+                const data = await res.json();
+                if (data.success) { alert(data.count + ' product(s) reconciled.'); location.reload(); }
+                else { alert(data.message || 'Failed.'); btn.disabled = false; btn.textContent = 'Apply stock-take'; }
+            } catch { alert('Failed. Please try again.'); btn.disabled = false; btn.textContent = 'Apply stock-take'; }
+        });
+    })();
+    </script>
+}
