@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 using SterlingLams.Web.Data;
@@ -43,6 +44,11 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     options.Password.RequiredLength = 8;
     options.Password.RequireUppercase = false;
     options.SignIn.RequireConfirmedEmail = false;
+
+    // Brute-force protection: lock the account after repeated failed logins.
+    options.Lockout.AllowedForNewUsers = true;
+    options.Lockout.MaxFailedAccessAttempts = 5;
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
@@ -81,6 +87,22 @@ builder.Services.AddSterlingLamsServices(builder.Configuration);
 builder.Services.Configure<SterlingLams.Web.Services.EmailOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.AddScoped<SterlingLams.Web.Services.IEmailService, SterlingLams.Web.Services.SmtpEmailService>();
 
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+// Per-IP throttle on auth & email-sending endpoints (brute-force / abuse protection).
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("auth", ctx =>
+        System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+});
+
 // ─── Background Services ─────────────────────────────────────────────────────
 // Frees stock reserved by abandoned (unpaid) online orders so it returns to sale.
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.ReservationSweeper>();
@@ -104,6 +126,7 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
+app.UseRateLimiter();
 app.UseSession();
 app.UseAuthentication();
 app.UseAuthorization();

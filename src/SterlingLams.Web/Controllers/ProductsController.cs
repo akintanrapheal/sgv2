@@ -216,6 +216,7 @@ public class ProductsController : Controller
     // POST /Products/NotifyRestock  (back-in-stock email capture)
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("auth")]
     public IActionResult NotifyRestock(int productId, string email)
     {
         if (!string.IsNullOrWhiteSpace(email))

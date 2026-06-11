@@ -43,6 +43,7 @@ public class AccountController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("auth")]
     public async Task<IActionResult> Login(LoginViewModel model)
     {
         if (!ModelState.IsValid) return View(model);
@@ -64,7 +65,7 @@ public class AccountController : Controller
 
         if (result.IsLockedOut)
         {
-            ModelState.AddModelError("", "Your account has been locked. Please try again in a few minutes.");
+            ModelState.AddModelError("", "Too many failed attempts — your account is locked for 15 minutes. Try again later or reset your password.");
             return View(model);
         }
 
@@ -264,6 +265,7 @@ public class AccountController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("auth")]
     public async Task<IActionResult> ForgotPassword(string email)
     {
         if (string.IsNullOrWhiteSpace(email))

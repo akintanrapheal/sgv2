@@ -55,6 +55,7 @@ public class HomeController : Controller
     }
 
     [HttpPost]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("auth")]
     public async Task<IActionResult> Subscribe(string email)
     {
         email = (email ?? "").Trim().ToLowerInvariant();
