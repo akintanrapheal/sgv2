@@ -145,11 +145,32 @@
     }
 </form>
 
+<!-- ── Bulk action bar (rows associate via form="bulk-form") -->
+<form id="bulk-form" asp-area="Admin" asp-controller="Products" asp-action="Bulk" method="post">
+    @Html.AntiForgeryToken()
+    <input type="hidden" name="q"        value="@Model.SearchQuery" />
+    <input type="hidden" name="category" value="@Model.CategoryFilter" />
+    <input type="hidden" name="status"   value="@Model.StatusFilter" />
+    <input type="hidden" name="type"     value="@Model.TypeFilter" />
+    <input type="hidden" name="page"     value="@Model.CurrentPage" />
+    <input type="hidden" name="op"        id="bulk-op" value="" />
+    <div id="bulk-bar" class="hidden items-center gap-2 bg-neutral-900 text-white rounded-sm px-4 py-2 mb-3">
+        <span id="bulk-count" class="text-xs font-medium"></span>
+        <span class="flex-1"></span>
+        <button type="button" data-op="activate"   class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Activate</button>
+        <button type="button" data-op="deactivate" class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Deactivate</button>
+        <button type="button" data-op="feature"    class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Feature</button>
+        <button type="button" data-op="unfeature"  class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Unfeature</button>
+        <button type="button" data-op="delete"     class="bulk-btn px-3 py-1.5 text-xs bg-rose-500/80 hover:bg-rose-500 rounded-sm transition-colors">Delete</button>
+    </div>
+</form>
+
 <!-- ── Products table -->
 <div class="bg-white rounded-sm border border-neutral-100 overflow-hidden">
     <table class="w-full text-sm">
         <thead>
             <tr class="bg-neutral-50 border-b border-neutral-100">
+                <th class="px-4 py-3 w-10"><input type="checkbox" id="check-all" class="align-middle cursor-pointer" /></th>
                 <th class="px-4 py-3 w-14"></th>
                 <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Name</th>
                 <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Category</th>
@@ -162,7 +183,7 @@
             @if (!Model.Products.Any())
             {
                 <tr>
-                    <td colspan="6" class="px-6 py-16 text-center text-neutral-400 text-sm">
+                    <td colspan="7" class="px-6 py-16 text-center text-neutral-400 text-sm">
                         @if (hasFilters)
                         {
                             <span>No products match your filters. <a asp-area="Admin" asp-controller="Products" asp-action="Index" class="underline hover:text-neutral-700">Clear all filters</a></span>
@@ -178,6 +199,8 @@
             {
                 var thumb = p.Images.OrderBy(i => i.SortOrder).FirstOrDefault()?.Url;
                 <tr class="hover:bg-neutral-50 transition-colors">
+                    <!-- Select -->
+                    <td class="px-4 py-2"><input type="checkbox" value="@p.Id" class="row-check align-middle cursor-pointer" /></td>
                     <!-- Thumbnail -->
                     <td class="px-4 py-2">
                         @if (!string.IsNullOrEmpty(thumb))
@@ -316,3 +339,38 @@
         }
     </div>
 }
+
+<script>
+(function () {
+    const all = document.getElementById('check-all');
+    const bar = document.getElementById('bulk-bar');
+    const count = document.getElementById('bulk-count');
+    const form = document.getElementById('bulk-form');
+    const opField = document.getElementById('bulk-op');
+    const rows = () => [...document.querySelectorAll('.row-check')];
+    const selected = () => rows().filter(r => r.checked);
+    function refresh() {
+        const n = selected().length;
+        if (count) count.textContent = n + ' selected';
+        if (bar) { bar.classList.toggle('hidden', n === 0); bar.classList.toggle('flex', n > 0); }
+        if (all) all.checked = n > 0 && n === rows().length;
+    }
+    if (all) all.addEventListener('change', () => { rows().forEach(r => r.checked = all.checked); refresh(); });
+    document.addEventListener('change', e => { if (e.target.classList && e.target.classList.contains('row-check')) refresh(); });
+    document.querySelectorAll('.bulk-btn').forEach(btn => btn.addEventListener('click', () => {
+        const ids = selected().map(c => c.value);
+        if (!ids.length) { alert('No products selected.'); return; }
+        const op = btn.dataset.op;
+        if (op === 'delete' && !confirm('Delete the ' + ids.length + ' selected product(s)? This also removes their variants, images and stock, and cannot be undone.')) return;
+        opField.value = op;
+        form.querySelectorAll('input.injected-id').forEach(e => e.remove());
+        ids.forEach(id => {
+            const i = document.createElement('input');
+            i.type = 'hidden'; i.name = 'ids'; i.value = id; i.className = 'injected-id';
+            form.appendChild(i);
+        });
+        form.submit();
+    }));
+    refresh();
+})();
+</script>

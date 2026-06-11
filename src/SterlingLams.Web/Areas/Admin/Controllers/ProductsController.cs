@@ -395,6 +395,41 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return RedirectToAction(nameof(Index));
         }
 
+        // ── Bulk actions on selected products ────────────────────────────────────
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Bulk(string op, int[] ids,
+            string q = "", string category = "", string status = "", string type = "", int page = 1)
+        {
+            var back = new { q, category, status, type, page };
+            ids ??= Array.Empty<int>();
+            if (ids.Length == 0)
+            {
+                TempData["Error"] = "No products were selected.";
+                return RedirectToAction(nameof(Index), back);
+            }
+
+            var products = await _db.Products.Where(p => ids.Contains(p.Id)).ToListAsync();
+            var n = products.Count;
+
+            switch (op)
+            {
+                case "activate":   products.ForEach(p => { p.IsActive = true;   p.UpdatedAt = DateTime.UtcNow; }); break;
+                case "deactivate": products.ForEach(p => { p.IsActive = false;  p.UpdatedAt = DateTime.UtcNow; }); break;
+                case "feature":    products.ForEach(p => { p.IsFeatured = true; p.UpdatedAt = DateTime.UtcNow; }); break;
+                case "unfeature":  products.ForEach(p => { p.IsFeatured = false;p.UpdatedAt = DateTime.UtcNow; }); break;
+                case "delete":     _db.Products.RemoveRange(products); break;
+                default:
+                    TempData["Error"] = "Unknown bulk action.";
+                    return RedirectToAction(nameof(Index), back);
+            }
+
+            await _db.SaveChangesAsync();
+            await LogAsync(op == "delete" ? "Delete" : "Update", "Product", null, $"Bulk {op} on {n} product(s)");
+            TempData["Success"] = $"{op} applied to {n} product(s).";
+            return RedirectToAction(nameof(Index), back);
+        }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         [RequestFormLimits(MultipartBodyLengthLimit = 52428800)] // 50 MB
