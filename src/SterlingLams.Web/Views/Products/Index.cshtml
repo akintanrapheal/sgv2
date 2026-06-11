@@ -2,6 +2,12 @@
 @{
     ViewData["Title"] = Model.PageTitle ?? "Collections";
     Layout = "_Layout";
+
+    // Self-canonical that keeps the category but drops page/sort/filter noise (avoids duplicates).
+    var canonBase = $"{Context.Request.Scheme}://{Context.Request.Host}/products";
+    ViewData["Canonical"] = string.IsNullOrWhiteSpace(Model.Filters.Category)
+        ? canonBase
+        : $"{canonBase}?category={Model.Filters.Category}";
 }
 
 <div class="max-w-7xl mx-auto px-6 py-12">

@@ -2,6 +2,7 @@
 @inject ISettingsService SettingsService
 @{
     ViewData["Title"] = "Luxury Jewellery";
+    ViewData["Description"] = "Sterlin Glams — luxury jewellery and accessories. Shop rings, necklaces, earrings, bracelets, watches and clutches, with in-store pickup at our Lagos and Abuja boutiques.";
     Layout = "_Layout";
     var featuredProducts = ViewBag.FeaturedProducts as List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> ?? new();
 

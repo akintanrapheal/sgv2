@@ -4,12 +4,60 @@
 @{
     ViewData["Title"] = Model.Name;
     ViewData["Description"] = Model.ShortDescription;
+    ViewData["OgType"] = "product";
+    ViewData["OgImage"] = Model.ImageUrls.FirstOrDefault();
     Layout = "_Layout";
 
     var fullDescription = !string.IsNullOrWhiteSpace(Model.Description)
         ? Model.Description
         : (Model.ShortDescription ?? "");
     var shippingPolicy = await SettingsService.GetAsync("shipping.returns_policy", "");
+
+    // ── Structured data (Product + breadcrumbs) ──────────────────────────────
+    var sdReq = Context.Request;
+    var sdBase = $"{sdReq.Scheme}://{sdReq.Host}";
+    var sdUrl = sdBase + sdReq.Path;
+    string SdAbs(string u) => string.IsNullOrEmpty(u) ? u : (u.StartsWith("/") ? sdBase + u : u);
+    var jsonOpts = new System.Text.Json.JsonSerializerOptions
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+    var productLd = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
+    {
+        ["@context"] = "https://schema.org/",
+        ["@type"] = "Product",
+        ["name"] = Model.Name,
+        ["image"] = Model.ImageUrls.Select(SdAbs).ToArray(),
+        ["description"] = string.IsNullOrWhiteSpace(fullDescription) ? Model.Name : fullDescription,
+        ["sku"] = string.IsNullOrWhiteSpace(Model.Sku) ? null : Model.Sku,
+        ["brand"] = new Dictionary<string, object?> { ["@type"] = "Brand", ["name"] = "Sterlin Glams" },
+        ["category"] = Model.CategoryName,
+        ["offers"] = new Dictionary<string, object?>
+        {
+            ["@type"] = "Offer",
+            ["url"] = sdUrl,
+            ["priceCurrency"] = Model.Currency,
+            ["price"] = Model.Price,
+            ["availability"] = Model.IsAvailableAnywhere ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+            ["itemCondition"] = "https://schema.org/NewCondition",
+        },
+    }, jsonOpts);
+    var breadcrumbLd = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
+    {
+        ["@context"] = "https://schema.org",
+        ["@type"] = "BreadcrumbList",
+        ["itemListElement"] = new object[]
+        {
+            new Dictionary<string, object?> { ["@type"] = "ListItem", ["position"] = 1, ["name"] = "Home", ["item"] = sdBase },
+            new Dictionary<string, object?> { ["@type"] = "ListItem", ["position"] = 2, ["name"] = Model.CategoryName, ["item"] = $"{sdBase}/products?category={Model.CategorySlug}" },
+            new Dictionary<string, object?> { ["@type"] = "ListItem", ["position"] = 3, ["name"] = Model.Name, ["item"] = sdUrl },
+        },
+    }, jsonOpts);
+}
+
+@section Head {
+    <script type="application/ld+json">@Html.Raw(productLd)</script>
+    <script type="application/ld+json">@Html.Raw(breadcrumbLd)</script>
 }
 
 <div class="max-w-7xl mx-auto px-6 py-12">

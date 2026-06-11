@@ -1,10 +1,69 @@
+@using SterlingLams.Web.Services
+@inject ISettingsService SettingsService
+@{
+    var seoReq      = Context.Request;
+    var seoBaseUrl  = $"{seoReq.Scheme}://{seoReq.Host}";
+    var seoSiteName = await SettingsService.GetAsync("general.site_name", "Sterlin Glams");
+    var seoDesc     = (ViewData["Description"]?.ToString()) ?? "Sterlin Glams — Luxury Jewellery. Timeless elegance crafted for you.";
+    var seoTitle    = ViewData["Title"] != null ? $"{ViewData["Title"]} — {seoSiteName}" : seoSiteName;
+    var seoCanonical= (ViewData["Canonical"]?.ToString()) ?? (seoBaseUrl + seoReq.Path);
+    var seoOgType   = (ViewData["OgType"]?.ToString()) ?? "website";
+    var seoRobots   = (ViewData["Robots"]?.ToString()) ?? "index, follow";
+    var seoLogo     = await SettingsService.GetAsync("general.logo_url", "");
+    string Abs(string u) => string.IsNullOrEmpty(u) ? u : (u.StartsWith("/") ? seoBaseUrl + u : u);
+    var seoOgImage  = ViewData["OgImage"]?.ToString();
+    if (string.IsNullOrEmpty(seoOgImage)) seoOgImage = seoLogo;
+    seoOgImage = Abs(seoOgImage ?? "");
+
+    var seoSocial = new[]
+    {
+        await SettingsService.GetAsync("general.instagram_url", ""),
+        await SettingsService.GetAsync("general.facebook_url", ""),
+        await SettingsService.GetAsync("general.tiktok_url", ""),
+    }.Where(u => !string.IsNullOrWhiteSpace(u)).ToArray();
+
+    var orgLd = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
+    {
+        ["@context"] = "https://schema.org",
+        ["@type"] = "Organization",
+        ["name"] = seoSiteName,
+        ["url"] = seoBaseUrl,
+        ["logo"] = string.IsNullOrEmpty(seoLogo) ? null : Abs(seoLogo),
+        ["sameAs"] = seoSocial.Length > 0 ? seoSocial : null,
+    }, new System.Text.Json.JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
+}
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="@(ViewData["Description"] ?? "Sterlin Glams — Luxury Jewellery. Timeless elegance crafted for you.")" />
-    <title>@ViewData["Title"] — Sterlin Glams</title>
+    <title>@seoTitle</title>
+    <meta name="description" content="@seoDesc" />
+    <meta name="robots" content="@seoRobots" />
+    <link rel="canonical" href="@seoCanonical" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="~/favicon.svg" />
+    @if (!string.IsNullOrEmpty(seoLogo)) { <link rel="apple-touch-icon" href="@Abs(seoLogo)" /> }
+
+    <!-- Open Graph -->
+    <meta property="og:site_name" content="@seoSiteName" />
+    <meta property="og:type" content="@seoOgType" />
+    <meta property="og:title" content="@seoTitle" />
+    <meta property="og:description" content="@seoDesc" />
+    <meta property="og:url" content="@seoCanonical" />
+    @if (!string.IsNullOrEmpty(seoOgImage))
+    {
+        <meta property="og:image" content="@seoOgImage" />
+        <meta name="twitter:image" content="@seoOgImage" />
+    }
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="@seoTitle" />
+    <meta name="twitter:description" content="@seoDesc" />
+
+    <!-- Organization structured data -->
+    <script type="application/ld+json">@Html.Raw(orgLd)</script>
 
     <!-- Fonts: Cormorant Garamond (luxury serif) + Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -15,6 +74,7 @@
     <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
 
     @await RenderSectionAsync("Styles", required: false)
+    @await RenderSectionAsync("Head", required: false)
 </head>
 <body class="bg-white text-neutral-900 font-inter antialiased">
 
