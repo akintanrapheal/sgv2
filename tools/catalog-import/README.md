@@ -12,14 +12,24 @@ WooCommerce site into the in-house DB.
      (live `sterlinglams.com` URLs), and `variants[]` (each with its `attrs`, e.g. `{color, size}`).
    - Point the `DB` path in the script at the extracted `database.sql`, then `python extract_catalog.py`.
 
-2. **Import** into the app DB:
+2. **Import** into the app DB (two modes):
+
    ```
-   dotnet run -- import-catalog "tools/catalog-import/catalog.json"
+   dotnet run -- import-catalog "tools/catalog-import/catalog.json"            # WIPE + import
+   dotnet run -- import-catalog "tools/catalog-import/catalog.json" --upsert   # production-safe
    ```
-   This **wipes existing products** (cascades to variants/images/inventory) and re-imports the
-   catalog. **Uncategorized products are skipped** (`skipUncategorized: true`). Stock is imported as
-   **zero** — set per-branch quantities afterwards in admin/Inventory. Keyed on `ExternalCode` =
-   `WC-{sku}`. Implemented by `Services/CatalogImportService.cs`.
+
+   - **Default (wipe)** — `DELETE FROM Products` (cascades to variants/images/inventory **and any
+     order line items**), then inserts the catalog fresh. Use only for **first-time / dev seeding**;
+     it destroys order history.
+   - **`--upsert` (production-safe)** — matches incoming products to existing ones by `ExternalCode`
+     (`WC-{sku}`): **updates** matches in place (keeps the product ID so `OrderItems` stay linked;
+     refreshes scalars + images; leaves variants intact since deleting an ordered variant is blocked
+     by FK), **inserts** new products, and **deactivates** (never deletes) `WC-*` products missing from
+     the file. Safe to run against the live DB to refresh the catalog.
+
+   Both modes **skip uncategorized products** and import **stock as zero** (set per-branch quantities
+   afterwards in admin/Inventory). Implemented by `Services/CatalogImportService.cs`.
 
 ## Notes
 - ~2,021 published products, ~2,644 variants. Variant attributes: Color, Size, Alphabet,

@@ -14,11 +14,14 @@ public interface ICatalogImportService
 
 public class CatalogImportResult
 {
-    public int Products { get; set; }
+    public int Created { get; set; }
+    public int Updated { get; set; }
+    public int Deactivated { get; set; }
     public int Variants { get; set; }
     public int Skipped { get; set; }
     public List<string> Errors { get; set; } = new();
-    public string Summary => $"{Products} products, {Variants} variants, {Skipped} skipped" +
+    public string Summary =>
+        $"{Created} created, {Updated} updated, {Deactivated} deactivated, {Variants} variants, {Skipped} skipped" +
         (Errors.Count > 0 ? $", {Errors.Count} errors" : "");
 }
 
@@ -121,7 +124,18 @@ public class CatalogImportService : ICatalogImportService
         }
 
         var uncategorized = await CategoryAsync("Uncategorized");
-        // Only "Added" graphs are saved in the loop — skip change scanning of the growing tracked set.
+
+        // Upsert mode (not wipeFirst): match incoming products to existing ones by import code so we
+        // UPDATE in place (keeping product IDs → order history intact) instead of deleting. Scope to
+        // WC-* codes so manually-created/copied products are never touched.
+        var existingByCode = wipeFirst
+            ? new Dictionary<string, Product>(StringComparer.OrdinalIgnoreCase)
+            : (await _db.Products.Include(p => p.Images)
+                    .Where(p => p.ExternalCode.StartsWith("WC-")).ToListAsync())
+                .GroupBy(p => p.ExternalCode, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        var seenCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         _db.ChangeTracker.AutoDetectChangesEnabled = false;
         int i = 0;
         foreach (var cp in products)
@@ -138,12 +152,41 @@ public class CatalogImportService : ICatalogImportService
                     .ToList();
                 if (skipUncategorized && realCats.Count == 0) { result.Skipped++; continue; }
                 var category = realCats.Count > 0 ? await CategoryAsync(realCats[0]) : uncategorized;
+                var code = "WC-" + (string.IsNullOrWhiteSpace(cp.sku) ? cp.wc_id : cp.sku);
+
+                if (existingByCode.TryGetValue(code, out var existing))
+                {
+                    // ── UPDATE in place ── keep the product ID (so OrderItems stay linked) and its
+                    // variants (deleting an ordered variant is blocked by FK). Refresh scalars + images.
+                    existing.Name = cp.title;
+                    existing.Price = price;
+                    existing.Description = cp.description;
+                    existing.ShortDescription = cp.@short;
+                    existing.CategoryId = category.Id;
+                    existing.IsActive = true;
+                    existing.UpdatedAt = DateTime.UtcNow;
+                    if (existing.Images.Count > 0) _db.ProductImages.RemoveRange(existing.Images);
+                    existing.Images.Clear();
+                    var s = 0;
+                    foreach (var url in cp.images.Distinct())
+                    {
+                        s++;
+                        existing.Images.Add(new ProductImage { Url = url, IsPrimary = s == 1, SortOrder = s });
+                    }
+                    seenCodes.Add(code);
+                    _db.ChangeTracker.DetectChanges();
+                    await _db.SaveChangesAsync();
+                    result.Updated++;
+                    continue;
+                }
+
+                // ── INSERT new product (full: variants + images) ──
                 var slug = await UniqueSlugAsync(Slugify(cp.title), usedSlugs);
                 usedSlugs.Add(slug);
 
                 var product = new Product
                 {
-                    ExternalCode = "WC-" + (string.IsNullOrWhiteSpace(cp.sku) ? cp.wc_id : cp.sku),
+                    ExternalCode = code,
                     Sku = cp.sku,
                     Name = cp.title,
                     Slug = slug,
@@ -188,7 +231,8 @@ public class CatalogImportService : ICatalogImportService
                 _db.ChangeTracker.DetectChanges(); // detect the newly-built graph only
                 _db.Products.Add(product);
                 await _db.SaveChangesAsync();
-                result.Products++;
+                if (!wipeFirst) existingByCode[code] = product; // dup code later in file → update next time
+                result.Created++;
             }
             catch (Exception ex)
             {
@@ -199,6 +243,20 @@ public class CatalogImportService : ICatalogImportService
                 _db.ChangeTracker.Clear();
                 RehydrateCaches(categories, attrs, valueCache);
             }
+        }
+
+        // Upsert: any import-managed (WC-*) product NOT present in this file is hidden, never deleted,
+        // so its order history survives.
+        if (!wipeFirst)
+        {
+            var stale = existingByCode.Values.Where(p => p.IsActive && !seenCodes.Contains(p.ExternalCode)).ToList();
+            foreach (var p in stale) { p.IsActive = false; p.UpdatedAt = DateTime.UtcNow; }
+            if (stale.Count > 0)
+            {
+                _db.ChangeTracker.DetectChanges();
+                await _db.SaveChangesAsync();
+            }
+            result.Deactivated = stale.Count;
         }
 
         _db.ChangeTracker.AutoDetectChangesEnabled = true;

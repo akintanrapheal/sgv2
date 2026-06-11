@@ -190,13 +190,17 @@ if (args.Length >= 1 && args[0].Equals("clean-product-text", StringComparison.Or
     return;
 }
 
-// Usage: dotnet run -- import-catalog "<path-to-catalog.json>"  (wipes products, imports full catalog)
+// Usage: dotnet run -- import-catalog "<path-to-catalog.json>" [--upsert]
+//   default        → WIPE all products then import (dev/first-time seeding; destroys order history)
+//   --upsert       → match by code, UPDATE existing / INSERT new / DEACTIVATE missing (production-safe)
 if (args.Length >= 1 && args[0].Equals("import-catalog", StringComparison.OrdinalIgnoreCase))
 {
-    var path = args.Length >= 2 ? args[1] : "";
+    var path = args.Skip(1).FirstOrDefault(a => !a.StartsWith("--")) ?? "";
+    var upsert = args.Any(a => a.Equals("--upsert", StringComparison.OrdinalIgnoreCase));
     using var scope = app.Services.CreateScope();
     var svc = scope.ServiceProvider.GetRequiredService<SterlingLams.Web.Services.ICatalogImportService>();
-    var res = await svc.ImportAsync(path, wipeFirst: true, skipUncategorized: true, new Progress<string>(Console.WriteLine));
+    Console.WriteLine(upsert ? "Mode: UPSERT (production-safe, preserves order history)" : "Mode: WIPE + import");
+    var res = await svc.ImportAsync(path, wipeFirst: !upsert, skipUncategorized: true, new Progress<string>(Console.WriteLine));
     Console.WriteLine("RESULT: " + res.Summary);
     foreach (var e in res.Errors.Take(25)) Console.WriteLine("  ERR: " + e);
     Log.CloseAndFlush();
