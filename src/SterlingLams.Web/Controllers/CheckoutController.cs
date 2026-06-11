@@ -25,6 +25,7 @@ public class CheckoutController : Controller
     private readonly SterlingLams.Web.Services.ISettingsService _settings;
     private readonly SterlingLams.Web.Services.DeliveryZoneService _zones;
     private readonly SterlingLams.Web.Services.IDiscountService _discounts;
+    private readonly SterlingLams.Web.Services.IEmailService _email;
 
     public CheckoutController(
         ApplicationDbContext db,
@@ -36,7 +37,8 @@ public class CheckoutController : Controller
         SterlingLams.Web.Services.IOrderFulfilmentService fulfilment,
         SterlingLams.Web.Services.ISettingsService settings,
         SterlingLams.Web.Services.DeliveryZoneService zones,
-        SterlingLams.Web.Services.IDiscountService discounts)
+        SterlingLams.Web.Services.IDiscountService discounts,
+        SterlingLams.Web.Services.IEmailService email)
     {
         _db = db;
         _payment = payment;
@@ -48,6 +50,7 @@ public class CheckoutController : Controller
         _settings = settings;
         _zones = zones;
         _discounts = discounts;
+        _email = email;
     }
 
     [HttpGet]
@@ -349,6 +352,8 @@ public class CheckoutController : Controller
 
             // Deduct stock through the in-house ledger (multi-branch fulfilment).
             await _fulfilment.FulfilPaidOrderAsync(order.Id);
+
+            await SendOrderEmailsAsync(order.Id);
         }
 
         // Clear cart
@@ -390,8 +395,68 @@ public class CheckoutController : Controller
         // Deduct stock through the in-house ledger (multi-branch fulfilment).
         await _fulfilment.FulfilPaidOrderAsync(order.Id);
 
+        await SendOrderEmailsAsync(order.Id);
+
         HttpContext.Session.Remove(CartSessionKey);
         return RedirectToAction("Confirmation", new { orderNumber = order.OrderNumber });
+    }
+
+    /// <summary>
+    /// Emails the customer an order confirmation and (optionally) alerts the admin of a new order.
+    /// Respects the Notifications settings toggles. Never throws — email must not break checkout.
+    /// </summary>
+    private async Task SendOrderEmailsAsync(int orderId)
+    {
+        try
+        {
+            var order = await _db.Orders.Include(o => o.Items).FirstOrDefaultAsync(o => o.Id == orderId);
+            if (order == null) return;
+
+            var customerEmail = await _db.Users.Where(u => u.Id == order.UserId).Select(u => u.Email).FirstOrDefaultAsync();
+
+            string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+            var rows = string.Join("", order.Items.Select(i => $@"
+                <tr>
+                    <td style=""padding:8px 0;border-bottom:1px solid #f0efed;"">{Enc(i.ProductName)}{(string.IsNullOrWhiteSpace(i.VariantName) ? "" : " — " + Enc(i.VariantName))} &times; {i.Quantity}</td>
+                    <td align=""right"" style=""padding:8px 0;border-bottom:1px solid #f0efed;white-space:nowrap;"">&#8358;{i.LineTotal:N0}</td>
+                </tr>"));
+            var summary = $@"
+                <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""margin:20px 0;font-size:14px;"">
+                    {rows}
+                    <tr><td style=""padding:12px 0 0;font-weight:bold;"">Total</td><td align=""right"" style=""padding:12px 0 0;font-weight:bold;"">&#8358;{order.Total:N0}</td></tr>
+                </table>";
+
+            // Customer confirmation
+            if (!string.IsNullOrWhiteSpace(customerEmail)
+                && await _settings.GetBoolAsync("notifications.order_confirmed", true))
+            {
+                var body = $@"
+                    <h2 style=""font-size:18px;margin:0 0 16px;"">Thank you for your order</h2>
+                    <p>Your order <strong>{Enc(order.OrderNumber)}</strong> has been confirmed and is being prepared. Here's a summary:</p>
+                    {summary}
+                    <p style=""font-size:13px;color:#78716c;"">We'll be in touch with delivery or pickup details. Thank you for shopping with us.</p>";
+                await _email.SendAsync(customerEmail!, $"Order {order.OrderNumber} confirmed", body, ct: HttpContext.RequestAborted);
+            }
+
+            // Admin new-order alert
+            if (await _settings.GetBoolAsync("notifications.new_order", true))
+            {
+                var adminEmail = await _settings.GetAsync("notifications.admin_email", "");
+                if (!string.IsNullOrWhiteSpace(adminEmail))
+                {
+                    var body = $@"
+                        <h2 style=""font-size:18px;margin:0 0 16px;"">New order received</h2>
+                        <p>Order <strong>{Enc(order.OrderNumber)}</strong>{(string.IsNullOrWhiteSpace(customerEmail) ? "" : " from " + Enc(customerEmail))}.</p>
+                        {summary}
+                        <p style=""font-size:13px;color:#78716c;"">View it in the admin dashboard under Orders.</p>";
+                    await _email.SendAsync(adminEmail, $"New order {order.OrderNumber} — ₦{order.Total:N0}", body, ct: HttpContext.RequestAborted);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed sending order emails for order {OrderId}", orderId);
+        }
     }
 
     /// <summary>Increments the global usage count on the discount code an order used.</summary>

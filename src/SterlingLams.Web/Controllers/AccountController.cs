@@ -14,17 +14,20 @@ public class AccountController : Controller
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly ApplicationDbContext _db;
     private readonly ILogger<AccountController> _logger;
+    private readonly SterlingLams.Web.Services.IEmailService _email;
 
     public AccountController(
         UserManager<ApplicationUser> userManager,
         SignInManager<ApplicationUser> signInManager,
         ApplicationDbContext db,
-        ILogger<AccountController> logger)
+        ILogger<AccountController> logger,
+        SterlingLams.Web.Services.IEmailService email)
     {
         _userManager = userManager;
         _signInManager = signInManager;
         _db = db;
         _logger = logger;
+        _email = email;
     }
 
     // ─── Login ───────────────────────────────────────────────────────────────
@@ -277,8 +280,16 @@ public class AccountController : Controller
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
             var resetLink = Url.Action(nameof(ResetPassword), "Account",
                 new { token, email = user.Email }, protocol: Request.Scheme)!;
-            _logger.LogInformation("Password reset requested for {Email}. Link: {Link}", email, resetLink);
-            // TODO: send resetLink via email service (e.g. SendGrid, Mailgun)
+            _logger.LogInformation("Password reset requested for {Email}.", email);
+
+            var body = $@"
+                <h2 style=""font-size:18px;margin:0 0 16px;"">Reset your password</h2>
+                <p>We received a request to reset the password for your account. Click the button below to choose a new one. This link expires shortly.</p>
+                <p style=""margin:28px 0;"">
+                    <a href=""{resetLink}"" style=""background:#0a0a0a;color:#ffffff;text-decoration:none;padding:12px 28px;display:inline-block;font-size:13px;letter-spacing:1px;text-transform:uppercase;"">Reset Password</a>
+                </p>
+                <p style=""font-size:13px;color:#78716c;"">If you didn't request this, you can safely ignore this email — your password won't change.</p>";
+            await _email.SendAsync(user.Email!, "Reset your password", body);
         }
 
         TempData["ForgotPasswordSent"] = true;
