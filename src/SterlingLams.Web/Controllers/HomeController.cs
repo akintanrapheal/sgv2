@@ -54,6 +54,21 @@ public class HomeController : Controller
         return View();
     }
 
+    [HttpPost]
+    public async Task<IActionResult> Subscribe(string email)
+    {
+        email = (email ?? "").Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@') || email.Length is < 5 or > 200)
+            return Json(new { success = false, message = "Please enter a valid email address." });
+
+        if (!await _db.NewsletterSubscribers.AnyAsync(s => s.Email == email))
+        {
+            _db.NewsletterSubscribers.Add(new Models.Domain.NewsletterSubscriber { Email = email, CreatedAt = DateTime.UtcNow });
+            await _db.SaveChangesAsync();
+        }
+        return Json(new { success = true, message = "Thank you for subscribing!" });
+    }
+
     public IActionResult Collections()
     {
         return View();

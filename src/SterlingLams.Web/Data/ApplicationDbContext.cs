@@ -38,6 +38,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
+    public DbSet<NewsletterSubscriber> NewsletterSubscribers => Set<NewsletterSubscriber>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -168,6 +169,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             e.Property(p => p.Total).HasPrecision(18, 2);
             e.HasIndex(p => new { p.StoreId, p.CreatedAt });
         });
+
+        // ─── NewsletterSubscriber ───────────────────────────────────────────
+        builder.Entity<NewsletterSubscriber>(e => e.HasIndex(n => n.Email).IsUnique());
 
         // ─── StockReservation (soft holds for unpaid online orders) ─────────
         builder.Entity<StockReservation>(e =>
