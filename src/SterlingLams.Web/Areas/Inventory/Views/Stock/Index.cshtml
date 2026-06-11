@@ -1,0 +1,119 @@
+@model SterlingLams.Web.Areas.Admin.ViewModels.AdminInventoryViewModel
+@{
+    ViewData["Title"] = "Stock";
+    Dictionary<string, string> rd(int pg) => new() { ["q"] = Model.SearchQuery ?? "", ["page"] = pg.ToString() };
+    var baseCls = "px-3 py-1.5 text-xs rounded-sm border border-neutral-200 text-neutral-600 hover:border-neutral-400 transition-colors";
+}
+@Html.AntiForgeryToken()
+
+<div class="flex items-center justify-between mb-4">
+    <form asp-area="Inventory" asp-controller="Stock" asp-action="Index" method="get" class="flex gap-2">
+        <input type="text" name="q" value="@Model.SearchQuery" placeholder="Search products…"
+               class="w-64 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+        <button type="submit" class="px-4 py-2 text-sm border border-neutral-200 rounded-sm hover:border-neutral-400">Search</button>
+    </form>
+    <button type="button" id="save-all-stock"
+            class="px-4 py-2 bg-emerald-600 text-white text-xs rounded-sm hover:bg-emerald-700 transition-colors">
+        Save all changes<span id="stock-change-count"></span>
+    </button>
+</div>
+
+@if (!Model.Products.Any())
+{
+    <div class="bg-white border border-neutral-100 rounded-sm p-16 text-center text-sm text-neutral-400">No products found.</div>
+}
+else
+{
+    <div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+        <table class="w-full text-sm min-w-[640px]">
+            <thead>
+                <tr class="bg-neutral-50 border-b border-neutral-100">
+                    <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Product</th>
+                    <th class="text-center px-4 py-3 text-xs text-neutral-400 font-medium">Total</th>
+                    @foreach (var s in Model.Stores)
+                    {
+                        <th class="text-center px-3 py-3 text-xs text-neutral-400 font-medium whitespace-nowrap">@s.Name.Replace("Sterlin Glams ", "")</th>
+                    }
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-50">
+                @foreach (var row in Model.Products)
+                {
+                    var total = row.TotalStock;
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-3">
+                            <p class="text-xs font-medium text-neutral-800 leading-snug">@row.ProductName</p>
+                            @if (!string.IsNullOrEmpty(row.Sku)) { <p class="text-[10px] text-neutral-400 font-mono mt-0.5">@row.Sku</p> }
+                        </td>
+                        <td class="px-4 py-3 text-center">
+                            <span class="text-sm font-medium @(total == 0 ? "text-red-600" : "text-neutral-800")">@total</span>
+                        </td>
+                        @foreach (var s in Model.Stores)
+                        {
+                            var qty = row.StockByStore.TryGetValue(s.Id, out var q2) ? q2 : -1;
+                            <td class="px-3 py-2 text-center">
+                                <input type="number" min="0"
+                                       placeholder="@(qty == -1 ? "—" : "")"
+                                       value="@(qty == -1 ? "" : qty.ToString())"
+                                       data-pid="@row.ProductId" data-sid="@s.Id" data-orig="@(qty == -1 ? "" : qty.ToString())"
+                                       class="stock-cell w-16 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-emerald-400 bg-white @(qty == 0 ? "text-red-600 border-red-200" : "")" />
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (Model.TotalPages > 1)
+    {
+        var cur = Model.CurrentPage; var last = Model.TotalPages;
+        var start = Math.Max(1, cur - 2); var end = Math.Min(last, cur + 2);
+        <div class="flex items-center justify-center gap-1.5 mt-4 flex-wrap">
+            <span class="text-[11px] text-neutral-400 mr-1">Page @cur of @last</span>
+            @if (cur > 1)
+            {
+                <a asp-area="Inventory" asp-controller="Stock" asp-action="Index" asp-all-route-data="rd(1)" class="@baseCls">« First</a>
+                <a asp-area="Inventory" asp-controller="Stock" asp-action="Index" asp-all-route-data="rd(cur - 1)" class="@baseCls">‹ Prev</a>
+            }
+            @for (int pg = start; pg <= end; pg++)
+            {
+                <a asp-area="Inventory" asp-controller="Stock" asp-action="Index" asp-all-route-data="rd(pg)"
+                   class="px-3 py-1.5 text-xs rounded-sm border transition-colors @(pg == cur ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")">@pg</a>
+            }
+            @if (cur < last)
+            {
+                <a asp-area="Inventory" asp-controller="Stock" asp-action="Index" asp-all-route-data="rd(cur + 1)" class="@baseCls">Next ›</a>
+                <a asp-area="Inventory" asp-controller="Stock" asp-action="Index" asp-all-route-data="rd(last)" class="@baseCls">Last »</a>
+            }
+        </div>
+    }
+
+    <script>
+    (function () {
+        const btn = document.getElementById('save-all-stock');
+        const countEl = document.getElementById('stock-change-count');
+        const token = document.querySelector('input[name="__RequestVerificationToken"]');
+        const changed = () => [...document.querySelectorAll('input.stock-cell')]
+            .filter(i => i.value !== '' && i.value !== i.getAttribute('data-orig'));
+        const refresh = () => { const n = changed().length; countEl.textContent = n ? ' (' + n + ')' : ''; };
+        document.addEventListener('input', e => { if (e.target.classList && e.target.classList.contains('stock-cell')) refresh(); });
+        refresh();
+        btn.addEventListener('click', async () => {
+            const edits = changed().map(i => ({ productId: +i.dataset.pid, storeId: +i.dataset.sid, quantity: +i.value }));
+            if (!edits.length) { alert('No changes to save.'); return; }
+            btn.disabled = true; btn.textContent = 'Saving…';
+            try {
+                const res = await fetch('/Inventory/Stock/SetAll', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token ? token.value : '' },
+                    body: JSON.stringify(edits)
+                });
+                const data = await res.json();
+                if (data.success) { location.reload(); }
+                else { alert('Save failed.'); btn.disabled = false; btn.textContent = 'Save all changes'; }
+            } catch { alert('Save failed. Please try again.'); btn.disabled = false; btn.textContent = 'Save all changes'; }
+        });
+    })();
+    </script>
+}

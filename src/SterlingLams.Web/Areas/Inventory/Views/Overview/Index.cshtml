@@ -1,0 +1,117 @@
+@model SterlingLams.Web.Areas.Inventory.Controllers.InventoryOverviewViewModel
+@{
+    ViewData["Title"] = "Inventory Overview";
+}
+
+<!-- KPI cards -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-5">
+        <p class="text-xs text-neutral-400 uppercase tracking-wide">SKUs</p>
+        <p class="text-2xl font-semibold text-neutral-900 mt-1">@Model.TotalSkus.ToString("N0")</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-5">
+        <p class="text-xs text-neutral-400 uppercase tracking-wide">Out of stock</p>
+        <p class="text-2xl font-semibold @(Model.OutOfStock > 0 ? "text-red-600" : "text-neutral-900") mt-1">@Model.OutOfStock.ToString("N0")</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-5">
+        <p class="text-xs text-neutral-400 uppercase tracking-wide">Low stock</p>
+        <p class="text-2xl font-semibold @(Model.LowStock > 0 ? "text-amber-600" : "text-neutral-900") mt-1">@Model.LowStock.ToString("N0")</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-5">
+        <p class="text-xs text-neutral-400 uppercase tracking-wide">Units on hand</p>
+        <p class="text-2xl font-semibold text-neutral-900 mt-1">@Model.UnitsOnHand.ToString("N0")</p>
+        <p class="text-[11px] text-neutral-400 mt-1">@string.Join(" · ", Model.PerBranch.Select(b => $"{b.Store} {b.Units:N0}"))</p>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Stock alerts -->
+    <div class="lg:col-span-2 bg-white border border-neutral-100 rounded-sm">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-neutral-100">
+            <h2 class="text-sm font-medium text-neutral-800">Stock alerts</h2>
+            <a asp-area="Inventory" asp-controller="Stock" asp-action="Index" class="text-xs text-emerald-600 hover:text-emerald-700">Manage stock →</a>
+        </div>
+        @if (Model.Alerts.Any())
+        {
+            <table class="w-full text-sm">
+                <tbody class="divide-y divide-neutral-50">
+                    @foreach (var a in Model.Alerts)
+                    {
+                        <tr class="hover:bg-neutral-50">
+                            <td class="px-5 py-2.5 text-xs text-neutral-700">@a.Name</td>
+                            <td class="px-5 py-2.5 text-right">
+                                @if (a.Total == 0)
+                                {
+                                    <span class="text-[11px] font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full">Out of stock</span>
+                                }
+                                else
+                                {
+                                    <span class="text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">Low · @a.Total left</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p class="px-5 py-8 text-center text-sm text-neutral-400">No stock alerts — everything's above threshold.</p>
+        }
+    </div>
+
+    <!-- Right column: Till + Jump To -->
+    <div class="space-y-6">
+        <div class="bg-white border border-neutral-100 rounded-sm p-5">
+            <h2 class="text-sm font-medium text-neutral-800 mb-3">Till today</h2>
+            <div class="flex items-baseline justify-between mb-1">
+                <span class="text-xs text-neutral-400">Sales</span>
+                <span class="text-lg font-semibold text-neutral-900">₦@Model.TillSalesToday.ToString("N0")</span>
+            </div>
+            <div class="flex items-baseline justify-between mb-1">
+                <span class="text-xs text-neutral-400">Transactions</span>
+                <span class="text-sm text-neutral-700">@Model.TillTxToday</span>
+            </div>
+            <div class="flex items-baseline justify-between">
+                <span class="text-xs text-neutral-400">Open sessions</span>
+                <span class="text-sm @(Model.OpenSessions > 0 ? "text-emerald-600 font-medium" : "text-neutral-700")">@Model.OpenSessions</span>
+            </div>
+            <a asp-area="Inventory" asp-controller="Till" asp-action="Index" class="mt-3 block text-center text-xs text-emerald-600 hover:text-emerald-700 border border-emerald-200 rounded-sm py-2">Open Till management →</a>
+        </div>
+
+        <div class="bg-white border border-neutral-100 rounded-sm p-5">
+            <h2 class="text-sm font-medium text-neutral-800 mb-3">Jump to</h2>
+            <div class="space-y-2">
+                <a asp-area="Inventory" asp-controller="Stock" asp-action="Index" class="flex items-center gap-2 text-sm text-neutral-700 hover:text-emerald-600"><span class="text-emerald-500">›</span> Adjust stock</a>
+                <a asp-area="Inventory" asp-controller="Transfers" asp-action="Index" class="flex items-center gap-2 text-sm text-neutral-700 hover:text-emerald-600"><span class="text-emerald-500">›</span> New transfer</a>
+                <a asp-area="Inventory" asp-controller="Stocktake" asp-action="Index" class="flex items-center gap-2 text-sm text-neutral-700 hover:text-emerald-600"><span class="text-emerald-500">›</span> Stock-take</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent movements -->
+<div class="bg-white border border-neutral-100 rounded-sm mt-6">
+    <div class="px-5 py-3 border-b border-neutral-100"><h2 class="text-sm font-medium text-neutral-800">Recent stock movements</h2></div>
+    @if (Model.RecentMovements.Any())
+    {
+        <table class="w-full text-sm">
+            <tbody class="divide-y divide-neutral-50">
+                @foreach (var m in Model.RecentMovements)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-5 py-2.5 text-xs text-neutral-700">@m.Product</td>
+                        <td class="px-5 py-2.5 text-xs text-neutral-500">@m.Store</td>
+                        <td class="px-5 py-2.5 text-xs text-neutral-500">@m.Type</td>
+                        <td class="px-5 py-2.5 text-xs text-right font-medium @(m.Change >= 0 ? "text-emerald-600" : "text-red-600")">@(m.Change >= 0 ? "+" : "")@m.Change</td>
+                        <td class="px-5 py-2.5 text-[11px] text-neutral-400 text-right">@m.When.ToLocalTime().ToString("dd MMM, HH:mm")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else
+    {
+        <p class="px-5 py-8 text-center text-sm text-neutral-400">No stock movements yet.</p>
+    }
+</div>

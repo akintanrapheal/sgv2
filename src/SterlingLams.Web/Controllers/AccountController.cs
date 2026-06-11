@@ -60,6 +60,16 @@ public class AccountController : Controller
                 await _userManager.UpdateAsync(user);
             }
             _logger.LogInformation("User {Email} logged in", model.Email);
+
+            if (!string.IsNullOrEmpty(model.ReturnUrl) && Url.IsLocalUrl(model.ReturnUrl))
+                return Redirect(model.ReturnUrl);
+
+            // Inventory-team staff land straight in the dedicated Inventory System.
+            if (user != null
+                && await _userManager.IsInRoleAsync(user, "Inventory")
+                && !await _userManager.IsInRoleAsync(user, "Admin"))
+                return RedirectToAction("Index", "Overview", new { area = "Inventory" });
+
             return RedirectToLocal(model.ReturnUrl);
         }
 

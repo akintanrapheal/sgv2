@@ -30,6 +30,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             ViewData["AllowedSections"] = allowed;
             ViewData["IsFullAdmin"] = User.IsInRole(AdminSections.AdminRole);
 
+            // Inventory-team staff operate in the dedicated Inventory System, not the website admin.
+            if (!User.IsInRole(AdminSections.AdminRole) && User.IsInRole("Inventory"))
+            {
+                context.Result = RedirectToAction("Index", "Overview", new { area = "Inventory" });
+                return;
+            }
+
             var section = Section;
 
             // Admin-only controllers (Section == null): only full admins pass
