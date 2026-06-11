@@ -10,6 +10,7 @@ public class ProductVariant
     // Auto-generated from attribute values e.g. "Gold / 18\" / A"
     public string Name { get; set; } = string.Empty;
     public string? Sku { get; set; }
+    public string? Barcode { get; set; }
     public decimal? PriceAdjustment { get; set; }
     public int StockQuantity { get; set; }
     public bool IsActive { get; set; } = true;

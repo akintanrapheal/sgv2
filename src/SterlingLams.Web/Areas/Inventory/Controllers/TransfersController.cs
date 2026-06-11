@@ -43,7 +43,8 @@ public class TransfersController : InventoryAreaController
         if (q.Length > 0)
             query = query.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
                                   || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
-                                  || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%"));
+                                  || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
+                                  || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")));
 
         var products = await query.OrderBy(p => p.Name).Take(40)
             .Select(p => new

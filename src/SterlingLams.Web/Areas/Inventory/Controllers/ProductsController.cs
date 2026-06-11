@@ -22,7 +22,8 @@ public class ProductsController : InventoryAreaController
         if (!string.IsNullOrWhiteSpace(q))
             query = query.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
                                   || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
-                                  || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%"));
+                                  || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
+                                  || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")));
 
         var total = await query.CountAsync();
         var products = await query.OrderBy(p => p.Name)
@@ -50,11 +51,31 @@ public class ProductsController : InventoryAreaController
 
     public async Task<IActionResult> Edit(int id)
     {
-        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == id);
+        var product = await _db.Products
+            .Include(p => p.Variants.OrderBy(v => v.Name))
+            .FirstOrDefaultAsync(p => p.Id == id);
         if (product == null) return NotFound();
         ViewData["Title"] = "Edit Product";
         await LoadCategories(product.CategoryId);
         return View(product);
+    }
+
+    // Save per-variant barcodes (parallel arrays from the variants table).
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveVariants(int productId, int[] variantId, string[] barcode)
+    {
+        var variants = await _db.ProductVariants.Where(v => v.ProductId == productId).ToListAsync();
+        for (int i = 0; variantId != null && i < variantId.Length; i++)
+        {
+            var v = variants.FirstOrDefault(x => x.Id == variantId[i]);
+            if (v != null)
+                v.Barcode = (barcode != null && i < barcode.Length && !string.IsNullOrWhiteSpace(barcode[i]))
+                    ? barcode[i].Trim() : null;
+        }
+        await _db.SaveChangesAsync();
+        await LogAsync("Update", "Product", productId.ToString(), "Updated variant barcodes");
+        TempData["Success"] = "Variant barcodes saved.";
+        return RedirectToAction(nameof(Edit), new { id = productId });
     }
 
     public async Task<IActionResult> Create()
@@ -151,7 +172,8 @@ public class ProductsController : InventoryAreaController
         barcode = (barcode ?? "").Trim();
         if (barcode.Length == 0) return Json(new { found = false });
         var p = await _db.Products
-            .Where(x => x.Barcode == barcode || x.Sku == barcode)
+            .Where(x => x.Barcode == barcode || x.Sku == barcode
+                     || x.Variants.Any(v => v.Barcode == barcode || v.Sku == barcode))
             .Select(x => new { x.Id, x.Name, x.Sku, x.Barcode })
             .FirstOrDefaultAsync();
         return p == null ? Json(new { found = false }) : Json(new { found = true, id = p.Id, name = p.Name });

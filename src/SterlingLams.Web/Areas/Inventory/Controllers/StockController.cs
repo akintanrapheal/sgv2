@@ -31,7 +31,8 @@ public class StockController : InventoryAreaController
         if (!string.IsNullOrWhiteSpace(q))
             pq = pq.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
                             || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
-                            || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%"));
+                            || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
+                            || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")));
 
         var all = await pq.OrderBy(p => p.Name).ToListAsync();
         var ids = all.Select(p => p.Id).ToList();
@@ -127,7 +128,8 @@ public class StockController : InventoryAreaController
         if (!string.IsNullOrWhiteSpace(q))
             pq = pq.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
                             || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
-                            || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%"));
+                            || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
+                            || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")));
 
         var all = await pq.OrderBy(p => p.Name).ToListAsync();
         var ids = all.Select(p => p.Id).ToList();

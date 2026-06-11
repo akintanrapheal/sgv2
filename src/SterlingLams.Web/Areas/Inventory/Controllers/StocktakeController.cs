@@ -34,7 +34,8 @@ public class StocktakeController : InventoryAreaController
         if (!string.IsNullOrWhiteSpace(q))
             pq = pq.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
                             || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
-                            || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%"));
+                            || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
+                            || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")));
 
         var rows = await pq.OrderBy(p => p.Name)
             .Select(p => new StocktakeRow

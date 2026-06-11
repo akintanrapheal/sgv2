@@ -68,3 +68,25 @@
         <a asp-area="Inventory" asp-controller="Products" asp-action="Index" class="text-sm text-neutral-500 hover:text-neutral-700">Cancel</a>
     </div>
 </form>
+
+@if (Model.Variants.Any())
+{
+    <form asp-area="Inventory" asp-controller="Products" asp-action="SaveVariants" method="post" class="max-w-xl bg-white border border-neutral-100 rounded-sm p-6 mt-6">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="productId" value="@Model.Id" />
+        <h2 class="text-sm font-medium text-neutral-800 mb-1">Variant barcodes</h2>
+        <p class="text-xs text-neutral-400 mb-4">Give each variant its own barcode (scan or type). Scanning a variant barcode anywhere finds this product.</p>
+        <div class="space-y-2">
+            @foreach (var v in Model.Variants)
+            {
+                <div class="flex items-center gap-3">
+                    <input type="hidden" name="variantId" value="@v.Id" />
+                    <span class="flex-1 text-xs text-neutral-700 truncate">@v.Name</span>
+                    <input name="barcode" value="@v.Barcode" autocomplete="off" placeholder="Scan / type…"
+                           class="w-44 border border-neutral-200 rounded-sm px-3 py-1.5 text-xs font-mono focus:outline-none focus:border-emerald-400" />
+                </div>
+            }
+        </div>
+        <button type="submit" class="mt-4 px-5 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Save variant barcodes</button>
+    </form>
+}
