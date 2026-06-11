@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using SterlingLams.Web.Data;
 using SterlingLams.Web.Services;
 
 namespace SterlingLams.Web.Areas.Admin.Controllers;
@@ -8,13 +10,24 @@ public class SettingsController : AdminBaseController
     protected override string Section => "Settings";
 
     private readonly ISettingsService _settings;
+    private readonly ApplicationDbContext _db;
 
-    public SettingsController(ISettingsService settings) => _settings = settings;
+    public SettingsController(ISettingsService settings, ApplicationDbContext db)
+    {
+        _settings = settings;
+        _db = db;
+    }
 
     public async Task<IActionResult> Index(string tab = "General")
     {
         ViewData["Title"] = "Settings";
         ViewData["ActiveTab"] = tab;
+        // For "category"-type settings (a dropdown of categories).
+        ViewBag.Categories = await _db.Categories
+            .Where(c => c.IsActive)
+            .OrderBy(c => c.Name)
+            .Select(c => new { c.Name, c.Slug })
+            .ToListAsync();
         var all = await _settings.GetAllAsync();
         return View(all);
     }

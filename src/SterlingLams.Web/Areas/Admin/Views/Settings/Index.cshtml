@@ -107,6 +107,18 @@
                                     <p class="text-[11px] text-neutral-400">Uploading a file will fill the URL field automatically.</p>
                                 </div>
                             }
+                            else if (s.Type == "category")
+                            {
+                                var cats = ViewBag.Categories as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+                                <select name="@s.Key"
+                                        class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 bg-white">
+                                    <option value="">— Select a category —</option>
+                                    @foreach (var c in cats)
+                                    {
+                                        <option value="@c.Slug" selected="@(s.Value == (string)c.Slug)">@c.Name</option>
+                                    }
+                                </select>
+                            }
                             else
                             {
                                 <input type="@s.Type" name="@s.Key" value="@s.Value"

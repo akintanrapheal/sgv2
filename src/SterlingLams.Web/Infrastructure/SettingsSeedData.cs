@@ -83,5 +83,21 @@ public static class SettingsSeedData
         new() { Key = "homepage.show_featured",    Group = "Homepage", Label = "Show Featured Section",  Type = "boolean", Value = "true",                                                 Description = "Show the Featured Pieces section.",                                     SortOrder = 5 },
         new() { Key = "homepage.featured_heading", Group = "Homepage", Label = "Featured Section Heading",Type = "text",  Value = "Featured Pieces",                                      Description = "Heading for the featured products section.",                             SortOrder = 6 },
         new() { Key = "homepage.store_banner_text",Group = "Homepage", Label = "Store Banner Subtext",   Type = "text",   Value = "Experience our jewellery in person at any of our three Lagos boutiques.", Description = "Text in the dark store-finder banner.",              SortOrder = 7 },
+
+        // ── Homepage Feature (two-up "Icons of Summer"-style section under Shop by Category) ──
+        new() { Key = "home.feature.enabled",     Group = "Homepage Feature", Label = "Show Feature Section",   Type = "boolean",  Value = "true",            Description = "Show the two-image feature section under Shop by Category.",              SortOrder = 0 },
+        new() { Key = "home.feature.heading",     Group = "Homepage Feature", Label = "Section Heading",        Type = "text",     Value = "Icons of Summer", Description = "Centred heading above the two images.",                                   SortOrder = 1 },
+
+        new() { Key = "home.feature.b1.image",     Group = "Homepage Feature", Label = "Block 1 — Image",        Type = "image",    Value = "",                Description = "Left model photo. Recommended: portrait, at least 800×1000px.",           SortOrder = 2 },
+        new() { Key = "home.feature.b1.title",     Group = "Homepage Feature", Label = "Block 1 — Title",        Type = "text",     Value = "",                Description = "e.g. \"Knot by Sterlin Glams\".",                                          SortOrder = 3 },
+        new() { Key = "home.feature.b1.text",      Group = "Homepage Feature", Label = "Block 1 — Description",  Type = "textarea", Value = "",                Description = "Short line under the title.",                                             SortOrder = 4 },
+        new() { Key = "home.feature.b1.category",  Group = "Homepage Feature", Label = "Block 1 — Links To",     Type = "category", Value = "",                Description = "Category the \"Shop the Collection\" link opens.",                         SortOrder = 5 },
+        new() { Key = "home.feature.b1.link_text", Group = "Homepage Feature", Label = "Block 1 — Button Text",  Type = "text",     Value = "Shop the Collection", Description = "Link label under the description.",                                    SortOrder = 6 },
+
+        new() { Key = "home.feature.b2.image",     Group = "Homepage Feature", Label = "Block 2 — Image",        Type = "image",    Value = "",                Description = "Right model photo. Recommended: portrait, at least 800×1000px.",          SortOrder = 7 },
+        new() { Key = "home.feature.b2.title",     Group = "Homepage Feature", Label = "Block 2 — Title",        Type = "text",     Value = "",                Description = "e.g. \"HardWear by Sterlin Glams\".",                                      SortOrder = 8 },
+        new() { Key = "home.feature.b2.text",      Group = "Homepage Feature", Label = "Block 2 — Description",  Type = "textarea", Value = "",                Description = "Short line under the title.",                                             SortOrder = 9 },
+        new() { Key = "home.feature.b2.category",  Group = "Homepage Feature", Label = "Block 2 — Links To",     Type = "category", Value = "",                Description = "Category the \"Shop the Collection\" link opens.",                         SortOrder = 10 },
+        new() { Key = "home.feature.b2.link_text", Group = "Homepage Feature", Label = "Block 2 — Button Text",  Type = "text",     Value = "Shop the Collection", Description = "Link label under the description.",                                    SortOrder = 11 },
     };
 }

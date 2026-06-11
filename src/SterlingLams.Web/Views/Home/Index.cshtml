@@ -134,6 +134,65 @@
     </section>
 }
 
+<!-- ─── Homepage Feature ("Icons of Summer"-style, admin-editable) ──────────── -->
+@{
+    var featOn       = await SettingsService.GetBoolAsync("home.feature.enabled", true);
+    var featHeading  = await SettingsService.GetAsync("home.feature.heading", "Icons of Summer");
+    var blocks = new[] { "b1", "b2" };
+    var featBlocks = new List<(string Image, string Title, string Text, string Category, string LinkText)>();
+    foreach (var b in blocks)
+    {
+        var img = await SettingsService.GetAsync($"home.feature.{b}.image", "");
+        if (string.IsNullOrWhiteSpace(img)) continue;
+        featBlocks.Add((
+            img,
+            await SettingsService.GetAsync($"home.feature.{b}.title", ""),
+            await SettingsService.GetAsync($"home.feature.{b}.text", ""),
+            await SettingsService.GetAsync($"home.feature.{b}.category", ""),
+            await SettingsService.GetAsync($"home.feature.{b}.link_text", "Shop the Collection")
+        ));
+    }
+}
+@if (featOn && featBlocks.Any())
+{
+    <section class="py-20 bg-white">
+        <div class="max-w-6xl mx-auto px-6">
+            @if (!string.IsNullOrWhiteSpace(featHeading))
+            {
+                <div class="text-center mb-12">
+                    <h2 class="font-cormorant text-4xl font-light text-neutral-900">@featHeading</h2>
+                </div>
+            }
+            <div class="grid gap-8 @(featBlocks.Count > 1 ? "md:grid-cols-2" : "max-w-xl mx-auto")">
+                @foreach (var blk in featBlocks)
+                {
+                    <div class="text-center">
+                        <div class="aspect-[4/5] overflow-hidden bg-neutral-100 mb-6 group">
+                            <img src="@blk.Image" alt="@blk.Title" loading="lazy"
+                                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(blk.Title))
+                        {
+                            <h3 class="font-cormorant text-2xl font-light text-neutral-900 mb-2">@blk.Title</h3>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(blk.Text))
+                        {
+                            <p class="text-sm text-neutral-500 font-light max-w-md mx-auto mb-4 leading-relaxed">@blk.Text</p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(blk.Category))
+                        {
+                            <a asp-controller="Products" asp-action="Index" asp-route-category="@blk.Category"
+                               class="inline-block text-xs tracking-[0.2em] uppercase text-neutral-900 border-b-2 border-brand-500 pb-1 hover:text-brand-500 transition-colors">
+                                @(string.IsNullOrWhiteSpace(blk.LinkText) ? "Shop the Collection" : blk.LinkText)
+                            </a>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </section>
+}
+
 <!-- ─── Featured Products ─────────────────────────────────────────────────── -->
 <section class="py-20 bg-stone-50">
     <div class="max-w-7xl mx-auto px-6">
