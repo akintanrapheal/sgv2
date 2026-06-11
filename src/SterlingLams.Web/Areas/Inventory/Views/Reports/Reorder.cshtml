@@ -1,0 +1,47 @@
+@model List<SterlingLams.Web.Areas.Inventory.Controllers.ReorderRow>
+@{
+    ViewData["Title"] = "Reorder report";
+    var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
+}
+<partial name="_ReportTabs" model="@("Reorder")" />
+
+<div class="flex items-center justify-between mb-3">
+    <p class="text-xs text-neutral-400"><strong>@Model.Count</strong> product(s) at or below threshold</p>
+    <a asp-area="Inventory" asp-controller="Reports" asp-action="ReorderCsv"
+       class="px-4 py-2 border border-neutral-200 text-neutral-700 text-xs rounded-sm hover:border-neutral-400 transition-colors">Export CSV</a>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[720px]">
+        <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+            <tr>
+                <th class="text-left font-medium px-4 py-3">Product</th>
+                @foreach (var s in stores) { <th class="text-right font-medium px-3 py-3 whitespace-nowrap">@s.Name.Replace("Sterlin Glams ", "")</th> }
+                <th class="text-right font-medium px-4 py-3">Total</th>
+                <th class="text-right font-medium px-4 py-3">Threshold</th>
+                <th class="text-right font-medium px-4 py-3">Reorder</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-100">
+            @if (!Model.Any()) { <tr><td colspan="@(stores.Count + 4)" class="px-4 py-10 text-center text-emerald-600">Nothing to reorder — all stock is above threshold. 🎉</td></tr> }
+            @foreach (var r in Model)
+            {
+                var suggest = Math.Max(0, Math.Max(1, r.Threshold) * Math.Max(1, stores.Count) - r.Total);
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-2.5">
+                        <a asp-area="Inventory" asp-controller="Products" asp-action="Edit" asp-route-id="@r.Id" class="text-xs text-neutral-800 hover:text-emerald-600">@r.Name</a>
+                        @if (!string.IsNullOrEmpty(r.Sku)) { <span class="text-[10px] text-neutral-400 font-mono ml-1">@r.Sku</span> }
+                    </td>
+                    @foreach (var s in stores)
+                    {
+                        var v = r.PerStore.TryGetValue(s.Id, out var q) ? q : 0;
+                        <td class="px-3 py-2.5 text-right text-xs @(v == 0 ? "text-red-500" : "text-neutral-600")">@v</td>
+                    }
+                    <td class="px-4 py-2.5 text-right text-xs font-medium @(r.Total == 0 ? "text-red-600" : "text-amber-600")">@r.Total</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-neutral-400">@r.Threshold</td>
+                    <td class="px-4 py-2.5 text-right text-xs font-semibold text-emerald-700">+@suggest</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

@@ -1,0 +1,52 @@
+@model SterlingLams.Web.Areas.Inventory.Controllers.StockValueVm
+@{ ViewData["Title"] = "Stock value"; }
+<partial name="_ReportTabs" model="@("Value")" />
+
+<div class="flex items-center justify-between mb-4">
+    <p class="text-xs text-neutral-400">Inventory value at selling price.</p>
+    <a asp-area="Inventory" asp-controller="Reports" asp-action="ValueCsv"
+       class="px-4 py-2 border border-neutral-200 text-neutral-700 text-xs rounded-sm hover:border-neutral-400 transition-colors">Export CSV</a>
+</div>
+
+<!-- Totals -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-5">
+        <p class="text-xs text-neutral-400 uppercase tracking-wide">Total value</p>
+        <p class="text-2xl font-semibold text-neutral-900 mt-1">₦@Model.TotalValue.ToString("N0")</p>
+        <p class="text-[11px] text-neutral-400 mt-1">@Model.TotalUnits.ToString("N0") units</p>
+    </div>
+    @foreach (var b in Model.PerBranch)
+    {
+        <div class="bg-white border border-neutral-100 rounded-sm p-5">
+            <p class="text-xs text-neutral-400 uppercase tracking-wide">@b.Store</p>
+            <p class="text-lg font-semibold text-neutral-900 mt-1">₦@b.Value.ToString("N0")</p>
+            <p class="text-[11px] text-neutral-400 mt-1">@b.Units.ToString("N0") units</p>
+        </div>
+    }
+</div>
+
+<h2 class="text-sm font-medium text-neutral-800 mb-3">Top products by value</h2>
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+            <tr>
+                <th class="text-left font-medium px-4 py-3">Product</th>
+                <th class="text-right font-medium px-4 py-3">Units</th>
+                <th class="text-right font-medium px-4 py-3">Price</th>
+                <th class="text-right font-medium px-4 py-3">Value</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-100">
+            @if (!Model.TopProducts.Any()) { <tr><td colspan="4" class="px-4 py-10 text-center text-neutral-400">No stock on hand yet.</td></tr> }
+            @foreach (var p in Model.TopProducts)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-2.5 text-xs text-neutral-800">@p.Name</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-neutral-600">@p.Units</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-neutral-500">₦@p.Price.ToString("N0")</td>
+                    <td class="px-4 py-2.5 text-right text-xs font-medium text-neutral-800">₦@p.Value.ToString("N0")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
