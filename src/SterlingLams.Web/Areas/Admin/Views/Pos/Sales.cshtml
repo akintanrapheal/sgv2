@@ -4,14 +4,8 @@
     var total = Model.Sum(o => o.Total);
 }
 
-<div class="flex items-center justify-between mb-6">
-    <div>
-        <h1 class="text-lg font-medium text-neutral-800">POS Sales</h1>
-        <p class="text-xs text-neutral-400">@Model.Count sale(s) · ₦@total.ToString("N0") total</p>
-    </div>
-    <a asp-area="Admin" asp-controller="Pos" asp-action="Index"
-       class="px-4 py-2 bg-brand-500 text-white text-sm rounded-sm hover:bg-brand-600 transition-colors">+ New Sale</a>
-</div>
+<partial name="_TillTabs" model="@("Sales")" />
+<p class="text-xs text-neutral-400 -mt-3 mb-5">@Model.Count sale(s) · ₦@total.ToString("N0") total</p>
 
 <div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
     <table class="w-full text-sm">

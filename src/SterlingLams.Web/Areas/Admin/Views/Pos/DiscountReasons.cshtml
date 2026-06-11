@@ -4,13 +4,8 @@
     Layout = "_AdminLayout";
 }
 
-<div class="flex items-center justify-between mb-6">
-    <div>
-        <h1 class="text-xl font-semibold text-neutral-900">POS Discount Reasons</h1>
-        <p class="text-sm text-neutral-500 mt-0.5">Configure discount reasons and presets shown on the till.</p>
-    </div>
-    <a asp-action="Index" class="text-sm text-neutral-500 hover:text-neutral-700 transition-colors">← Back to POS</a>
-</div>
+<partial name="_TillTabs" model="@("DiscountReasons")" />
+<p class="text-xs text-neutral-400 -mt-3 mb-5">Configure discount reasons and presets shown on the till.</p>
 
 <!-- Add Reason -->
 <div class="bg-white rounded-xl border border-neutral-200 p-5 mb-6">

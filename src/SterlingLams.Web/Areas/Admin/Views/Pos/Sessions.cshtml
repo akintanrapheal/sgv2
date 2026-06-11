@@ -1,13 +1,8 @@
 @model List<SterlingLams.Web.Areas.Admin.Controllers.PosController.SessionRow>
 @{ ViewData["Title"] = "Till Sessions"; }
 
-<div class="flex items-center justify-between mb-6">
-    <div>
-        <h1 class="text-lg font-medium text-neutral-800">Till Sessions</h1>
-        <p class="text-xs text-neutral-400">Cash-ups across all tills. Click a session for its Z-report.</p>
-    </div>
-    <a asp-area="Admin" asp-controller="Pos" asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← POS</a>
-</div>
+<partial name="_TillTabs" model="@("Sessions")" />
+<p class="text-xs text-neutral-400 -mt-3 mb-5">Cash-ups across all tills. Click a session for its Z-report.</p>
 
 <div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
     <table class="w-full text-sm min-w-[800px]">

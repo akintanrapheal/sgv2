@@ -7,7 +7,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers;
 
 public class RegistersController : AdminBaseController
 {
-    protected override string Section => "Stores";
+    // Tills are managed inside the Till hub, so they're gated by the POS section.
+    protected override string Section => "POS";
 
     private readonly ApplicationDbContext _db;
     public RegistersController(ApplicationDbContext db) => _db = db;
