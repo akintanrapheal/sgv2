@@ -19,6 +19,9 @@ public static class ServiceCollectionExtensions
         // ─── Merchandising (best sellers / trending / new arrivals / recently viewed) ──
         services.AddScoped<IMerchandisingService, MerchandisingService>();
 
+        // ─── Store-level authorization (writes-only) ──────────────────────────
+        services.AddScoped<IStoreAccessService, StoreAccessService>();
+
         // ─── Product Import (WooCommerce CSV) ─────────────────────────────────
         services.AddScoped<IWooCommerceImportService, WooCommerceImportService>();
         services.AddScoped<ICatalogImportService, CatalogImportService>();

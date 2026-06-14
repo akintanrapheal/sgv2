@@ -11,12 +11,14 @@ public class StocktakeController : InventoryAreaController
 {
     private readonly ApplicationDbContext _db;
     private readonly IStockService _stock;
+    private readonly IStoreAccessService _access;
     private const int PageSize = 40;
 
-    public StocktakeController(ApplicationDbContext db, IStockService stock)
+    public StocktakeController(ApplicationDbContext db, IStockService stock, IStoreAccessService access)
     {
         _db = db;
         _stock = stock;
+        _access = access;
     }
 
     // Count sheet for one branch: enter physical counts, see variance, reconcile.
@@ -86,6 +88,9 @@ public class StocktakeController : InventoryAreaController
     {
         var store = await _db.Stores.FirstOrDefaultAsync(s => s.Id == req.StoreId && s.IsActive);
         if (store == null) return Json(new { success = false, message = "Invalid branch." });
+        // Store-level authorization (writes-only).
+        if (!await _access.CanWriteAsync(User, store.Id))
+            return Json(new { success = false, message = "You can only run a stock-take for your assigned branch(es)." });
         if (req.Counts == null || req.Counts.Count == 0) return Json(new { success = true, count = 0 });
 
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;

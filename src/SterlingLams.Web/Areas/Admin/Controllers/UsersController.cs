@@ -315,6 +315,42 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return RedirectToAction(nameof(Index));
         }
 
+        // ── Store-level access (writes-only) ──────────────────────────────────
+        [HttpGet]
+        public async Task<IActionResult> Stores(string id)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null) return NotFound();
+            ViewBag.User = user;
+            ViewBag.AllStores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+            ViewBag.Assigned = (await _db.UserStores.Where(us => us.UserId == id)
+                .Select(us => us.StoreId).ToListAsync()).ToHashSet();
+            return View();
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> SetStores(string id, int[] storeIds)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null) return NotFound();
+
+            var validStoreIds = (await _db.Stores.Where(s => s.IsActive).Select(s => s.Id).ToListAsync()).ToHashSet();
+            var desired = (storeIds ?? Array.Empty<int>()).Where(validStoreIds.Contains).Distinct().ToList();
+
+            var existing = await _db.UserStores.Where(us => us.UserId == id).ToListAsync();
+            _db.UserStores.RemoveRange(existing);
+            foreach (var sid in desired)
+                _db.UserStores.Add(new UserStore { UserId = id, StoreId = sid });
+            await _db.SaveChangesAsync();
+
+            await LogAsync("Update", "User", id, desired.Count == 0
+                ? $"Cleared branch access for {user.Email} (now unrestricted — all branches)"
+                : $"Set branch access for {user.Email}: {desired.Count} branch(es)");
+
+            TempData["Success"] = "Branch access updated.";
+            return RedirectToAction(nameof(Index));
+        }
+
         [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> ToggleLock(string id)
         {

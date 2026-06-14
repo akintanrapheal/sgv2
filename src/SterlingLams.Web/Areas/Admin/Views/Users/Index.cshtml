@@ -177,6 +177,11 @@
                                 <button type="button" data-no-loading="1"
                                         onclick="resetPwd('@u.Id', '@u.Email')"
                                         class="text-xs text-amber-500 hover:text-amber-700 transition-colors">Reset PW</button>
+                                @if (u.RoleName != "Customer" && !u.IsAdmin)
+                                {
+                                    <a asp-area="Admin" asp-controller="Users" asp-action="Stores" asp-route-id="@u.Id"
+                                       class="text-xs text-neutral-500 hover:text-neutral-800 transition-colors">Branches</a>
+                                }
                                 <form asp-area="Admin" asp-controller="Users" asp-action="ToggleLock" asp-route-id="@u.Id"
                                       method="post" class="inline" onsubmit="return confirm('@(u.IsLocked ? "Unlock" : "Lock") @u.Email?')">
                                     @Html.AntiForgeryToken()

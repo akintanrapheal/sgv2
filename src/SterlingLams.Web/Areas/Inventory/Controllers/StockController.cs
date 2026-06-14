@@ -13,12 +13,14 @@ public class StockController : InventoryAreaController
 {
     private readonly ApplicationDbContext _db;
     private readonly IStockService _stock;
+    private readonly IStoreAccessService _access;
     private const int PageSize = 30;
 
-    public StockController(ApplicationDbContext db, IStockService stock)
+    public StockController(ApplicationDbContext db, IStockService stock, IStoreAccessService access)
     {
         _db = db;
         _stock = stock;
+        _access = access;
     }
 
     public async Task<IActionResult> Index(string q = "", int page = 1, int? categoryId = null)
@@ -138,6 +140,12 @@ public class StockController : InventoryAreaController
             .Where(e => e.Quantity >= 0 && validStoreIds.Contains(e.StoreId) && validProductIds.Contains(e.ProductId))
             .ToList();
         if (valid.Count == 0) return Json(new { success = true, count = 0 });
+
+        // Store-level authorization (writes-only): reject edits targeting a branch the user
+        // isn't assigned to. Reads are open, so the grid may show all branches' columns.
+        var writable = await _access.WritableStoreIdsAsync(User);
+        if (valid.Any(e => !writable.Contains(e.StoreId)))
+            return Json(new { success = false, message = "You can only edit stock for your assigned branch(es)." });
 
         var applied = 0;
         await using var tx = await _db.Database.BeginTransactionAsync();

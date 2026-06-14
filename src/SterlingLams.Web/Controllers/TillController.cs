@@ -21,15 +21,19 @@ public class TillController : Controller
     private readonly IPasswordHasher<ApplicationUser> _hasher;
     private readonly UserManager<ApplicationUser> _userManager;
 
+    private readonly SterlingLams.Web.Services.IStoreAccessService _access;
+
     public TillController(ApplicationDbContext db, IStockService stock,
         SignInManager<ApplicationUser> signIn, IPasswordHasher<ApplicationUser> hasher,
-        UserManager<ApplicationUser> userManager)
+        UserManager<ApplicationUser> userManager,
+        SterlingLams.Web.Services.IStoreAccessService access)
     {
         _db = db;
         _stock = stock;
         _signIn = signIn;
         _hasher = hasher;
         _userManager = userManager;
+        _access = access;
     }
 
     private async Task<Register?> BoundRegisterAsync()
@@ -85,6 +89,11 @@ public class TillController : Controller
     {
         var register = await BoundRegisterAsync();
         if (register == null) return RedirectToAction(nameof(Index));
+        if (!await _access.CanWriteAsync(User, register.StoreId))
+        {
+            TempData["Error"] = "You're not assigned to this branch's till.";
+            return RedirectToAction(nameof(Index));
+        }
         if (await OpenSessionAsync(register.Id) == null)
         {
             _db.TillSessions.Add(new TillSession
@@ -658,6 +667,8 @@ public class TillController : Controller
     {
         var register = await BoundRegisterAsync();
         if (register == null) return Json(new { success = false, message = "This till isn't set up. Pick a register." });
+        if (!await _access.CanWriteAsync(User, register.StoreId))
+            return Json(new { success = false, message = "You're not assigned to this branch's till." });
         if (req.Items == null || req.Items.Count == 0) return Json(new { success = false, message = "Cart is empty." });
 
         var session = await OpenSessionAsync(register.Id);

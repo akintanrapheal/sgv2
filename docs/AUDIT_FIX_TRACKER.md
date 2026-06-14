@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-14 (security hardening → FX-33 CSP, FX-34 staff session; OP-45 added)
+**Last updated:** 2026-06-14 (store-level authorization → FX-35 / OP-8 done)
 
 **Legend:** severity 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low ·
 status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
@@ -59,6 +59,7 @@ status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
 | FX-32 | **Anonymous order PII leak (OP-44)** — `Checkout/Confirmation?orderNumber=` returned any order's name/address/phone to unauthenticated visitors. Now requires the signed-in owner **or** a Data-Protection-signed token (issued on the post-payment redirect). Verified: anon no/bogus token → 404; owner → 200. | Controllers/CheckoutController.cs |
 | FX-33 | **CSP header (OP-10)** — added a Content-Security-Policy (default-src 'self', external scripts/framing/base/form blocked; Google Fonts + https images allowed). Verified: no CSP violations on home/detail; inline handlers still run. ('unsafe-inline' remains until inline scripts move to nonces — see OP-45.) | Program.cs |
 | FX-34 | **Staff session lifetime (H9)** — staff/admin now get an 8-hour, non-persistent auth cookie (overrides "remember me"); shoppers keep the 30-day sliding cookie. Verified: staff+RememberMe → session cookie. | Program.cs |
+| FX-35 | **Store-level authorization (OP-8 / H7)** — new `UserStore` join table + `IStoreAccessService` (Admin→all; assigned→those; none→all/legacy). Writes-only enforcement on stock edits, stock-take, transfers (approve/dispatch=from, receive=to, etc.) and till (open/checkout). Admin UI to assign branches per user (Users → Branches). Verified live: non-assigned branch edit blocked, assigned allowed, admin bypass. | Models/Domain/UserStore.cs, Services/StoreAccessService.cs, Data/ApplicationDbContext.cs (+migration), Areas/Inventory/Controllers/{Stock,Stocktake,Transfers}Controller.cs, Controllers/TillController.cs, Areas/Admin/Controllers/UsersController.cs, Areas/Admin/Views/Users/Stores.cshtml + Index.cshtml |
 | FX-20 | Typed stock movements — adjustment reasons map to `Purchase`/`Damage`/`Loss` (was all `Adjustment`) | Models/Domain/StockMovement.cs, Areas/Inventory/Controllers/StockController.cs |
 | FX-21 | Concurrency safety on manual adjustments + stock-take (lock + re-read + graceful catch) | Areas/Inventory/Controllers/StockController.cs, StocktakeController.cs |
 
@@ -81,7 +82,7 @@ status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
 | OP-5 | POS sells against `OnHand` ignoring `QuantityReserved` → can drop `OnHand` below `Reserved`, leaving an online order short at fulfilment | #11 / I1 | POS sell against *available*, or accept + warn on low-available. |
 | OP-6 | Payment webhook matches order by `reference.Contains(OrderNumber)` (substring) | R3 | Match exact `PaymentReference` / metadata `order_id`. |
 | OP-7 | FK delete cascades destroy history: product delete → `OrderItems`+`StockMovements`; user delete → `Orders` | D2 | Change those FKs CASCADE→RESTRICT (behavior-affecting migration; soft-delete already exists). |
-| OP-8 | No store-level authorization — any Inventory user can act on any branch | H7 | Per-branch scoping on stock/transfers/till. |
+| ~~OP-8~~ | ✅ **DONE** (FX-35) — store-level (writes-only) authorization: per-user branch assignment + enforcement on stock/stock-take/transfers/till; admin assignment UI | H7 | — |
 | OP-9 | `_ValidationScriptsPartial` references `wwwroot/lib/jquery-validation*` which is empty → 404, client validation degraded | R11 | Restore libs or drop the partial; quick win. |
 | OP-33 | **Back-in-stock notify is a no-op** — `ProductsController.NotifyRestock` only `LogInformation`s and discards the email; customers told "we'll notify you" but nothing is stored/sent (revenue leak + broken promise) | merch audit | Persist requests (table) + send on restock (hook in `StockService.ApplyAsync` when qty crosses 0→+). |
 | OP-28 | No online-order refund workflow — refunds are POS-only; `OrdersController.UpdateStatus` lets an order be set "Refunded" with **no Refund record, no stock return, no gateway refund** (cosmetic) | admin audit | Build online refund (record + `Return` ledger + provider refund). |

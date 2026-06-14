@@ -11,11 +11,26 @@ public class TransfersController : InventoryAreaController
 {
     private readonly ApplicationDbContext _db;
     private readonly ITransferWorkflowService _workflow;
+    private readonly IStoreAccessService _access;
 
-    public TransfersController(ApplicationDbContext db, ITransferWorkflowService workflow)
+    public TransfersController(ApplicationDbContext db, ITransferWorkflowService workflow, IStoreAccessService access)
     {
         _db = db;
         _workflow = workflow;
+        _access = access;
+    }
+
+    // Store-level authorization (writes-only): a non-admin may only act on a transfer that
+    // touches a branch they're assigned to. `from`/`to` pick which side(s) the action affects.
+    // Returns an error result when denied, otherwise null.
+    private async Task<IActionResult?> DenyIfNoStoreAccessAsync(int id, bool from, bool to)
+    {
+        var t = await _db.StockTransfers.Where(x => x.Id == id)
+            .Select(x => new { x.FromStoreId, x.ToStoreId }).FirstOrDefaultAsync();
+        if (t == null) return null; // let the workflow report "not found"
+        var writable = await _access.WritableStoreIdsAsync(User);
+        var ok = (from && writable.Contains(t.FromStoreId)) || (to && writable.Contains(t.ToStoreId));
+        return ok ? null : Json(new { success = false, message = "You don't have access to this transfer's branch." });
     }
 
     public async Task<IActionResult> Index(int? storeId, string status = "all")
@@ -89,6 +104,9 @@ public class TransfersController : InventoryAreaController
     public async Task<IActionResult> Request([FromBody] TransferRequest req)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var writable = await _access.WritableStoreIdsAsync(User);
+        if (!writable.Contains(req.FromStoreId) && !writable.Contains(req.ToStoreId))
+            return Json(new { success = false, message = "You can only request transfers involving your assigned branch(es)." });
         var (success, error, id) = await _workflow.RequestAsync(req, userId);
         if (!success) return Json(new { success = false, message = error });
 
@@ -120,6 +138,7 @@ public class TransfersController : InventoryAreaController
     public async Task<IActionResult> Approve(int id, [FromBody] ItemsRequest req)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var deny = await DenyIfNoStoreAccessAsync(id, from: true, to: false); if (deny != null) return deny;
         var result = await _workflow.ApproveAsync(id, req.Items, userId);
         if (!result.Success) return Json(new { success = false, message = result.Error });
         await LogTransferAsync(id, "Approve", "Approved");
@@ -130,6 +149,7 @@ public class TransfersController : InventoryAreaController
     public async Task<IActionResult> Reject(int id, [FromBody] ReasonRequest req)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var deny = await DenyIfNoStoreAccessAsync(id, from: true, to: false); if (deny != null) return deny;
         var result = await _workflow.RejectAsync(id, req.Reason, userId);
         if (!result.Success) return Json(new { success = false, message = result.Error });
         await LogTransferAsync(id, "Reject", $"Rejected ({req.Reason})");
@@ -140,6 +160,7 @@ public class TransfersController : InventoryAreaController
     public async Task<IActionResult> Dispatch(int id, [FromBody] DispatchRequest req)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var deny = await DenyIfNoStoreAccessAsync(id, from: true, to: false); if (deny != null) return deny;
         var result = await _workflow.DispatchAsync(id, req.Items, req.TrackingNumber, req.CourierName, req.Notes, userId);
         if (!result.Success) return Json(new { success = false, message = result.Error });
         await LogTransferAsync(id, "Dispatch", "Dispatched");
@@ -150,6 +171,7 @@ public class TransfersController : InventoryAreaController
     public async Task<IActionResult> Receive(int id, [FromBody] ReceiveRequest req)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var deny = await DenyIfNoStoreAccessAsync(id, from: false, to: true); if (deny != null) return deny;
         var result = await _workflow.ReceiveAsync(id, req.Items, req.Notes, userId);
         if (!result.Success) return Json(new { success = false, message = result.Error });
         await LogTransferAsync(id, "Receive", "Received");
@@ -160,6 +182,7 @@ public class TransfersController : InventoryAreaController
     public async Task<IActionResult> Complete(int id)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var deny = await DenyIfNoStoreAccessAsync(id, from: false, to: true); if (deny != null) return deny;
         var result = await _workflow.CompleteAsync(id, userId);
         if (!result.Success) return Json(new { success = false, message = result.Error });
         await LogTransferAsync(id, "Complete", "Marked as completed (shortage acknowledged)");
@@ -170,6 +193,7 @@ public class TransfersController : InventoryAreaController
     public async Task<IActionResult> Cancel(int id, [FromBody] ReasonRequest req)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var deny = await DenyIfNoStoreAccessAsync(id, from: true, to: true); if (deny != null) return deny;
         var result = await _workflow.CancelAsync(id, req.Reason, userId);
         if (!result.Success) return Json(new { success = false, message = result.Error });
         await LogTransferAsync(id, "Cancel", $"Cancelled ({req.Reason})");

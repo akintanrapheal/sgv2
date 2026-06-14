@@ -39,6 +39,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<NewsletterSubscriber> NewsletterSubscribers => Set<NewsletterSubscriber>();
+    public DbSet<Models.Domain.UserStore> UserStores => Set<Models.Domain.UserStore>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -223,6 +224,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 
         // ─── NewsletterSubscriber ───────────────────────────────────────────
         builder.Entity<NewsletterSubscriber>(e => e.HasIndex(n => n.Email).IsUnique());
+
+        // ─── UserStore (store-level authorization) ──────────────────────────
+        builder.Entity<Models.Domain.UserStore>(e =>
+        {
+            e.HasIndex(us => new { us.UserId, us.StoreId }).IsUnique();
+            e.HasOne(us => us.User).WithMany().HasForeignKey(us => us.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(us => us.Store).WithMany().HasForeignKey(us => us.StoreId).OnDelete(DeleteBehavior.Cascade);
+        });
 
         // ─── StockReservation (soft holds for unpaid online orders) ─────────
         builder.Entity<StockReservation>(e =>
