@@ -181,6 +181,7 @@
                         id = v.Id,
                         name = v.Name,
                         priceAdjustment = v.PriceAdjustment,
+                        available = v.Available,
                         attributes = v.AttributeLabels.ToDictionary(a => a.AttributeName, a => a.Value)
                     })))
                 </script>
@@ -487,13 +488,22 @@
         }
     }
 
-    // Validate all dropdowns are selected before add-to-cart
+    // Validate all dropdowns are selected — and that the chosen variant is in stock — before add-to-cart
     document.getElementById('add-to-cart')?.addEventListener('click', function(e) {
+        const prompt = document.getElementById('select-colour-prompt');
         if (hasVariants && !selectedVariantId) {
             e.stopImmediatePropagation();
-            document.getElementById('select-colour-prompt')?.classList.remove('hidden');
+            if (prompt) { prompt.textContent = 'Please select all options before adding to bag.'; prompt.classList.remove('hidden'); }
             document.getElementById('variant-selectors')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             return false;
+        }
+        if (hasVariants && selectedVariantId) {
+            const v = variants.find(x => x.id === selectedVariantId);
+            if (v && (v.available ?? 0) <= 0) {
+                e.stopImmediatePropagation();
+                if (prompt) { prompt.textContent = 'Sorry, this option is out of stock.'; prompt.classList.remove('hidden'); }
+                return false;
+            }
         }
     }, true);
 

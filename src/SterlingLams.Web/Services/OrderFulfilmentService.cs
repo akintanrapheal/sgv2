@@ -33,13 +33,29 @@ public class OrderFulfilmentService : IOrderFulfilmentService
         _logger = logger;
     }
 
+    // Variant-level stock: an order line for variant V at store S draws on V's own inventory row
+    // if one exists there, otherwise the shared product pool row (ProductVariantId == null). This
+    // resolver maps a requested (product, variant, store) to that EFFECTIVE row's variant id, so
+    // availability/reservation/deduction all agree — and two un-stocked variants that both fall
+    // back to the same pool share one counter (no oversell).
+    private static Func<int, int?, int, int?> EffectiveVariantResolver(IEnumerable<StoreInventory> rows)
+    {
+        var variantRows = rows.Where(r => r.ProductVariantId != null)
+            .Select(r => (r.ProductId, Vid: r.ProductVariantId!.Value, r.StoreId))
+            .ToHashSet();
+        return (pid, vid, sid) =>
+            vid.HasValue && variantRows.Contains((pid, vid.Value, sid)) ? vid : (int?)null;
+    }
+
     // ── Allocation ────────────────────────────────────────────────────────────
     // Spreads an order's lines across branches: the fulfilment branch first (pickup store, or
-    // nearest to the customer), then the next-nearest. `avail(productId, storeId)` supplies the
-    // usable quantity at each branch. Returns the per-(store,product) allocation and the first
-    // line that couldn't be fully covered (null = success). StoreInventory is per-product.
-    private static (Store fulfilStore, Dictionary<(int store, int product), int> alloc, OrderItem? shortLine)
-        Allocate(Order order, List<Store> activeStores, List<Store> ranked, Func<int, int, int> avail)
+    // nearest to the customer), then the next-nearest. `avail(product, variant, store)` supplies the
+    // usable quantity of the effective row; `effVid` collapses lines that share a pool so they draw
+    // on one counter. Returns the per-(store, product, variant) allocation and the first line that
+    // couldn't be fully covered (null = success).
+    private static (Store fulfilStore, Dictionary<(int store, int product, int? variant), int> alloc, OrderItem? shortLine)
+        Allocate(Order order, List<Store> activeStores, List<Store> ranked,
+            Func<int, int?, int, int?> effVid, Func<int, int?, int, int> avail)
     {
         Store fulfilStore = (order.FulfillmentType == FulfillmentType.StorePickup
                 ? activeStores.FirstOrDefault(s => s.Id == order.PickupStoreId)
@@ -49,26 +65,27 @@ public class OrderFulfilmentService : IOrderFulfilmentService
         var storeOrder = new List<int> { fulfilStore.Id };
         storeOrder.AddRange(ranked.Where(s => s.Id != fulfilStore.Id).Select(s => s.Id));
 
-        var remaining = new Dictionary<(int product, int store), int>();
-        int Remaining(int pid, int sid)
+        // Keyed by the EFFECTIVE row so several lines sharing a pool decrement the same balance.
+        var remaining = new Dictionary<(int product, int? effVid, int store), int>();
+        int Remaining(int pid, int? vid, int sid)
         {
-            var k = (pid, sid);
-            if (!remaining.TryGetValue(k, out var v)) { v = avail(pid, sid); remaining[k] = v; }
+            var k = (pid, effVid(pid, vid, sid), sid);
+            if (!remaining.TryGetValue(k, out var v)) { v = avail(pid, vid, sid); remaining[k] = v; }
             return v;
         }
 
-        var alloc = new Dictionary<(int store, int product), int>();
+        var alloc = new Dictionary<(int store, int product, int? variant), int>();
         foreach (var line in order.Items)
         {
             var need = line.Quantity;
             foreach (var sid in storeOrder)
             {
                 if (need <= 0) break;
-                var take = Math.Min(need, Remaining(line.ProductId, sid));
+                var take = Math.Min(need, Remaining(line.ProductId, line.ProductVariantId, sid));
                 if (take <= 0) continue;
-                remaining[(line.ProductId, sid)] = Remaining(line.ProductId, sid) - take;
-                alloc.TryGetValue((sid, line.ProductId), out var acc);
-                alloc[(sid, line.ProductId)] = acc + take;
+                remaining[(line.ProductId, effVid(line.ProductId, line.ProductVariantId, sid), sid)] -= take;
+                alloc.TryGetValue((sid, line.ProductId, line.ProductVariantId), out var acc);
+                alloc[(sid, line.ProductId, line.ProductVariantId)] = acc + take;
                 need -= take;
             }
             if (need > 0) return (fulfilStore, alloc, line);
@@ -78,12 +95,10 @@ public class OrderFulfilmentService : IOrderFulfilmentService
 
     // ── Concurrency helper ───────────────────────────────────────────────────
     /// <summary>
-    /// Acquires Postgres row locks (SELECT ... FOR UPDATE) on the given StoreInventory rows,
-    /// in a fixed (ProductId, StoreId) order, before they're read/mutated. This serializes
-    /// concurrent reservations/sales/transfers touching the same product+store instead of
-    /// racing on stale QuantityReserved/QuantityOnHand snapshots. Caller must already be
-    /// inside a transaction — the lock is held until commit/rollback. Rows that don't exist
-    /// yet simply lock nothing (no-op).
+    /// Acquires Postgres row locks (SELECT ... FOR UPDATE) on the given product+store inventory
+    /// rows (all variant rows + the pool for each pair, since the predicate omits the variant),
+    /// in a fixed (ProductId, StoreId) order. Serializes concurrent reservations/sales/transfers
+    /// instead of racing on stale snapshots. Caller must already be inside a transaction.
     /// </summary>
     private async Task LockInventoryRowsAsync(IEnumerable<(int ProductId, int StoreId)> pairs)
     {
@@ -112,33 +127,31 @@ public class OrderFulfilmentService : IOrderFulfilmentService
 
         await using var tx = await _db.Database.BeginTransactionAsync();
 
-        // Lock every (product, store) combo this order could draw from before reading
-        // availability, so the read below reflects the latest committed state and no
-        // other transaction can change it out from under us before we commit.
+        // Lock every (product, store) combo (pool + variant rows) this order could draw from.
         await LockInventoryRowsAsync(productIds.SelectMany(pid => storeIds.Select(sid => (pid, sid))));
 
-        // Phase 1 of variant-level stock: online fulfilment stays product-level — it reads/writes
-        // only the product pool row (ProductVariantId == null). This both preserves current online
-        // behaviour and avoids a duplicate-key crash now that a (product, store) can have several
-        // rows (pool + per-variant). Per-variant online allocation is Phase 2.
-        var invMap = (await _db.StoreInventories
-                .Where(si => productIds.Contains(si.ProductId) && storeIds.Contains(si.StoreId)
-                    && si.ProductVariantId == null)
-                .ToListAsync())
-            .ToDictionary(si => (si.ProductId, si.StoreId));
-        int Available(int pid, int sid) =>
-            invMap.TryGetValue((pid, sid), out var si) ? Math.Max(0, si.QuantityOnHand - si.QuantityReserved) : 0;
+        var rows = await _db.StoreInventories
+            .Where(si => productIds.Contains(si.ProductId) && storeIds.Contains(si.StoreId))
+            .ToListAsync();
+        var invMap = rows.ToDictionary(si => (si.ProductId, si.ProductVariantId, si.StoreId));
+        var effVid = EffectiveVariantResolver(rows);
+        int Available(int pid, int? vid, int sid) =>
+            invMap.TryGetValue((pid, effVid(pid, vid, sid), sid), out var si)
+                ? Math.Max(0, si.QuantityOnHand - si.QuantityReserved) : 0;
 
-        var (_, alloc, shortLine) = Allocate(order, activeStores, ranked, Available);
+        var (_, alloc, shortLine) = Allocate(order, activeStores, ranked, effVid, Available);
         if (shortLine != null) return false; // not enough available — caller blocks checkout
 
         var now = DateTime.UtcNow;
-        foreach (var ((sid, pid), qty) in alloc)
+        foreach (var ((sid, pid, vid), qty) in alloc)
         {
-            invMap[(pid, sid)].QuantityReserved += qty;
+            // Hold against the effective row; record the line's variant on the reservation.
+            if (invMap.TryGetValue((pid, effVid(pid, vid, sid), sid), out var si))
+                si.QuantityReserved += qty;
             _db.StockReservations.Add(new StockReservation
             {
-                OrderId = orderId, StoreId = sid, ProductId = pid, Quantity = qty, CreatedAt = now
+                OrderId = orderId, StoreId = sid, ProductId = pid, ProductVariantId = vid,
+                Quantity = qty, CreatedAt = now
             });
         }
 
@@ -163,22 +176,21 @@ public class OrderFulfilmentService : IOrderFulfilmentService
         await tx.CommitAsync();
     }
 
-    /// <summary>Releases reservation rows and their QuantityReserved holds. Caller must already
-    /// be inside a transaction (either its own, as in <see cref="ReleaseReservationAsync"/>, or
-    /// the surrounding fulfilment transaction in <see cref="FulfilPaidOrderAsync"/>).</summary>
+    /// <summary>Releases reservation rows and their QuantityReserved holds (on the effective row).
+    /// Caller must already be inside a transaction.</summary>
     private async Task ReleaseRowsAsync(List<StockReservation> rows)
     {
         await LockInventoryRowsAsync(rows.Select(r => (r.ProductId, r.StoreId)));
 
         var pids = rows.Select(r => r.ProductId).Distinct().ToList();
         var sids = rows.Select(r => r.StoreId).Distinct().ToList();
-        var invMap = (await _db.StoreInventories
-                .Where(si => pids.Contains(si.ProductId) && sids.Contains(si.StoreId)
-                    && si.ProductVariantId == null)   // pool rows only (Phase 1 — see TryReserveAsync)
-                .ToListAsync())
-            .ToDictionary(si => (si.ProductId, si.StoreId));
+        var invRows = await _db.StoreInventories
+            .Where(si => pids.Contains(si.ProductId) && sids.Contains(si.StoreId))
+            .ToListAsync();
+        var invMap = invRows.ToDictionary(si => (si.ProductId, si.ProductVariantId, si.StoreId));
+        var effVid = EffectiveVariantResolver(invRows);
         foreach (var r in rows)
-            if (invMap.TryGetValue((r.ProductId, r.StoreId), out var si))
+            if (invMap.TryGetValue((r.ProductId, effVid(r.ProductId, r.ProductVariantId, r.StoreId), r.StoreId), out var si))
                 si.QuantityReserved = Math.Max(0, si.QuantityReserved - r.Quantity);
         _db.StockReservations.RemoveRange(rows);
         await _db.SaveChangesAsync();
@@ -189,6 +201,7 @@ public class OrderFulfilmentService : IOrderFulfilmentService
     /// Picks the branch nearest the customer, transfers in any units it lacks from other
     /// branches (transfer-then-sell so every branch balance stays correct), then sells the
     /// whole order from that branch — releasing this order's own reservation as it goes.
+    /// Variant-aware: allocation/transfer/sale all run against each line's effective row.
     /// Idempotent. Failures are logged, never thrown — the customer has already paid.
     /// </summary>
     public async Task FulfilPaidOrderAsync(int orderId)
@@ -216,28 +229,31 @@ public class OrderFulfilmentService : IOrderFulfilmentService
 
             var productIds = order.Items.Select(i => i.ProductId).Distinct().ToList();
             var storeIds = activeStores.Select(s => s.Id).ToList();
-            var invMap = (await _db.StoreInventories
-                    .Where(si => productIds.Contains(si.ProductId) && storeIds.Contains(si.StoreId))
-                    .ToListAsync())
-                .ToDictionary(si => (si.ProductId, si.StoreId));
+            var invRows = await _db.StoreInventories
+                .Where(si => productIds.Contains(si.ProductId) && storeIds.Contains(si.StoreId))
+                .ToListAsync();
+            var invMap = invRows.ToDictionary(si => (si.ProductId, si.ProductVariantId, si.StoreId));
+            var effVid = EffectiveVariantResolver(invRows);
 
             // This order's own reservation — added back into availability so the sale draws on the
-            // units we already held (other orders' reservations stay off-limits).
+            // units we already held (other orders' reservations stay off-limits). Keyed by effective row.
             var resRows = await _db.StockReservations.Where(r => r.OrderId == orderId).ToListAsync();
-            var ownRes = new Dictionary<(int product, int store), int>();
+            var ownRes = new Dictionary<(int product, int? effVid, int store), int>();
             foreach (var r in resRows)
             {
-                ownRes.TryGetValue((r.ProductId, r.StoreId), out var a);
-                ownRes[(r.ProductId, r.StoreId)] = a + r.Quantity;
+                var k = (r.ProductId, effVid(r.ProductId, r.ProductVariantId, r.StoreId), r.StoreId);
+                ownRes.TryGetValue(k, out var a);
+                ownRes[k] = a + r.Quantity;
             }
-            int SaleAvail(int pid, int sid)
+            int SaleAvail(int pid, int? vid, int sid)
             {
-                if (!invMap.TryGetValue((pid, sid), out var si)) return 0;
-                ownRes.TryGetValue((pid, sid), out var mine);
+                var ev = effVid(pid, vid, sid);
+                if (!invMap.TryGetValue((pid, ev, sid), out var si)) return 0;
+                ownRes.TryGetValue((pid, ev, sid), out var mine);
                 return Math.Max(0, si.QuantityOnHand - si.QuantityReserved + mine);
             }
 
-            var (fulfilStore, alloc, shortLine) = Allocate(order, activeStores, ranked, SaleAvail);
+            var (fulfilStore, alloc, shortLine) = Allocate(order, activeStores, ranked, effVid, SaleAvail);
             if (shortLine != null)
             {
                 order.AdminNotes = $"Fulfilment held {DateTime.UtcNow:yyyy-MM-dd HH:mm}: insufficient stock for {shortLine.ProductName}.";
@@ -255,7 +271,8 @@ public class OrderFulfilmentService : IOrderFulfilmentService
             // Free this order's hold (units are now being sold, not just reserved).
             if (resRows.Count > 0) await ReleaseRowsAsync(resRows);
 
-            // Transfers: every allocation that isn't already at the fulfilment branch moves in.
+            // Transfers: every allocation that isn't already at the fulfilment branch moves in,
+            // per (product, variant). ApplyAsync resolves each side to its effective row.
             foreach (var bySource in alloc.Where(kv => kv.Key.store != fulfilStore.Id).GroupBy(kv => kv.Key.store))
             {
                 var sourceStore = activeStores.First(s => s.Id == bySource.Key);
@@ -276,29 +293,30 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                 foreach (var kv in bySource)
                 {
                     var pid = kv.Key.product;
+                    var vid = kv.Key.variant;
                     var qty = kv.Value;
                     transfer.Items.Add(new StockTransferItem
                     {
                         ProductId = pid,
+                        ProductVariantId = vid,
                         ProductName = products.GetValueOrDefault(pid, $"#{pid}"),
                         RequestedQty = qty,
                         ApprovedQty = qty,
                         DispatchedQty = qty,
                         ReceivedQty = qty
                     });
-                    await _stock.ApplyAsync(pid, null, sourceStore.Id, -qty, StockMovementType.Transfer,
+                    await _stock.ApplyAsync(pid, vid, sourceStore.Id, -qty, StockMovementType.Transfer,
                         transferNumber, $"To {fulfilStore.Name} (order {order.OrderNumber})", order.UserId);
-                    await _stock.ApplyAsync(pid, null, fulfilStore.Id, qty, StockMovementType.Transfer,
+                    await _stock.ApplyAsync(pid, vid, fulfilStore.Id, qty, StockMovementType.Transfer,
                         transferNumber, $"From {sourceStore.Name} (order {order.OrderNumber})", order.UserId);
                 }
                 _db.StockTransfers.Add(transfer);
             }
 
             // Sell the whole order from the fulfilment branch (everything is consolidated there now).
-            // Phase 1: deduct from the product pool (variantId null) to stay consistent with the
-            // pool-only availability read above. Phase 2 will allocate/deduct per variant.
+            // ApplyAsync resolves each line to its effective row (variant row if stocked, else pool).
             foreach (var line in order.Items)
-                await _stock.ApplyAsync(line.ProductId, null, fulfilStore.Id,
+                await _stock.ApplyAsync(line.ProductId, line.ProductVariantId, fulfilStore.Id,
                     -line.Quantity, StockMovementType.Sale, order.OrderNumber,
                     $"Online order {order.OrderNumber}", order.UserId);
 

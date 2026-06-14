@@ -15,13 +15,15 @@ public class CartController : Controller
     private readonly ApplicationDbContext _db;
     private readonly IDiscountService _discounts;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IStockService _stock;
 
     public CartController(ApplicationDbContext db, IDiscountService discounts,
-        UserManager<ApplicationUser> userManager)
+        UserManager<ApplicationUser> userManager, IStockService stock)
     {
         _db = db;
         _discounts = discounts;
         _userManager = userManager;
+        _stock = stock;
     }
 
     public async Task<IActionResult> Index()
@@ -44,7 +46,7 @@ public class CartController : Controller
 
         // Combined stock across all active branches is the ceiling (online fulfilment can
         // pull from any branch). StoreInventory is per-product, same as the POS ledger.
-        var available = await CombinedAvailableAsync(productId);
+        var available = await CombinedAvailableAsync(productId, variantId);
         if (available <= 0)
             return Json(new { success = false, message = "This item is out of stock." });
 
@@ -95,7 +97,7 @@ public class CartController : Controller
                 cart.Items.Remove(item);
             else
             {
-                item.MaxQuantity = await CombinedAvailableAsync(productId); // refresh against live stock
+                item.MaxQuantity = await CombinedAvailableAsync(productId, variantId); // refresh against live stock (per variant)
                 item.Quantity = Math.Min(quantity, Math.Max(1, item.MaxQuantity));
             }
         }
@@ -105,11 +107,16 @@ public class CartController : Controller
     }
 
     /// <summary>Combined AVAILABLE stock (on-hand minus reservations held by unpaid orders) across
-    /// all active branches for a product — the orderable ceiling.</summary>
-    private async Task<int> CombinedAvailableAsync(int productId) =>
-        await _db.StoreInventories
-            .Where(si => si.ProductId == productId && si.Store.IsActive)
-            .SumAsync(si => (int?)(si.QuantityOnHand - si.QuantityReserved)) ?? 0;
+    /// all active branches for a specific (product, variant) — the orderable ceiling. Uses the
+    /// stock service's per-variant resolution (variant row if stocked, else the product pool).</summary>
+    private async Task<int> CombinedAvailableAsync(int productId, int? variantId)
+    {
+        var storeIds = await _db.Stores.Where(s => s.IsActive).Select(s => s.Id).ToListAsync();
+        var total = 0;
+        foreach (var sid in storeIds)
+            total += await _stock.GetAvailableAsync(productId, variantId, sid);
+        return total;
+    }
 
     [HttpPost, ValidateAntiForgeryToken]
     public IActionResult Remove(int productId, int? variantId = null)

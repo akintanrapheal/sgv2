@@ -39,7 +39,7 @@ public class StockServiceTests
         await svc.ApplyAsync(p.Id, null, store.Id, 5, StockMovementType.Purchase, "PO-1");
         await t.Db.SaveChangesAsync();
 
-        Assert.Equal(5, await svc.GetStockAsync(p.Id, store.Id));
+        Assert.Equal(5, await svc.GetStockAsync(p.Id, null, store.Id));
     }
 
     [Fact]
@@ -48,6 +48,6 @@ public class StockServiceTests
         using var t = new TestDb();
         var store = t.SeedStore("Ikota", "Lagos", "Ajah");
         var p = t.SeedProduct();
-        Assert.Equal(0, await new StockService(t.Db).GetStockAsync(p.Id, store.Id));
+        Assert.Equal(0, await new StockService(t.Db).GetStockAsync(p.Id, null, store.Id));
     }
 }

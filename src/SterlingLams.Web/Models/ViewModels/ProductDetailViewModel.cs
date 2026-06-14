@@ -55,5 +55,6 @@ public class ProductVariantOptionViewModel
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public decimal? PriceAdjustment { get; set; }
+    public int Available { get; set; }   // combined available across active branches (per-variant, with pool fallback)
     public List<AttributeLabelViewModel> AttributeLabels { get; set; } = new();
 }

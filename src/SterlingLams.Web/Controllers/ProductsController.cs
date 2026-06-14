@@ -136,6 +136,23 @@ public class ProductsController : Controller
             .Take(4)
             .ToListAsync();
 
+        // Per-variant available across active branches, using the effective-row fallback (variant's
+        // own row if stocked, else the product pool) — mirrors StockService/cart so the page, cart
+        // and checkout agree.
+        var activeStoreIds = product.StoreInventories.Where(si => si.Store.IsActive)
+            .Select(si => si.StoreId).Distinct().ToList();
+        int VariantAvailable(int variantId)
+        {
+            var total = 0;
+            foreach (var sid in activeStoreIds)
+            {
+                var row = product.StoreInventories.FirstOrDefault(si => si.StoreId == sid && si.ProductVariantId == variantId)
+                          ?? product.StoreInventories.FirstOrDefault(si => si.StoreId == sid && si.ProductVariantId == null);
+                if (row != null) total += Math.Max(0, row.QuantityOnHand - row.QuantityReserved);
+            }
+            return total;
+        }
+
         var vm = new ProductDetailViewModel
         {
             Id = product.Id,
@@ -154,17 +171,21 @@ public class ProductsController : Controller
             CategoryName = product.Category.Name,
             CategorySlug = product.Category.Slug,
             ImageUrls = product.Images.Select(i => i.Url).ToList(),
-            StoreStock = product.StoreInventories.Select(si => new StoreStockViewModel
-            {
-                StoreName = si.Store.Name,
-                StoreSlug = si.Store.Slug,
-                Quantity = Math.Max(0, si.QuantityOnHand - si.QuantityReserved)
-            }).ToList(),
+            // Total available per branch (sum of pool + any variant rows at that store).
+            StoreStock = product.StoreInventories.Where(si => si.Store.IsActive)
+                .GroupBy(si => new { si.StoreId, si.Store.Name, si.Store.Slug })
+                .Select(g => new StoreStockViewModel
+                {
+                    StoreName = g.Key.Name,
+                    StoreSlug = g.Key.Slug,
+                    Quantity = g.Sum(si => Math.Max(0, si.QuantityOnHand - si.QuantityReserved))
+                }).ToList(),
             Variants = product.Variants.Where(v => v.IsActive).Select(v => new ProductVariantOptionViewModel
             {
                 Id = v.Id,
                 Name = v.Name,
                 PriceAdjustment = v.PriceAdjustment,
+                Available = VariantAvailable(v.Id),
                 AttributeLabels = v.AttributeValues
                     .OrderBy(av => av.Attribute.SortOrder)
                     .Select(av => new AttributeLabelViewModel
