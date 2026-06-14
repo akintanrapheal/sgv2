@@ -2,11 +2,14 @@
 @{
     ViewData["Title"] = "Stock-take";
     var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
+    var categories = ViewBag.Categories as List<SterlingLams.Web.Models.Domain.Category> ?? new();
     int? storeId = ViewBag.StoreId;
     string q = ViewBag.Q ?? "";
     int pg = ViewBag.Page ?? 1;
     int totalPages = ViewBag.TotalPages ?? 1;
+    int? categoryId = ViewBag.CategoryId;
     var storeName = stores.FirstOrDefault(s => s.Id == storeId)?.Name;
+    var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
 }
 @Html.AntiForgeryToken()
 
@@ -31,7 +34,17 @@
     {
         <div>
             <label class="block text-xs text-neutral-500 mb-1">Search</label>
-            <input type="text" name="q" value="@q" autofocus autocomplete="off" placeholder="Scan barcode or search…" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
+            <input id="stocktake-scan" type="text" name="q" value="@q" autofocus autocomplete="off" placeholder="Scan barcode or search…" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
+        </div>
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">Category</label>
+            <select name="categoryId" onchange="this.form.submit()" class="@selectCls">
+                <option value="">All categories</option>
+                @foreach (var c in categories)
+                {
+                    <option value="@c.Id" selected="@(categoryId == c.Id)">@c.Name</option>
+                }
+            </select>
         </div>
         <button type="submit" class="px-4 py-2 text-sm border border-neutral-200 rounded-sm hover:border-neutral-400">Go</button>
     }
@@ -62,7 +75,7 @@ else
                 @if (!Model.Any()) { <tr><td colspan="4" class="px-4 py-10 text-center text-neutral-400">No products.</td></tr> }
                 @foreach (var r in Model)
                 {
-                    <tr class="hover:bg-neutral-50">
+                    <tr class="hover:bg-neutral-50" data-row-pid="@r.ProductId">
                         <td class="px-4 py-2.5">
                             <p class="text-xs text-neutral-800">@r.Name</p>
                             @if (!string.IsNullOrEmpty(r.Sku)) { <p class="text-[10px] text-neutral-400 font-mono">@r.Sku</p> }
@@ -84,8 +97,8 @@ else
     {
         <div class="flex items-center justify-center gap-1.5 mt-4 flex-wrap text-xs text-neutral-500">
             <span>Page @pg of @totalPages</span>
-            @if (pg > 1) { <a asp-area="Inventory" asp-controller="Stocktake" asp-action="Index" asp-route-storeId="@storeId" asp-route-q="@q" asp-route-page="@(pg-1)" class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">‹ Prev</a> }
-            @if (pg < totalPages) { <a asp-area="Inventory" asp-controller="Stocktake" asp-action="Index" asp-route-storeId="@storeId" asp-route-q="@q" asp-route-page="@(pg+1)" class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">Next ›</a> }
+            @if (pg > 1) { <a asp-area="Inventory" asp-controller="Stocktake" asp-action="Index" asp-route-storeId="@storeId" asp-route-q="@q" asp-route-categoryId="@categoryId" asp-route-page="@(pg-1)" class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">‹ Prev</a> }
+            @if (pg < totalPages) { <a asp-area="Inventory" asp-controller="Stocktake" asp-action="Index" asp-route-storeId="@storeId" asp-route-q="@q" asp-route-categoryId="@categoryId" asp-route-page="@(pg+1)" class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">Next ›</a> }
         </div>
         <p class="text-center text-[11px] text-amber-600 mt-2">Counts you enter are saved only when you click “Apply stock-take”. Apply before changing page.</p>
     }
@@ -124,6 +137,56 @@ else
                 if (data.success) { alert(data.count + ' product(s) reconciled.'); location.reload(); }
                 else { alert(data.message || 'Failed.'); btn.disabled = false; btn.textContent = 'Apply stock-take'; }
             } catch { alert('Failed. Please try again.'); btn.disabled = false; btn.textContent = 'Apply stock-take'; }
+        });
+
+        // ── Scan box ────────────────────────────────────────────────────────────
+        // Exact barcode/SKU match → jump to / insert the row inline (no reload, so
+        // unsaved counts above survive). Anything else falls back to the normal search.
+        const scanBox = document.getElementById('stocktake-scan');
+        const tbody = document.querySelector('table tbody');
+        const esc = s => String(s).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+
+        function buildRow(data) {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-neutral-50';
+            tr.setAttribute('data-row-pid', data.productId);
+            tr.innerHTML = `<td class="px-4 py-2.5">
+                    <p class="text-xs text-neutral-800">${esc(data.name)}</p>
+                    ${data.sku ? `<p class="text-[10px] text-neutral-400 font-mono">${esc(data.sku)}</p>` : ''}
+                </td>
+                <td class="px-4 py-2.5 text-right text-neutral-600">${data.system}</td>
+                <td class="px-4 py-2.5 text-center">
+                    <input type="number" min="0" placeholder="—" data-pid="${data.productId}" data-system="${data.system}"
+                           class="count-cell w-20 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-emerald-400" />
+                </td>
+                <td class="px-4 py-2.5 text-right text-xs variance-cell" data-pid="${data.productId}">—</td>`;
+            return tr;
+        }
+
+        scanBox.addEventListener('keydown', async (e) => {
+            if (e.key !== 'Enter') return;
+            // Always swallow Enter on this box: an empty submit would reload the page
+            // and silently discard unsaved counts.
+            e.preventDefault();
+            const code = scanBox.value.trim();
+            if (!code) return;
+            if (!tbody) { scanBox.closest('form').submit(); return; }
+            const res = await fetch(`/Inventory/Stocktake/ScanLookup?code=${encodeURIComponent(code)}&storeId=${storeId}`);
+            const data = await res.json();
+            if (!data.found) { scanBox.closest('form').submit(); return; }
+            scanBox.value = '';
+            let row = tbody.querySelector(`tr[data-row-pid="${data.productId}"]`);
+            if (!row) {
+                const placeholder = tbody.querySelector('td[colspan]');
+                if (placeholder) placeholder.closest('tr').remove();
+                row = buildRow(data);
+                tbody.prepend(row);
+                refresh();
+            }
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            row.classList.add('bg-emerald-50');
+            setTimeout(() => row.classList.remove('bg-emerald-50'), 1500);
+            row.querySelector('.count-cell')?.focus();
         });
     })();
     </script>

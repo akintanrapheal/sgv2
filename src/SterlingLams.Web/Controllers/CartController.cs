@@ -31,7 +31,7 @@ public class CartController : Controller
         return View(cart);
     }
 
-    [HttpPost]
+    [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Add(int productId, int quantity = 1, int? variantId = null)
     {
         var product = await _db.Products
@@ -83,7 +83,7 @@ public class CartController : Controller
         });
     }
 
-    [HttpPost]
+    [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateQuantity(int productId, int quantity, int? variantId = null)
     {
         var cart = GetCart();
@@ -111,7 +111,7 @@ public class CartController : Controller
             .Where(si => si.ProductId == productId && si.Store.IsActive)
             .SumAsync(si => (int?)(si.QuantityOnHand - si.QuantityReserved)) ?? 0;
 
-    [HttpPost]
+    [HttpPost, ValidateAntiForgeryToken]
     public IActionResult Remove(int productId, int? variantId = null)
     {
         var cart = GetCart();
@@ -121,7 +121,7 @@ public class CartController : Controller
         return Json(new { success = true, cartCount = cart.TotalItems });
     }
 
-    [HttpPost]
+    [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> ApplyDiscount(string code)
     {
         var cart = GetCart();
@@ -149,7 +149,7 @@ public class CartController : Controller
         });
     }
 
-    [HttpPost]
+    [HttpPost, ValidateAntiForgeryToken]
     public IActionResult RemoveDiscount()
     {
         var cart = GetCart();

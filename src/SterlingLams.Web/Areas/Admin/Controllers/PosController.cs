@@ -38,8 +38,10 @@ public class PosController : AdminBaseController
         if (!string.IsNullOrWhiteSpace(name))
         {
             var maxSort = await _db.PosDiscountReasons.MaxAsync(r => (int?)r.SortOrder) ?? 0;
-            _db.PosDiscountReasons.Add(new PosDiscountReason { Name = name.Trim(), SortOrder = maxSort + 10, IsActive = true });
+            var reason = new PosDiscountReason { Name = name.Trim(), SortOrder = maxSort + 10, IsActive = true };
+            _db.PosDiscountReasons.Add(reason);
             await _db.SaveChangesAsync();
+            await LogAsync("Create", "PosDiscountReason", reason.Id.ToString(), $"Created POS discount reason '{reason.Name}'");
         }
         return RedirectToAction(nameof(DiscountReasons));
     }
@@ -53,6 +55,7 @@ public class PosController : AdminBaseController
             reason.Name = name.Trim();
             reason.IsActive = isActive;
             await _db.SaveChangesAsync();
+            await LogAsync("Update", "PosDiscountReason", id.ToString(), $"Updated POS discount reason '{reason.Name}' (active={isActive})");
         }
         return RedirectToAction(nameof(DiscountReasons));
     }
@@ -61,7 +64,13 @@ public class PosController : AdminBaseController
     public async Task<IActionResult> DeleteReason(int id)
     {
         var reason = await _db.PosDiscountReasons.FindAsync(id);
-        if (reason != null) { _db.PosDiscountReasons.Remove(reason); await _db.SaveChangesAsync(); }
+        if (reason != null)
+        {
+            var name = reason.Name;
+            _db.PosDiscountReasons.Remove(reason);
+            await _db.SaveChangesAsync();
+            await LogAsync("Delete", "PosDiscountReason", id.ToString(), $"Deleted POS discount reason '{name}'");
+        }
         return RedirectToAction(nameof(DiscountReasons));
     }
 
@@ -71,12 +80,14 @@ public class PosController : AdminBaseController
         if (!string.IsNullOrWhiteSpace(label) && value > 0)
         {
             var maxSort = await _db.PosDiscountPresets.Where(p => p.ReasonId == reasonId).MaxAsync(p => (int?)p.SortOrder) ?? 0;
-            _db.PosDiscountPresets.Add(new PosDiscountPreset
+            var preset = new PosDiscountPreset
             {
                 ReasonId = reasonId, Label = label.Trim(),
                 Type = type, Value = value, SortOrder = maxSort + 10
-            });
+            };
+            _db.PosDiscountPresets.Add(preset);
             await _db.SaveChangesAsync();
+            await LogAsync("Create", "PosDiscountPreset", preset.Id.ToString(), $"Added POS discount preset '{preset.Label}' ({type} {value}) to reason {reasonId}");
         }
         return RedirectToAction(nameof(DiscountReasons));
     }
@@ -85,7 +96,13 @@ public class PosController : AdminBaseController
     public async Task<IActionResult> DeletePreset(int id)
     {
         var preset = await _db.PosDiscountPresets.FindAsync(id);
-        if (preset != null) { _db.PosDiscountPresets.Remove(preset); await _db.SaveChangesAsync(); }
+        if (preset != null)
+        {
+            var label = preset.Label;
+            _db.PosDiscountPresets.Remove(preset);
+            await _db.SaveChangesAsync();
+            await LogAsync("Delete", "PosDiscountPreset", id.ToString(), $"Deleted POS discount preset '{label}'");
+        }
         return RedirectToAction(nameof(DiscountReasons));
     }
 

@@ -1,6 +1,7 @@
 @{
     var cc = ViewContext.RouteData.Values["controller"]?.ToString();
     var isFullAdmin = User.IsInRole("Admin");
+    var pendingTransfers = ViewData["PendingTransfersCount"] as int? ?? 0;
     (string Ctrl, string Label, string Icon)[] tabs =
     {
         ("Overview",  "Overview",   "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"),
@@ -41,7 +42,11 @@
                 <a asp-area="Inventory" asp-controller="@t.Ctrl" asp-action="Index"
                    class="flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm transition-colors @(active ? "bg-emerald-600 text-white" : "text-neutral-400 hover:text-white hover:bg-neutral-800")">
                     <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="@t.Icon"/></svg>
-                    @t.Label
+                    <span class="flex-1">@t.Label</span>
+                    @if (t.Ctrl == "Transfers" && pendingTransfers > 0)
+                    {
+                        <span class="text-[10px] font-medium bg-emerald-500 text-white rounded-full px-1.5 py-0.5 leading-none">@pendingTransfers</span>
+                    }
                 </a>
             }
         </nav>

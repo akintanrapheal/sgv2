@@ -13,12 +13,16 @@ public class ReportsController : InventoryAreaController
     public IActionResult Index() => RedirectToAction(nameof(Reorder));
 
     // ── Reorder report: products at/below their low-stock threshold ──────────────
-    public async Task<IActionResult> Reorder()
+    public async Task<IActionResult> Reorder(int? categoryId = null)
     {
         ViewData["Title"] = "Reorder report";
         var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
         ViewBag.Stores = stores;
-        var products = await _db.Products.Where(p => p.IsActive).Include(p => p.StoreInventories).ToListAsync();
+        ViewBag.Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync();
+        ViewBag.CategoryId = categoryId;
+        var pq = _db.Products.Where(p => p.IsActive);
+        if (categoryId.HasValue) pq = pq.Where(p => p.CategoryId == categoryId.Value);
+        var products = await pq.Include(p => p.StoreInventories).ToListAsync();
         var rows = products.Select(p => new ReorderRow
         {
             Id = p.Id,
@@ -33,10 +37,12 @@ public class ReportsController : InventoryAreaController
         return View(rows);
     }
 
-    public async Task<IActionResult> ReorderCsv()
+    public async Task<IActionResult> ReorderCsv(int? categoryId = null)
     {
         var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
-        var products = await _db.Products.Where(p => p.IsActive).Include(p => p.StoreInventories).ToListAsync();
+        var pq = _db.Products.Where(p => p.IsActive);
+        if (categoryId.HasValue) pq = pq.Where(p => p.CategoryId == categoryId.Value);
+        var products = await pq.Include(p => p.StoreInventories).ToListAsync();
         var rows = products.Select(p => new
         {
             p.Name, p.Sku, p.LowStockThreshold,
@@ -61,11 +67,15 @@ public class ReportsController : InventoryAreaController
     }
 
     // ── Stock value report: units × price per branch ────────────────────────────
-    public async Task<IActionResult> Value()
+    public async Task<IActionResult> Value(int? categoryId = null)
     {
         ViewData["Title"] = "Stock value";
         var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
-        var products = await _db.Products.Where(p => p.IsActive).Include(p => p.StoreInventories).ToListAsync();
+        ViewBag.Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync();
+        ViewBag.CategoryId = categoryId;
+        var pq = _db.Products.Where(p => p.IsActive);
+        if (categoryId.HasValue) pq = pq.Where(p => p.CategoryId == categoryId.Value);
+        var products = await pq.Include(p => p.StoreInventories).ToListAsync();
 
         var vm = new StockValueVm
         {
@@ -88,9 +98,11 @@ public class ReportsController : InventoryAreaController
         return View(vm);
     }
 
-    public async Task<IActionResult> ValueCsv()
+    public async Task<IActionResult> ValueCsv(int? categoryId = null)
     {
-        var products = await _db.Products.Where(p => p.IsActive).Include(p => p.StoreInventories).ToListAsync();
+        var pq = _db.Products.Where(p => p.IsActive);
+        if (categoryId.HasValue) pq = pq.Where(p => p.CategoryId == categoryId.Value);
+        var products = await pq.Include(p => p.StoreInventories).ToListAsync();
         var rows = products.Select(p => new
         {
             p.Name, p.Sku, p.Price,

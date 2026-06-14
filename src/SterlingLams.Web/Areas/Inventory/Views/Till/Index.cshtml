@@ -1,5 +1,11 @@
 @model SterlingLams.Web.Areas.Inventory.Controllers.TillOversightViewModel
-@{ ViewData["Title"] = "Till"; }
+@{
+    ViewData["Title"] = "Till";
+    var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
+    int? storeId = ViewBag.StoreId;
+    string status = ViewBag.Status ?? "all";
+    var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+}
 
 <div class="flex items-center justify-between mb-6">
     <div class="flex gap-8">
@@ -10,6 +16,21 @@
     <a href="/till" target="_blank" rel="noopener"
        class="px-4 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Open Till App →</a>
 </div>
+
+<form asp-area="Inventory" asp-controller="Till" asp-action="Index" method="get" class="flex gap-2 flex-wrap mb-3">
+    <select name="storeId" onchange="this.form.submit()" class="@selectCls">
+        <option value="">All branches</option>
+        @foreach (var s in stores)
+        {
+            <option value="@s.Id" selected="@(storeId == s.Id)">@s.Name</option>
+        }
+    </select>
+    <select name="status" onchange="this.form.submit()" class="@selectCls">
+        <option value="all" selected="@(status == "all")">All statuses</option>
+        <option value="open" selected="@(status == "open")">Open</option>
+        <option value="closed" selected="@(status == "closed")">Closed</option>
+    </select>
+</form>
 
 <p class="text-xs text-neutral-400 mb-3">Cash-ups across all tills.</p>
 <div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">

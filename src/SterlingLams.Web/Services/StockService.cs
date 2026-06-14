@@ -4,6 +4,26 @@ using SterlingLams.Web.Models.Domain;
 
 namespace SterlingLams.Web.Services;
 
+/// <summary>Thrown by <see cref="IStockService.ApplyAsync"/> when a stock change would
+/// drive QuantityOnHand negative. Callers should catch this, roll back the transaction,
+/// and surface a friendly "not enough stock" message.</summary>
+public class InsufficientStockException : Exception
+{
+    public int ProductId { get; }
+    public int StoreId { get; }
+    public int Available { get; }
+    public int Requested { get; }
+
+    public InsufficientStockException(int productId, int storeId, int available, int quantityChange)
+        : base($"Insufficient stock for product {productId} at store {storeId}: have {available}, requested {-quantityChange}.")
+    {
+        ProductId = productId;
+        StoreId = storeId;
+        Available = available;
+        Requested = -quantityChange;
+    }
+}
+
 public interface IStockService
 {
     /// <summary>Current on-hand quantity for a product at a store (0 if no record).</summary>
@@ -26,7 +46,12 @@ public class StockService : IStockService
 
     public async Task<int> GetStockAsync(int productId, int storeId)
     {
-        var inv = await _db.StoreInventories
+        // AsNoTracking: callers often check stock both before and after acquiring a row lock
+        // (e.g. TillController.Checkout). A tracking read here would seed the change tracker
+        // with pre-lock values, so EF's identity map would hand the same stale instance (and
+        // stale xmin) back to the later ApplyAsync, causing a spurious
+        // DbUpdateConcurrencyException on save even when the stock change is valid.
+        var inv = await _db.StoreInventories.AsNoTracking()
             .FirstOrDefaultAsync(si => si.ProductId == productId && si.StoreId == storeId);
         return inv?.QuantityOnHand ?? 0;
     }
@@ -44,7 +69,11 @@ public class StockService : IStockService
             _db.StoreInventories.Add(inv);
         }
 
-        inv.QuantityOnHand += quantityChange;
+        var newQty = inv.QuantityOnHand + quantityChange;
+        if (newQty < 0)
+            throw new InsufficientStockException(productId, storeId, inv.QuantityOnHand, quantityChange);
+
+        inv.QuantityOnHand = newQty;
         inv.LastSyncedAt = now;
 
         _db.StockMovements.Add(new StockMovement

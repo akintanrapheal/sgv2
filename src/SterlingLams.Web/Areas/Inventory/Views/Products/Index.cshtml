@@ -5,23 +5,79 @@
     int pg = ViewBag.Page ?? 1;
     int totalPages = ViewBag.TotalPages ?? 1;
     int total = ViewBag.Total ?? 0;
+    int? categoryId = ViewBag.CategoryId;
+    string status = ViewBag.Status ?? "all";
+    string stock = ViewBag.Stock ?? "all";
+    string sort = ViewBag.Sort ?? "name_asc";
+    var categories = ViewBag.Categories as IEnumerable<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem>;
+    var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+
+    Dictionary<string, string> SortRoute(string col)
+    {
+        var next = sort == $"{col}_asc" ? $"{col}_desc" : $"{col}_asc";
+        return new Dictionary<string, string> { ["q"] = q, ["categoryId"] = categoryId?.ToString() ?? "", ["status"] = status, ["stock"] = stock, ["sort"] = next };
+    }
+    string SortIndicator(string col)
+    {
+        if (sort == $"{col}_asc") return " ▲";
+        if (sort == $"{col}_desc") return " ▼";
+        return "";
+    }
+    var nameRoute = SortRoute("name");
+    var barcodeRoute = SortRoute("barcode");
+    var categoryRoute = SortRoute("category");
+    var priceRoute = SortRoute("price");
+    var stockRoute = SortRoute("stock");
+    var statusRoute = SortRoute("status");
 }
 
-<div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
-    <form asp-area="Inventory" asp-controller="Products" asp-action="Index" method="get" class="flex gap-2">
+<form asp-area="Inventory" asp-controller="Products" asp-action="Index" method="get" id="filter-form">
+<div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+    <div class="flex gap-2 flex-wrap">
         <div class="relative">
             <svg class="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h1m3 0h1m3 0h2m3 0h1M4 18h1m3 0h1m3 0h2m3 0h1M4 6v12M9 6v12M13 6v12M19 6v12"/></svg>
             <input type="text" name="q" value="@q" autofocus autocomplete="off" placeholder="Scan barcode or search name / SKU…"
                    class="w-80 border border-neutral-200 rounded-sm pl-9 pr-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
         </div>
         <button type="submit" class="px-4 py-2 text-sm border border-neutral-200 rounded-sm hover:border-neutral-400">Search</button>
-    </form>
+    </div>
     <div class="flex gap-2">
         <button type="button" id="print-labels" class="px-4 py-2 border border-neutral-200 text-neutral-700 text-sm rounded-sm hover:border-neutral-400">Print labels<span id="label-count"></span></button>
         <a asp-area="Inventory" asp-controller="Products" asp-action="Create"
            class="px-4 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">+ New Product</a>
     </div>
 </div>
+
+<div class="flex items-center gap-2 mb-3 flex-wrap">
+    <select name="categoryId" onchange="this.form.submit()" class="@selectCls">
+        <option value="">All categories</option>
+        @if (categories != null)
+        {
+            @foreach (var c in categories)
+            {
+                <option value="@c.Value" selected="@(c.Selected)">@c.Text</option>
+            }
+        }
+    </select>
+    <select name="status" onchange="this.form.submit()" class="@selectCls">
+        <option value="all" selected="@(status == "all")">All statuses</option>
+        <option value="active" selected="@(status == "active")">Active</option>
+        <option value="hidden" selected="@(status == "hidden")">Hidden</option>
+    </select>
+    <select name="stock" onchange="this.form.submit()" class="@selectCls">
+        <option value="all" selected="@(stock == "all")">All stock</option>
+        <option value="in" selected="@(stock == "in")">In stock</option>
+        <option value="low" selected="@(stock == "low")">Low stock</option>
+        <option value="out" selected="@(stock == "out")">Out of stock</option>
+    </select>
+    @if (sort != "name_asc")
+    {
+        <a asp-area="Inventory" asp-controller="Products" asp-action="Index"
+           asp-all-route-data="@(new Dictionary<string, string> { ["q"] = q, ["categoryId"] = categoryId?.ToString() ?? "", ["status"] = status, ["stock"] = stock, ["sort"] = "name_asc" })"
+           class="text-xs text-neutral-400 hover:text-neutral-700">Reset sort</a>
+    }
+</div>
+</form>
 
 <p class="text-xs text-neutral-400 mb-3">@total product(s)@(string.IsNullOrEmpty(q) ? "" : $" matching “{q}”")</p>
 
@@ -30,22 +86,42 @@
         <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
             <tr>
                 <th class="px-4 py-3 w-10"><input type="checkbox" id="lbl-all" class="align-middle cursor-pointer" /></th>
+                <th class="px-2 py-3 w-8"></th>
                 <th class="px-4 py-3 w-12"></th>
-                <th class="text-left font-medium px-4 py-3">Name</th>
-                <th class="text-left font-medium px-4 py-3">Barcode</th>
-                <th class="text-left font-medium px-4 py-3">Category</th>
-                <th class="text-right font-medium px-4 py-3">Price</th>
-                <th class="text-right font-medium px-4 py-3">Stock</th>
-                <th class="text-center font-medium px-4 py-3">Status</th>
+                <th class="text-left font-medium px-4 py-3">
+                    <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="nameRoute" class="hover:text-neutral-800">Name@(SortIndicator("name"))</a>
+                </th>
+                <th class="text-left font-medium px-4 py-3">
+                    <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="barcodeRoute" class="hover:text-neutral-800">Barcode@(SortIndicator("barcode"))</a>
+                </th>
+                <th class="text-left font-medium px-4 py-3">
+                    <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="categoryRoute" class="hover:text-neutral-800">Category@(SortIndicator("category"))</a>
+                </th>
+                <th class="text-right font-medium px-4 py-3">
+                    <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="priceRoute" class="hover:text-neutral-800">Price@(SortIndicator("price"))</a>
+                </th>
+                <th class="text-right font-medium px-4 py-3">
+                    <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="stockRoute" class="hover:text-neutral-800">Stock@(SortIndicator("stock"))</a>
+                </th>
+                <th class="text-center font-medium px-4 py-3">
+                    <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="statusRoute" class="hover:text-neutral-800">Status@(SortIndicator("status"))</a>
+                </th>
                 <th class="px-4 py-3"></th>
             </tr>
         </thead>
         <tbody class="divide-y divide-neutral-100">
-            @if (!Model.Any()) { <tr><td colspan="9" class="px-4 py-12 text-center text-neutral-400">No products found.</td></tr> }
+            @if (!Model.Any()) { <tr><td colspan="10" class="px-4 py-12 text-center text-neutral-400">No products found.</td></tr> }
             @foreach (var p in Model)
             {
-                <tr class="hover:bg-neutral-50">
+                var hasVariants = p.Variants.Any();
+                <tr class="hover:bg-neutral-50 @(hasVariants ? "product-row cursor-pointer" : "")" data-toggle="@(hasVariants ? p.Id.ToString() : null)">
                     <td class="px-4 py-2"><input type="checkbox" class="lbl-check align-middle cursor-pointer" value="@p.Id" /></td>
+                    <td class="px-2 py-2 text-center text-neutral-400">
+                        @if (hasVariants)
+                        {
+                            <svg class="variant-chevron w-3.5 h-3.5 transition-transform inline-block" data-for="@p.Id" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                        }
+                    </td>
                     <td class="px-4 py-2">
                         @if (!string.IsNullOrEmpty(p.ImageUrl)) { <img src="@p.ImageUrl" alt="" class="w-9 h-9 object-cover rounded-sm border border-neutral-100" onerror="this.style.display='none'" /> }
                         else { <div class="w-9 h-9 rounded-sm bg-neutral-100"></div> }
@@ -53,6 +129,7 @@
                     <td class="px-4 py-3">
                         <p class="text-xs text-neutral-800">@p.Name</p>
                         @if (!string.IsNullOrEmpty(p.Sku)) { <p class="text-[10px] text-neutral-400 font-mono">@p.Sku</p> }
+                        @if (hasVariants) { <p class="text-[10px] text-neutral-400">@p.Variants.Count variant@(p.Variants.Count == 1 ? "" : "s")</p> }
                     </td>
                     <td class="px-4 py-3 font-mono text-xs @(string.IsNullOrEmpty(p.Barcode) ? "text-amber-500" : "text-neutral-600")">@(string.IsNullOrEmpty(p.Barcode) ? "— none —" : p.Barcode)</td>
                     <td class="px-4 py-3 text-xs text-neutral-500">@p.CategoryName</td>
@@ -67,17 +144,48 @@
                         <a asp-area="Inventory" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id" class="text-xs text-emerald-600 hover:text-emerald-700">Edit</a>
                     </td>
                 </tr>
+                @if (hasVariants)
+                {
+                    <tr class="variant-row hidden" data-row-for="@p.Id">
+                        <td colspan="10" class="px-4 py-3 bg-neutral-50">
+                            <table class="w-full text-xs">
+                                <thead class="text-neutral-400 uppercase tracking-wide">
+                                    <tr>
+                                        <th class="text-left font-medium pl-8 py-1">Variant</th>
+                                        <th class="text-left font-medium py-1">SKU</th>
+                                        <th class="text-left font-medium py-1">Barcode</th>
+                                        <th class="text-right font-medium py-1 pr-4">Price</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-neutral-100">
+                                    @foreach (var v in p.Variants)
+                                    {
+                                        <tr>
+                                            <td class="pl-8 py-1.5 text-neutral-700">@v.Name</td>
+                                            <td class="py-1.5 font-mono text-neutral-500">@(v.Sku ?? "—")</td>
+                                            <td class="py-1.5 font-mono @(string.IsNullOrEmpty(v.Barcode) ? "text-amber-500" : "text-neutral-500")">@(string.IsNullOrEmpty(v.Barcode) ? "— none —" : v.Barcode)</td>
+                                            <td class="py-1.5 pr-4 text-right text-neutral-700">₦@v.Price.ToString("N0")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                }
             }
         </tbody>
     </table>
 </div>
 
+@{
+    var pageRoute = new Dictionary<string, string> { ["q"] = q, ["categoryId"] = categoryId?.ToString() ?? "", ["status"] = status, ["stock"] = stock, ["sort"] = sort };
+}
 @if (totalPages > 1)
 {
     <div class="flex items-center justify-center gap-1.5 mt-4 text-xs text-neutral-500">
         <span>Page @pg of @totalPages</span>
-        @if (pg > 1) { <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-route-q="@q" asp-route-page="@(pg-1)" class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">‹ Prev</a> }
-        @if (pg < totalPages) { <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-route-q="@q" asp-route-page="@(pg+1)" class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">Next ›</a> }
+        @if (pg > 1) { <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="pageRoute" asp-route-page="@(pg-1)" class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">‹ Prev</a> }
+        @if (pg < totalPages) { <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="pageRoute" asp-route-page="@(pg+1)" class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">Next ›</a> }
     </div>
 }
 
@@ -97,5 +205,17 @@
         window.open('/Inventory/Products/Labels?ids=' + ids.join(','), '_blank');
     });
     refresh();
+
+    // ── Variant dropdown ───────────────────────────────────────────────────
+    document.querySelectorAll('.product-row').forEach(row => {
+        row.addEventListener('click', e => {
+            if (e.target.closest('a, input, button')) return;
+            const id = row.dataset.toggle;
+            const variantRow = document.querySelector(`.variant-row[data-row-for="${id}"]`);
+            const chevron = row.querySelector('.variant-chevron');
+            variantRow.classList.toggle('hidden');
+            chevron.classList.toggle('rotate-90');
+        });
+    });
 })();
 </script>

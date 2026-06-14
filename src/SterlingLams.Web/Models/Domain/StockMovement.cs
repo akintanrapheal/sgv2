@@ -2,11 +2,14 @@ namespace SterlingLams.Web.Models.Domain;
 
 public enum StockMovementType
 {
+    // NOTE: persisted as int — only ever APPEND new members so existing ledger rows keep meaning.
     Adjustment, // manual set / opening stock / correction
     Sale,       // POS or online sale (stock out)
     Purchase,   // goods received (stock in)
     Transfer,   // inter-branch movement (out of one, into another)
-    Return      // customer return (stock in)
+    Return,     // customer return (stock in)
+    Damage,     // written off as damaged (stock out)
+    Loss        // shrinkage / theft / lost (stock out)
 }
 
 /// <summary>

@@ -76,6 +76,22 @@ public class OrderFulfilmentService : IOrderFulfilmentService
         return (fulfilStore, alloc, null);
     }
 
+    // ── Concurrency helper ───────────────────────────────────────────────────
+    /// <summary>
+    /// Acquires Postgres row locks (SELECT ... FOR UPDATE) on the given StoreInventory rows,
+    /// in a fixed (ProductId, StoreId) order, before they're read/mutated. This serializes
+    /// concurrent reservations/sales/transfers touching the same product+store instead of
+    /// racing on stale QuantityReserved/QuantityOnHand snapshots. Caller must already be
+    /// inside a transaction — the lock is held until commit/rollback. Rows that don't exist
+    /// yet simply lock nothing (no-op).
+    /// </summary>
+    private async Task LockInventoryRowsAsync(IEnumerable<(int ProductId, int StoreId)> pairs)
+    {
+        foreach (var (pid, sid) in pairs.Distinct().OrderBy(p => p.ProductId).ThenBy(p => p.StoreId))
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"StoreInventories\" WHERE \"ProductId\" = {pid} AND \"StoreId\" = {sid} FOR UPDATE");
+    }
+
     // ── Reserve / release ──────────────────────────────────────────────────────
     public async Task<bool> TryReserveAsync(int orderId)
     {
@@ -96,6 +112,11 @@ public class OrderFulfilmentService : IOrderFulfilmentService
 
         await using var tx = await _db.Database.BeginTransactionAsync();
 
+        // Lock every (product, store) combo this order could draw from before reading
+        // availability, so the read below reflects the latest committed state and no
+        // other transaction can change it out from under us before we commit.
+        await LockInventoryRowsAsync(productIds.SelectMany(pid => storeIds.Select(sid => (pid, sid))));
+
         var invMap = (await _db.StoreInventories
                 .Where(si => productIds.Contains(si.ProductId) && storeIds.Contains(si.StoreId))
                 .ToListAsync())
@@ -115,8 +136,16 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                 OrderId = orderId, StoreId = sid, ProductId = pid, Quantity = qty, CreatedAt = now
             });
         }
-        await _db.SaveChangesAsync();
-        await tx.CommitAsync();
+
+        try
+        {
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return false; // stock changed under us — caller blocks checkout and the customer can retry
+        }
         return true;
     }
 
@@ -124,11 +153,18 @@ public class OrderFulfilmentService : IOrderFulfilmentService
     {
         var rows = await _db.StockReservations.Where(r => r.OrderId == orderId).ToListAsync();
         if (rows.Count == 0) return;
+        await using var tx = await _db.Database.BeginTransactionAsync();
         await ReleaseRowsAsync(rows);
+        await tx.CommitAsync();
     }
 
+    /// <summary>Releases reservation rows and their QuantityReserved holds. Caller must already
+    /// be inside a transaction (either its own, as in <see cref="ReleaseReservationAsync"/>, or
+    /// the surrounding fulfilment transaction in <see cref="FulfilPaidOrderAsync"/>).</summary>
     private async Task ReleaseRowsAsync(List<StockReservation> rows)
     {
+        await LockInventoryRowsAsync(rows.Select(r => (r.ProductId, r.StoreId)));
+
         var pids = rows.Select(r => r.ProductId).Distinct().ToList();
         var sids = rows.Select(r => r.StoreId).Distinct().ToList();
         var invMap = (await _db.StoreInventories
@@ -223,9 +259,13 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                     TransferNumber = transferNumber,
                     FromStoreId = sourceStore.Id,
                     ToStoreId = fulfilStore.Id,
+                    Status = TransferStatus.Completed,
                     CreatedByUserId = order.UserId,
                     Note = $"Online order {order.OrderNumber}",
-                    CreatedAt = now
+                    CreatedAt = now,
+                    ApprovedAt = now,
+                    DispatchedAt = now,
+                    ReceivedAt = now
                 };
                 foreach (var kv in bySource)
                 {
@@ -235,7 +275,10 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                     {
                         ProductId = pid,
                         ProductName = products.GetValueOrDefault(pid, $"#{pid}"),
-                        Quantity = qty
+                        RequestedQty = qty,
+                        ApprovedQty = qty,
+                        DispatchedQty = qty,
+                        ReceivedQty = qty
                     });
                     await _stock.ApplyAsync(pid, null, sourceStore.Id, -qty, StockMovementType.Transfer,
                         transferNumber, $"To {fulfilStore.Name} (order {order.OrderNumber})", order.UserId);

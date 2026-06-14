@@ -1,0 +1,103 @@
+using Microsoft.EntityFrameworkCore;
+using SterlingLams.Web.Data;
+using SterlingLams.Web.Models.ViewModels;
+
+namespace SterlingLams.Web.Services;
+
+/// <summary>
+/// Read-only merchandising queries that drive revenue sections (best sellers, trending,
+/// new arrivals, recently-viewed). All return the shared <see cref="ProductCardViewModel"/>
+/// so any storefront card grid can render them. No schema of its own — best sellers are
+/// derived from the order ledger (OrderItems).
+/// </summary>
+public interface IMerchandisingService
+{
+    /// <summary>Top products by units sold. Pass <paramref name="sinceDays"/> for "trending"
+    /// (recent window); omit for all-time best sellers.</summary>
+    Task<List<ProductCardViewModel>> BestSellersAsync(int take, int? sinceDays = null);
+
+    /// <summary>Most recently added active products.</summary>
+    Task<List<ProductCardViewModel>> NewArrivalsAsync(int take);
+
+    /// <summary>Active products for the given ids, preserving the supplied order
+    /// (used for recently-viewed). Inactive/missing ids are dropped.</summary>
+    Task<List<ProductCardViewModel>> ByIdsAsync(IReadOnlyList<int> ids);
+}
+
+public class MerchandisingService : IMerchandisingService
+{
+    private readonly ApplicationDbContext _db;
+
+    public MerchandisingService(ApplicationDbContext db) => _db = db;
+
+    public async Task<List<ProductCardViewModel>> BestSellersAsync(int take, int? sinceDays = null)
+    {
+        var q = _db.OrderItems.AsQueryable();
+        if (sinceDays is int days)
+        {
+            var cutoff = DateTime.UtcNow.AddDays(-days);
+            q = q.Where(oi => oi.Order.CreatedAt >= cutoff);
+        }
+
+        // Rank product ids by units sold. Over-fetch so inactive/deleted products can be
+        // filtered out while still returning `take` cards.
+        var ranked = await q
+            .GroupBy(oi => oi.ProductId)
+            .Select(g => new { ProductId = g.Key, Qty = g.Sum(x => x.Quantity) })
+            .OrderByDescending(x => x.Qty)
+            .Take(take * 3)
+            .ToListAsync();
+
+        var cards = await LoadCardsAsync(ranked.Select(r => r.ProductId).ToList());
+        return ranked
+            .Select(r => cards.GetValueOrDefault(r.ProductId))
+            .Where(c => c != null)
+            .Take(take)
+            .Select(c => c!)
+            .ToList();
+    }
+
+    public async Task<List<ProductCardViewModel>> NewArrivalsAsync(int take)
+    {
+        var ids = await _db.Products
+            .Where(p => p.IsActive)
+            .OrderByDescending(p => p.IsNewArrival)
+            .ThenByDescending(p => p.CreatedAt)
+            .Take(take)
+            .Select(p => p.Id)
+            .ToListAsync();
+        return OrderBy(ids, await LoadCardsAsync(ids));
+    }
+
+    public async Task<List<ProductCardViewModel>> ByIdsAsync(IReadOnlyList<int> ids)
+    {
+        if (ids == null || ids.Count == 0) return new();
+        return OrderBy(ids, await LoadCardsAsync(ids));
+    }
+
+    private static List<ProductCardViewModel> OrderBy(IReadOnlyList<int> ids, Dictionary<int, ProductCardViewModel> cards) =>
+        ids.Select(id => cards.GetValueOrDefault(id)).Where(c => c != null).Select(c => c!).ToList();
+
+    private async Task<Dictionary<int, ProductCardViewModel>> LoadCardsAsync(IReadOnlyList<int> ids)
+    {
+        if (ids.Count == 0) return new();
+        var products = await _db.Products
+            .Where(p => ids.Contains(p.Id) && p.IsActive)
+            .Select(p => new ProductCardViewModel
+            {
+                Id = p.Id,
+                Name = p.Name,
+                Slug = p.Slug,
+                Price = p.Price,
+                Currency = p.Currency,
+                PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
+                    ?? "/images/placeholder.jpg",
+                IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0),
+                IsNewArrival = p.IsNewArrival,
+                HasVariants = p.Variants.Any(v => v.IsActive),
+                CategoryName = p.Category.Name,
+            })
+            .ToListAsync();
+        return products.ToDictionary(p => p.Id);
+    }
+}

@@ -14,7 +14,8 @@ public class ProductsController : InventoryAreaController
     public ProductsController(ApplicationDbContext db) => _db = db;
 
     // List — search matches name, SKU OR barcode (so a scanner finds the product).
-    public async Task<IActionResult> Index(string q = "", int page = 1)
+    public async Task<IActionResult> Index(string q = "", int page = 1, int? categoryId = null,
+        string status = "all", string stock = "all", string sort = "name_asc")
     {
         ViewData["Title"] = "Products";
         var query = _db.Products.Include(p => p.Category).Include(p => p.Images).Where(p => p.IsActive == true || p.IsActive == false);
@@ -25,8 +26,34 @@ public class ProductsController : InventoryAreaController
                                   || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
                                   || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")));
 
+        if (categoryId.HasValue)
+            query = query.Where(p => p.CategoryId == categoryId.Value);
+
+        if (status == "active") query = query.Where(p => p.IsActive);
+        else if (status == "hidden") query = query.Where(p => !p.IsActive);
+
+        if (stock == "out") query = query.Where(p => (p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0) == 0);
+        else if (stock == "low") query = query.Where(p => (p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0) <= Math.Max(1, p.LowStockThreshold));
+        else if (stock == "in") query = query.Where(p => (p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0) > 0);
+
+        query = sort switch
+        {
+            "name_desc" => query.OrderByDescending(p => p.Name),
+            "barcode_asc" => query.OrderBy(p => p.Barcode),
+            "barcode_desc" => query.OrderByDescending(p => p.Barcode),
+            "category_asc" => query.OrderBy(p => p.Category != null ? p.Category.Name : ""),
+            "category_desc" => query.OrderByDescending(p => p.Category != null ? p.Category.Name : ""),
+            "price_asc" => query.OrderBy(p => p.Price),
+            "price_desc" => query.OrderByDescending(p => p.Price),
+            "stock_asc" => query.OrderBy(p => p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0),
+            "stock_desc" => query.OrderByDescending(p => p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0),
+            "status_asc" => query.OrderBy(p => p.IsActive),
+            "status_desc" => query.OrderByDescending(p => p.IsActive),
+            _ => query.OrderBy(p => p.Name)
+        };
+
         var total = await query.CountAsync();
-        var products = await query.OrderBy(p => p.Name)
+        var products = await query
             .Skip((page - 1) * PageSize).Take(PageSize)
             .Select(p => new InvProductRow
             {
@@ -38,14 +65,27 @@ public class ProductsController : InventoryAreaController
                 CategoryName = p.Category != null ? p.Category.Name : "—",
                 ImageUrl = p.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault(),
                 IsActive = p.IsActive,
-                TotalStock = p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0
+                TotalStock = p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0,
+                Variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name)
+                    .Select(v => new InvVariantRow
+                    {
+                        Name = v.Name,
+                        Sku = v.Sku,
+                        Barcode = v.Barcode,
+                        Price = p.Price + (v.PriceAdjustment ?? 0)
+                    }).ToList()
             })
             .ToListAsync();
 
+        await LoadCategories(categoryId);
         ViewBag.Query = q;
         ViewBag.Page = page;
         ViewBag.TotalPages = (int)Math.Ceiling(total / (double)PageSize);
         ViewBag.Total = total;
+        ViewBag.CategoryId = categoryId;
+        ViewBag.Status = status;
+        ViewBag.Stock = stock;
+        ViewBag.Sort = sort;
         return View(products);
     }
 
@@ -128,16 +168,34 @@ public class ProductsController : InventoryAreaController
         return RedirectToAction(nameof(Index));
     }
 
-    // Printable barcode label sheet for the selected products.
+    // Printable barcode label sheet for the selected products. Products with per-variant
+    // barcodes get one label per variant (so each color/size gets its own scannable code);
+    // others get a single label using the product's barcode/SKU.
     public async Task<IActionResult> Labels(string ids)
     {
         var idList = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
             .Select(s => int.TryParse(s, out var n) ? n : 0).Where(n => n > 0).Distinct().ToList();
-        var products = await _db.Products.Where(p => idList.Contains(p.Id))
-            .Select(p => new LabelRow { Name = p.Name, Price = p.Price, Code = p.Barcode ?? p.Sku ?? ("P" + p.Id) })
-            .ToListAsync();
+        var products = await _db.Products.Include(p => p.Variants)
+            .Where(p => idList.Contains(p.Id)).OrderBy(p => p.Name).ToListAsync();
+
+        var rows = new List<LabelRow>();
+        foreach (var p in products)
+        {
+            var variants = p.Variants.Where(v => v.IsActive && !string.IsNullOrEmpty(v.Barcode))
+                .OrderBy(v => v.Name).ToList();
+            if (variants.Count > 0)
+            {
+                foreach (var v in variants)
+                    rows.Add(new LabelRow { Name = $"{p.Name} – {v.Name}", Price = p.Price + (v.PriceAdjustment ?? 0), Code = v.Barcode! });
+            }
+            else
+            {
+                rows.Add(new LabelRow { Name = p.Name, Price = p.Price, Code = p.Barcode ?? p.Sku ?? ("P" + p.Id) });
+            }
+        }
+
         ViewData["Title"] = "Barcode Labels";
-        return View(products);
+        return View(rows);
     }
 
     // Full stock-movement ledger for one product (every sale / adjustment / transfer).
@@ -239,4 +297,13 @@ public class InvProductRow
     public string? ImageUrl { get; set; }
     public bool IsActive { get; set; }
     public int TotalStock { get; set; }
+    public List<InvVariantRow> Variants { get; set; } = new();
+}
+
+public class InvVariantRow
+{
+    public string Name { get; set; } = "";
+    public string? Sku { get; set; }
+    public string? Barcode { get; set; }
+    public decimal Price { get; set; }
 }

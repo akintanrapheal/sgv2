@@ -11,6 +11,14 @@
 
     <!-- ── Top bar ───────────────────────────────────────────────────────── -->
     <header class="flex items-center gap-3 px-4 py-2 bg-neutral-900 text-white flex-shrink-0">
+        <!-- Menu -->
+        <button type="button" id="hamburger-btn"
+                class="relative flex-shrink-0 w-8 h-8 flex items-center justify-center rounded hover:bg-neutral-800 transition-colors" title="Menu">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+            </svg>
+            <span id="hamburger-dot" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full bg-brand-500"></span>
+        </button>
         <!-- Logo -->
         <div class="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center flex-shrink-0">
             <span class="font-cormorant text-base font-light">S</span>
@@ -31,19 +39,67 @@
                 </div>
                 <span class="text-xs text-neutral-300">@cashierName</span>
             </div>
-            <div class="flex items-center gap-2">
-                <button type="button" id="till-held-btn"
-                        class="relative text-[11px] text-neutral-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-neutral-800">Held<span id="till-held-count" class="hidden ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-brand-500 text-white text-[9px] font-semibold align-middle">0</span></button>
-                <button type="button" id="till-refund-btn"
-                        class="text-[11px] text-neutral-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-neutral-800">Refund</button>
-                <button type="button" id="till-cashup-btn"
-                        class="text-[11px] text-amber-400 hover:text-amber-200 transition-colors px-2 py-1 rounded hover:bg-neutral-800">Cash up</button>
-                <form asp-controller="Till" asp-action="Logout" method="post" class="inline">
-                    <button class="text-[11px] text-neutral-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-neutral-800">Sign out</button>
-                </form>
-            </div>
         </div>
     </header>
+
+    <!-- ── Side menu ─────────────────────────────────────────────────────── -->
+    <div id="menu-overlay" class="hidden fixed inset-0 bg-black/40 z-40"></div>
+    <div id="till-menu" class="fixed inset-y-0 left-0 w-72 max-w-[85vw] bg-white z-50 shadow-2xl -translate-x-full transition-transform duration-200 flex flex-col">
+        <div class="flex items-center justify-between px-4 py-3 bg-neutral-900 text-white flex-shrink-0">
+            <div class="flex items-center gap-2 min-w-0">
+                <div class="w-7 h-7 rounded-full bg-brand-500 flex items-center justify-center flex-shrink-0">
+                    <span class="font-cormorant text-sm font-light">S</span>
+                </div>
+                <span class="text-sm font-medium truncate">@Model.Store?.Name</span>
+            </div>
+            <button type="button" id="menu-close-btn" class="text-neutral-400 hover:text-white transition-colors flex-shrink-0">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <nav class="flex-1 overflow-y-auto py-2">
+            <p class="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Admin</p>
+            <button type="button" id="till-cashup-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 10-8 0v2h8z"/></svg>
+                Close Till
+            </button>
+            <button type="button" id="menu-changeregister-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                Change Till Location
+            </button>
+
+            <p class="px-4 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Sales</p>
+            <button type="button" id="till-held-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Held sales
+                <span id="till-held-count" class="hidden ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-brand-500 text-white text-[10px] font-semibold">0</span>
+            </button>
+            <button type="button" id="till-refund-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h10a4 4 0 014 4v1m-4-9l-4 4 4 4"/></svg>
+                Refund
+            </button>
+            <button type="button" id="menu-receipts-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                Recent receipts
+            </button>
+
+            <p class="px-4 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Stock</p>
+            <button type="button" id="menu-stocklookup-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                Stock Lookup
+            </button>
+        </nav>
+        <div class="border-t border-neutral-100 p-2 flex-shrink-0">
+            <form asp-controller="Till" asp-action="Logout" method="post">
+                <button type="submit" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors text-left">
+                    <svg class="w-5 h-5 flex-shrink-0 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                    Sign out
+                </button>
+            </form>
+        </div>
+    </div>
 
     <!-- ── Body ──────────────────────────────────────────────────────────── -->
     <div class="flex-1 flex overflow-hidden">
@@ -430,6 +486,41 @@
     </div>
 </div>
 
+<!-- ── Stock lookup (full-screen) ──────────────────────────────────────── -->
+<div id="till-stocklookup" class="hidden fixed inset-0 z-50 bg-white flex flex-col">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 flex-shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+            <button type="button" id="stocklookup-back" class="hidden text-neutral-400 hover:text-neutral-700 transition-colors flex-shrink-0">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <div class="min-w-0">
+                <p class="text-xs text-neutral-400">Till</p>
+                <h3 id="stocklookup-title" class="text-lg font-semibold text-neutral-900 truncate leading-tight">Stock lookup</h3>
+            </div>
+        </div>
+        <button type="button" id="stocklookup-close" class="text-neutral-400 hover:text-neutral-700 transition-colors flex-shrink-0">
+            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+        </button>
+    </div>
+    <div id="stocklookup-searchbar" class="px-6 py-3 border-b border-neutral-100 flex-shrink-0 flex items-center gap-4 flex-wrap">
+        <div class="relative flex-1 min-w-[240px] max-w-md">
+            <svg class="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input id="stocklookup-search" type="text" autocomplete="off" placeholder="Search name, SKU, or scan barcode…"
+                   class="w-full pl-9 pr-4 py-2.5 text-sm border border-neutral-200 rounded-lg focus:outline-none focus:border-brand-500" />
+        </div>
+        <div class="flex items-center gap-2">
+            <label for="stocklookup-location" class="text-[10px] text-neutral-400 font-medium uppercase tracking-wide">Filter by location</label>
+            <select id="stocklookup-location" class="text-sm border border-neutral-200 rounded-lg px-3 py-2.5 focus:outline-none focus:border-brand-500">
+                <option value="">All locations</option>
+            </select>
+        </div>
+    </div>
+    <div id="stocklookup-results" class="flex-1 overflow-y-auto text-sm">
+        <p class="text-center text-neutral-400 py-8 text-xs">Search for a product to see stock levels.</p>
+    </div>
+    <div id="stocklookup-detail" class="hidden flex-1 overflow-y-auto text-sm px-6 py-4"></div>
+</div>
+
 @section Scripts {
 <script>
 (function () {
@@ -592,7 +683,7 @@
         }
         resultsEl.innerHTML = items.map(p => {
             const out = p.stock <= 0;
-            return `<button type="button" ${out ? 'disabled' : ''} class="till-prod text-left bg-white border border-neutral-200 rounded-xl overflow-hidden hover:border-brand-400 hover:shadow-md transition-all ${out ? 'opacity-40' : ''}" data-p='${encodeURIComponent(JSON.stringify(p))}'>
+            return `<button type="button" ${out ? 'disabled' : ''} class="till-prod text-left bg-white border border-neutral-200 rounded-xl overflow-hidden hover:border-brand-400 hover:shadow-md transition-all ${out ? 'opacity-40' : ''}" data-p='${encodeURIComponent(JSON.stringify(p)).replace(/'/g, '%27')}'>
                 <div class="aspect-square bg-neutral-50 relative">${p.image ? `<img src="${p.image}" class="w-full h-full object-cover">` : '<div class="w-full h-full flex items-center justify-center text-neutral-300"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></div>'}
                     ${out ? '<div class="absolute inset-0 bg-white/60 flex items-center justify-center"><span class="text-[10px] text-red-500 font-medium">Out of stock</span></div>' : ''}
                 </div>
@@ -620,11 +711,21 @@
     const variantModal = document.getElementById('variant-modal');
     const variantTitle = document.getElementById('variant-title');
     const variantList = document.getElementById('variant-list');
-    document.getElementById('variant-cancel').addEventListener('click', () => variantModal.classList.add('hidden'));
-    variantModal.addEventListener('click', e => { if (e.target === variantModal) variantModal.classList.add('hidden'); });
+    let resolveVariant = null;
+    document.getElementById('variant-cancel').addEventListener('click', () => {
+        variantModal.classList.add('hidden');
+        if (resolveVariant) { resolveVariant(null); resolveVariant = null; }
+    });
+    variantModal.addEventListener('click', e => {
+        if (e.target === variantModal) {
+            variantModal.classList.add('hidden');
+            if (resolveVariant) { resolveVariant(null); resolveVariant = null; }
+        }
+    });
 
     function pickVariant(p) {
         return new Promise(resolve => {
+            resolveVariant = resolve;
             variantTitle.textContent = p.name;
             variantList.innerHTML = p.variants.map((v, i) => {
                 const price = p.price + (v.priceAdjustment || 0);
@@ -635,6 +736,7 @@
             }).join('');
             variantList.querySelectorAll('.variant-opt').forEach(b => b.addEventListener('click', () => {
                 variantModal.classList.add('hidden');
+                resolveVariant = null;
                 resolve(p.variants[+b.dataset.idx]);
             }));
             variantModal.classList.remove('hidden');
@@ -868,6 +970,7 @@
             const list = await res.json();
             heldCountEl.textContent = list.length;
             heldCountEl.classList.toggle('hidden', list.length === 0);
+            document.getElementById('hamburger-dot')?.classList.toggle('hidden', list.length === 0);
             return list;
         } catch { return []; }
     }
@@ -1341,6 +1444,224 @@
                 successState.classList.remove('hidden');
             } else msgEl.textContent = data.message || 'Refund failed.';
         } finally { confirmBtn.textContent = 'Process refund'; confirmBtn.disabled = false; }
+    });
+}());
+
+// ── Side menu ────────────────────────────────────────────────────────────────
+(function () {
+    const menu = document.getElementById('till-menu');
+    const overlay = document.getElementById('menu-overlay');
+    function openMenu() { menu.classList.remove('-translate-x-full'); overlay.classList.remove('hidden'); }
+    function closeMenu() { menu.classList.add('-translate-x-full'); overlay.classList.add('hidden'); }
+    document.getElementById('hamburger-btn').addEventListener('click', openMenu);
+    document.getElementById('menu-close-btn').addEventListener('click', closeMenu);
+    overlay.addEventListener('click', closeMenu);
+    menu.addEventListener('click', e => { if (e.target.closest('button, a')) closeMenu(); }, true);
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenu(); });
+
+    document.getElementById('menu-changeregister-btn').addEventListener('click', () => {
+        if (confirm('Change till location? You\'ll need to pick a register again.')) {
+            const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+            fetch('/Till/ChangeRegister', { method: 'POST', headers: { 'RequestVerificationToken': token } })
+                .then(() => location.href = '/Till');
+        }
+    });
+
+    document.getElementById('menu-receipts-btn').addEventListener('click', () => {
+        document.querySelector('.till-tab[data-tab="orders"]')?.click();
+    });
+}());
+
+// ── Stock lookup ─────────────────────────────────────────────────────────────
+(function () {
+    const fmt = n => '₦' + Number(n || 0).toLocaleString('en-NG', { maximumFractionDigits: 0 });
+    const modal = document.getElementById('till-stocklookup');
+    const input = document.getElementById('stocklookup-search');
+    const searchbar = document.getElementById('stocklookup-searchbar');
+    const locationSelect = document.getElementById('stocklookup-location');
+    const results = document.getElementById('stocklookup-results');
+    const detail = document.getElementById('stocklookup-detail');
+    const titleEl = document.getElementById('stocklookup-title');
+    const backBtn = document.getElementById('stocklookup-back');
+    const DASH = '—';
+    let debounce, lastItems = [], currentDetail = null, locationsLoaded = false;
+
+    document.getElementById('menu-stocklookup-btn').addEventListener('click', () => {
+        modal.classList.remove('hidden');
+        loadLocations();
+        showList();
+        setTimeout(() => input.focus(), 50);
+    });
+    document.getElementById('stocklookup-close').addEventListener('click', () => modal.classList.add('hidden'));
+
+    input.addEventListener('input', () => {
+        clearTimeout(debounce);
+        debounce = setTimeout(search, 250);
+    });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(debounce); search(); } });
+
+    locationSelect.addEventListener('change', () => {
+        if (!detail.classList.contains('hidden') && currentDetail) {
+            openItemDetail(currentDetail.item, currentDetail.variant);
+        } else if (!results.classList.contains('hidden')) {
+            renderResults();
+        }
+    });
+
+    async function loadLocations() {
+        if (locationsLoaded) return;
+        locationsLoaded = true;
+        try {
+            const res = await fetch('/Till/StockLookupStores');
+            const stores = await res.json();
+            locationSelect.insertAdjacentHTML('beforeend', stores.map(s => `<option value="${s.name}">${s.name}</option>`).join(''));
+        } catch { locationsLoaded = false; }
+    }
+
+    function showList() {
+        titleEl.textContent = 'Stock lookup';
+        backBtn.classList.add('hidden');
+        searchbar.classList.remove('hidden');
+        detail.classList.add('hidden');
+        results.classList.remove('hidden');
+        currentDetail = null;
+        if (lastItems.length) renderResults();
+    }
+
+    function showDetail(title, onBack, html) {
+        titleEl.textContent = title;
+        backBtn.classList.remove('hidden');
+        backBtn.onclick = onBack;
+        searchbar.classList.remove('hidden');
+        results.classList.add('hidden');
+        detail.classList.remove('hidden');
+        detail.innerHTML = html;
+    }
+
+    function renderDetailTable(title, item, variant) {
+        const barcode = (variant && variant.barcode) || item.barcode || DASH;
+        const category = item.category || DASH;
+        const price = fmt(item.price);
+        const headers = ['Name', 'Description', 'Colour', 'Size', 'Location', 'In stock', 'On hold', 'On order', 'Sale price', 'Brand', 'Category', 'Barcode', 'Order code', 'Qty sold'];
+        const rightAlign = new Set(['In stock', 'On hold', 'On order', 'Sale price', 'Qty sold']);
+        const loc = locationSelect.value;
+        let stores = item.stores || [];
+        if (loc) {
+            const match = stores.filter(s => s.name === loc);
+            stores = match.length ? match : [{ name: loc, available: null, reserved: null }];
+        }
+        if (!stores.length) stores = [{ name: DASH, available: null, reserved: null }];
+        const rows = stores.map(s => {
+            const cells = {
+                'Name': title,
+                'Description': DASH,
+                'Colour': DASH,
+                'Size': DASH,
+                'Location': s.name,
+                'In stock': s.available != null ? s.available : DASH,
+                'On hold': s.reserved != null ? s.reserved : DASH,
+                'On order': DASH,
+                'Sale price': price,
+                'Brand': DASH,
+                'Category': category,
+                'Barcode': barcode,
+                'Order code': DASH,
+                'Qty sold': DASH,
+            };
+            return `<tr>${headers.map(h => {
+                const v = cells[h];
+                let cls = 'px-3 py-2 text-neutral-700';
+                if (rightAlign.has(h)) cls += ' text-right';
+                if (h === 'In stock' && v !== DASH) cls += v > 0 ? ' font-medium text-emerald-600' : ' font-medium text-red-500';
+                if (h === 'Name' || h === 'Barcode') cls += ' font-medium';
+                return `<td class="${cls}">${v}</td>`;
+            }).join('')}</tr>`;
+        }).join('');
+        return `
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs whitespace-nowrap">
+                    <thead>
+                        <tr class="text-left text-neutral-400 border-b border-neutral-100 uppercase tracking-wide text-[10px]">
+                            ${headers.map(h => `<th class="px-3 py-2 font-medium${rightAlign.has(h) ? ' text-right' : ''}">${h}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-neutral-50">${rows}</tbody>
+                </table>
+            </div>`;
+    }
+
+    function openItemDetail(p, variant) {
+        const title = variant ? `${p.name} — ${variant.name}` : p.name;
+        const back = (p.variants && p.variants.length) ? () => openVariantList(p) : showList;
+        currentDetail = { item: p, variant: variant };
+        showDetail(title, back, renderDetailTable(title, p, variant));
+    }
+
+    function openVariantList(p) {
+        currentDetail = null;
+        showDetail(p.name, showList, `
+            <div class="max-w-2xl mx-auto divide-y divide-neutral-100">
+                ${p.variants.map((v, i) => `
+                    <button type="button" data-i="${i}" class="sl-variant w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-neutral-50 transition-colors">
+                        <div class="min-w-0">
+                            <p class="text-sm text-neutral-800 font-medium leading-snug">${v.name}</p>
+                            ${v.sku ? `<p class="text-[10px] text-neutral-400 font-mono leading-none mt-0.5">${v.sku}</p>` : ''}
+                        </div>
+                        <svg class="w-4 h-4 text-neutral-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                    </button>`).join('')}
+            </div>`);
+        detail.querySelectorAll('.sl-variant').forEach(b => b.addEventListener('click', () => openItemDetail(p, p.variants[+b.dataset.i])));
+    }
+
+    async function search() {
+        const q = input.value.trim();
+        showList();
+        if (!q) { lastItems = []; results.innerHTML = '<p class="text-center text-neutral-400 py-8 text-xs">Search for a product to see stock levels.</p>'; return; }
+        results.innerHTML = '<p class="text-center text-neutral-400 py-8 text-xs">Searching…</p>';
+        try {
+            const res = await fetch('/Till/StockLookup?q=' + encodeURIComponent(q));
+            lastItems = await res.json();
+            renderResults();
+        } catch { results.innerHTML = '<p class="text-center text-neutral-400 py-8 text-xs">Could not search.</p>'; }
+    }
+
+    function renderResults() {
+        if (!lastItems.length) { results.innerHTML = '<p class="text-center text-neutral-400 py-8 text-xs">No products found.</p>'; return; }
+        const loc = locationSelect.value;
+        results.innerHTML = `<div class="max-w-2xl mx-auto divide-y divide-neutral-100">${lastItems.map((p, i) => {
+            let stores = p.stores || [];
+            if (loc) {
+                const match = stores.filter(s => s.name === loc);
+                stores = match.length ? match : [{ name: loc, available: 0 }];
+            }
+            return `
+                <button type="button" data-i="${i}" class="sl-product w-full text-left px-4 py-3 hover:bg-neutral-50 transition-colors">
+                    <div class="flex justify-between items-start gap-2">
+                        <div class="min-w-0">
+                            ${p.sku ? `<p class="text-[10px] text-neutral-400 font-mono leading-none mb-0.5">${p.sku}</p>` : ''}
+                            <p class="text-sm text-neutral-800 font-medium leading-snug">${p.name}</p>
+                            ${p.variants && p.variants.length ? `<p class="text-[11px] text-neutral-400 mt-0.5">${p.variants.map(v=>v.name).join(', ')}</p>` : ''}
+                        </div>
+                        <span class="text-sm font-semibold text-neutral-700 flex-shrink-0">${fmt(p.price)}</span>
+                    </div>
+                    <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                        ${stores.length ? stores.map(s => `
+                            <div class="text-xs">
+                                <span class="text-neutral-400">${s.name}:</span>
+                                <span class="font-medium ${s.available > 0 ? 'text-emerald-600' : 'text-red-500'}">${s.available}</span>
+                            </div>`).join('') : '<span class="text-xs text-neutral-400">No stock records</span>'}
+                    </div>
+                </button>`;
+        }).join('')}</div>`;
+        results.querySelectorAll('.sl-product').forEach(b => b.addEventListener('click', () => {
+            const p = lastItems[+b.dataset.i];
+            if (p.variants && p.variants.length) openVariantList(p);
+            else openItemDetail(p, null);
+        }));
+    }
+
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && !modal.classList.contains('hidden')) modal.classList.add('hidden');
     });
 }());
 </script>

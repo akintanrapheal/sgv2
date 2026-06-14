@@ -1,39 +1,82 @@
+@using SterlingLams.Web.Areas.Inventory
 @model List<SterlingLams.Web.Models.Domain.StockTransfer>
-@{ ViewData["Title"] = "Transfers"; }
+@{
+    ViewData["Title"] = "Transfers";
+    var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
+    int? storeId = ViewBag.StoreId;
+    string status = ViewBag.Status ?? "all";
+    var statusCounts = ViewBag.StatusCounts as Dictionary<TransferStatus, int> ?? new();
+    int totalCount = ViewBag.TotalCount ?? 0;
+    var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+}
 
-<div class="flex items-center justify-between mb-6">
+<div class="flex items-center justify-between mb-6 gap-3 flex-wrap">
     <div>
         <h1 class="text-lg font-medium text-neutral-800">Stock Transfers</h1>
         <p class="text-xs text-neutral-400">Move stock between branches.</p>
     </div>
     <a asp-area="Inventory" asp-controller="Transfers" asp-action="Create"
-       class="px-4 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">+ New Transfer</a>
+       class="px-4 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">+ New Transfer Request</a>
 </div>
+
+<div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-3">
+        <p class="text-[10px] text-neutral-400 uppercase tracking-wide">Total</p>
+        <p class="text-lg font-semibold text-neutral-900 mt-0.5">@totalCount</p>
+    </div>
+    @foreach (var (st, filter) in TransferStatusDisplay.FilterOptions)
+    {
+        var count = statusCounts.TryGetValue(st, out var c) ? c : 0;
+        <div class="bg-white border border-neutral-100 rounded-sm p-3">
+            <p class="text-[10px] text-neutral-400 uppercase tracking-wide">@TransferStatusDisplay.Label(st)</p>
+            <p class="text-lg font-semibold text-neutral-900 mt-0.5">@count</p>
+        </div>
+    }
+</div>
+
+<form asp-area="Inventory" asp-controller="Transfers" asp-action="Index" method="get" class="mb-4 flex gap-2 flex-wrap">
+    <select name="storeId" onchange="this.form.submit()" class="@selectCls">
+        <option value="">All branches</option>
+        @foreach (var s in stores)
+        {
+            <option value="@s.Id" selected="@(storeId == s.Id)">@s.Name</option>
+        }
+    </select>
+    <select name="status" onchange="this.form.submit()" class="@selectCls">
+        <option value="all" selected="@(status == "all")">All statuses</option>
+        @foreach (var (st, filter) in TransferStatusDisplay.FilterOptions)
+        {
+            <option value="@filter" selected="@(status == filter)">@TransferStatusDisplay.Label(st)</option>
+        }
+    </select>
+</form>
 
 @if (TempData["Success"] != null) { <div class="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-sm px-4 py-2">@TempData["Success"]</div> }
 
 <div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
-    <table class="w-full text-sm min-w-[700px]">
+    <table class="w-full text-sm min-w-[800px]">
         <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
             <tr>
                 <th class="text-left font-medium px-4 py-3">Transfer</th>
                 <th class="text-left font-medium px-4 py-3">Date</th>
                 <th class="text-left font-medium px-4 py-3">From → To</th>
+                <th class="text-left font-medium px-4 py-3">Status</th>
                 <th class="text-right font-medium px-4 py-3">Items</th>
                 <th class="text-right font-medium px-4 py-3">Units</th>
                 <th class="px-4 py-3"></th>
             </tr>
         </thead>
         <tbody class="divide-y divide-neutral-100">
-            @if (!Model.Any()) { <tr><td colspan="6" class="px-4 py-10 text-center text-neutral-400">No transfers yet.</td></tr> }
+            @if (!Model.Any()) { <tr><td colspan="7" class="px-4 py-10 text-center text-neutral-400">No transfers yet.</td></tr> }
             @foreach (var t in Model)
             {
                 <tr class="hover:bg-neutral-50">
                     <td class="px-4 py-3 font-mono text-xs text-neutral-700">@t.TransferNumber</td>
                     <td class="px-4 py-3 text-neutral-600">@t.CreatedAt.ToLocalTime().ToString("dd MMM, HH:mm")</td>
                     <td class="px-4 py-3 text-neutral-700">@t.FromStore?.Name <span class="text-neutral-300">→</span> @t.ToStore?.Name</td>
+                    <td class="px-4 py-3"><span class="text-[10px] px-2 py-0.5 rounded-full @TransferStatusDisplay.BadgeClass(t.Status)">@TransferStatusDisplay.Label(t.Status)</span></td>
                     <td class="px-4 py-3 text-right text-neutral-600">@t.Items.Count</td>
-                    <td class="px-4 py-3 text-right text-neutral-600">@t.Items.Sum(i => i.Quantity)</td>
+                    <td class="px-4 py-3 text-right text-neutral-600">@t.Items.Sum(i => i.RequestedQty)</td>
                     <td class="px-4 py-3 text-right"><a asp-area="Inventory" asp-controller="Transfers" asp-action="Detail" asp-route-id="@t.Id" class="text-xs text-neutral-500 hover:text-emerald-600">View</a></td>
                 </tr>
             }

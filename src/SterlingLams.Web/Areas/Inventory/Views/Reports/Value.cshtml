@@ -1,10 +1,26 @@
 @model SterlingLams.Web.Areas.Inventory.Controllers.StockValueVm
-@{ ViewData["Title"] = "Stock value"; }
+@{
+    ViewData["Title"] = "Stock value";
+    var categories = ViewBag.Categories as List<SterlingLams.Web.Models.Domain.Category> ?? new();
+    int? categoryId = ViewBag.CategoryId;
+    var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+}
 <partial name="_ReportTabs" model="@("Value")" />
 
-<div class="flex items-center justify-between mb-4">
-    <p class="text-xs text-neutral-400">Inventory value at selling price.</p>
-    <a asp-area="Inventory" asp-controller="Reports" asp-action="ValueCsv"
+<div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
+    <div class="flex items-center gap-3">
+        <p class="text-xs text-neutral-400">Inventory value at selling price.</p>
+        <form asp-area="Inventory" asp-controller="Reports" asp-action="Value" method="get">
+            <select name="categoryId" onchange="this.form.submit()" class="@selectCls">
+                <option value="">All categories</option>
+                @foreach (var c in categories)
+                {
+                    <option value="@c.Id" selected="@(categoryId == c.Id)">@c.Name</option>
+                }
+            </select>
+        </form>
+    </div>
+    <a asp-area="Inventory" asp-controller="Reports" asp-action="ValueCsv" asp-route-categoryId="@categoryId"
        class="px-4 py-2 border border-neutral-200 text-neutral-700 text-xs rounded-sm hover:border-neutral-400 transition-colors">Export CSV</a>
 </div>
 

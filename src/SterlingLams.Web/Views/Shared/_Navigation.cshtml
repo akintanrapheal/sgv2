@@ -21,7 +21,7 @@
     if (string.IsNullOrWhiteSpace(announcementBg)) { announcementBg = "bg-brand-500"; }
 
     // Top-bar mega-menu: heading → category sub-items (slug). Empty Items = a direct link.
-    var megaMenu = new (string Label, string Href, (string Label, string Slug)[] Items)[]
+    var megaMenu = new (string Label, string? Href, (string Label, string Slug)[] Items)[]
     {
         ("New In", "/Products?sortBy=newest", System.Array.Empty<(string, string)>()),
         ("Jewelry", null, new (string, string)[]

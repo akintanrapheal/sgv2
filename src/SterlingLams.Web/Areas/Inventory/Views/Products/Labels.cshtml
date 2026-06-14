@@ -21,14 +21,17 @@
         .btn-print { background: #059669; color: #fff; }
         .btn-gen { background: #ffffff22; color: #fff; border: 1px solid #ffffff44 !important; }
         .sheet { padding: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
-        .label { width: 200px; border: 1px solid #d6d3d1; border-radius: 4px; padding: 8px; text-align: center; background: #fff; page-break-inside: avoid; }
+        .label { position: relative; width: 200px; border: 1px solid #d6d3d1; border-radius: 4px; padding: 8px; text-align: center; background: #fff; page-break-inside: avoid; }
+        .label.unchecked { opacity: .35; }
         .lname { font-size: 11px; line-height: 1.2; height: 26px; overflow: hidden; margin-bottom: 4px; }
         .lprice { font-size: 13px; font-weight: bold; margin-top: 2px; }
+        .lpick { position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; cursor: pointer; }
         @@media print {
             .no-print { display: none !important; }
             body { background: #fff; }
             .sheet { padding: 0; gap: 4px; }
             .label { border: 1px dashed #bbb; }
+            .label.unchecked { display: none !important; }
         }
     </style>
 </head>
@@ -37,8 +40,11 @@
         <span>Copies each:</span>
         <input id="copies" type="number" value="1" min="1" max="50" />
         <button class="btn-gen" onclick="render()">Apply</button>
+        <button class="btn-gen" onclick="selectAll(true)">Select all</button>
+        <button class="btn-gen" onclick="selectAll(false)">Select none</button>
         <button class="btn-print" onclick="window.print()">🖨 Print</button>
         <span id="info" style="opacity:.6"></span>
+        <span style="opacity:.5; margin-left: auto;">Untick a label to skip it when printing</span>
     </div>
     <div id="sheet" class="sheet"></div>
 
@@ -52,12 +58,17 @@
             products.forEach(p => {
                 for (let i = 0; i < copies; i++) {
                     const el = document.createElement('div'); el.className = 'label';
-                    el.innerHTML = `<div class="lname">${esc(p.name)}</div><svg class="bc"></svg><div class="lprice">₦${(+p.price).toLocaleString()}</div>`;
+                    el.innerHTML = `<input type="checkbox" class="lpick no-print" checked title="Print this label" />
+                        <div class="lname">${esc(p.name)}</div><svg class="bc"></svg><div class="lprice">₦${(+p.price).toLocaleString()}</div>`;
                     sheet.appendChild(el);
-                    try { JsBarcode(el.querySelector('.bc'), p.code, { format: 'CODE128', width: 1.5, height: 38, fontSize: 11, margin: 2 }); } catch (e) { }
+                    try { JsBarcode(el.querySelector('.bc'), p.code, { format: 'CODE39', width: 1.0, height: 38, fontSize: 11, margin: 2 }); } catch (e) { }
+                    el.querySelector('.lpick').addEventListener('change', e => el.classList.toggle('unchecked', !e.target.checked));
                 }
             });
             document.getElementById('info').textContent = (products.length * copies) + ' label(s)';
+        }
+        function selectAll(state) {
+            document.querySelectorAll('.lpick').forEach(c => { c.checked = state; c.dispatchEvent(new Event('change')); });
         }
         render();
     </script>

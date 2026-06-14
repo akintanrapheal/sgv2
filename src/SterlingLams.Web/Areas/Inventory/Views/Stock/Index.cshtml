@@ -1,19 +1,27 @@
 @model SterlingLams.Web.Areas.Admin.ViewModels.AdminInventoryViewModel
 @{
     ViewData["Title"] = "Stock";
-    Dictionary<string, string> rd(int pg) => new() { ["q"] = Model.SearchQuery ?? "", ["page"] = pg.ToString() };
+    Dictionary<string, string> rd(int pg) => new() { ["q"] = Model.SearchQuery ?? "", ["categoryId"] = Model.CategoryFilter ?? "", ["page"] = pg.ToString() };
     var baseCls = "px-3 py-1.5 text-xs rounded-sm border border-neutral-200 text-neutral-600 hover:border-neutral-400 transition-colors";
+    var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
 }
 @Html.AntiForgeryToken()
 
-<div class="flex items-center justify-between mb-4">
-    <form asp-area="Inventory" asp-controller="Stock" asp-action="Index" method="get" class="flex gap-2">
-        <input type="text" name="q" value="@Model.SearchQuery" autofocus autocomplete="off" placeholder="Scan barcode or search…"
+<div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
+    <form asp-area="Inventory" asp-controller="Stock" asp-action="Index" method="get" class="flex gap-2 flex-wrap">
+        <input id="stock-scan" type="text" name="q" value="@Model.SearchQuery" autofocus autocomplete="off" placeholder="Scan barcode or search…"
                class="w-72 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+        <select name="categoryId" onchange="this.form.submit()" class="@selectCls">
+            <option value="">All categories</option>
+            @foreach (var c in Model.AvailableCategories)
+            {
+                <option value="@c.Id" selected="@(Model.CategoryFilter == c.Id.ToString())">@c.Name</option>
+            }
+        </select>
         <button type="submit" class="px-4 py-2 text-sm border border-neutral-200 rounded-sm hover:border-neutral-400">Search</button>
     </form>
     <div class="flex gap-2 items-center">
-        <a asp-area="Inventory" asp-controller="Stock" asp-action="ExportCsv" asp-route-q="@Model.SearchQuery"
+        <a asp-area="Inventory" asp-controller="Stock" asp-action="ExportCsv" asp-route-q="@Model.SearchQuery" asp-route-categoryId="@Model.CategoryFilter"
            class="px-4 py-2 border border-neutral-200 text-neutral-700 text-xs rounded-sm hover:border-neutral-400 transition-colors">Export CSV</a>
         <select id="adjust-reason" title="Reason for the stock change" class="border border-neutral-200 rounded-sm px-2 py-2 text-xs bg-white">
             <option value="Stock count">Stock count</option>
@@ -52,7 +60,7 @@ else
                 @foreach (var row in Model.Products)
                 {
                     var total = row.TotalStock;
-                    <tr class="hover:bg-neutral-50">
+                    <tr class="hover:bg-neutral-50" data-row-pid="@row.ProductId">
                         <td class="px-4 py-3">
                             <p class="text-xs font-medium text-neutral-800 leading-snug">@row.ProductName</p>
                             @if (!string.IsNullOrEmpty(row.Sku)) { <p class="text-[10px] text-neutral-400 font-mono mt-0.5">@row.Sku</p> }
@@ -125,6 +133,59 @@ else
                 if (data.success) { location.reload(); }
                 else { alert('Save failed.'); btn.disabled = false; btn.textContent = 'Save all changes'; }
             } catch { alert('Save failed. Please try again.'); btn.disabled = false; btn.textContent = 'Save all changes'; }
+        });
+
+        // ── Scan box ────────────────────────────────────────────────────────────
+        // Exact barcode/SKU match → jump to / insert the row inline (no reload, so
+        // unsaved edits above survive). Anything else falls back to the normal search.
+        const storeIds = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Stores.Select(s => s.Id)));
+        const scanBox = document.getElementById('stock-scan');
+        const tbody = document.querySelector('table tbody');
+        const esc = s => String(s).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+
+        function buildRow(data) {
+            const total = storeIds.reduce((s, id) => s + (data.stock[id] ?? 0), 0);
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-neutral-50';
+            tr.setAttribute('data-row-pid', data.productId);
+            let cells = `<td class="px-4 py-3">
+                <p class="text-xs font-medium text-neutral-800 leading-snug">${esc(data.productName)}</p>
+                ${data.sku ? `<p class="text-[10px] text-neutral-400 font-mono mt-0.5">${esc(data.sku)}</p>` : ''}
+            </td>
+            <td class="px-4 py-3 text-center"><span class="text-sm font-medium ${total === 0 ? 'text-red-600' : 'text-neutral-800'}">${total}</span></td>`;
+            storeIds.forEach(id => {
+                const qty = data.stock[id] ?? 0;
+                cells += `<td class="px-3 py-2 text-center"><input type="number" min="0" value="${qty}"
+                    data-pid="${data.productId}" data-sid="${id}" data-orig="${qty}"
+                    class="stock-cell w-16 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-emerald-400 bg-white ${qty === 0 ? 'text-red-600 border-red-200' : ''}" /></td>`;
+            });
+            tr.innerHTML = cells;
+            return tr;
+        }
+
+        scanBox.addEventListener('keydown', async (e) => {
+            if (e.key !== 'Enter') return;
+            // Always swallow Enter on this box: an empty submit would reload the page
+            // and silently discard unsaved grid edits.
+            e.preventDefault();
+            const code = scanBox.value.trim();
+            if (!code) return;
+            if (!tbody) { scanBox.closest('form').submit(); return; }
+            const res = await fetch('/Inventory/Stock/ScanLookup?code=' + encodeURIComponent(code));
+            const data = await res.json();
+            if (!data.found) { scanBox.closest('form').submit(); return; }
+            scanBox.value = '';
+            let row = tbody.querySelector(`tr[data-row-pid="${data.productId}"]`);
+            if (!row) {
+                const placeholder = tbody.querySelector('td[colspan]');
+                if (placeholder) placeholder.closest('tr').remove();
+                row = buildRow(data);
+                tbody.prepend(row);
+            }
+            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            row.classList.add('bg-emerald-50');
+            setTimeout(() => row.classList.remove('bg-emerald-50'), 1500);
+            row.querySelector('.stock-cell')?.focus();
         });
     })();
     </script>

@@ -1,34 +1,337 @@
 @model SterlingLams.Web.Models.Domain.StockTransfer
-@{ ViewData["Title"] = Model.TransferNumber; }
+@using SterlingLams.Web.Areas.Inventory
+@{
+    ViewData["Title"] = Model.TransferNumber;
+    var userNames = ViewBag.UserNames as Dictionary<string, string> ?? new();
+    var availableQty = ViewBag.AvailableQty as Dictionary<int, int> ?? new();
+    string Who(string? uid) => uid != null && userNames.TryGetValue(uid, out var n) ? n : "—";
+    string Fmt(DateTime? dt) => dt.HasValue ? dt.Value.ToLocalTime().ToString("dd MMM, HH:mm") : "—";
 
-<div class="flex items-center gap-3 mb-6">
+    var hasShortage = Model.Items.Any(i => i.DispatchedQty.HasValue && i.ReceivedQty.HasValue && i.ReceivedQty < i.DispatchedQty);
+    var showApproved = Model.ApprovedAt.HasValue;
+    var showRejected = Model.Status == TransferStatus.Rejected;
+    var showDispatched = Model.DispatchedAt.HasValue;
+    var showReceived = Model.ReceivedAt.HasValue;
+    var showCancelled = Model.Status == TransferStatus.Cancelled;
+    var showCompletedAfterShortage = Model.Status == TransferStatus.Completed && hasShortage;
+    var inputCls = "w-16 border border-neutral-200 rounded-sm px-1.5 py-1 text-right text-xs focus:outline-none focus:border-emerald-400";
+}
+
+@Html.AntiForgeryToken()
+
+<div class="flex items-center gap-3 mb-6 flex-wrap">
     <a asp-area="Inventory" asp-controller="Transfers" asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← Transfers</a>
     <span class="text-neutral-200">/</span>
     <h1 class="text-lg font-medium text-neutral-800 font-mono">@Model.TransferNumber</h1>
+    <span class="text-[10px] px-2 py-0.5 rounded-full @TransferStatusDisplay.BadgeClass(Model.Status)">@TransferStatusDisplay.Label(Model.Status)</span>
 </div>
 
-<div class="max-w-2xl">
-    <div class="bg-white border border-neutral-100 rounded-sm p-5 mb-4">
-        <div class="flex items-center justify-center gap-4 mb-2">
-            <div class="text-center"><p class="text-xs text-neutral-400">From</p><p class="text-sm font-medium text-neutral-800">@Model.FromStore?.Name</p></div>
-            <svg class="w-6 h-6 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
-            <div class="text-center"><p class="text-xs text-neutral-400">To</p><p class="text-sm font-medium text-neutral-800">@Model.ToStore?.Name</p></div>
+<div id="t-alert" class="hidden mb-4 text-sm rounded-sm px-4 py-2"></div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+    <div class="lg:col-span-2 space-y-4">
+        <!-- Summary -->
+        <div class="bg-white border border-neutral-100 rounded-sm p-5">
+            <div class="flex items-center justify-center gap-4 mb-2">
+                <div class="text-center"><p class="text-xs text-neutral-400">From</p><p class="text-sm font-medium text-neutral-800">@Model.FromStore?.Name</p></div>
+                <svg class="w-6 h-6 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                <div class="text-center"><p class="text-xs text-neutral-400">To</p><p class="text-sm font-medium text-neutral-800">@Model.ToStore?.Name</p></div>
+            </div>
+            <p class="text-center text-xs text-neutral-400">Requested @Fmt(Model.CreatedAt) by @Who(Model.CreatedByUserId)</p>
+            @if (!string.IsNullOrEmpty(Model.Note)) { <p class="text-center text-sm text-neutral-500 mt-2">"@Model.Note"</p> }
+            @if (!string.IsNullOrEmpty(Model.TrackingNumber))
+            {
+                <div class="mt-3 pt-3 border-t border-neutral-100 text-center text-xs text-neutral-500">
+                    Tracking: <span class="font-mono text-neutral-700">@Model.TrackingNumber</span>
+                    @if (!string.IsNullOrEmpty(Model.CourierName)) { <span> · @Model.CourierName</span> }
+                </div>
+            }
         </div>
-        <p class="text-center text-xs text-neutral-400">@Model.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</p>
-        @if (!string.IsNullOrEmpty(Model.Note)) { <p class="text-center text-sm text-neutral-500 mt-2">@Model.Note</p> }
+
+        <!-- Items -->
+        <div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+            <table class="w-full text-sm min-w-[560px]">
+                <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+                    <tr>
+                        <th class="text-left font-medium px-4 py-3">Product</th>
+                        <th class="text-right font-medium px-4 py-3">Requested</th>
+                        <th class="text-right font-medium px-4 py-3">Approved</th>
+                        <th class="text-right font-medium px-4 py-3">Dispatched</th>
+                        <th class="text-right font-medium px-4 py-3">Received</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-neutral-100">
+                    @foreach (var i in Model.Items)
+                    {
+                        var shortage = i.DispatchedQty.HasValue && i.ReceivedQty.HasValue && i.ReceivedQty < i.DispatchedQty;
+                        <tr class="@(shortage ? "bg-red-50" : "")">
+                            <td class="px-4 py-3 text-neutral-800">
+                                @i.ProductName
+                                @if (!string.IsNullOrEmpty(i.VariantName)) { <span class="text-neutral-400">(@i.VariantName)</span> }
+                                @if (Model.Status == TransferStatus.PendingApproval)
+                                {
+                                    <p class="text-[10px] text-neutral-400">@(availableQty.GetValueOrDefault(i.ProductId)) available at @Model.FromStore?.Name</p>
+                                }
+                            </td>
+                            <td class="px-4 py-3 text-right text-neutral-600">@i.RequestedQty</td>
+                            <td class="px-4 py-3 text-right text-neutral-600">
+                                @if (Model.Status == TransferStatus.PendingApproval)
+                                {
+                                    var def = Math.Max(0, Math.Min(i.RequestedQty, availableQty.GetValueOrDefault(i.ProductId)));
+                                    <input type="number" class="approve-qty @inputCls" data-item-id="@i.Id" min="0" max="@i.RequestedQty" value="@def" />
+                                }
+                                else
+                                {
+                                    @(i.ApprovedQty?.ToString() ?? "—")
+                                }
+                            </td>
+                            <td class="px-4 py-3 text-right text-neutral-600">
+                                @if (Model.Status == TransferStatus.Approved)
+                                {
+                                    <input type="number" class="dispatch-qty @inputCls" data-item-id="@i.Id" min="0" max="@(i.ApprovedQty ?? 0)" value="@(i.ApprovedQty ?? 0)" />
+                                }
+                                else
+                                {
+                                    @(i.DispatchedQty?.ToString() ?? "—")
+                                }
+                            </td>
+                            <td class="px-4 py-3 text-right @(shortage ? "text-red-600 font-medium" : "text-neutral-600")">
+                                @if (Model.Status == TransferStatus.InTransit)
+                                {
+                                    <input type="number" class="receive-qty @inputCls" data-item-id="@i.Id" min="0" max="@(i.DispatchedQty ?? 0)" value="@(i.DispatchedQty ?? 0)" />
+                                }
+                                else
+                                {
+                                    @(i.ReceivedQty?.ToString() ?? "—")
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     </div>
 
-    <div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
-        <table class="w-full text-sm">
-            <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
-                <tr><th class="text-left font-medium px-4 py-3">Product</th><th class="text-right font-medium px-4 py-3">Quantity moved</th></tr>
-            </thead>
-            <tbody class="divide-y divide-neutral-100">
-                @foreach (var i in Model.Items)
+    <div class="space-y-4">
+        <!-- Timeline -->
+        <div class="bg-white border border-neutral-100 rounded-sm p-4">
+            <h2 class="text-sm font-medium text-neutral-800 mb-3">Timeline</h2>
+            <ol class="text-xs space-y-3">
+                <li class="flex gap-3">
+                    <div class="w-2 h-2 rounded-full bg-emerald-500 mt-1 flex-shrink-0"></div>
+                    <div><p class="text-neutral-800 font-medium">Requested</p><p class="text-neutral-400">@Fmt(Model.CreatedAt) · @Who(Model.CreatedByUserId)</p></div>
+                </li>
+                @if (showRejected)
                 {
-                    <tr><td class="px-4 py-3 text-neutral-800">@i.ProductName</td><td class="px-4 py-3 text-right text-neutral-700">@i.Quantity</td></tr>
+                    <li class="flex gap-3">
+                        <div class="w-2 h-2 rounded-full bg-red-500 mt-1 flex-shrink-0"></div>
+                        <div>
+                            <p class="text-neutral-800 font-medium">Rejected</p>
+                            <p class="text-neutral-400">@Fmt(Model.RejectedAt) · @Who(Model.RejectedByUserId)</p>
+                            @if (!string.IsNullOrEmpty(Model.RejectionReason)) { <p class="text-red-600 mt-1">"@Model.RejectionReason"</p> }
+                        </div>
+                    </li>
                 }
-            </tbody>
-        </table>
+                else if (showApproved)
+                {
+                    <li class="flex gap-3">
+                        <div class="w-2 h-2 rounded-full bg-emerald-500 mt-1 flex-shrink-0"></div>
+                        <div><p class="text-neutral-800 font-medium">Approved</p><p class="text-neutral-400">@Fmt(Model.ApprovedAt) · @Who(Model.ApprovedByUserId)</p></div>
+                    </li>
+                    if (showCancelled)
+                    {
+                        <li class="flex gap-3">
+                            <div class="w-2 h-2 rounded-full bg-neutral-400 mt-1 flex-shrink-0"></div>
+                            <div>
+                                <p class="text-neutral-800 font-medium">Cancelled</p>
+                                <p class="text-neutral-400">@Fmt(Model.CancelledAt) · @Who(Model.CancelledByUserId)</p>
+                                @if (!string.IsNullOrEmpty(Model.CancellationReason)) { <p class="text-neutral-500 mt-1">"@Model.CancellationReason"</p> }
+                            </div>
+                        </li>
+                    }
+                    else
+                    {
+                        if (showDispatched)
+                        {
+                            <li class="flex gap-3">
+                                <div class="w-2 h-2 rounded-full bg-emerald-500 mt-1 flex-shrink-0"></div>
+                                <div><p class="text-neutral-800 font-medium">Dispatched</p><p class="text-neutral-400">@Fmt(Model.DispatchedAt) · @Who(Model.DispatchedByUserId)</p></div>
+                            </li>
+                            if (showReceived)
+                            {
+                                <li class="flex gap-3">
+                                    <div class="w-2 h-2 rounded-full @(hasShortage ? "bg-orange-500" : "bg-emerald-500") mt-1 flex-shrink-0"></div>
+                                    <div><p class="text-neutral-800 font-medium">@(hasShortage ? "Partially Received" : "Received")</p><p class="text-neutral-400">@Fmt(Model.ReceivedAt) · @Who(Model.ReceivedByUserId)</p></div>
+                                </li>
+                                if (showCompletedAfterShortage)
+                                {
+                                    <li class="flex gap-3">
+                                        <div class="w-2 h-2 rounded-full bg-emerald-500 mt-1 flex-shrink-0"></div>
+                                        <div><p class="text-neutral-800 font-medium">Completed</p><p class="text-neutral-400">Shortage acknowledged</p></div>
+                                    </li>
+                                }
+                            }
+                        }
+                    }
+                }
+                else if (showCancelled)
+                {
+                    <li class="flex gap-3">
+                        <div class="w-2 h-2 rounded-full bg-neutral-400 mt-1 flex-shrink-0"></div>
+                        <div>
+                            <p class="text-neutral-800 font-medium">Cancelled</p>
+                            <p class="text-neutral-400">@Fmt(Model.CancelledAt) · @Who(Model.CancelledByUserId)</p>
+                            @if (!string.IsNullOrEmpty(Model.CancellationReason)) { <p class="text-neutral-500 mt-1">"@Model.CancellationReason"</p> }
+                        </div>
+                    </li>
+                }
+            </ol>
+        </div>
+
+        <!-- Actions -->
+        @if (Model.Status == TransferStatus.PendingApproval)
+        {
+            <div class="bg-white border border-neutral-100 rounded-sm p-4">
+                <h2 class="text-sm font-medium text-neutral-800 mb-1">Approve request</h2>
+                <p class="text-[11px] text-neutral-400 mb-3">Adjust the approved quantity per item (defaults to requested, capped at available stock), then approve.</p>
+                <button id="btn-approve" class="w-full bg-emerald-600 text-white text-sm rounded-sm py-2 hover:bg-emerald-700 transition-colors">Approve</button>
+                <div class="border-t border-neutral-100 mt-3 pt-3">
+                    <button id="btn-reject-toggle" class="text-xs text-red-500 hover:text-red-700">Reject this request</button>
+                    <div id="reject-panel" class="hidden mt-2">
+                        <textarea id="reject-reason" rows="2" placeholder="Reason for rejection…" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm mb-2 focus:outline-none focus:border-emerald-400"></textarea>
+                        <button id="btn-reject" class="w-full bg-red-600 text-white text-sm rounded-sm py-2 hover:bg-red-700 transition-colors">Confirm Reject</button>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (Model.Status == TransferStatus.Approved)
+        {
+            <div class="bg-white border border-neutral-100 rounded-sm p-4">
+                <h2 class="text-sm font-medium text-neutral-800 mb-1">Dispatch</h2>
+                <p class="text-[11px] text-neutral-400 mb-3">Adjust the dispatched quantity per item (defaults to approved), then dispatch.</p>
+                <div class="space-y-2 mb-3">
+                    <input id="tracking-number" placeholder="Tracking number (auto-generated if blank)" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+                    <input id="courier-name" placeholder="Courier (optional)" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+                    <textarea id="dispatch-notes" rows="2" placeholder="Notes (optional)" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"></textarea>
+                </div>
+                <button id="btn-dispatch" class="w-full bg-emerald-600 text-white text-sm rounded-sm py-2 hover:bg-emerald-700 transition-colors">Dispatch</button>
+            </div>
+        }
+        else if (Model.Status == TransferStatus.InTransit)
+        {
+            <div class="bg-white border border-neutral-100 rounded-sm p-4">
+                <h2 class="text-sm font-medium text-neutral-800 mb-1">Receive</h2>
+                <p class="text-[11px] text-neutral-400 mb-3">Confirm the quantity actually received per item (defaults to dispatched), then receive.</p>
+                <textarea id="receive-notes" rows="2" placeholder="Notes (optional)" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm mb-3 focus:outline-none focus:border-emerald-400"></textarea>
+                <button id="btn-receive" class="w-full bg-emerald-600 text-white text-sm rounded-sm py-2 hover:bg-emerald-700 transition-colors">Receive</button>
+            </div>
+        }
+        else if (Model.Status == TransferStatus.PartiallyReceived)
+        {
+            <div class="bg-white border border-neutral-100 rounded-sm p-4">
+                <h2 class="text-sm font-medium text-neutral-800 mb-1">Shortage</h2>
+                <p class="text-[11px] text-neutral-500 mb-3">Some items were received in a lower quantity than dispatched. Mark this transfer completed once resolved or acknowledged.</p>
+                <ul class="text-xs text-red-600 space-y-1 mb-3">
+                    @foreach (var i in Model.Items.Where(i => i.DispatchedQty.HasValue && i.ReceivedQty.HasValue && i.ReceivedQty < i.DispatchedQty))
+                    {
+                        <li>@i.ProductName — short by @((i.DispatchedQty ?? 0) - (i.ReceivedQty ?? 0))</li>
+                    }
+                </ul>
+                <button id="btn-complete" class="w-full bg-emerald-600 text-white text-sm rounded-sm py-2 hover:bg-emerald-700 transition-colors">Mark Completed</button>
+            </div>
+        }
+
+        @if (Model.Status is TransferStatus.PendingApproval or TransferStatus.Approved)
+        {
+            <div class="bg-white border border-neutral-100 rounded-sm p-4">
+                <button id="btn-cancel-toggle" class="text-xs text-neutral-400 hover:text-neutral-700">Cancel this transfer</button>
+                <div id="cancel-panel" class="hidden mt-2">
+                    <textarea id="cancel-reason" rows="2" placeholder="Reason for cancellation…" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm mb-2 focus:outline-none focus:border-emerald-400"></textarea>
+                    <button id="btn-cancel" class="w-full bg-neutral-700 text-white text-sm rounded-sm py-2 hover:bg-neutral-800 transition-colors">Confirm Cancel</button>
+                </div>
+            </div>
+        }
     </div>
 </div>
+
+@section Scripts {
+<script>
+(function () {
+    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+    const alertEl = document.getElementById('t-alert');
+    const id = @Model.Id;
+
+    function showAlert(msg, ok) {
+        alertEl.textContent = msg;
+        alertEl.className = 'mb-4 text-sm rounded-sm px-4 py-2 ' + (ok
+            ? 'text-emerald-700 bg-emerald-50 border border-emerald-200'
+            : 'text-red-700 bg-red-50 border border-red-200');
+    }
+
+    function itemQtys(selector) {
+        return Array.from(document.querySelectorAll(selector)).map(el => ({ itemId: +el.dataset.itemId, qty: +el.value || 0 }));
+    }
+
+    async function run(btn, action, body, successMsg) {
+        btn.disabled = true;
+        try {
+            const res = await fetch(`/Inventory/Transfers/${action}/${id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                body: JSON.stringify(body ?? {})
+            });
+            const data = await res.json();
+            if (data.success) {
+                showAlert(successMsg, true);
+                setTimeout(() => location.reload(), 500);
+            } else {
+                showAlert(data.message || 'Action failed.', false);
+                btn.disabled = false;
+            }
+        } catch {
+            showAlert('Action failed.', false);
+            btn.disabled = false;
+        }
+    }
+
+    function bindToggle(toggleId, panelId) {
+        const t = document.getElementById(toggleId), p = document.getElementById(panelId);
+        t?.addEventListener('click', () => p.classList.toggle('hidden'));
+    }
+    bindToggle('btn-reject-toggle', 'reject-panel');
+    bindToggle('btn-cancel-toggle', 'cancel-panel');
+
+    document.getElementById('btn-approve')?.addEventListener('click', e =>
+        run(e.target, 'Approve', { items: itemQtys('.approve-qty') }, 'Transfer approved.'));
+
+    document.getElementById('btn-reject')?.addEventListener('click', e => {
+        const reason = document.getElementById('reject-reason').value.trim();
+        if (!reason) { showAlert('A rejection reason is required.', false); return; }
+        run(e.target, 'Reject', { reason }, 'Transfer rejected.');
+    });
+
+    document.getElementById('btn-dispatch')?.addEventListener('click', e =>
+        run(e.target, 'Dispatch', {
+            items: itemQtys('.dispatch-qty'),
+            trackingNumber: document.getElementById('tracking-number').value.trim(),
+            courierName: document.getElementById('courier-name').value.trim(),
+            notes: document.getElementById('dispatch-notes').value.trim()
+        }, 'Transfer dispatched.'));
+
+    document.getElementById('btn-receive')?.addEventListener('click', e =>
+        run(e.target, 'Receive', {
+            items: itemQtys('.receive-qty'),
+            notes: document.getElementById('receive-notes').value.trim()
+        }, 'Items received.'));
+
+    document.getElementById('btn-complete')?.addEventListener('click', e =>
+        run(e.target, 'Complete', {}, 'Transfer marked as completed.'));
+
+    document.getElementById('btn-cancel')?.addEventListener('click', e => {
+        const reason = document.getElementById('cancel-reason').value.trim();
+        if (!reason) { showAlert('A cancellation reason is required.', false); return; }
+        run(e.target, 'Cancel', { reason }, 'Transfer cancelled.');
+    });
+})();
+</script>
+}

@@ -20,13 +20,15 @@ public class StocktakeController : InventoryAreaController
     }
 
     // Count sheet for one branch: enter physical counts, see variance, reconcile.
-    public async Task<IActionResult> Index(int? storeId, string q = "", int page = 1)
+    public async Task<IActionResult> Index(int? storeId, string q = "", int page = 1, int? categoryId = null)
     {
         ViewData["Title"] = "Stock-take";
         ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        ViewBag.Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync();
         ViewBag.StoreId = storeId;
         ViewBag.Q = q;
         ViewBag.Page = page;
+        ViewBag.CategoryId = categoryId;
 
         if (storeId == null) return View(new List<StocktakeRow>());
 
@@ -36,6 +38,9 @@ public class StocktakeController : InventoryAreaController
                             || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
                             || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
                             || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")));
+
+        if (categoryId.HasValue)
+            pq = pq.Where(p => p.CategoryId == categoryId.Value);
 
         var rows = await pq.OrderBy(p => p.Name)
             .Select(p => new StocktakeRow
@@ -49,6 +54,27 @@ public class StocktakeController : InventoryAreaController
 
         ViewBag.TotalPages = (int)Math.Ceiling(rows.Count / (double)PageSize);
         return View(rows.Skip((page - 1) * PageSize).Take(PageSize).ToList());
+    }
+
+    // Exact barcode/SKU lookup for the scan box — returns the row data needed to insert/highlight
+    // a product inline without reloading the page (so unsaved counts aren't lost).
+    [HttpGet]
+    public async Task<IActionResult> ScanLookup(string code, int storeId)
+    {
+        code = (code ?? "").Trim();
+        if (code.Length == 0) return Json(new { found = false });
+
+        var p = await _db.Products
+            .Where(x => x.Barcode == code || x.Sku == code
+                     || x.Variants.Any(v => v.Barcode == code || v.Sku == code))
+            .Select(x => new { x.Id, x.Name, x.Sku, x.IsActive })
+            .FirstOrDefaultAsync();
+        if (p == null || !p.IsActive) return Json(new { found = false });
+
+        var system = await _db.StoreInventories.Where(si => si.ProductId == p.Id && si.StoreId == storeId)
+            .Select(si => (int?)si.QuantityOnHand).FirstOrDefaultAsync() ?? 0;
+
+        return Json(new { found = true, productId = p.Id, name = p.Name, sku = p.Sku, system });
     }
 
     public class CountEntry { public int ProductId { get; set; } public int Counted { get; set; } }
@@ -66,10 +92,22 @@ public class StocktakeController : InventoryAreaController
         var ids = req.Counts.Select(c => c.ProductId).Distinct().ToList();
         var validIds = (await _db.Products.Where(p => ids.Contains(p.Id)).Select(p => p.Id).ToListAsync()).ToHashSet();
 
+        var valid = req.Counts.Where(c => c.Counted >= 0 && validIds.Contains(c.ProductId)).ToList();
+        if (valid.Count == 0) return Json(new { success = true, count = 0 });
+
         var applied = 0;
-        foreach (var c in req.Counts)
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
+        // Lock the counted rows (fixed ProductId order, matching POS checkout & transfers) so a
+        // concurrent sale at this branch can't slip in between the system-qty read and the
+        // reconciling adjustment — which would otherwise make the stock-take overwrite that sale.
+        foreach (var pid in valid.Select(c => c.ProductId).Distinct().OrderBy(id => id))
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"StoreInventories\" WHERE \"ProductId\" = {pid} AND \"StoreId\" = {store.Id} FOR UPDATE");
+
+        foreach (var c in valid)
         {
-            if (c.Counted < 0 || !validIds.Contains(c.ProductId)) continue;
+            // Re-read under the lock so the variance is measured against the latest balance.
             var current = await _stock.GetStockAsync(c.ProductId, store.Id);
             var delta = c.Counted - current;
             if (delta != 0)
@@ -80,7 +118,16 @@ public class StocktakeController : InventoryAreaController
             }
         }
 
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Json(new { success = false, message = "Stock changed during the count. Please recount the affected items and apply again." });
+        }
+
         await LogAsync("Update", "Inventory", null, $"Stock-take at {store.Name} — {applied} adjustment(s)");
         return Json(new { success = true, count = applied });
     }

@@ -21,7 +21,7 @@ public class StockController : InventoryAreaController
         _stock = stock;
     }
 
-    public async Task<IActionResult> Index(string q = "", int page = 1)
+    public async Task<IActionResult> Index(string q = "", int page = 1, int? categoryId = null)
     {
         ViewData["Title"] = "Stock";
 
@@ -33,6 +33,9 @@ public class StockController : InventoryAreaController
                             || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
                             || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
                             || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")));
+
+        if (categoryId.HasValue)
+            pq = pq.Where(p => p.CategoryId == categoryId.Value);
 
         var all = await pq.OrderBy(p => p.Name).ToListAsync();
         var ids = all.Select(p => p.Id).ToList();
@@ -61,12 +64,41 @@ public class StockController : InventoryAreaController
             Stores = stores,
             Products = pageRows,
             SearchQuery = q,
-            CategoryFilter = "",
+            CategoryFilter = categoryId?.ToString() ?? "",
             StockFilter = "",
-            AvailableCategories = new(),
+            AvailableCategories = await _db.Categories.OrderBy(c => c.Name).ToListAsync(),
             CurrentPage = page,
             TotalPages = (int)Math.Ceiling(total / (double)PageSize),
             TotalCount = total,
+        });
+    }
+
+    // Exact barcode/SKU lookup for the scan box — returns the row data needed to insert/highlight
+    // a product inline without reloading the page (so unsaved edits in the grid aren't lost).
+    [HttpGet]
+    public async Task<IActionResult> ScanLookup(string code)
+    {
+        code = (code ?? "").Trim();
+        if (code.Length == 0) return Json(new { found = false });
+
+        var p = await _db.Products
+            .Where(x => x.Barcode == code || x.Sku == code
+                     || x.Variants.Any(v => v.Barcode == code || v.Sku == code))
+            .Select(x => new { x.Id, x.Name, x.Sku, x.IsActive })
+            .FirstOrDefaultAsync();
+        if (p == null || !p.IsActive) return Json(new { found = false });
+
+        var storeIds = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).Select(s => s.Id).ToListAsync();
+        var inv = await _db.StoreInventories.Where(si => si.ProductId == p.Id)
+            .ToDictionaryAsync(si => si.StoreId, si => si.QuantityOnHand);
+
+        return Json(new
+        {
+            found = true,
+            productId = p.Id,
+            productName = p.Name,
+            sku = p.Sku,
+            stock = storeIds.ToDictionary(id => id, id => inv.TryGetValue(id, out var q) ? q : 0)
         });
     }
 
@@ -92,36 +124,72 @@ public class StockController : InventoryAreaController
             return Json(new { success = true, count = 0 });
 
         var reason = string.IsNullOrWhiteSpace(req!.Reason) ? "Stock update" : req.Reason.Trim();
+        // Classify the movement from the chosen reason so receipts, damage and shrinkage are
+        // first-class (and reportable) instead of all being lumped under "Adjustment". The reason
+        // label is still kept on the movement (Reference) for the audit trail.
+        var type = MovementTypeForReason(reason);
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var validStoreIds = (await _db.Stores.Where(s => s.IsActive).Select(s => s.Id).ToListAsync()).ToHashSet();
         var validProductIds = (await _db.Products
             .Where(p => edits.Select(e => e.ProductId).Distinct().Contains(p.Id))
             .Select(p => p.Id).ToListAsync()).ToHashSet();
 
-        var applied = 0;
-        foreach (var e in edits)
-        {
-            if (e.Quantity < 0 || !validStoreIds.Contains(e.StoreId) || !validProductIds.Contains(e.ProductId))
-                continue;
+        var valid = edits
+            .Where(e => e.Quantity >= 0 && validStoreIds.Contains(e.StoreId) && validProductIds.Contains(e.ProductId))
+            .ToList();
+        if (valid.Count == 0) return Json(new { success = true, count = 0 });
 
+        var applied = 0;
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
+        // Lock the affected StoreInventory rows (fixed ProductId/StoreId order, matching POS
+        // checkout & transfers) so a concurrent sale/transfer/edit on the same cell can't race
+        // with the read-compute-write below — without this, the delta is computed from a stale
+        // read and the save could either lose an update or throw an unhandled concurrency error.
+        foreach (var (pid, sid) in valid.Select(e => (e.ProductId, e.StoreId)).Distinct()
+                     .OrderBy(p => p.ProductId).ThenBy(p => p.StoreId))
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"StoreInventories\" WHERE \"ProductId\" = {pid} AND \"StoreId\" = {sid} FOR UPDATE");
+
+        foreach (var e in valid)
+        {
+            // Re-read under the lock so the delta reflects the latest committed balance.
             var current = await _stock.GetStockAsync(e.ProductId, e.StoreId);
             var delta = e.Quantity - current;
             if (delta != 0)
             {
-                await _stock.ApplyAsync(e.ProductId, null, e.StoreId, delta,
-                    StockMovementType.Adjustment, reason, userId: userId);
+                await _stock.ApplyAsync(e.ProductId, null, e.StoreId, delta, type, reason, userId: userId);
                 applied++;
             }
         }
 
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Json(new { success = false, message = "Stock levels changed while saving. Please refresh and try again." });
+        }
+
         if (applied > 0)
             await LogAsync("Update", "Inventory", null, $"Stock adjustment ({reason}) — {applied} change(s)");
         return Json(new { success = true, count = applied });
     }
 
+    // Maps an adjustment-reason label (from the Stock page's reason picker) to the ledger
+    // movement type, so the StockMovement record carries the true nature of the change.
+    private static StockMovementType MovementTypeForReason(string reason) => reason switch
+    {
+        "Received"     => StockMovementType.Purchase,
+        "Damage"       => StockMovementType.Damage,
+        "Loss / theft" => StockMovementType.Loss,
+        _              => StockMovementType.Adjustment,
+    };
+
     // Export per-branch stock levels to CSV.
-    public async Task<IActionResult> ExportCsv(string q = "")
+    public async Task<IActionResult> ExportCsv(string q = "", int? categoryId = null)
     {
         var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
         var pq = _db.Products.Where(p => p.IsActive);
@@ -130,6 +198,9 @@ public class StockController : InventoryAreaController
                             || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
                             || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
                             || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")));
+
+        if (categoryId.HasValue)
+            pq = pq.Where(p => p.CategoryId == categoryId.Value);
 
         var all = await pq.OrderBy(p => p.Name).ToListAsync();
         var ids = all.Select(p => p.Id).ToList();

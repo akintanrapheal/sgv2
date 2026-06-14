@@ -10,26 +10,51 @@ namespace SterlingLams.Web.Areas.Inventory.Controllers;
 public class TransfersController : InventoryAreaController
 {
     private readonly ApplicationDbContext _db;
-    private readonly IStockService _stock;
+    private readonly ITransferWorkflowService _workflow;
 
-    public TransfersController(ApplicationDbContext db, IStockService stock)
+    public TransfersController(ApplicationDbContext db, ITransferWorkflowService workflow)
     {
         _db = db;
-        _stock = stock;
+        _workflow = workflow;
     }
 
-    public async Task<IActionResult> Index()
+    public async Task<IActionResult> Index(int? storeId, string status = "all")
     {
         ViewData["Title"] = "Transfers";
-        var transfers = await _db.StockTransfers
-            .Include(t => t.FromStore).Include(t => t.ToStore).Include(t => t.Items)
-            .OrderByDescending(t => t.CreatedAt).Take(100).ToListAsync();
+        ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        ViewBag.StoreId = storeId;
+        ViewBag.Status = status;
+
+        var baseQuery = _db.StockTransfers.AsQueryable();
+        if (storeId.HasValue)
+            baseQuery = baseQuery.Where(t => t.FromStoreId == storeId.Value || t.ToStoreId == storeId.Value);
+
+        var counts = await baseQuery.GroupBy(t => t.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToListAsync();
+        ViewBag.StatusCounts = counts.ToDictionary(c => c.Status, c => c.Count);
+        ViewBag.TotalCount = counts.Sum(c => c.Count);
+
+        IQueryable<StockTransfer> query = baseQuery.Include(t => t.FromStore).Include(t => t.ToStore).Include(t => t.Items);
+        query = status switch
+        {
+            "pending" => query.Where(t => t.Status == TransferStatus.PendingApproval),
+            "approved" => query.Where(t => t.Status == TransferStatus.Approved),
+            "intransit" => query.Where(t => t.Status == TransferStatus.InTransit),
+            "partial" => query.Where(t => t.Status == TransferStatus.PartiallyReceived),
+            "completed" => query.Where(t => t.Status == TransferStatus.Completed),
+            "rejected" => query.Where(t => t.Status == TransferStatus.Rejected),
+            "cancelled" => query.Where(t => t.Status == TransferStatus.Cancelled),
+            _ => query
+        };
+
+        var transfers = await query.OrderByDescending(t => t.CreatedAt).Take(100).ToListAsync();
         return View(transfers);
     }
 
     public async Task<IActionResult> Create()
     {
-        ViewData["Title"] = "New Transfer";
+        ViewData["Title"] = "Request Transfer";
         ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
         return View();
     }
@@ -60,76 +85,101 @@ public class TransfersController : InventoryAreaController
         return Json(products);
     }
 
-    public class TransferLine { public int ProductId { get; set; } public int Quantity { get; set; } }
-    public class TransferRequest
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Request([FromBody] TransferRequest req)
     {
-        public int FromStoreId { get; set; }
-        public int ToStoreId { get; set; }
-        public string? Note { get; set; }
-        public List<TransferLine> Items { get; set; } = new();
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var (success, error, id) = await _workflow.RequestAsync(req, userId);
+        if (!success) return Json(new { success = false, message = error });
+
+        var transfer = await _db.StockTransfers
+            .Include(t => t.FromStore).Include(t => t.ToStore).Include(t => t.Items)
+            .FirstAsync(t => t.Id == id);
+        await LogAsync("Create", "Transfer", id.ToString(),
+            $"Transfer {transfer.TransferNumber} requested: {transfer.FromStore.Name} → {transfer.ToStore.Name} ({transfer.Items.Count} line(s))");
+
+        return Json(new { success = true, id });
+    }
+
+    public class ItemsRequest { public List<ItemQtyDto> Items { get; set; } = new(); }
+    public class ReasonRequest { public string Reason { get; set; } = ""; }
+    public class DispatchRequest
+    {
+        public List<ItemQtyDto> Items { get; set; } = new();
+        public string? TrackingNumber { get; set; }
+        public string? CourierName { get; set; }
+        public string? Notes { get; set; }
+    }
+    public class ReceiveRequest
+    {
+        public List<ItemQtyDto> Items { get; set; } = new();
+        public string? Notes { get; set; }
     }
 
     [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> Save([FromBody] TransferRequest req)
+    public async Task<IActionResult> Approve(int id, [FromBody] ItemsRequest req)
     {
-        if (req.FromStoreId == req.ToStoreId)
-            return Json(new { success = false, message = "Source and destination must be different branches." });
-
-        var from = await _db.Stores.FirstOrDefaultAsync(s => s.Id == req.FromStoreId && s.IsActive);
-        var to = await _db.Stores.FirstOrDefaultAsync(s => s.Id == req.ToStoreId && s.IsActive);
-        if (from == null || to == null) return Json(new { success = false, message = "Pick valid branches." });
-
-        var lines = (req.Items ?? new()).Where(l => l.Quantity > 0).ToList();
-        if (lines.Count == 0) return Json(new { success = false, message = "Add at least one product." });
-
-        var ids = lines.Select(l => l.ProductId).Distinct().ToList();
-        var products = await _db.Products.Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
-
-        foreach (var grp in lines.GroupBy(l => l.ProductId))
-        {
-            if (!products.TryGetValue(grp.Key, out var prod))
-                return Json(new { success = false, message = "A product no longer exists." });
-            var requested = grp.Sum(l => l.Quantity);
-            if (requested > await _stock.GetStockAsync(grp.Key, from.Id))
-                return Json(new { success = false, message = $"Not enough stock of '{prod.Name}' at {from.Name}." });
-        }
-
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var now = DateTime.UtcNow;
-        var transferNumber = $"TRF-{now:yyMMdd}-{now:HHmmssfff}";
+        var result = await _workflow.ApproveAsync(id, req.Items, userId);
+        if (!result.Success) return Json(new { success = false, message = result.Error });
+        await LogTransferAsync(id, "Approve", "Approved");
+        return Json(new { success = true });
+    }
 
-        await using var tx = await _db.Database.BeginTransactionAsync();
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Reject(int id, [FromBody] ReasonRequest req)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var result = await _workflow.RejectAsync(id, req.Reason, userId);
+        if (!result.Success) return Json(new { success = false, message = result.Error });
+        await LogTransferAsync(id, "Reject", $"Rejected ({req.Reason})");
+        return Json(new { success = true });
+    }
 
-        var transfer = new StockTransfer
-        {
-            TransferNumber = transferNumber,
-            FromStoreId = from.Id,
-            ToStoreId = to.Id,
-            CreatedByUserId = userId,
-            Note = string.IsNullOrWhiteSpace(req.Note) ? null : req.Note.Trim(),
-            CreatedAt = now
-        };
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Dispatch(int id, [FromBody] DispatchRequest req)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var result = await _workflow.DispatchAsync(id, req.Items, req.TrackingNumber, req.CourierName, req.Notes, userId);
+        if (!result.Success) return Json(new { success = false, message = result.Error });
+        await LogTransferAsync(id, "Dispatch", "Dispatched");
+        return Json(new { success = true });
+    }
 
-        foreach (var grp in lines.GroupBy(l => l.ProductId))
-        {
-            var prod = products[grp.Key];
-            var qty = grp.Sum(l => l.Quantity);
-            transfer.Items.Add(new StockTransferItem
-            {
-                ProductId = prod.Id, ProductName = prod.Name, Quantity = qty
-            });
-            await _stock.ApplyAsync(prod.Id, null, from.Id, -qty, StockMovementType.Transfer, transferNumber, $"To {to.Name}", userId);
-            await _stock.ApplyAsync(prod.Id, null, to.Id, qty, StockMovementType.Transfer, transferNumber, $"From {from.Name}", userId);
-        }
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Receive(int id, [FromBody] ReceiveRequest req)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var result = await _workflow.ReceiveAsync(id, req.Items, req.Notes, userId);
+        if (!result.Success) return Json(new { success = false, message = result.Error });
+        await LogTransferAsync(id, "Receive", "Received");
+        return Json(new { success = true });
+    }
 
-        _db.StockTransfers.Add(transfer);
-        await _db.SaveChangesAsync();
-        await tx.CommitAsync();
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Complete(int id)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var result = await _workflow.CompleteAsync(id, userId);
+        if (!result.Success) return Json(new { success = false, message = result.Error });
+        await LogTransferAsync(id, "Complete", "Marked as completed (shortage acknowledged)");
+        return Json(new { success = true });
+    }
 
-        await LogAsync("Create", "Transfer", transfer.Id.ToString(),
-            $"Transfer {transferNumber}: {from.Name} → {to.Name} ({transfer.Items.Count} line(s))");
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Cancel(int id, [FromBody] ReasonRequest req)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var result = await _workflow.CancelAsync(id, req.Reason, userId);
+        if (!result.Success) return Json(new { success = false, message = result.Error });
+        await LogTransferAsync(id, "Cancel", $"Cancelled ({req.Reason})");
+        return Json(new { success = true });
+    }
 
-        return Json(new { success = true, id = transfer.Id });
+    private async Task LogTransferAsync(int id, string action, string description)
+    {
+        var tn = await _db.StockTransfers.Where(t => t.Id == id).Select(t => t.TransferNumber).FirstOrDefaultAsync();
+        await LogAsync(action, "Transfer", id.ToString(), $"Transfer {tn}: {description}");
     }
 
     public async Task<IActionResult> Detail(int id)
@@ -139,6 +189,21 @@ public class TransfersController : InventoryAreaController
             .FirstOrDefaultAsync(t => t.Id == id);
         if (transfer == null) return NotFound();
         ViewData["Title"] = transfer.TransferNumber;
+
+        var userIds = new[]
+            {
+                transfer.CreatedByUserId, transfer.ApprovedByUserId, transfer.RejectedByUserId,
+                transfer.DispatchedByUserId, transfer.ReceivedByUserId, transfer.CancelledByUserId
+            }
+            .Where(uid => uid != null).Cast<string>().Distinct().ToList();
+        ViewBag.UserNames = await _db.Users.Where(u => userIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.Email ?? u.UserName ?? u.Id);
+
+        var productIds = transfer.Items.Select(i => i.ProductId).Distinct().ToList();
+        ViewBag.AvailableQty = await _db.StoreInventories
+            .Where(si => si.StoreId == transfer.FromStoreId && productIds.Contains(si.ProductId))
+            .ToDictionaryAsync(si => si.ProductId, si => si.AvailableQuantity);
+
         return View(transfer);
     }
 }

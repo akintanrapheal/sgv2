@@ -4,9 +4,9 @@
     var register = ViewData["Register"] as SterlingLams.Web.Models.Domain.Register;
 }
 
-<div class="min-h-screen bg-neutral-50 flex flex-col">
+<div class="h-screen bg-neutral-50 flex flex-col overflow-hidden">
     <!-- Top bar -->
-    <header class="flex items-center justify-between px-6 py-3 bg-white border-b border-neutral-100">
+    <header class="flex items-center justify-between px-6 py-2 bg-white border-b border-neutral-100">
         <form asp-controller="Till" asp-action="ChangeRegister" method="post">
             <button class="flex items-center gap-2 text-xs text-neutral-500 hover:text-neutral-800 border border-neutral-200 rounded-full px-4 py-2 transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
@@ -19,17 +19,17 @@
     </header>
 
     <!-- Brand hero -->
-    <div class="bg-white border-b border-neutral-100 py-8 text-center">
-        <div class="w-20 h-20 rounded-full bg-brand-500 text-white flex items-center justify-center mx-auto mb-3 shadow-lg">
-            <span class="font-cormorant text-4xl font-light tracking-wide">S</span>
+    <div class="bg-white border-b border-neutral-100 py-4 text-center">
+        <div class="w-14 h-14 rounded-full bg-brand-500 text-white flex items-center justify-center mx-auto mb-2 shadow-lg">
+            <span class="font-cormorant text-2xl font-light tracking-wide">S</span>
         </div>
-        <h1 class="font-cormorant text-3xl font-light tracking-[0.15em] uppercase text-neutral-900">Sterlin Glams</h1>
+        <h1 class="font-cormorant text-2xl font-light tracking-[0.15em] uppercase text-neutral-900">Sterlin Glams</h1>
         @if (register != null)
         {
             <p class="text-sm text-neutral-500 mt-1">@register.Name &nbsp;·&nbsp; @register.Store?.Name</p>
         }
         <!-- Big live clock -->
-        <p class="text-4xl font-light tabular-nums text-neutral-800 mt-4 tracking-widest" id="till-clock-big"></p>
+        <p class="text-3xl font-light tabular-nums text-neutral-800 mt-2 tracking-widest" id="till-clock-big"></p>
         <p class="text-sm text-neutral-400 mt-1" id="till-date"></p>
     </div>
 
@@ -61,27 +61,27 @@
         </div>
 
         <!-- PIN pad -->
-        <div class="w-full max-w-sm bg-white border-l border-neutral-100 p-8 flex flex-col">
+        <div class="w-full max-w-sm bg-white border-l border-neutral-100 p-6 flex flex-col overflow-y-auto">
             <p class="text-center text-xs uppercase tracking-[0.2em] text-neutral-400 mb-2">Enter your PIN</p>
-            <p id="pin-name" class="text-center text-base font-medium text-neutral-800 h-6 mb-4">&nbsp;</p>
+            <p id="pin-name" class="text-center text-base font-medium text-neutral-800 h-6 mb-3">&nbsp;</p>
 
-            <div class="border-b-2 border-neutral-300 h-12 flex items-center justify-center gap-3 mb-2" id="pin-dots"></div>
-            <p id="pin-error" class="text-center text-xs text-red-500 h-4 mb-4"></p>
+            <div class="border-b-2 border-neutral-300 h-10 flex items-center justify-center gap-3 mb-2" id="pin-dots"></div>
+            <p id="pin-error" class="text-center text-xs text-red-500 h-4 mb-3"></p>
 
-            <div class="grid grid-cols-3 gap-3 mb-6">
+            <div class="grid grid-cols-3 gap-2 mb-4">
                 @for (int n = 1; n <= 9; n++)
                 {
-                    <button type="button" class="pin-key bg-neutral-50 border border-neutral-200 rounded-xl py-5 text-2xl text-neutral-700 hover:bg-brand-50 hover:border-brand-400 transition-colors font-light" data-k="@n">@n</button>
+                    <button type="button" class="pin-key bg-neutral-50 border border-neutral-200 rounded-xl py-3.5 text-2xl text-neutral-700 hover:bg-brand-50 hover:border-brand-400 transition-colors font-light" data-k="@n">@n</button>
                 }
                 <span></span>
-                <button type="button" class="pin-key bg-neutral-50 border border-neutral-200 rounded-xl py-5 text-2xl text-neutral-700 hover:bg-brand-50 hover:border-brand-400 transition-colors font-light" data-k="0">0</button>
-                <button type="button" id="pin-back" class="bg-neutral-50 border border-neutral-200 rounded-xl py-5 text-neutral-500 hover:bg-neutral-100 transition-colors flex items-center justify-center">
+                <button type="button" class="pin-key bg-neutral-50 border border-neutral-200 rounded-xl py-3.5 text-2xl text-neutral-700 hover:bg-brand-50 hover:border-brand-400 transition-colors font-light" data-k="0">0</button>
+                <button type="button" id="pin-back" class="bg-neutral-50 border border-neutral-200 rounded-xl py-3.5 text-neutral-500 hover:bg-neutral-100 transition-colors flex items-center justify-center">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 14l-2-2m0 0l-2-2m2 2l2-2m-2 2l-2 2M3 12l6.414-6.414A2 2 0 0110.828 5H19a2 2 0 012 2v10a2 2 0 01-2 2h-8.172a2 2 0 01-1.414-.586L3 12z"/></svg>
                 </button>
             </div>
 
             <button id="pin-login" type="button"
-                    class="w-full bg-brand-500 text-white text-base font-medium uppercase tracking-wide py-4 rounded-xl hover:bg-brand-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed" disabled>
+                    class="w-full bg-brand-500 text-white text-base font-medium uppercase tracking-wide py-3 rounded-xl hover:bg-brand-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed" disabled>
                 Sign In
             </button>
         </div>

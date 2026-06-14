@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SterlingLams.Web.Data;
@@ -11,9 +12,11 @@ using SterlingLams.Web.Data;
 namespace SterlingLams.Web.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260612154557_TransferWorkflow")]
+    partial class TransferWorkflow
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -357,12 +360,6 @@ namespace SterlingLams.Web.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Action");
-
-                    b.HasIndex("CreatedAt");
-
-                    b.HasIndex("EntityType");
-
                     b.ToTable("AuditLogs");
                 });
 
@@ -648,8 +645,6 @@ namespace SterlingLams.Web.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CreatedAt");
-
                     b.HasIndex("CustomerUserId");
 
                     b.HasIndex("DeliveryAddressId");
@@ -659,27 +654,15 @@ namespace SterlingLams.Web.Migrations
                     b.HasIndex("OrderNumber")
                         .IsUnique();
 
-                    b.HasIndex("PaymentReference")
-                        .HasFilter("\"PaymentReference\" IS NOT NULL");
-
                     b.HasIndex("PickupStoreId");
 
                     b.HasIndex("RegisterId");
-
-                    b.HasIndex("Status");
 
                     b.HasIndex("TillSessionId");
 
                     b.HasIndex("UserId");
 
-                    b.HasIndex("Channel", "CreatedAt");
-
-                    b.ToTable("Orders", t =>
-                        {
-                            t.HasCheckConstraint("CK_Orders_Subtotal_NonNegative", "\"Subtotal\" >= 0");
-
-                            t.HasCheckConstraint("CK_Orders_Total_NonNegative", "\"Total\" >= 0");
-                        });
+                    b.ToTable("Orders");
                 });
 
             modelBuilder.Entity("SterlingLams.Web.Models.Domain.OrderItem", b =>
@@ -737,14 +720,7 @@ namespace SterlingLams.Web.Migrations
 
                     b.HasIndex("ProductVariantId");
 
-                    b.ToTable("OrderItems", t =>
-                        {
-                            t.HasCheckConstraint("CK_OrderItems_Discount_NonNegative", "\"DiscountAmount\" >= 0");
-
-                            t.HasCheckConstraint("CK_OrderItems_Quantity_Positive", "\"Quantity\" > 0");
-
-                            t.HasCheckConstraint("CK_OrderItems_UnitPrice_NonNegative", "\"UnitPrice\" >= 0");
-                        });
+                    b.ToTable("OrderItems");
                 });
 
             modelBuilder.Entity("SterlingLams.Web.Models.Domain.ParkedSale", b =>
@@ -937,25 +913,16 @@ namespace SterlingLams.Web.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Barcode")
-                        .IsUnique()
-                        .HasFilter("\"Barcode\" IS NOT NULL AND \"Barcode\" <> ''");
-
                     b.HasIndex("CategoryId");
 
                     b.HasIndex("ExternalCode")
                         .IsUnique()
                         .HasFilter("\"ExternalCode\" <> ''");
 
-                    b.HasIndex("Sku");
-
                     b.HasIndex("Slug")
                         .IsUnique();
 
-                    b.ToTable("Products", t =>
-                        {
-                            t.HasCheckConstraint("CK_Products_Price_NonNegative", "\"Price\" >= 0");
-                        });
+                    b.ToTable("Products");
                 });
 
             modelBuilder.Entity("SterlingLams.Web.Models.Domain.ProductAttribute", b =>
@@ -1101,13 +1068,7 @@ namespace SterlingLams.Web.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Barcode")
-                        .IsUnique()
-                        .HasFilter("\"Barcode\" IS NOT NULL AND \"Barcode\" <> ''");
-
                     b.HasIndex("ProductId");
-
-                    b.HasIndex("Sku");
 
                     b.ToTable("ProductVariants");
                 });
@@ -1155,13 +1116,7 @@ namespace SterlingLams.Web.Migrations
 
                     b.HasIndex("OriginalOrderId");
 
-                    b.HasIndex("RefundNumber")
-                        .IsUnique();
-
-                    b.ToTable("Refunds", t =>
-                        {
-                            t.HasCheckConstraint("CK_Refunds_Amount_NonNegative", "\"Amount\" >= 0");
-                        });
+                    b.ToTable("Refunds");
                 });
 
             modelBuilder.Entity("SterlingLams.Web.Models.Domain.RefundItem", b =>
@@ -1367,16 +1322,9 @@ namespace SterlingLams.Web.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CreatedAt");
-
                     b.HasIndex("OrderId");
 
-                    b.HasIndex("ProductId", "StoreId");
-
-                    b.ToTable("StockReservations", t =>
-                        {
-                            t.HasCheckConstraint("CK_StockReservations_Quantity_Positive", "\"Quantity\" > 0");
-                        });
+                    b.ToTable("StockReservations");
                 });
 
             modelBuilder.Entity("SterlingLams.Web.Models.Domain.StockTransfer", b =>
@@ -1459,16 +1407,9 @@ namespace SterlingLams.Web.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CreatedAt");
-
                     b.HasIndex("FromStoreId");
 
-                    b.HasIndex("Status");
-
                     b.HasIndex("ToStoreId");
-
-                    b.HasIndex("TransferNumber")
-                        .IsUnique();
 
                     b.ToTable("StockTransfers");
                 });
@@ -1513,12 +1454,7 @@ namespace SterlingLams.Web.Migrations
 
                     b.HasIndex("StockTransferId");
 
-                    b.ToTable("StockTransferItems", t =>
-                        {
-                            t.HasCheckConstraint("CK_StockTransferItems_RequestedQty_Positive", "\"RequestedQty\" > 0");
-
-                            t.HasCheckConstraint("CK_StockTransferItems_StageQty_NonNegative", "(\"ApprovedQty\" IS NULL OR \"ApprovedQty\" >= 0) AND (\"DispatchedQty\" IS NULL OR \"DispatchedQty\" >= 0) AND (\"ReceivedQty\" IS NULL OR \"ReceivedQty\" >= 0)");
-                        });
+                    b.ToTable("StockTransferItems");
                 });
 
             modelBuilder.Entity("SterlingLams.Web.Models.Domain.Store", b =>
@@ -1598,12 +1534,6 @@ namespace SterlingLams.Web.Migrations
                     b.Property<int>("StoreId")
                         .HasColumnType("integer");
 
-                    b.Property<uint>("xmin")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
-
                     b.HasKey("Id");
 
                     b.HasIndex("StoreId");
@@ -1611,12 +1541,7 @@ namespace SterlingLams.Web.Migrations
                     b.HasIndex("ProductId", "StoreId")
                         .IsUnique();
 
-                    b.ToTable("StoreInventories", t =>
-                        {
-                            t.HasCheckConstraint("CK_StoreInventories_OnHand_NonNegative", "\"QuantityOnHand\" >= 0");
-
-                            t.HasCheckConstraint("CK_StoreInventories_Reserved_NonNegative", "\"QuantityReserved\" >= 0");
-                        });
+                    b.ToTable("StoreInventories");
                 });
 
             modelBuilder.Entity("SterlingLams.Web.Models.Domain.TillSession", b =>

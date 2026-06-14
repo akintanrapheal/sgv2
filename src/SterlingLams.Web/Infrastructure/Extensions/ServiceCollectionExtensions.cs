@@ -14,6 +14,10 @@ public static class ServiceCollectionExtensions
         services.AddMemoryCache();
         services.AddScoped<IStockService, StockService>();
         services.AddScoped<IOrderFulfilmentService, OrderFulfilmentService>();
+        services.AddScoped<ITransferWorkflowService, TransferWorkflowService>();
+
+        // ─── Merchandising (best sellers / trending / new arrivals / recently viewed) ──
+        services.AddScoped<IMerchandisingService, MerchandisingService>();
 
         // ─── Product Import (WooCommerce CSV) ─────────────────────────────────
         services.AddScoped<IWooCommerceImportService, WooCommerceImportService>();

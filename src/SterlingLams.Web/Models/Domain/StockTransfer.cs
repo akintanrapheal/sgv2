@@ -1,9 +1,23 @@
 namespace SterlingLams.Web.Models.Domain;
 
 /// <summary>
-/// Moves stock from one branch to another. Deducts the source and adds the destination,
-/// both recorded in the stock ledger (Type Transfer).
+/// Inter-branch transfer workflow: Requested → Approved → In Transit → Received
+/// (Completed or Partially Received), with Rejected/Cancelled side-branches.
+/// Stock moves (deduct source / add destination) are recorded in the stock ledger
+/// (Type Transfer) at Dispatch and Receive respectively.
 /// </summary>
+public enum TransferStatus
+{
+    Draft = 0,
+    PendingApproval = 1,
+    Approved = 2,
+    InTransit = 3,
+    PartiallyReceived = 4,
+    Completed = 5,
+    Rejected = 6,
+    Cancelled = 7
+}
+
 public class StockTransfer
 {
     public int Id { get; set; }
@@ -15,9 +29,32 @@ public class StockTransfer
     public int ToStoreId { get; set; }
     public Store ToStore { get; set; } = null!;
 
+    public TransferStatus Status { get; set; } = TransferStatus.PendingApproval;
+
     public string? CreatedByUserId { get; set; }
     public string? Note { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public string? ApprovedByUserId { get; set; }
+    public DateTime? ApprovedAt { get; set; }
+
+    public string? RejectedByUserId { get; set; }
+    public DateTime? RejectedAt { get; set; }
+    public string? RejectionReason { get; set; }
+
+    public string? DispatchedByUserId { get; set; }
+    public DateTime? DispatchedAt { get; set; }
+    public string? TrackingNumber { get; set; }
+    public string? CourierName { get; set; }
+    public string? DispatchNotes { get; set; }
+
+    public string? ReceivedByUserId { get; set; }
+    public DateTime? ReceivedAt { get; set; }
+    public string? ReceiveNotes { get; set; }
+
+    public string? CancelledByUserId { get; set; }
+    public DateTime? CancelledAt { get; set; }
+    public string? CancellationReason { get; set; }
 
     public ICollection<StockTransferItem> Items { get; set; } = new List<StockTransferItem>();
 }
@@ -34,5 +71,8 @@ public class StockTransferItem
     public string ProductName { get; set; } = string.Empty;
     public string? VariantName { get; set; }
 
-    public int Quantity { get; set; }
+    public int RequestedQty { get; set; }
+    public int? ApprovedQty { get; set; }
+    public int? DispatchedQty { get; set; }
+    public int? ReceivedQty { get; set; }
 }

@@ -17,6 +17,7 @@
     }
     else
     {
+        @Html.AntiForgeryToken()
         <div class="space-y-6 mb-12">
             @foreach (var item in Model.Items)
             {

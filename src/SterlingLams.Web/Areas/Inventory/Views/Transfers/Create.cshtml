@@ -1,5 +1,5 @@
 @{
-    ViewData["Title"] = "New Transfer";
+    ViewData["Title"] = "Request Transfer";
     var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
 }
 
@@ -8,7 +8,7 @@
 <div class="flex items-center gap-3 mb-6">
     <a asp-area="Inventory" asp-controller="Transfers" asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← Transfers</a>
     <span class="text-neutral-200">/</span>
-    <h1 class="text-lg font-medium text-neutral-800">New Transfer</h1>
+    <h1 class="text-lg font-medium text-neutral-800">Request Transfer</h1>
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -51,7 +51,7 @@
         <div id="t-cart" class="divide-y divide-neutral-100 mb-3"><p class="text-sm text-neutral-400 py-4 text-center">No items yet.</p></div>
         <input id="t-note" type="text" placeholder="Note (optional)" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm mb-3 focus:outline-none focus:border-neutral-400" />
         <button id="t-submit" type="button" disabled
-                class="w-full bg-emerald-600 text-white text-sm rounded-sm py-2.5 hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Transfer stock</button>
+                class="w-full bg-emerald-600 text-white text-sm rounded-sm py-2.5 hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Submit Request</button>
     </div>
 </div>
 
@@ -126,15 +126,15 @@
 
     submitBtn.addEventListener('click', async () => {
         if (fromSel.value === toSel.value) { alert('Pick two different branches.'); return; }
-        submitBtn.disabled = true; submitBtn.textContent = 'Transferring…';
+        submitBtn.disabled = true; submitBtn.textContent = 'Submitting…';
         try {
-            const res = await fetch('/Inventory/Transfers/Save', { method: 'POST',
+            const res = await fetch('/Inventory/Transfers/Request', { method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
                 body: JSON.stringify({ fromStoreId: +fromSel.value, toStoreId: +toSel.value, note: document.getElementById('t-note').value, items: cart.map(c => ({ productId: c.productId, quantity: c.qty })) }) });
             const data = await res.json();
             if (data.success) location.href = '/Inventory/Transfers/Detail/' + data.id;
-            else { alert(data.message || 'Transfer failed.'); }
-        } finally { submitBtn.textContent = 'Transfer stock'; updateSubmit(); }
+            else { alert(data.message || 'Request failed.'); }
+        } finally { submitBtn.textContent = 'Submit Request'; updateSubmit(); }
     });
 })();
 </script>

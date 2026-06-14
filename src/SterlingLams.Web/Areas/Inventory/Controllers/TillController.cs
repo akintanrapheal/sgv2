@@ -11,13 +11,30 @@ public class TillController : InventoryAreaController
     public TillController(ApplicationDbContext db) => _db = db;
 
     // Till oversight: cash-up sessions across all branches + today's POS totals.
-    public async Task<IActionResult> Index()
+    public async Task<IActionResult> Index(int? storeId = null, string status = "all")
     {
         ViewData["Title"] = "Till";
         var today = DateTime.UtcNow.Date;
 
-        var sessions = await _db.TillSessions
+        ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        ViewBag.StoreId = storeId;
+        ViewBag.Status = status;
+
+        var sessionsQuery = _db.TillSessions
             .Include(s => s.Register).ThenInclude(r => r.Store)
+            .AsQueryable();
+
+        if (storeId.HasValue)
+            sessionsQuery = sessionsQuery.Where(s => s.Register.StoreId == storeId.Value);
+
+        sessionsQuery = status switch
+        {
+            "open" => sessionsQuery.Where(s => s.ClosedAt == null),
+            "closed" => sessionsQuery.Where(s => s.ClosedAt != null),
+            _ => sessionsQuery
+        };
+
+        var sessions = await sessionsQuery
             .OrderByDescending(s => s.OpenedAt).Take(100).ToListAsync();
         var ids = sessions.Select(s => s.Id).ToList();
 

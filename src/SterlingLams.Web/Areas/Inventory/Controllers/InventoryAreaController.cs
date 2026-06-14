@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using SterlingLams.Web.Data;
+using SterlingLams.Web.Models.Domain;
 using SterlingLams.Web.Services;
 
 namespace SterlingLams.Web.Areas.Inventory.Controllers;
@@ -23,5 +27,14 @@ public abstract class InventoryAreaController : Controller
             await audit.LogAsync(action, entityType, entityId, description);
         }
         catch { /* auditing must never break the operation */ }
+    }
+
+    public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    {
+        var db = HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
+        ViewData["PendingTransfersCount"] = await db.StockTransfers.CountAsync(
+            t => t.Status == TransferStatus.PendingApproval || t.Status == TransferStatus.InTransit);
+
+        await next();
     }
 }

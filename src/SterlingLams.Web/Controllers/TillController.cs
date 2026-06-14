@@ -207,13 +207,6 @@ public class TillController : Controller
         var lines = (req.Items ?? new()).Where(l => l.Quantity > 0).ToList();
         if (lines.Count == 0) return Json(new { success = false, message = "Choose at least one item to return." });
 
-        var refundIds = _db.Refunds.Where(r => r.OriginalOrderId == order.Id).Select(r => r.Id);
-        var refunded = await _db.RefundItems.Where(ri => refundIds.Contains(ri.RefundId))
-            .GroupBy(ri => new { ri.ProductId, ri.ProductVariantId })
-            .Select(g => new { g.Key.ProductId, g.Key.ProductVariantId, Qty = g.Sum(x => x.Quantity) })
-            .ToListAsync();
-        int Done(int pid, int? vid) => refunded.FirstOrDefault(r => r.ProductId == pid && r.ProductVariantId == vid)?.Qty ?? 0;
-
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         var now = DateTime.UtcNow;
         var session = register != null ? await OpenSessionAsync(register.Id) : null;
@@ -221,6 +214,19 @@ public class TillController : Controller
         var refundNumber = $"REF-{now:yyMMdd}-{now:HHmmssfff}";
 
         await using var tx = await _db.Database.BeginTransactionAsync();
+
+        // Lock this order's row so two concurrent refund requests for the same sale
+        // serialize: the second sees the first's refund rows before computing "already
+        // refunded" quantities below, instead of both reading zero and double-refunding.
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM \"Orders\" WHERE \"Id\" = {order.Id} FOR UPDATE");
+
+        var refundIds = _db.Refunds.Where(r => r.OriginalOrderId == order.Id).Select(r => r.Id);
+        var refunded = await _db.RefundItems.Where(ri => refundIds.Contains(ri.RefundId))
+            .GroupBy(ri => new { ri.ProductId, ri.ProductVariantId })
+            .Select(g => new { g.Key.ProductId, g.Key.ProductVariantId, Qty = g.Sum(x => x.Quantity) })
+            .ToListAsync();
+        int Done(int pid, int? vid) => refunded.FirstOrDefault(r => r.ProductId == pid && r.ProductVariantId == vid)?.Qty ?? 0;
 
         var refund = new Refund
         {
@@ -258,8 +264,15 @@ public class TillController : Controller
 
         refund.Amount = amount;
         _db.Refunds.Add(refund);
-        await _db.SaveChangesAsync();
-        await tx.CommitAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Json(new { success = false, message = "Stock levels changed while processing this refund. Please try again." });
+        }
 
         return Json(new { success = true, refundNumber, amount });
     }
@@ -580,6 +593,47 @@ public class TillController : Controller
         return Json(products);
     }
 
+    // ── Stock lookup: list of stores for the location filter ──────────────────
+    [Authorize, HttpGet]
+    public async Task<IActionResult> StockLookupStores()
+    {
+        var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name)
+            .Select(s => new { id = s.Id, name = s.Name }).ToListAsync();
+        return Json(stores);
+    }
+
+    // ── Stock lookup: search any product/variant and see stock across stores ──
+    [Authorize, HttpGet]
+    public async Task<IActionResult> StockLookup(string? q)
+    {
+        q = (q ?? "").Trim();
+        if (q.Length < 2) return Json(Array.Empty<object>());
+
+        var products = await _db.Products.Where(p => p.IsActive)
+            .Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
+                     || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
+                     || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
+                     || p.Variants.Any(v => EF.Functions.ILike(v.Sku ?? "", $"%{q}%") || EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")))
+            .OrderBy(p => p.Name).Take(25)
+            .Select(p => new
+            {
+                id = p.Id,
+                name = p.Name,
+                sku = p.Sku,
+                barcode = p.Barcode,
+                price = p.Price,
+                category = p.Category.Name,
+                stores = p.StoreInventories.OrderBy(si => si.Store.Name)
+                    .Select(si => new { name = si.Store.Name, onHand = si.QuantityOnHand, reserved = si.QuantityReserved, available = si.AvailableQuantity }).ToList(),
+                variants = p.ProductType == "variable"
+                    ? p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name)
+                        .Select(v => new { id = v.Id, name = v.Name, sku = v.Sku, barcode = v.Barcode }).ToList()
+                    : null
+            })
+            .ToListAsync();
+        return Json(products);
+    }
+
     public class TillLine
     {
         public int ProductId { get; set; }
@@ -625,9 +679,28 @@ public class TillController : Controller
 
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         var now = DateTime.UtcNow;
-        var orderNumber = $"POS-{now:yyMMdd}-{now:HHmmssfff}";
+        // Random suffix (in addition to millisecond precision) so two checkouts landing in the
+        // same millisecond — plausible with multiple registers under load — don't collide on
+        // the unique OrderNumber index.
+        var orderNumber = $"POS-{now:yyMMdd}-{now:HHmmssfff}{Random.Shared.Next(100):D2}";
 
         await using var tx = await _db.Database.BeginTransactionAsync();
+
+        // Lock the relevant StoreInventory rows (fixed ascending ProductId order, to avoid
+        // deadlocking against a concurrent checkout/transfer touching an overlapping set of
+        // products), then re-check availability against the now-locked, up-to-date balances
+        // before mutating anything — closes the check-then-act window from the pre-check above.
+        foreach (var pid in productIds.OrderBy(id => id))
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM \"StoreInventories\" WHERE \"ProductId\" = {pid} AND \"StoreId\" = {storeId} FOR UPDATE");
+
+        foreach (var grp in req.Items.GroupBy(i => i.ProductId))
+        {
+            var prod = products[grp.Key];
+            var requested = grp.Sum(i => Math.Max(1, i.Quantity));
+            if (requested > await _stock.GetStockAsync(grp.Key, storeId))
+                return Json(new { success = false, message = $"Not enough stock for '{prod.Name}'." });
+        }
 
         var order = new Order
         {
@@ -683,8 +756,24 @@ public class TillController : Controller
         order.ChangeGiven = Math.Max(0, (order.AmountTendered ?? order.Total) - order.Total);
 
         _db.Orders.Add(order);
-        await _db.SaveChangesAsync();
-        await tx.CommitAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (InsufficientStockException ex)
+        {
+            var prodName = products.TryGetValue(ex.ProductId, out var p) ? p.Name : $"product {ex.ProductId}";
+            return Json(new { success = false, message = $"Not enough stock for '{prodName}'." });
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Json(new { success = false, message = "Stock levels changed while processing this sale. Please try again." });
+        }
+        catch (DbUpdateException)
+        {
+            return Json(new { success = false, message = "Could not complete this sale. Please try again." });
+        }
 
         return Json(new { success = true, orderId = order.Id, orderNumber, total = order.Total, change = order.ChangeGiven });
     }

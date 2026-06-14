@@ -51,7 +51,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             // Unique only for real codes — products created without an external code
             // store "" and must not collide with each other.
             e.HasIndex(p => p.ExternalCode).IsUnique().HasFilter("\"ExternalCode\" <> ''");
+            // Barcode must be unique among real (non-blank) codes so a scan resolves to exactly
+            // one product. Sku is indexed (not unique) for fast scan/lookup; both columns are
+            // hit by the barcode-scan ScanLookup query on every till/stock scan.
+            e.HasIndex(p => p.Barcode).IsUnique().HasFilter("\"Barcode\" IS NOT NULL AND \"Barcode\" <> ''");
+            e.HasIndex(p => p.Sku);
             e.Property(p => p.Price).HasPrecision(18, 2);
+            e.ToTable(t => t.HasCheckConstraint("CK_Products_Price_NonNegative", "\"Price\" >= 0"));
 
             e.HasOne(p => p.Category)
              .WithMany(c => c.Products)
@@ -82,6 +88,21 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<StoreInventory>(e =>
         {
             e.HasIndex(si => new { si.ProductId, si.StoreId }).IsUnique();
+            // Optimistic concurrency: map Postgres' built-in xmin system column as a shadow
+            // row-version property so concurrent updates to the same row (e.g. POS sale vs
+            // transfer dispatch) throw DbUpdateConcurrencyException instead of silently overwriting.
+            e.Property<uint>("xmin")
+                .HasColumnName("xmin")
+                .IsRowVersion();
+            // Database-level floor on stock counts. The service layer already clamps these, but a
+            // CHECK is the last line of defence against a bug or raw SQL driving balances negative.
+            // (We intentionally do NOT enforce Reserved <= OnHand: a POS sale draws against OnHand
+            // without consulting online holds, so OnHand can legitimately dip below Reserved.)
+            e.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_StoreInventories_OnHand_NonNegative", "\"QuantityOnHand\" >= 0");
+                t.HasCheckConstraint("CK_StoreInventories_Reserved_NonNegative", "\"QuantityReserved\" >= 0");
+            });
         });
 
         // ─── Register (till) ────────────────────────────────────────────────
@@ -107,19 +128,38 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<Refund>(e =>
         {
             e.Property(r => r.Amount).HasPrecision(18, 2);
+            // RefundNumber is a human-facing document id and must be unique (like OrderNumber).
+            e.HasIndex(r => r.RefundNumber).IsUnique();
             e.HasOne(r => r.OriginalOrder).WithMany().HasForeignKey(r => r.OriginalOrderId)
              .OnDelete(DeleteBehavior.Restrict);
             e.HasMany(r => r.Items).WithOne(i => i.Refund).HasForeignKey(i => i.RefundId)
              .OnDelete(DeleteBehavior.Cascade);
+            e.ToTable(t => t.HasCheckConstraint("CK_Refunds_Amount_NonNegative", "\"Amount\" >= 0"));
         });
         builder.Entity<RefundItem>(e => e.Property(i => i.UnitPrice).HasPrecision(18, 2));
 
         // ─── StockTransfer ──────────────────────────────────────────────────
         builder.Entity<StockTransfer>(e =>
         {
+            // Unique document id; Status/CreatedAt indexed for the transfers list + the
+            // pending-count badge query that runs on every Inventory-area page load.
+            e.HasIndex(t => t.TransferNumber).IsUnique();
+            e.HasIndex(t => t.Status);
+            e.HasIndex(t => t.CreatedAt);
             e.HasOne(t => t.FromStore).WithMany().HasForeignKey(t => t.FromStoreId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(t => t.ToStore).WithMany().HasForeignKey(t => t.ToStoreId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(t => t.Items).WithOne(i => i.StockTransfer).HasForeignKey(i => i.StockTransferId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── StockTransferItem ──────────────────────────────────────────────
+        builder.Entity<StockTransferItem>(e =>
+        {
+            e.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_StockTransferItems_RequestedQty_Positive", "\"RequestedQty\" > 0");
+                t.HasCheckConstraint("CK_StockTransferItems_StageQty_NonNegative",
+                    "(\"ApprovedQty\" IS NULL OR \"ApprovedQty\" >= 0) AND (\"DispatchedQty\" IS NULL OR \"DispatchedQty\" >= 0) AND (\"ReceivedQty\" IS NULL OR \"ReceivedQty\" >= 0)");
+            });
         });
 
         // ─── StockMovement (stock ledger) ───────────────────────────────────
@@ -138,10 +178,21 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<Order>(e =>
         {
             e.HasIndex(o => o.OrderNumber).IsUnique();
+            // Hot lookups: admin order list filters by Status; reports/listings sort by CreatedAt
+            // and split by Channel; the payment webhook matches on PaymentReference.
+            e.HasIndex(o => o.Status);
+            e.HasIndex(o => o.CreatedAt);
+            e.HasIndex(o => new { o.Channel, o.CreatedAt });
+            e.HasIndex(o => o.PaymentReference).HasFilter("\"PaymentReference\" IS NOT NULL");
             e.Property(o => o.Subtotal).HasPrecision(18, 2);
             e.Property(o => o.DeliveryFee).HasPrecision(18, 2);
             e.Property(o => o.Tax).HasPrecision(18, 2);
             e.Property(o => o.Total).HasPrecision(18, 2);
+            e.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_Orders_Subtotal_NonNegative", "\"Subtotal\" >= 0");
+                t.HasCheckConstraint("CK_Orders_Total_NonNegative", "\"Total\" >= 0");
+            });
 
             e.HasOne(o => o.PickupStore)
              .WithMany(s => s.Orders)
@@ -177,8 +228,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<StockReservation>(e =>
         {
             e.HasIndex(r => r.OrderId);
+            // CreatedAt: scanned by the ReservationSweeper (CreatedAt < cutoff).
+            // (ProductId, StoreId): joined when reserving/releasing holds per branch.
+            e.HasIndex(r => r.CreatedAt);
+            e.HasIndex(r => new { r.ProductId, r.StoreId });
             e.HasOne(r => r.Order).WithMany().HasForeignKey(r => r.OrderId)
              .OnDelete(DeleteBehavior.Cascade);
+            e.ToTable(t => t.HasCheckConstraint("CK_StockReservations_Quantity_Positive", "\"Quantity\" > 0"));
         });
 
         // ─── OrderItem ──────────────────────────────────────────────────────
@@ -187,6 +243,22 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             e.Property(oi => oi.UnitPrice).HasPrecision(18, 2);
             e.Property(oi => oi.DiscountAmount).HasPrecision(18, 2);
             e.Ignore(oi => oi.LineTotal);
+            e.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_OrderItems_Quantity_Positive", "\"Quantity\" > 0");
+                t.HasCheckConstraint("CK_OrderItems_UnitPrice_NonNegative", "\"UnitPrice\" >= 0");
+                t.HasCheckConstraint("CK_OrderItems_Discount_NonNegative", "\"DiscountAmount\" >= 0");
+            });
+        });
+
+        // ─── AuditLog ───────────────────────────────────────────────────────
+        // Filtered/sorted by Action, EntityType and CreatedAt in the admin audit list + CSV
+        // export; this table grows unbounded so the indexes matter as it fills up.
+        builder.Entity<AuditLog>(e =>
+        {
+            e.HasIndex(a => a.CreatedAt);
+            e.HasIndex(a => a.Action);
+            e.HasIndex(a => a.EntityType);
         });
 
         // ─── PosDiscountReason / PosDiscountPreset ──────────────────────────
@@ -224,6 +296,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<ProductVariant>(e =>
         {
             e.Property(v => v.PriceAdjustment).HasPrecision(18, 2);
+            // Unique among real (non-blank) codes; Sku indexed for fast scan/lookup. Both columns
+            // participate in the barcode-scan ScanLookup query.
+            e.HasIndex(v => v.Barcode).IsUnique().HasFilter("\"Barcode\" IS NOT NULL AND \"Barcode\" <> ''");
+            e.HasIndex(v => v.Sku);
             e.HasMany(v => v.AttributeValues)
              .WithMany(av => av.Variants)
              .UsingEntity("ProductVariantAttributeValue");
