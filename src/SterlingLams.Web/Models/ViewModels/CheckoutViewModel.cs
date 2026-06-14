@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace SterlingLams.Web.Models.ViewModels;
 
-public class CheckoutViewModel
+public class CheckoutViewModel : IValidatableObject
 {
     public CartViewModel Cart { get; set; } = new();
 
@@ -48,6 +48,31 @@ public class CheckoutViewModel
     public string? GuestEmail { get; set; }
     public string? GuestName { get; set; }
     public string? GuestPhone { get; set; }
+
+    // Conditional validation: a delivery address is only required for Delivery; a store is only
+    // required for Store Pickup. (Previously the address fields were unconditionally [Required],
+    // which blocked pickup checkouts.)
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (FulfillmentType == FulfillmentChoice.Delivery)
+        {
+            if (string.IsNullOrWhiteSpace(DeliveryAddress.FullName))
+                yield return new ValidationResult("Please enter the recipient's full name.", new[] { "DeliveryAddress.FullName" });
+            if (string.IsNullOrWhiteSpace(DeliveryAddress.Phone))
+                yield return new ValidationResult("Please enter a phone number.", new[] { "DeliveryAddress.Phone" });
+            if (string.IsNullOrWhiteSpace(DeliveryAddress.Line1))
+                yield return new ValidationResult("Please enter the delivery address.", new[] { "DeliveryAddress.Line1" });
+            if (string.IsNullOrWhiteSpace(DeliveryAddress.City))
+                yield return new ValidationResult("Please enter the city.", new[] { "DeliveryAddress.City" });
+            if (string.IsNullOrWhiteSpace(DeliveryAddress.State))
+                yield return new ValidationResult("Please select the state.", new[] { "DeliveryAddress.State" });
+        }
+        else // Store Pickup
+        {
+            if (SelectedStoreId == null)
+                yield return new ValidationResult("Please select a store for pickup.", new[] { "SelectedStoreId" });
+        }
+    }
 }
 
 public class DeliveryOptionViewModel
@@ -76,12 +101,13 @@ public class StorePickupOptionViewModel
 
 public class DeliveryAddressViewModel
 {
-    [Required] public string FullName { get; set; } = string.Empty;
-    [Required] public string Phone { get; set; } = string.Empty;
-    [Required] public string Line1 { get; set; } = string.Empty;
+    // Not unconditionally [Required] — CheckoutViewModel.Validate enforces these only for Delivery.
+    public string FullName { get; set; } = string.Empty;
+    public string Phone { get; set; } = string.Empty;
+    public string Line1 { get; set; } = string.Empty;
     public string? Line2 { get; set; }
-    [Required] public string City { get; set; } = string.Empty;
-    [Required] public string State { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
+    public string State { get; set; } = string.Empty;
     public string Country { get; set; } = "Nigeria";
     public string? PostalCode { get; set; }
     public bool SaveAddress { get; set; }
