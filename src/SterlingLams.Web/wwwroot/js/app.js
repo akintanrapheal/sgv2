@@ -76,10 +76,20 @@ document.getElementById('mobile-menu-toggle')?.addEventListener('click', () => {
 
 // ─── Cart Badge Update ────────────────────────────────────────────────────
 function updateCartBadge(count) {
-    const badge = document.getElementById('cart-badge');
-    if (!badge) return;
+    let badge = document.getElementById('cart-badge');
+    // The badge isn't rendered server-side when the cart starts empty, so create
+    // it on the first add — otherwise the count never appears until a page reload.
+    if (!badge) {
+        if (!count) return;
+        const link = document.getElementById('cart-link');
+        if (!link) return;
+        badge = document.createElement('span');
+        badge.id = 'cart-badge';
+        badge.className = 'absolute -top-1.5 -right-1.5 bg-brand-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center';
+        link.appendChild(badge);
+    }
     badge.textContent = count;
-    badge.classList.toggle('hidden', count === 0);
+    badge.classList.toggle('hidden', !count);
 }
 
 // ─── Toast Notification ───────────────────────────────────────────────────
@@ -119,15 +129,16 @@ document.querySelectorAll('.add-to-bag-quick').forEach(btn => {
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: `productId=${productId}&quantity=1&__RequestVerificationToken=${encodeURIComponent(token)}`
             });
-            const data = await res.json();
-            if (data.success) {
+            const data = res.ok ? await res.json().catch(() => null) : null;
+            if (data && data.success) {
                 updateCartBadge(data.cartCount);
                 showToast('Added to bag');
             } else {
-                showToast(data.message || 'Could not add to bag');
+                showToast((data && data.message) || 'Sorry, we couldn’t add this to your bag.');
             }
         } catch (err) {
             console.error('Add to bag failed', err);
+            showToast('Sorry, we couldn’t add this to your bag.');
         } finally {
             btn.disabled = false;
         }

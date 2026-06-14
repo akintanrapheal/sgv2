@@ -60,6 +60,11 @@
     <script type="application/ld+json">@Html.Raw(breadcrumbLd)</script>
 }
 
+@* Antiforgery token for the AJAX POSTs on this page (Add to Bag, wishlist, notify-restock).
+   Rendering it here also sets the antiforgery cookie, which CartController's
+   [ValidateAntiForgeryToken] requires. *@
+@Html.AntiForgeryToken()
+
 <div class="max-w-7xl mx-auto px-6 py-12">
     <!-- Breadcrumb -->
     <nav class="text-xs text-neutral-400 tracking-wider mb-10 flex gap-2 items-center">
@@ -449,7 +454,9 @@
     const selectedAttrs = {};
     const hasVariants = document.getElementById('add-to-cart')?.dataset.hasVariants === 'true';
 
-    function onAttrSelectChange(attr, val) {
+    // Exposed on window: the dropdowns call this via inline onchange="…", which
+    // resolves in global scope — a plain in-IIFE function would be undefined there.
+    window.onAttrSelectChange = function(attr, val) {
         if (val) selectedAttrs[attr] = val;
         else     delete selectedAttrs[attr];
 
@@ -503,11 +510,15 @@
 
         try {
             const res  = await fetch('/Cart/Add', { method: 'POST', body });
-            const data = await res.json();
-            if (data.success) {
+            const data = res.ok ? await res.json().catch(() => null) : null;
+            if (data && data.success) {
                 updateCartBadge(data.cartCount);
                 showToast(`Added to bag — ${qty > 1 ? qty + ' items' : '@Model.Name'}`);
+            } else {
+                showToast((data && data.message) || 'Sorry, we couldn’t add this to your bag.');
             }
+        } catch {
+            showToast('Sorry, we couldn’t add this to your bag.');
         } finally {
             btn.disabled = false;
             btn.textContent = 'Add to Bag';

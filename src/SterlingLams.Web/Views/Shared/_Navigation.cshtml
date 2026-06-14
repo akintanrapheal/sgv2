@@ -1,7 +1,19 @@
 @using SterlingLams.Web.Services
+@using SterlingLams.Web.Models.ViewModels
 @inject ISettingsService SettingsService
 @{
-    var cartCount = ViewBag.CartCount ?? 0;
+    // Read the live cart count from session so the nav badge is correct on every page
+    // load (not just after an AJAX add). Mirrors CartController's "cart" session key.
+    int cartCount = ViewBag.CartCount ?? 0;
+    if (cartCount == 0)
+    {
+        var cartJson = Context.Session.GetString("cart");
+        if (!string.IsNullOrEmpty(cartJson))
+        {
+            try { cartCount = System.Text.Json.JsonSerializer.Deserialize<CartViewModel>(cartJson)?.TotalItems ?? 0; }
+            catch { /* malformed cart cookie — leave at 0 */ }
+        }
+    }
     var wishlistCount = ViewBag.WishlistCount ?? 0;
     var announcementEnabled = await SettingsService.GetBoolAsync("announcement.enabled", true);
     var announcementText    = await SettingsService.GetAsync("announcement.text", "COMPLIMENTARY SHIPPING ON ORDERS OVER N150,000  |  IN-STORE PICKUP AVAILABLE");
@@ -110,7 +122,7 @@
             }
 
             <!-- Cart -->
-            <a asp-controller="Cart" asp-action="Index" aria-label="Shopping bag"
+            <a id="cart-link" asp-controller="Cart" asp-action="Index" aria-label="Shopping bag"
                class="relative text-neutral-600 hover:text-brand-500 transition-colors">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
