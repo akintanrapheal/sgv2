@@ -131,6 +131,13 @@
                         }
                     </div>
                 }
+                @if (!string.IsNullOrEmpty(Model.TrackingNumber))
+                {
+                    <div class="mt-3 pt-3 border-t border-neutral-200">
+                        <p class="text-[10px] tracking-widest uppercase text-neutral-400 mb-1">Tracking number</p>
+                        <p class="text-sm font-mono text-neutral-800 select-all break-all">@Model.TrackingNumber</p>
+                    </div>
+                }
             </div>
 
             <!-- Payment -->

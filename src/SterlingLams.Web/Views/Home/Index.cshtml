@@ -5,6 +5,9 @@
     ViewData["Description"] = "Sterlin Glams — luxury jewellery and accessories. Shop rings, necklaces, earrings, bracelets, watches and clutches, with in-store pickup at our Lagos and Abuja boutiques.";
     Layout = "_Layout";
     var featuredProducts = ViewBag.FeaturedProducts as List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> ?? new();
+    var bestSellers = ViewBag.BestSellers as List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> ?? new();
+    var trending = ViewBag.Trending as List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> ?? new();
+    var recentlyViewed = ViewBag.RecentlyViewed as List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> ?? new();
 
     var heroImageUrl  = await SettingsService.GetAsync("homepage.hero_image_url", "");
     var heroHeadline  = await SettingsService.GetAsync("homepage.hero_headline",  "Timeless Elegance");
@@ -20,7 +23,8 @@
     <div class="absolute inset-0">
         @if (hasHeroImage)
         {
-            <img src="@heroImageUrl" alt="Campaign"
+            @* LCP element: load eagerly with high priority so the largest paint isn't delayed. *@
+            <img src="@heroImageUrl" alt="Campaign" loading="eager" fetchpriority="high" decoding="async"
                  class="w-full h-full object-cover object-center" />
             <!-- Dark overlay so text remains readable over any image -->
             <div class="absolute inset-0 bg-black/40"></div>
@@ -255,6 +259,20 @@
         </div>
     </div>
 </section>
+
+<!-- ─── Merchandising rows (best sellers / trending / recently viewed) ────────── -->
+@await Html.PartialAsync("_ProductCardRow", bestSellers, new ViewDataDictionary(ViewData)
+{
+    ["RowTitle"] = "Best Sellers", ["RowEyebrow"] = "Most loved", ["RowBg"] = "bg-white",
+})
+@await Html.PartialAsync("_ProductCardRow", trending, new ViewDataDictionary(ViewData)
+{
+    ["RowTitle"] = "Trending Now", ["RowEyebrow"] = "Popular this month", ["RowBg"] = "bg-stone-50",
+})
+@await Html.PartialAsync("_ProductCardRow", recentlyViewed, new ViewDataDictionary(ViewData)
+{
+    ["RowTitle"] = "Recently Viewed", ["RowEyebrow"] = "Pick up where you left off", ["RowBg"] = "bg-white",
+})
 
 <!-- ─── Store Finder Banner ───────────────────────────────────────────────── -->
 <section class="py-20 bg-neutral-900 text-white">

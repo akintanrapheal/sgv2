@@ -31,6 +31,26 @@
         ["logo"] = string.IsNullOrEmpty(seoLogo) ? null : Abs(seoLogo),
         ["sameAs"] = seoSocial.Length > 0 ? seoSocial : null,
     }, new System.Text.Json.JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
+
+    // WebSite + SearchAction → enables Google's "sitelinks search box". Target is the
+    // storefront's own search (GET /products?search=...).
+    var websiteLd = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
+    {
+        ["@context"] = "https://schema.org",
+        ["@type"] = "WebSite",
+        ["name"] = seoSiteName,
+        ["url"] = seoBaseUrl,
+        ["potentialAction"] = new Dictionary<string, object?>
+        {
+            ["@type"] = "SearchAction",
+            ["target"] = new Dictionary<string, object?>
+            {
+                ["@type"] = "EntryPoint",
+                ["urlTemplate"] = $"{seoBaseUrl}/products?search={{search_term_string}}",
+            },
+            ["query-input"] = "required name=search_term_string",
+        },
+    }, new System.Text.Json.JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
 }
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">
@@ -62,8 +82,9 @@
     <meta name="twitter:title" content="@seoTitle" />
     <meta name="twitter:description" content="@seoDesc" />
 
-    <!-- Organization structured data -->
+    <!-- Organization + WebSite structured data -->
     <script type="application/ld+json">@Html.Raw(orgLd)</script>
+    <script type="application/ld+json">@Html.Raw(websiteLd)</script>
 
     <!-- Fonts: Cormorant Garamond (luxury serif) + Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">

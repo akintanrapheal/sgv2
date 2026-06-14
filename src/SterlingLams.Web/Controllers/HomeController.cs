@@ -9,11 +9,14 @@ public class HomeController : Controller
 {
     private readonly ILogger<HomeController> _logger;
     private readonly ApplicationDbContext _db;
+    private readonly SterlingLams.Web.Services.IMerchandisingService _merch;
 
-    public HomeController(ILogger<HomeController> logger, ApplicationDbContext db)
+    public HomeController(ILogger<HomeController> logger, ApplicationDbContext db,
+        SterlingLams.Web.Services.IMerchandisingService merch)
     {
         _logger = logger;
         _db = db;
+        _merch = merch;
     }
 
     public async Task<IActionResult> Index()
@@ -50,6 +53,12 @@ public class HomeController : Controller
 
         var withImages = topCategories.Where(c => !string.IsNullOrWhiteSpace(c.ImageUrl)).ToList();
         ViewBag.ShopCategories = withImages.Count > 0 ? withImages : topCategories.Take(5).ToList();
+
+        // ─── Merchandising rows ──────────────────────────────────────────────
+        ViewBag.BestSellers = await _merch.BestSellersAsync(4);                 // all-time
+        ViewBag.Trending = await _merch.BestSellersAsync(4, sinceDays: 30);     // last 30 days
+        ViewBag.RecentlyViewed = await _merch.ByIdsAsync(
+            SterlingLams.Web.Infrastructure.RecentlyViewed.Get(Request));
 
         return View();
     }

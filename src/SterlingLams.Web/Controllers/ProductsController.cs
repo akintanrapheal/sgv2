@@ -20,12 +20,10 @@ public class ProductsController : Controller
     // GET /products
     public async Task<IActionResult> Index(ProductFilterViewModel filters, int page = 1, int pageSize = 24)
     {
-        var query = _db.Products
-            .Include(p => p.Category)
-            .Include(p => p.Images)
-            .Include(p => p.StoreInventories)
-            .Include(p => p.Variants)
-            .Where(p => p.IsActive);
+        // No Includes: the card only needs a handful of fields + three booleans, so we project
+        // straight to ProductCardViewModel in SQL (below). Loading full Images/Variants/Inventory
+        // graphs here caused a cartesian JOIN blow-up and over-fetch on the busiest page.
+        var query = _db.Products.Where(p => p.IsActive);
 
         if (!string.IsNullOrWhiteSpace(filters.Search))
             query = query.Where(p => EF.Functions.ILike(p.Name, $"%{filters.Search}%")
@@ -61,14 +59,29 @@ public class ProductsController : Controller
         var products = await query
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
+            .Select(p => new ProductCardViewModel
+            {
+                Id = p.Id,
+                Name = p.Name,
+                Slug = p.Slug,
+                Price = p.Price,
+                Currency = p.Currency,
+                PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
+                    ?? "/images/placeholder.jpg",
+                IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0),
+                IsNewArrival = p.IsNewArrival,
+                HasVariants = p.Variants.Any(v => v.IsActive),
+                CategoryName = p.Category.Name
+            })
             .ToListAsync();
 
         var wishlistProductIds = User.Identity?.IsAuthenticated == true
-            ? await _db.WishlistItems
+            ? (await _db.WishlistItems
                 .Where(w => w.UserId == GetUserId())
                 .Select(w => w.ProductId)
-                .ToListAsync()
-            : new List<int>();
+                .ToListAsync()).ToHashSet()
+            : new HashSet<int>();
+        foreach (var c in products) c.IsInWishlist = wishlistProductIds.Contains(c.Id);
 
         // Category navigation with live product counts (sidebar on desktop, top nav on mobile).
         filters.Categories = await _db.Categories
@@ -84,22 +97,7 @@ public class ProductsController : Controller
 
         var vm = new ProductListViewModel
         {
-            Products = products.Select(p => new ProductCardViewModel
-            {
-                Id = p.Id,
-                Name = p.Name,
-                Slug = p.Slug,
-                Price = p.Price,
-                Currency = p.Currency,
-                PrimaryImageUrl = p.Images.FirstOrDefault(i => i.IsPrimary)?.Url
-                    ?? p.Images.FirstOrDefault()?.Url
-                    ?? "/images/placeholder.jpg",
-                IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0),
-                IsInWishlist = wishlistProductIds.Contains(p.Id),
-                IsNewArrival = p.IsNewArrival,
-                HasVariants = p.Variants.Any(v => v.IsActive),
-                CategoryName = p.Category.Name
-            }).ToList(),
+            Products = products,
             Filters = filters,
             TotalCount = totalCount,
             Page = page,
@@ -123,6 +121,9 @@ public class ProductsController : Controller
             .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive);
 
         if (product == null) return NotFound();
+
+        // Track for the "Recently viewed" merchandising row (cookie-based; works for guests).
+        SterlingLams.Web.Infrastructure.RecentlyViewed.Record(Request, Response, product.Id);
 
         var isInWishlist = User.Identity?.IsAuthenticated == true
             && await _db.WishlistItems.AnyAsync(w => w.UserId == GetUserId() && w.ProductId == product.Id);
