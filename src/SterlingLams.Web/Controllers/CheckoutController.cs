@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -26,6 +27,7 @@ public class CheckoutController : Controller
     private readonly SterlingLams.Web.Services.DeliveryZoneService _zones;
     private readonly SterlingLams.Web.Services.IDiscountService _discounts;
     private readonly SterlingLams.Web.Services.IEmailService _email;
+    private readonly IDataProtector _confirmTokenProtector;
 
     public CheckoutController(
         ApplicationDbContext db,
@@ -38,7 +40,8 @@ public class CheckoutController : Controller
         SterlingLams.Web.Services.ISettingsService settings,
         SterlingLams.Web.Services.DeliveryZoneService zones,
         SterlingLams.Web.Services.IDiscountService discounts,
-        SterlingLams.Web.Services.IEmailService email)
+        SterlingLams.Web.Services.IEmailService email,
+        IDataProtectionProvider dataProtection)
     {
         _db = db;
         _payment = payment;
@@ -51,6 +54,19 @@ public class CheckoutController : Controller
         _zones = zones;
         _discounts = discounts;
         _email = email;
+        _confirmTokenProtector = dataProtection.CreateProtector("Checkout.Confirmation.v1");
+    }
+
+    /// <summary>Opaque, tamper-proof token tying a viewer to a specific order's confirmation page —
+    /// lets a guest (who isn't signed in) see their own confirmation without exposing every order
+    /// to anyone who guesses an order number.</summary>
+    private string ConfirmationToken(string orderNumber) => _confirmTokenProtector.Protect(orderNumber);
+
+    private bool ConfirmationTokenValid(string orderNumber, string? token)
+    {
+        if (string.IsNullOrEmpty(token)) return false;
+        try { return _confirmTokenProtector.Unprotect(token) == orderNumber; }
+        catch { return false; }
     }
 
     [HttpGet]
@@ -359,7 +375,7 @@ public class CheckoutController : Controller
         // Clear cart
         HttpContext.Session.Remove(CartSessionKey);
 
-        return RedirectToAction("Confirmation", new { orderNumber = result.OrderNumber });
+        return RedirectToAction("Confirmation", new { orderNumber = result.OrderNumber, token = ConfirmationToken(result.OrderNumber!) });
     }
 
     /// <summary>
@@ -398,7 +414,7 @@ public class CheckoutController : Controller
         await SendOrderEmailsAsync(order.Id);
 
         HttpContext.Session.Remove(CartSessionKey);
-        return RedirectToAction("Confirmation", new { orderNumber = order.OrderNumber });
+        return RedirectToAction("Confirmation", new { orderNumber = order.OrderNumber, token = ConfirmationToken(order.OrderNumber) });
     }
 
     /// <summary>
@@ -482,17 +498,23 @@ public class CheckoutController : Controller
 
     [HttpGet]
     [AllowAnonymous]
-    public async Task<IActionResult> Confirmation(string orderNumber)
+    public async Task<IActionResult> Confirmation(string orderNumber, string? token = null)
     {
-        var userId = _userManager.GetUserId(User);
         var order = await _db.Orders
             .Include(o => o.Items)
             .Include(o => o.PickupStore)
             .Include(o => o.DeliveryAddress)
-            .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber
-                && (userId == null || o.UserId == userId));
+            .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber);
 
         if (order == null) return NotFound();
+
+        // Authorise the viewer: the signed-in owner, or anyone holding the order's confirmation
+        // token (issued only on the post-payment redirect). Without this, an anonymous visitor
+        // could read any order's PII (name/address/phone) just by guessing the order number.
+        var userId = _userManager.GetUserId(User);
+        var isOwner = userId != null && order.UserId == userId;
+        if (!isOwner && !ConfirmationTokenValid(orderNumber, token))
+            return NotFound();
 
         return View(order);
     }

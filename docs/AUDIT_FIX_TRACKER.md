@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-14 (committed FX-1..30 in 2 batches; security audit → FX-31 XSS fix; OP-44)
+**Last updated:** 2026-06-14 (security fixes → FX-31 XSS, FX-32 order-PII token; OP-1 = user key-rotation only)
 
 **Legend:** severity 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low ·
 status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
@@ -56,6 +56,7 @@ status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
 | FX-29 | Perf: product listing query → **SQL projection** (dropped 4 `Include`s that caused a cartesian JOIN blow-up + over-fetch on the busiest page); TTFB ~20–40ms with ~1k products | Controllers/ProductsController.cs |
 | FX-30 | Perf (LCP): hero image now `loading="eager" fetchpriority="high" decoding="async"` so the largest paint isn't deprioritized | Views/Home/Index.cshtml |
 | FX-31 | **Stored XSS** in admin delete-confirm handlers — product/store name was interpolated into inline JS with only `'`-escaping; crafted/imported names could break out and run in an Admin session. Moved name to a Razor-encoded `data-itemname` read as a string arg. Verified a payload name no longer executes. | Areas/Admin/Views/Products/Index.cshtml, Stores/Index.cshtml, Stores/Edit.cshtml |
+| FX-32 | **Anonymous order PII leak (OP-44)** — `Checkout/Confirmation?orderNumber=` returned any order's name/address/phone to unauthenticated visitors. Now requires the signed-in owner **or** a Data-Protection-signed token (issued on the post-payment redirect). Verified: anon no/bogus token → 404; owner → 200. | Controllers/CheckoutController.cs |
 | FX-20 | Typed stock movements — adjustment reasons map to `Purchase`/`Damage`/`Loss` (was all `Adjustment`) | Models/Domain/StockMovement.cs, Areas/Inventory/Controllers/StockController.cs |
 | FX-21 | Concurrency safety on manual adjustments + stock-take (lock + re-read + graceful catch) | Areas/Inventory/Controllers/StockController.cs, StocktakeController.cs |
 
@@ -66,14 +67,14 @@ status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
 ### 🔴 Critical
 | ID | Item | Ref | Notes / approach |
 |----|------|-----|------------------|
-| OP-1 | Paystack keys still in `appsettings.Development.json` (test keys, also in git history) | C1 | Rotate, move to user-secrets / env / Key Vault; scrub history. |
+| OP-1 | Paystack **test** keys exposed in **git history** (commits before `4be47d9` "stop tracking dev secrets file"). Source is already clean: base `appsettings.json` = `YOUR_…` placeholders; dev file gitignored/untracked. **Remaining = USER ACTION:** rotate the test keys in the Paystack dashboard (history scrub then unnecessary since test-only). No code change. | C1 | ⚠️ user-only |
 | OP-2 | `FulfilPaidOrderAsync` swallows **all** exceptions → customer charged but order silently unfulfilled, no retry/alert | R2 / #12 | Outbox or job queue + retry + alert; mark order needs-attention. |
 | ~~OP-3~~ | ✅ **DONE** (FX-22) — `StoreInventoryConcurrencyToken` `Up()`/`Down()` neutralized to no-ops; both pending migrations applied to dev & verified (xmin still a system column, 12 CHECKs + indexes live) | D1 | — |
 
 ### 🟠 High
 | ID | Item | Ref | Notes / approach |
 |----|------|-----|------------------|
-| OP-44 | Anonymous order lookup: `Checkout/Confirmation?orderNumber=` returns full order PII (name/address/phone) to **any** unauthenticated visitor who knows/guesses the order number (no email/token check) | security audit | Require an email match or a signed token; ties to OP-31 (guest tracking). |
+| ~~OP-44~~ | ✅ **DONE** (FX-32) — anonymous order-confirmation PII leak closed via Data-Protection-signed token (owner-or-token) | security audit | — |
 | OP-4 | Variant-level stock not tracked — `StoreInventory` is product-level only → variant availability is fiction, oversell risk | R1 | Add variant dimension to inventory + ledger; larger change. |
 | OP-5 | POS sells against `OnHand` ignoring `QuantityReserved` → can drop `OnHand` below `Reserved`, leaving an online order short at fulfilment | #11 / I1 | POS sell against *available*, or accept + warn on low-available. |
 | OP-6 | Payment webhook matches order by `reference.Contains(OrderNumber)` (substring) | R3 | Match exact `PaymentReference` / metadata `order_id`. |
