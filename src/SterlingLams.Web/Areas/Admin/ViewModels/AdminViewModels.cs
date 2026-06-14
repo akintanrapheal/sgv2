@@ -187,12 +187,26 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public int LowStockThreshold { get; set; } = 3;
         public Dictionary<int, int> StockByStore { get; set; } = new();   // storeId → qty (-1 = no record)
 
-        // Only count stores that have an actual record (exclude -1)
-        public int TotalStock        => StockByStore.Values.Where(v => v >= 0).Sum();
+        /// <summary>Per-variant stock rows (empty for products without variants). When present, the
+        /// product's own StockByStore is the unallocated "pool" and each variant tracks its own stock.</summary>
+        public List<VariantInventoryRow> Variants { get; set; } = new();
+        public bool HasVariants => Variants.Count > 0;
+
+        // Only count stores that have an actual record (exclude -1); include variant rows.
+        public int TotalStock        => StockByStore.Values.Where(v => v >= 0).Sum()
+                                        + Variants.Sum(v => v.StockByStore.Values.Where(q => q >= 0).Sum());
         public bool HasAnyRecord     => StockByStore.Values.Any(v => v >= 0);
         public bool HasOutOfStock    => StockByStore.Values.Any(v => v == 0);
         public bool HasLowStock      => StockByStore.Values.Any(v => v > 0 && v < LowStockThreshold);
         public bool HasMissingRecord => StockByStore.Values.Any(v => v == -1);
+    }
+
+    public class VariantInventoryRow
+    {
+        public int VariantId { get; set; }
+        public string Name { get; set; } = "";
+        public string? Sku { get; set; }
+        public Dictionary<int, int> StockByStore { get; set; } = new();   // storeId → qty (-1 = no record)
     }
 
     // ─── Customers ────────────────────────────────────────────────────────

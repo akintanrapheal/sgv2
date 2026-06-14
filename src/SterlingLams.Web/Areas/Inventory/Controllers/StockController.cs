@@ -29,7 +29,9 @@ public class StockController : InventoryAreaController
 
         var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
 
-        var pq = _db.Products.Include(p => p.Category).Include(p => p.Images).Where(p => p.IsActive).AsQueryable();
+        var pq = _db.Products.Include(p => p.Category).Include(p => p.Images)
+            .Include(p => p.Variants.Where(v => v.IsActive))
+            .Where(p => p.IsActive).AsQueryable();
         if (!string.IsNullOrWhiteSpace(q))
             pq = pq.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
                             || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
@@ -53,9 +55,19 @@ public class StockController : InventoryAreaController
             CategoryName = p.Category?.Name ?? "—",
             ImageUrl = p.Images.OrderBy(i => i.SortOrder).FirstOrDefault()?.Url,
             LowStockThreshold = p.LowStockThreshold,
+            // Product row = the pool (unallocated) row. Variant products track per-variant rows below.
             StockByStore = stores.ToDictionary(
                 s => s.Id,
-                s => inv.FirstOrDefault(si => si.ProductId == p.Id && si.StoreId == s.Id)?.QuantityOnHand ?? -1)
+                s => inv.FirstOrDefault(si => si.ProductId == p.Id && si.StoreId == s.Id && si.ProductVariantId == null)?.QuantityOnHand ?? -1),
+            Variants = p.Variants.OrderBy(v => v.Name).Select(v => new VariantInventoryRow
+            {
+                VariantId = v.Id,
+                Name = v.Name,
+                Sku = v.Sku,
+                StockByStore = stores.ToDictionary(
+                    s => s.Id,
+                    s => inv.FirstOrDefault(si => si.ProductId == p.Id && si.StoreId == s.Id && si.ProductVariantId == v.Id)?.QuantityOnHand ?? -1)
+            }).ToList()
         }).ToList();
 
         var total = rows.Count;
@@ -91,7 +103,9 @@ public class StockController : InventoryAreaController
         if (p == null || !p.IsActive) return Json(new { found = false });
 
         var storeIds = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).Select(s => s.Id).ToListAsync();
-        var inv = await _db.StoreInventories.Where(si => si.ProductId == p.Id)
+        // Pool row per store (the scan inserts a product-level row; variant rows excluded to avoid
+        // duplicate StoreId keys).
+        var inv = await _db.StoreInventories.Where(si => si.ProductId == p.Id && si.ProductVariantId == null)
             .ToDictionaryAsync(si => si.StoreId, si => si.QuantityOnHand);
 
         return Json(new
@@ -107,6 +121,7 @@ public class StockController : InventoryAreaController
     public class StockEdit
     {
         public int ProductId { get; set; }
+        public int? VariantId { get; set; }   // null = product-level pool
         public int StoreId { get; set; }
         public int Quantity { get; set; }
     }
@@ -136,8 +151,18 @@ public class StockController : InventoryAreaController
             .Where(p => edits.Select(e => e.ProductId).Distinct().Contains(p.Id))
             .Select(p => p.Id).ToListAsync()).ToHashSet();
 
+        // Validate any submitted variant ids actually belong to their product (so we never
+        // materialize a stock row for a bogus or mismatched variant).
+        var variantIds = edits.Where(e => e.VariantId.HasValue).Select(e => e.VariantId!.Value).Distinct().ToList();
+        var validVariantPairs = variantIds.Count == 0
+            ? new HashSet<(int, int)>()
+            : (await _db.ProductVariants.Where(v => variantIds.Contains(v.Id))
+                .Select(v => new { v.ProductId, v.Id }).ToListAsync())
+                .Select(v => (v.ProductId, v.Id)).ToHashSet();
+
         var valid = edits
-            .Where(e => e.Quantity >= 0 && validStoreIds.Contains(e.StoreId) && validProductIds.Contains(e.ProductId))
+            .Where(e => e.Quantity >= 0 && validStoreIds.Contains(e.StoreId) && validProductIds.Contains(e.ProductId)
+                && (e.VariantId == null || validVariantPairs.Contains((e.ProductId, e.VariantId.Value))))
             .ToList();
         if (valid.Count == 0) return Json(new { success = true, count = 0 });
 
@@ -161,12 +186,14 @@ public class StockController : InventoryAreaController
 
         foreach (var e in valid)
         {
-            // Re-read under the lock so the delta reflects the latest committed balance.
-            var current = await _stock.GetStockAsync(e.ProductId, e.StoreId);
+            // Re-read the EXACT (variant or pool) row under the lock so the delta sets that row to
+            // the typed target — not measured against the shared pool via fallback.
+            var current = await _stock.GetStockAsync(e.ProductId, e.VariantId, e.StoreId, fallback: false);
             var delta = e.Quantity - current;
             if (delta != 0)
             {
-                await _stock.ApplyAsync(e.ProductId, null, e.StoreId, delta, type, reason, userId: userId);
+                await _stock.ApplyAsync(e.ProductId, e.VariantId, e.StoreId, delta, type, reason,
+                    userId: userId, materializeVariant: e.VariantId.HasValue);
                 applied++;
             }
         }
@@ -225,7 +252,7 @@ public class StockController : InventoryAreaController
 
         foreach (var p in all)
         {
-            var byStore = stores.Select(s => inv.FirstOrDefault(si => si.ProductId == p.Id && si.StoreId == s.Id)?.QuantityOnHand ?? 0).ToList();
+            var byStore = stores.Select(s => inv.Where(si => si.ProductId == p.Id && si.StoreId == s.Id).Sum(si => si.QuantityOnHand)).ToList();
             sb.Append(Csv(p.Name)).Append(',').Append(Csv(p.Sku)).Append(',').Append(Csv(p.Barcode));
             foreach (var v in byStore) sb.Append(',').Append(v);
             sb.Append(',').Append(byStore.Sum()).AppendLine();

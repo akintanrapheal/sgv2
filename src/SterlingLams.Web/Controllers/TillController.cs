@@ -679,12 +679,12 @@ public class TillController : Controller
         var products = await _db.Products.Include(p => p.Variants)
             .Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
 
-        foreach (var grp in req.Items.GroupBy(i => i.ProductId))
+        foreach (var grp in req.Items.GroupBy(i => new { i.ProductId, i.VariantId }))
         {
-            if (!products.TryGetValue(grp.Key, out var prod))
+            if (!products.TryGetValue(grp.Key.ProductId, out var prod))
                 return Json(new { success = false, message = "A product in the cart no longer exists." });
             var requested = grp.Sum(i => Math.Max(1, i.Quantity));
-            if (requested > await _stock.GetStockAsync(grp.Key, storeId))
+            if (requested > await _stock.GetStockAsync(grp.Key.ProductId, grp.Key.VariantId, storeId))
                 return Json(new { success = false, message = $"Not enough stock for '{prod.Name}'." });
         }
 
@@ -705,11 +705,11 @@ public class TillController : Controller
             await _db.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT 1 FROM \"StoreInventories\" WHERE \"ProductId\" = {pid} AND \"StoreId\" = {storeId} FOR UPDATE");
 
-        foreach (var grp in req.Items.GroupBy(i => i.ProductId))
+        foreach (var grp in req.Items.GroupBy(i => new { i.ProductId, i.VariantId }))
         {
-            var prod = products[grp.Key];
+            var prod = products[grp.Key.ProductId];
             var requested = grp.Sum(i => Math.Max(1, i.Quantity));
-            if (requested > await _stock.GetStockAsync(grp.Key, storeId))
+            if (requested > await _stock.GetStockAsync(grp.Key.ProductId, grp.Key.VariantId, storeId))
                 return Json(new { success = false, message = $"Not enough stock for '{prod.Name}'." });
         }
 

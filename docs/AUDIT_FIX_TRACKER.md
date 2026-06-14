@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-14 (store-level authorization → FX-35 / OP-8 done)
+**Last updated:** 2026-06-14 (variant-level stock Phase 1 → FX-36 / OP-4 Phase 1 done)
 
 **Legend:** severity 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low ·
 status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
@@ -59,6 +59,7 @@ status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
 | FX-32 | **Anonymous order PII leak (OP-44)** — `Checkout/Confirmation?orderNumber=` returned any order's name/address/phone to unauthenticated visitors. Now requires the signed-in owner **or** a Data-Protection-signed token (issued on the post-payment redirect). Verified: anon no/bogus token → 404; owner → 200. | Controllers/CheckoutController.cs |
 | FX-33 | **CSP header (OP-10)** — added a Content-Security-Policy (default-src 'self', external scripts/framing/base/form blocked; Google Fonts + https images allowed). Verified: no CSP violations on home/detail; inline handlers still run. ('unsafe-inline' remains until inline scripts move to nonces — see OP-45.) | Program.cs |
 | FX-34 | **Staff session lifetime (H9)** — staff/admin now get an 8-hour, non-persistent auth cookie (overrides "remember me"); shoppers keep the 30-day sliding cookie. Verified: staff+RememberMe → session cookie. | Program.cs |
+| FX-36 | **Variant-level stock — Phase 1 (OP-4)**: `StoreInventory`/`StockReservation` gain nullable `ProductVariantId` (partial unique indexes); `StockService` resolves the variant row with a pool **fallback** (+`materializeVariant` for explicit per-variant sets, +`GetAvailableAsync`); Inventory Stock grid shows editable **per-variant rows**; POS checkout checks stock per variant. Online fulfilment/transfers pool-scoped (Phase 2). Verified: setting a variant's stock creates a distinct row, pool untouched. | Models/Domain/StoreInventory.cs + StockReservation.cs, Data/ApplicationDbContext.cs (+migration VariantLevelStock), Services/StockService.cs + OrderFulfilmentService.cs + TransferWorkflowService.cs, Areas/Inventory/Controllers/{Stock,Stocktake,Reports}Controller.cs + Views/Stock/Index.cshtml, Controllers/TillController.cs, Areas/Admin/{Controllers/InventoryController.cs,ViewModels/AdminViewModels.cs} |
 | FX-35 | **Store-level authorization (OP-8 / H7)** — new `UserStore` join table + `IStoreAccessService` (Admin→all; assigned→those; none→all/legacy). Writes-only enforcement on stock edits, stock-take, transfers (approve/dispatch=from, receive=to, etc.) and till (open/checkout). Admin UI to assign branches per user (Users → Branches). Verified live: non-assigned branch edit blocked, assigned allowed, admin bypass. | Models/Domain/UserStore.cs, Services/StoreAccessService.cs, Data/ApplicationDbContext.cs (+migration), Areas/Inventory/Controllers/{Stock,Stocktake,Transfers}Controller.cs, Controllers/TillController.cs, Areas/Admin/Controllers/UsersController.cs, Areas/Admin/Views/Users/Stores.cshtml + Index.cshtml |
 | FX-20 | Typed stock movements — adjustment reasons map to `Purchase`/`Damage`/`Loss` (was all `Adjustment`) | Models/Domain/StockMovement.cs, Areas/Inventory/Controllers/StockController.cs |
 | FX-21 | Concurrency safety on manual adjustments + stock-take (lock + re-read + graceful catch) | Areas/Inventory/Controllers/StockController.cs, StocktakeController.cs |
@@ -78,7 +79,7 @@ status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
 | ID | Item | Ref | Notes / approach |
 |----|------|-----|------------------|
 | ~~OP-44~~ | ✅ **DONE** (FX-32) — anonymous order-confirmation PII leak closed via Data-Protection-signed token (owner-or-token) | security audit | — |
-| OP-4 | Variant-level stock not tracked — `StoreInventory` is product-level only → variant availability is fiction, oversell risk | R1 | Add variant dimension to inventory + ledger; larger change. |
+| OP-4 | Variant-level stock — **Phase 1 DONE (FX-36)**: per-variant balances + grid editing + POS variant-aware + fallback. **Phase 2 remaining (🟠):** storefront detail per-variant availability, cart per-variant guard, and online reservation/fulfilment per variant (currently pool-level). Also per-variant stock-take UI. | R1 | Phase 2 = storefront/online per-variant. |
 | OP-5 | POS sells against `OnHand` ignoring `QuantityReserved` → can drop `OnHand` below `Reserved`, leaving an online order short at fulfilment | #11 / I1 | POS sell against *available*, or accept + warn on low-available. |
 | OP-6 | Payment webhook matches order by `reference.Contains(OrderNumber)` (substring) | R3 | Match exact `PaymentReference` / metadata `order_id`. |
 | OP-7 | FK delete cascades destroy history: product delete → `OrderItems`+`StockMovements`; user delete → `Orders` | D2 | Change those FKs CASCADE→RESTRICT (behavior-affecting migration; soft-delete already exists). |

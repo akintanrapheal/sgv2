@@ -117,8 +117,13 @@ public class OrderFulfilmentService : IOrderFulfilmentService
         // other transaction can change it out from under us before we commit.
         await LockInventoryRowsAsync(productIds.SelectMany(pid => storeIds.Select(sid => (pid, sid))));
 
+        // Phase 1 of variant-level stock: online fulfilment stays product-level — it reads/writes
+        // only the product pool row (ProductVariantId == null). This both preserves current online
+        // behaviour and avoids a duplicate-key crash now that a (product, store) can have several
+        // rows (pool + per-variant). Per-variant online allocation is Phase 2.
         var invMap = (await _db.StoreInventories
-                .Where(si => productIds.Contains(si.ProductId) && storeIds.Contains(si.StoreId))
+                .Where(si => productIds.Contains(si.ProductId) && storeIds.Contains(si.StoreId)
+                    && si.ProductVariantId == null)
                 .ToListAsync())
             .ToDictionary(si => (si.ProductId, si.StoreId));
         int Available(int pid, int sid) =>
@@ -168,7 +173,8 @@ public class OrderFulfilmentService : IOrderFulfilmentService
         var pids = rows.Select(r => r.ProductId).Distinct().ToList();
         var sids = rows.Select(r => r.StoreId).Distinct().ToList();
         var invMap = (await _db.StoreInventories
-                .Where(si => pids.Contains(si.ProductId) && sids.Contains(si.StoreId))
+                .Where(si => pids.Contains(si.ProductId) && sids.Contains(si.StoreId)
+                    && si.ProductVariantId == null)   // pool rows only (Phase 1 — see TryReserveAsync)
                 .ToListAsync())
             .ToDictionary(si => (si.ProductId, si.StoreId));
         foreach (var r in rows)
@@ -289,8 +295,10 @@ public class OrderFulfilmentService : IOrderFulfilmentService
             }
 
             // Sell the whole order from the fulfilment branch (everything is consolidated there now).
+            // Phase 1: deduct from the product pool (variantId null) to stay consistent with the
+            // pool-only availability read above. Phase 2 will allocate/deduct per variant.
             foreach (var line in order.Items)
-                await _stock.ApplyAsync(line.ProductId, line.ProductVariantId, fulfilStore.Id,
+                await _stock.ApplyAsync(line.ProductId, null, fulfilStore.Id,
                     -line.Quantity, StockMovementType.Sale, order.OrderNumber,
                     $"Online order {order.OrderNumber}", order.UserId);
 

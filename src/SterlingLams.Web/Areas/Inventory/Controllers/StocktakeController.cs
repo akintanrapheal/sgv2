@@ -50,7 +50,9 @@ public class StocktakeController : InventoryAreaController
                 ProductId = p.Id,
                 Name = p.Name,
                 Sku = p.Sku,
-                System = p.StoreInventories.Where(si => si.StoreId == storeId).Select(si => (int?)si.QuantityOnHand).FirstOrDefault() ?? 0
+                // Product-level pool row (per-variant stock-take counting is Phase 2).
+                System = p.StoreInventories.Where(si => si.StoreId == storeId && si.ProductVariantId == null)
+                    .Select(si => (int?)si.QuantityOnHand).FirstOrDefault() ?? 0
             })
             .ToListAsync();
 
@@ -79,7 +81,7 @@ public class StocktakeController : InventoryAreaController
         return Json(new { found = true, productId = p.Id, name = p.Name, sku = p.Sku, system });
     }
 
-    public class CountEntry { public int ProductId { get; set; } public int Counted { get; set; } }
+    public class CountEntry { public int ProductId { get; set; } public int? VariantId { get; set; } public int Counted { get; set; } }
     public class StocktakeRequest { public int StoreId { get; set; } public List<CountEntry> Counts { get; set; } = new(); }
 
     // Reconcile: set the system quantity to the counted value (ledger Adjustment, reason "Stock-take").
@@ -97,7 +99,16 @@ public class StocktakeController : InventoryAreaController
         var ids = req.Counts.Select(c => c.ProductId).Distinct().ToList();
         var validIds = (await _db.Products.Where(p => ids.Contains(p.Id)).Select(p => p.Id).ToListAsync()).ToHashSet();
 
-        var valid = req.Counts.Where(c => c.Counted >= 0 && validIds.Contains(c.ProductId)).ToList();
+        // Validate submitted variant ids belong to their product.
+        var variantIds = req.Counts.Where(c => c.VariantId.HasValue).Select(c => c.VariantId!.Value).Distinct().ToList();
+        var validVariantPairs = variantIds.Count == 0
+            ? new HashSet<(int, int)>()
+            : (await _db.ProductVariants.Where(v => variantIds.Contains(v.Id))
+                .Select(v => new { v.ProductId, v.Id }).ToListAsync())
+                .Select(v => (v.ProductId, v.Id)).ToHashSet();
+
+        var valid = req.Counts.Where(c => c.Counted >= 0 && validIds.Contains(c.ProductId)
+            && (c.VariantId == null || validVariantPairs.Contains((c.ProductId, c.VariantId.Value)))).ToList();
         if (valid.Count == 0) return Json(new { success = true, count = 0 });
 
         var applied = 0;
@@ -112,13 +123,15 @@ public class StocktakeController : InventoryAreaController
 
         foreach (var c in valid)
         {
-            // Re-read under the lock so the variance is measured against the latest balance.
-            var current = await _stock.GetStockAsync(c.ProductId, store.Id);
+            // Re-read the EXACT (variant or pool) row under the lock so the variance is measured
+            // against that row, not the shared pool via fallback.
+            var current = await _stock.GetStockAsync(c.ProductId, c.VariantId, store.Id, fallback: false);
             var delta = c.Counted - current;
             if (delta != 0)
             {
-                await _stock.ApplyAsync(c.ProductId, null, store.Id, delta,
-                    StockMovementType.Adjustment, "Stock-take", userId: userId);
+                await _stock.ApplyAsync(c.ProductId, c.VariantId, store.Id, delta,
+                    StockMovementType.Adjustment, "Stock-take", userId: userId,
+                    materializeVariant: c.VariantId.HasValue);
                 applied++;
             }
         }

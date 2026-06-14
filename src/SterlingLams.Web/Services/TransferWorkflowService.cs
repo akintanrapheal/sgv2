@@ -146,7 +146,8 @@ public class TransferWorkflowService : ITransferWorkflowService
         await LockInventoryRowsAsync(productIds.Select(pid => (pid, transfer.FromStoreId)));
 
         var invs = await _db.StoreInventories
-            .Where(si => si.StoreId == transfer.FromStoreId && productIds.Contains(si.ProductId))
+            .Where(si => si.StoreId == transfer.FromStoreId && productIds.Contains(si.ProductId)
+                && si.ProductVariantId == null)   // transfers are product-level (pool) in Phase 1 of variant stock
             .ToListAsync();
 
         foreach (var item in transfer.Items)
@@ -233,7 +234,8 @@ public class TransferWorkflowService : ITransferWorkflowService
         await LockInventoryRowsAsync(productIds.Select(pid => (pid, transfer.FromStoreId)));
 
         var invs = await _db.StoreInventories
-            .Where(si => si.StoreId == transfer.FromStoreId && productIds.Contains(si.ProductId))
+            .Where(si => si.StoreId == transfer.FromStoreId && productIds.Contains(si.ProductId)
+                && si.ProductVariantId == null)   // transfers are product-level (pool) in Phase 1 of variant stock
             .ToListAsync();
 
         foreach (var item in transfer.Items)
@@ -346,7 +348,8 @@ public class TransferWorkflowService : ITransferWorkflowService
             var productIds = transfer.Items.Select(i => i.ProductId).Distinct().ToList();
             await LockInventoryRowsAsync(productIds.Select(pid => (pid, transfer.FromStoreId)));
             var invs = await _db.StoreInventories
-                .Where(si => si.StoreId == transfer.FromStoreId && productIds.Contains(si.ProductId))
+                .Where(si => si.StoreId == transfer.FromStoreId && productIds.Contains(si.ProductId)
+                && si.ProductVariantId == null)   // transfers are product-level (pool) in Phase 1 of variant stock
                 .ToListAsync();
             foreach (var item in transfer.Items)
             {

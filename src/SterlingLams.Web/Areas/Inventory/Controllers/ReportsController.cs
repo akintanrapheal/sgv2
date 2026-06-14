@@ -30,7 +30,7 @@ public class ReportsController : InventoryAreaController
             Sku = p.Sku,
             Threshold = p.LowStockThreshold,
             Total = p.StoreInventories.Sum(si => si.QuantityOnHand),
-            PerStore = stores.ToDictionary(s => s.Id, s => p.StoreInventories.FirstOrDefault(si => si.StoreId == s.Id)?.QuantityOnHand ?? 0)
+            PerStore = stores.ToDictionary(s => s.Id, s => p.StoreInventories.Where(si => si.StoreId == s.Id).Sum(si => si.QuantityOnHand))
         })
         .Where(r => r.Total <= Math.Max(1, r.Threshold))
         .OrderBy(r => r.Total).ThenBy(r => r.Name).ToList();
@@ -47,7 +47,7 @@ public class ReportsController : InventoryAreaController
         {
             p.Name, p.Sku, p.LowStockThreshold,
             Total = p.StoreInventories.Sum(si => si.QuantityOnHand),
-            Per = stores.ToDictionary(s => s.Id, s => p.StoreInventories.FirstOrDefault(si => si.StoreId == s.Id)?.QuantityOnHand ?? 0)
+            Per = stores.ToDictionary(s => s.Id, s => p.StoreInventories.Where(si => si.StoreId == s.Id).Sum(si => si.QuantityOnHand))
         }).Where(r => r.Total <= Math.Max(1, r.LowStockThreshold))
           .OrderBy(r => r.Total).ToList();
 

@@ -15,6 +15,8 @@ public class StockReservation
 
     public int StoreId { get; set; }
     public int ProductId { get; set; }
+    /// <summary>Variant the hold is for (NULL = product-level pool, mirroring StoreInventory).</summary>
+    public int? ProductVariantId { get; set; }
     public int Quantity { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

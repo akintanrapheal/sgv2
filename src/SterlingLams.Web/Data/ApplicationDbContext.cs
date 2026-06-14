@@ -88,7 +88,16 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         // ─── StoreInventory ─────────────────────────────────────────────────
         builder.Entity<StoreInventory>(e =>
         {
-            e.HasIndex(si => new { si.ProductId, si.StoreId }).IsUnique();
+            // Variant-level stock: one row per (product, store) product-pool (ProductVariantId NULL),
+            // plus one row per (product, store, variant). Two partial unique indexes because Postgres
+            // treats NULLs as distinct, so a single combined unique index wouldn't constrain the
+            // null-variant (pool) row.
+            e.HasIndex(si => new { si.ProductId, si.StoreId })
+                .IsUnique().HasFilter("\"ProductVariantId\" IS NULL");
+            e.HasIndex(si => new { si.ProductId, si.StoreId, si.ProductVariantId })
+                .IsUnique().HasFilter("\"ProductVariantId\" IS NOT NULL");
+            e.HasOne(si => si.ProductVariant).WithMany().HasForeignKey(si => si.ProductVariantId)
+                .OnDelete(DeleteBehavior.Cascade);
             // Optimistic concurrency: map Postgres' built-in xmin system column as a shadow
             // row-version property so concurrent updates to the same row (e.g. POS sale vs
             // transfer dispatch) throw DbUpdateConcurrencyException instead of silently overwriting.

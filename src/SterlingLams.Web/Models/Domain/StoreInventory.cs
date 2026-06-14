@@ -9,6 +9,12 @@ public class StoreInventory
     public int ProductId { get; set; }
     public Product Product { get; set; } = null!;
 
+    /// <summary>Variant this balance is for. NULL = the product-level pool: used by products with no
+    /// variants, and as the fallback/unallocated pool for variant products until a variant is
+    /// individually stocked. See StockService for the resolution rule.</summary>
+    public int? ProductVariantId { get; set; }
+    public ProductVariant? ProductVariant { get; set; }
+
     public int StoreId { get; set; }
     public Store Store { get; set; } = null!;
 

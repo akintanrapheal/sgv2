@@ -64,6 +64,7 @@ else
                         <td class="px-4 py-3">
                             <p class="text-xs font-medium text-neutral-800 leading-snug">@row.ProductName</p>
                             @if (!string.IsNullOrEmpty(row.Sku)) { <p class="text-[10px] text-neutral-400 font-mono mt-0.5">@row.Sku</p> }
+                            @if (row.HasVariants) { <p class="text-[10px] text-amber-600 mt-0.5">@row.Variants.Count variant(s) — row below is unallocated pool</p> }
                         </td>
                         <td class="px-4 py-3 text-center">
                             <span class="text-sm font-medium @(total == 0 ? "text-red-600" : "text-neutral-800")">@total</span>
@@ -75,11 +76,32 @@ else
                                 <input type="number" min="0"
                                        placeholder="@(qty == -1 ? "—" : "")"
                                        value="@(qty == -1 ? "" : qty.ToString())"
-                                       data-pid="@row.ProductId" data-sid="@s.Id" data-orig="@(qty == -1 ? "" : qty.ToString())"
+                                       data-pid="@row.ProductId" data-vid="" data-sid="@s.Id" data-orig="@(qty == -1 ? "" : qty.ToString())"
                                        class="stock-cell w-16 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-emerald-400 bg-white @(qty == 0 ? "text-red-600 border-red-200" : "")" />
                             </td>
                         }
                     </tr>
+                    @foreach (var v in row.Variants)
+                    {
+                        <tr class="bg-neutral-50/60" data-row-pid="@row.ProductId" data-row-vid="@v.VariantId">
+                            <td class="px-4 py-1.5 pl-10">
+                                <p class="text-[11px] text-neutral-600 leading-snug">↳ @v.Name</p>
+                                @if (!string.IsNullOrEmpty(v.Sku)) { <p class="text-[10px] text-neutral-400 font-mono">@v.Sku</p> }
+                            </td>
+                            <td class="px-4 py-1.5 text-center text-[11px] text-neutral-400">@v.StockByStore.Values.Where(q => q >= 0).Sum()</td>
+                            @foreach (var s in Model.Stores)
+                            {
+                                var vq = v.StockByStore.TryGetValue(s.Id, out var q3) ? q3 : -1;
+                                <td class="px-3 py-1.5 text-center">
+                                    <input type="number" min="0"
+                                           placeholder="@(vq == -1 ? "—" : "")"
+                                           value="@(vq == -1 ? "" : vq.ToString())"
+                                           data-pid="@row.ProductId" data-vid="@v.VariantId" data-sid="@s.Id" data-orig="@(vq == -1 ? "" : vq.ToString())"
+                                           class="stock-cell w-16 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-emerald-400 bg-white @(vq == 0 ? "text-red-600 border-red-200" : "")" />
+                                </td>
+                            }
+                        </tr>
+                    }
                 }
             </tbody>
         </table>
@@ -120,7 +142,12 @@ else
         document.addEventListener('input', e => { if (e.target.classList && e.target.classList.contains('stock-cell')) refresh(); });
         refresh();
         btn.addEventListener('click', async () => {
-            const edits = changed().map(i => ({ productId: +i.dataset.pid, storeId: +i.dataset.sid, quantity: +i.value }));
+            const edits = changed().map(i => ({
+                productId: +i.dataset.pid,
+                variantId: i.dataset.vid ? +i.dataset.vid : null,
+                storeId: +i.dataset.sid,
+                quantity: +i.value
+            }));
             if (!edits.length) { alert('No changes to save.'); return; }
             btn.disabled = true; btn.textContent = 'Saving…';
             try {

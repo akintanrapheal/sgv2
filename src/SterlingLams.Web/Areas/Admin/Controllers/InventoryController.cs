@@ -127,7 +127,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 if (!int.TryParse(qtyStr, out var qty) || qty < 0) continue;
 
                 // Apply the change through the stock ledger so every restock is traceable.
-                var current = await _stock.GetStockAsync(productId, store.Id);
+                var current = await _stock.GetStockAsync(productId, null, store.Id);
                 var delta = qty - current;
                 if (delta != 0)
                     await _stock.ApplyAsync(productId, null, store.Id, delta,
@@ -177,7 +177,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     continue;
 
                 // Route every change through the ledger so each restock stays traceable.
-                var current = await _stock.GetStockAsync(e.ProductId, e.StoreId);
+                var current = await _stock.GetStockAsync(e.ProductId, null, e.StoreId);
                 var delta = e.Quantity - current;
                 if (delta != 0)
                 {
