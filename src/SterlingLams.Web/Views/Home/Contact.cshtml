@@ -1,12 +1,17 @@
 @using SterlingLams.Web.Services
+@using SterlingLams.Web.Data
+@using Microsoft.EntityFrameworkCore
 @inject ISettingsService SettingsService
+@inject ApplicationDbContext Db
 @{
     ViewData["Title"] = "Contact Us";
-    ViewData["Description"] = "Get in touch with Sterlin Glams. Visit any of our three Lagos boutiques or reach us by phone and email.";
+    ViewData["Description"] = "Get in touch with Sterlin Glams. Visit any of our boutiques or reach us by phone and email.";
     Layout = "_Layout";
 
     var contactEmail = await SettingsService.GetAsync("general.contact_email", "info@sterlinglams.com");
     var contactPhone = await SettingsService.GetAsync("general.contact_phone", "+234 1 234 5678");
+    var whatsapp     = await SettingsService.GetAsync("general.whatsapp_number");
+    var contactStores = await Db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
 }
 
 <!-- Hero -->
@@ -62,7 +67,14 @@
                     </div>
                     <div>
                         <p class="text-xs tracking-widest uppercase text-neutral-400 mb-1">WhatsApp</p>
-                        <a href="https://wa.me/2348000000000" target="_blank" rel="noopener" class="text-sm text-neutral-700 hover:text-neutral-900 transition-colors">Chat with us on WhatsApp</a>
+                        @if (!string.IsNullOrWhiteSpace(whatsapp))
+                        {
+                            <a href="https://wa.me/@(whatsapp.Replace("+", "").Replace(" ", ""))" target="_blank" rel="noopener" class="text-sm text-neutral-700 hover:text-neutral-900 transition-colors">Chat with us on WhatsApp</a>
+                        }
+                        else
+                        {
+                            <span class="text-sm text-neutral-400">Not available</span>
+                        }
                     </div>
                 </div>
             </div>
@@ -72,20 +84,29 @@
         <div>
             <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-6">Our Boutiques</p>
             <div class="space-y-6">
-                @foreach (var store in new[] {
-                    new { Name = "Sterlin Glams Abuja", Address = "Elboogie Place Adjacent Kilimanjaro, 3rd Avenue, Gwarinpa, Abuja", Hours = "Mon–Sat: 8am–8pm, Sun: 12pm–8pm", Phone = "+234 1 234 5678" },
-                    new { Name = "Sterlin Glams Allen", Address = "47 Allen Avenue, Studio 24 Building, Opp Item7go Restaurant, Ikeja, Lagos", Hours = "Mon–Sat: 8am–8pm, Sun: 12pm–8pm", Phone = "+234 1 234 5679" },
-                    new { Name = "Sterlin Glams Ikota", Address = "Shop J22, Ikota Shopping Complex, Ikota Ajah, Lagos", Hours = "Mon–Sat: 8am–8pm, Sun: 12pm–8pm", Phone = "+234 1 234 5680" }
-                })
+                @if (contactStores.Any())
                 {
-                    <div class="border border-neutral-100 p-6">
-                        <h3 class="font-cormorant text-xl font-light text-neutral-900 mb-3">@store.Name</h3>
-                        <div class="space-y-1.5 text-xs text-neutral-500 font-light">
-                            <p>@store.Address</p>
-                            <p class="text-neutral-400">@store.Hours</p>
-                            <a href="tel:@store.Phone.Replace(" ", "")" class="block text-neutral-700 hover:text-neutral-900 transition-colors">@store.Phone</a>
+                    @foreach (var store in contactStores)
+                    {
+                        <div class="border border-neutral-100 p-6">
+                            <h3 class="font-cormorant text-xl font-light text-neutral-900 mb-3">@store.Name</h3>
+                            <div class="space-y-1.5 text-xs text-neutral-500 font-light">
+                                <p>@store.Address@(string.IsNullOrWhiteSpace(store.City) ? "" : ", " + store.City)</p>
+                                @if (!string.IsNullOrWhiteSpace(store.OpeningHours))
+                                {
+                                    <p class="text-neutral-400">@store.OpeningHours</p>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(store.Phone))
+                                {
+                                    <a href="tel:@store.Phone.Replace(" ", "")" class="block text-neutral-700 hover:text-neutral-900 transition-colors">@store.Phone</a>
+                                }
+                            </div>
                         </div>
-                    </div>
+                    }
+                }
+                else
+                {
+                    <p class="text-sm text-neutral-500">Boutique details coming soon.</p>
                 }
             </div>
         </div>

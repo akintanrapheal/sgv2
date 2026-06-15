@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-15 (FX-57 low-stock alert email — makes notifications.low_stock real)
+**Last updated:** 2026-06-15 (FX-58 Contact page pulls stores from DB + WhatsApp from settings)
 
 ### Dead-settings audit (FX-56)
 Audited every `SiteSettings` key for a consumer. Wired the rest of the dead ones:
@@ -17,7 +17,7 @@ Audited every `SiteSettings` key for a consumer. Wired the rest of the dead ones
 
 **Still dead — bigger than wiring (flagged):**
 - `store.currency_symbol` — prices hardcode `₦` everywhere (`FormattedPrice => $"₦{…}"`); honoring it means threading the symbol through all price formatting (large/risky). Default is "N" anyway.
-- Also noticed: Contact page hardcodes the 3 stores + hours instead of pulling from DB (the footer pulls live) — cosmetic drift, not a setting.
+- ~~Contact page hardcodes the 3 stores + hours~~ ✅ **DONE (FX-58)**: Contact page now pulls active stores from the DB (like the footer) and reads WhatsApp from `general.whatsapp_number` (was a hardcoded `wa.me/2348000000000`). Verified: shows the 3 DB stores with DB hours; WhatsApp hidden when unset.
 
 **Legend:** severity 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low ·
 status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
