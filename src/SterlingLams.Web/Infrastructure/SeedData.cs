@@ -75,7 +75,7 @@ public static class SeedData
                     State           = "Abuja",
                     Phone           = "+234 1 234 5678",
                     Email           = "abuja@sterlinglams.com",
-                    OpeningHours    = "Monâ€“Sat: 8amâ€“8pm, Sun: 12pmâ€“8pm",
+                    OpeningHours    = "Mon-Sat: 8am-8pm, Sun: 12pm-8pm",
                     IsActive        = true,
                     Latitude        = 9.0563,
                     Longitude       = 7.4985
@@ -89,7 +89,7 @@ public static class SeedData
                     State           = "Lagos",
                     Phone           = "+234 1 234 5679",
                     Email           = "allen@sterlinglams.com",
-                    OpeningHours    = "Monâ€“Sat: 8amâ€“8pm, Sun: 12pmâ€“8pm",
+                    OpeningHours    = "Mon-Sat: 8am-8pm, Sun: 12pm-8pm",
                     IsActive        = true,
                     Latitude        = 6.6085,
                     Longitude       = 3.3521
@@ -103,7 +103,7 @@ public static class SeedData
                     State           = "Lagos",
                     Phone           = "+234 1 234 5680",
                     Email           = "ikota@sterlinglams.com",
-                    OpeningHours    = "Monâ€“Sat: 8amâ€“8pm, Sun: 12pmâ€“8pm",
+                    OpeningHours    = "Mon-Sat: 8am-8pm, Sun: 12pm-8pm",
                     IsActive        = true,
                     Latitude        = 6.4369,
                     Longitude       = 3.5676

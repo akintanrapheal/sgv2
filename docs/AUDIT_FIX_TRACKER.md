@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-14 (FX-41 fulfilment retry/alert + Channel guard — OP-2 done)
+**Last updated:** 2026-06-15 (FX-42 quick-wins batch — OP-25, OP-9, OP-30 done; OP-29 confirmed already done)
 
 **Legend:** severity 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low ·
 status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
@@ -85,7 +85,7 @@ status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
 | OP-6 | Payment webhook matches order by `reference.Contains(OrderNumber)` (substring) | R3 | Match exact `PaymentReference` / metadata `order_id`. |
 | OP-7 | FK delete cascades destroy history: product delete → `OrderItems`+`StockMovements`; user delete → `Orders` | D2 | Change those FKs CASCADE→RESTRICT (behavior-affecting migration; soft-delete already exists). |
 | ~~OP-8~~ | ✅ **DONE** (FX-35) — store-level (writes-only) authorization: per-user branch assignment + enforcement on stock/stock-take/transfers/till; admin assignment UI | H7 | — |
-| OP-9 | `_ValidationScriptsPartial` references `wwwroot/lib/jquery-validation*` which is empty → 404, client validation degraded | R11 | Restore libs or drop the partial; quick win. |
+| ~~OP-9~~ | ✅ **DONE** (FX-42) — `_ValidationScriptsPartial` referenced non-existent `wwwroot/lib/jquery-validation*` (404 + MIME errors) and the CDN fallback can't load under our `script-src 'self'` CSP; jQuery isn't loaded site-wide either, so client validation never actually ran. Made the partial a no-op with a comment — these auth forms are fully validated server-side (ModelState). Verified: Login page emits **no** jquery script refs. Follow-up: vendor jquery+validation+unobtrusive locally to satisfy CSP if client-side validation is wanted. | R11 | — |
 | OP-33 | **Back-in-stock notify is a no-op** — `ProductsController.NotifyRestock` only `LogInformation`s and discards the email; customers told "we'll notify you" but nothing is stored/sent (revenue leak + broken promise) | merch audit | Persist requests (table) + send on restock (hook in `StockService.ApplyAsync` when qty crosses 0→+). |
 | OP-28 | No online-order refund workflow — refunds are POS-only; `OrdersController.UpdateStatus` lets an order be set "Refunded" with **no Refund record, no stock return, no gateway refund** (cosmetic) | admin audit | Build online refund (record + `Return` ledger + provider refund). |
 | OP-31 | Guests can't view order history/tracking after leaving the confirmation page (guest account has a random password → can't log in) | storefront audit | Magic-link order lookup, or post-purchase set-password. Ties to OP-11/R4. |
@@ -116,14 +116,14 @@ status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
 | OP-24 | Session/cache default in-memory (no horizontal scale unless Redis set) | R13 | Configure Redis for prod. |
 | OP-42 | No output/response caching on anonymous pages (home/listing/detail) — every hit re-queries | perf audit | Add `OutputCache` w/ short TTL; donut/vary for the personalized nav (cart badge, wishlist). |
 | OP-43 | No CDN / long-cache headers on static assets + product images served by the app | perf audit / CDN readiness | Front static + `/uploads` with a CDN; set `Cache-Control: immutable` on hashed assets. |
-| OP-25 | Build warning CS0108: `TransfersController.Request` hides `ControllerBase.Request` | — | Rename or `new`. |
+| ~~OP-25~~ | ✅ **DONE** (FX-42) — renamed the action `Request` → `RequestTransfer` and kept the public route via `[ActionName("Request")]`, so it no longer hides `ControllerBase.Request` (CS0108 gone — **build is now 0 warnings**). Verified: `POST /Inventory/Transfers/Request` still resolves (302 → login, not 404). | — | — |
 | OP-26 | Storefront: no reviews/ratings, no abandoned-cart recovery, product images lack width/height (CLS) | H16–H18 | Conversion/SEO backlog. |
-| OP-29 | Data-export actions not all audited (Orders `ExportCsv` is a GET, unlogged; Customers/AuditLog exports *are* logged) | admin audit | Add `LogAsync` to remaining export endpoints. |
+| ~~OP-29~~ | ✅ **DONE** (already) — re-checked during the FX-42 batch: `OrdersController.ExportCsv` already calls `LogAsync("Export", "Order", null, …)` before returning the file. No change needed. | admin audit | — |
 | OP-41 | `wwwroot/js/app.js` (8 KB) ships unminified | perf audit | Minify in the build/asset pipeline. |
 | ~~OP-46~~ | ✅ **DONE** (FX-40) — made the Postgres-isms provider-conditional: the `xmin` rowversion mapping and all 6 `FOR UPDATE` lock sites are guarded by `Database.IsNpgsql()` (active in prod, no-op on the SQLite test harness). All **13 tests pass**; Postgres lock/concurrency behaviour unchanged. | variant Phase 2 | — |
 | ~~OP-47~~ | ✅ **DONE** (FX-38) — `CheckoutViewModel : IValidatableObject` requires the address only for Delivery, store only for Pickup; removed unconditional `[Required]`. Verified: a pickup order placed with no address → created + fulfilled. | variant Phase 2 | — |
 | ~~OP-48~~ | ✅ **DONE** (FX-39) — stock-take sheet now has per-variant rows; variance keyed by product+variant; Apply materializes the variant row. Verified: counting a variant → variant row created. | variant Phase 2 | — |
-| OP-30 | Store `OpeningHours` renders mojibake (`Monâ€"Sat: 8amâ€"8pm`) on order detail + Stores page — UTF-8 en-dash double-encoded in the stored value | storefront audit | Re-save store hours with clean dashes (data fix) or sanitize on display. |
+| ~~OP-30~~ | ✅ **DONE** (FX-42) — fixed the mojibake at the **source** (`Infrastructure/SeedData.cs`, 3 stores) and in the **live DB** (`UPDATE "Stores" SET "OpeningHours"='Mon-Sat: 8am-8pm, Sun: 12pm-8pm'`, 3 rows). Used ASCII hyphens to avoid re-encoding. Verified: Stores page now renders `Mon-Sat: 8am-8pm, Sun: 12pm-8pm`. | storefront audit | — |
 | OP-32 | Product detail "Reviews (0)" tab is a dead end — always "no reviews", no way to submit (no reviews feature) | storefront audit / H16 | Build reviews, or hide the tab until shipped. |
 | OP-38 | Product JSON-LD lacks `priceValidUntil` / `shippingDetails` / `hasMerchantReturnPolicy` (Google Merchant rich-result enrichments) | SEO audit | Add to Detail.cshtml product schema. |
 | OP-39 | BreadcrumbList JSON-LD only on product detail, not on category/listing pages | SEO audit | Add breadcrumb schema to Products/Index. |

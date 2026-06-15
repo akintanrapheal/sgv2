@@ -100,8 +100,10 @@ public class TransfersController : InventoryAreaController
         return Json(products);
     }
 
-    [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> Request([FromBody] TransferRequest req)
+    // ActionName keeps the public route /Inventory/Transfers/Request; the method is renamed so it
+    // doesn't hide ControllerBase.Request (the HttpRequest) — was a CS0108 build warning.
+    [HttpPost, ActionName("Request"), ValidateAntiForgeryToken]
+    public async Task<IActionResult> RequestTransfer([FromBody] TransferRequest req)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var writable = await _access.WritableStoreIdsAsync(User);

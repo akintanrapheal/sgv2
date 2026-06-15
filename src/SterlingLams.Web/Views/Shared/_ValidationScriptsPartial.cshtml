@@ -1,14 +1,14 @@
-<environment include="Development">
-    <script src="~/lib/jquery-validation/dist/jquery.validate.js"></script>
-    <script src="~/lib/jquery-validation-unobtrusive/jquery.validate.unobtrusive.js"></script>
-</environment>
-<environment exclude="Development">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-validate/1.20.0/jquery.validate.min.js"
-            crossorigin="anonymous"
-            asp-fallback-src="~/lib/jquery-validation/dist/jquery.validate.min.js"
-            asp-fallback-test="window.jQuery && window.jQuery.validator"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-validation-unobtrusive/4.0.0/jquery.validate.unobtrusive.min.js"
-            crossorigin="anonymous"
-            asp-fallback-src="~/lib/jquery-validation-unobtrusive/jquery.validate.unobtrusive.min.js"
-            asp-fallback-test="window.jQuery && window.jQuery.validator && window.jQuery.validator.unobtrusive"></script>
-</environment>
+@*
+    Client-side jQuery unobtrusive validation is intentionally disabled.
+
+    These forms (Login/Register/ResetPassword/ChangePassword) are fully validated
+    server-side via ModelState — they post and re-render with field errors, so they
+    are functionally correct without any JavaScript.
+
+    The previous markup referenced ~/lib/jquery-validation/* which is not vendored
+    (404 + MIME errors), and the CDN fallback can't load because the site CSP is
+    script-src 'self' 'unsafe-inline' (no external origins). jQuery itself is also
+    not loaded anywhere on the site. Re-enabling client-side validation would mean
+    vendoring jquery + jquery-validation + jquery-validation-unobtrusive locally
+    under wwwroot/lib so they satisfy the 'self' CSP. Tracked as a follow-up.
+*@
