@@ -40,6 +40,8 @@ public class ProductDetailViewModel
     public List<string> Tags { get; set; } = new();
 
     public bool IsInWishlist { get; set; }
+    /// <summary>Admin-configurable copy (store.out_of_stock_msg) shown when the item is unavailable.</summary>
+    public string OutOfStockMessage { get; set; } = "This item is currently out of stock. Check back soon.";
     public List<ProductCardViewModel> RelatedProducts { get; set; } = new();
     public List<ProductCardViewModel> FrequentlyBoughtTogether { get; set; } = new();
 }

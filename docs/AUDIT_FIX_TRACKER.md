@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-15 (FX-54 loyalty admin controls + settings image-URL save fix)
+**Last updated:** 2026-06-15 (FX-55 wired up the dead Store settings — maintenance/accepting-orders/pickup/OOS-message)
 
 **Legend:** severity 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low ·
 status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked

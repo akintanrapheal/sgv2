@@ -78,6 +78,12 @@ public class CheckoutController : Controller
         var cart = GetCart();
         if (cart.IsEmpty) return RedirectToAction("Index", "Cart");
 
+        if (!await _settings.GetBoolAsync("store.accepting_orders", true))
+        {
+            TempData["Error"] = "We're not accepting online orders right now. Please check back soon.";
+            return RedirectToAction("Index", "Cart");
+        }
+
         var user = await _userManager.GetUserAsync(User);
 
         // Re-apply automatic promotion (in case the customer skipped the cart page)
@@ -132,6 +138,7 @@ public class CheckoutController : Controller
             NigerianStates = SterlingLams.Web.Services.DeliveryZoneService.NigerianStates,
             LagosLGAs = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs,
             PaystackPublicKey = _config["Payment:Paystack:PublicKey"],
+            PickupAvailable = await _settings.GetBoolAsync("store.pickup_available", true),
             AvailableStores = stores.Select(s => new StorePickupOptionViewModel
             {
                 StoreId = s.Id,
@@ -153,6 +160,19 @@ public class CheckoutController : Controller
 
         var cart = GetCart();
         if (cart.IsEmpty) return RedirectToAction("Index", "Cart");
+
+        // Store-level gates (admin-toggled in Settings → Store).
+        if (!await _settings.GetBoolAsync("store.accepting_orders", true))
+        {
+            TempData["Error"] = "We're not accepting online orders right now. Please check back soon.";
+            return RedirectToAction("Index", "Cart");
+        }
+        if (vm.FulfillmentType == FulfillmentChoice.StorePickup
+            && !await _settings.GetBoolAsync("store.pickup_available", true))
+        {
+            TempData["Error"] = "In-store pickup isn't available right now. Please choose delivery.";
+            return RedirectToAction("Index");
+        }
 
         // ── Resolve user (authenticated or guest) ──────────────────────────
         ApplicationUser? user = await _userManager.GetUserAsync(User);

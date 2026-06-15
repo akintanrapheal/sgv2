@@ -11,13 +11,16 @@ public class ProductsController : Controller
     private readonly ApplicationDbContext _db;
     private readonly ILogger<ProductsController> _logger;
     private readonly SterlingLams.Web.Services.IMerchandisingService _merch;
+    private readonly SterlingLams.Web.Services.ISettingsService _settings;
 
     public ProductsController(ApplicationDbContext db, ILogger<ProductsController> logger,
-        SterlingLams.Web.Services.IMerchandisingService merch)
+        SterlingLams.Web.Services.IMerchandisingService merch,
+        SterlingLams.Web.Services.ISettingsService settings)
     {
         _db = db;
         _logger = logger;
         _merch = merch;
+        _settings = settings;
     }
 
     // GET /products
@@ -209,7 +212,9 @@ public class ProductsController : Controller
                 PrimaryImageUrl = p.Images.FirstOrDefault()?.Url ?? "/images/placeholder.jpg",
                 IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0)
             }).ToList(),
-            FrequentlyBoughtTogether = await _merch.FrequentlyBoughtTogetherAsync(product.Id, 4)
+            FrequentlyBoughtTogether = await _merch.FrequentlyBoughtTogetherAsync(product.Id, 4),
+            OutOfStockMessage = await _settings.GetAsync("store.out_of_stock_msg",
+                "This item is currently out of stock. Check back soon.")
         };
 
         return View(vm);

@@ -206,6 +206,9 @@ app.UseSession();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Public storefront maintenance page (store.maintenance_mode). After auth so staff are exempt.
+app.UseMiddleware<SterlingLams.Web.Infrastructure.MaintenanceModeMiddleware>();
+
 app.MapControllerRoute(
     name: "areas",
     pattern: "{area:exists}/{controller=Home}/{action=Index}/{id?}");

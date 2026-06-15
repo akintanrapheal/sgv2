@@ -228,7 +228,7 @@
                     <div class="border border-neutral-200 p-6 bg-neutral-50">
                         <p class="text-xs tracking-[0.2em] uppercase text-neutral-400 mb-1">Currently Unavailable</p>
                         <p class="text-sm text-neutral-500 font-light mb-5">
-                            This piece is out of stock. Enter your email and we'll notify you the moment it's back.
+                            @Model.OutOfStockMessage Enter your email and we'll notify you the moment it's back.
                         </p>
                         <form id="notify-form" class="flex gap-2">
                             @Html.AntiForgeryToken()

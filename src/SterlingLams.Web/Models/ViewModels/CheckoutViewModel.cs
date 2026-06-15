@@ -11,6 +11,8 @@ public class CheckoutViewModel : IValidatableObject
     // Store Pickup
     public int? SelectedStoreId { get; set; }
     public List<StorePickupOptionViewModel> AvailableStores { get; set; } = new();
+    /// <summary>When false (store.pickup_available off), the pickup option is hidden at checkout.</summary>
+    public bool PickupAvailable { get; set; } = true;
 
     // Delivery
     public DeliveryAddressViewModel DeliveryAddress { get; set; } = new();
