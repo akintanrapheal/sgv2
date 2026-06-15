@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-15 (FX-56 dead-settings audit — wired homepage + contact settings; 2 flagged)
+**Last updated:** 2026-06-15 (FX-57 low-stock alert email — makes notifications.low_stock real)
 
 ### Dead-settings audit (FX-56)
 Audited every `SiteSettings` key for a consumer. Wired the rest of the dead ones:
@@ -12,8 +12,10 @@ Audited every `SiteSettings` key for a consumer. Wired the rest of the dead ones
 - `general.contact_email` + `general.contact_phone` (Contact page hardcoded `hello@…`/`+2348000000000`) — Views/Home/Contact.cshtml.
 - Verified each renders custom values; the show-featured toggle hides the section. (`home.feature.b1/b2.*` looked dead in a literal grep but are read via dynamic keys `$"home.feature.{b}.image"` — already wired.)
 
+**Built to back a dead toggle (FX-57):**
+- `notifications.low_stock` — ✅ **DONE**: added `LowStockAlertService` (BackgroundService, 6-hour sweep + startup run, mirrors `FulfilmentRetryService`). When the toggle is on it emails `notifications.admin_email` a once-a-day digest of products at/below their low-stock threshold (day-level dedupe). Verified: toggle on → startup sweep computed 100 low products and attempted the send (logged "NOT sent" since dev SMTP is off — sends for real with SMTP configured); toggle off → no attempt.
+
 **Still dead — bigger than wiring (flagged):**
-- `notifications.low_stock` — there is **no low-stock email feature** at all (low stock only surfaces in the Reorder report). The toggle gates nothing; needs a feature build.
 - `store.currency_symbol` — prices hardcode `₦` everywhere (`FormattedPrice => $"₦{…}"`); honoring it means threading the symbol through all price formatting (large/risky). Default is "N" anyway.
 - Also noticed: Contact page hardcodes the 3 stores + hours instead of pulling from DB (the footer pulls live) — cosmetic drift, not a setting.
 
