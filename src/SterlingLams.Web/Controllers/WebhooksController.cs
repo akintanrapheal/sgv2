@@ -57,12 +57,37 @@ public class WebhooksController : ControllerBase
             var reference = data.GetProperty("reference").GetString();
             var amount = data.GetProperty("amount").GetDecimal() / 100m;
 
-            var order = await _db.Orders
-                .FirstOrDefaultAsync(o => o.PaymentReference == reference
-                    || (o.OrderNumber != null && reference != null && reference.Contains(o.OrderNumber)));
+            // Resolve the order precisely — no loose substring matching (a short OrderNumber could
+            // otherwise be a substring of an unrelated reference). We stamp order_number into the
+            // transaction metadata at initiation, so match that exactly; fall back to the exact
+            // stored PaymentReference (set once the browser callback has run).
+            string? orderNumber = null;
+            if (data.TryGetProperty("metadata", out var meta)
+                && meta.ValueKind == System.Text.Json.JsonValueKind.Object
+                && meta.TryGetProperty("order_number", out var onProp))
+                orderNumber = onProp.GetString();
+
+            Order? order = null;
+            if (!string.IsNullOrEmpty(orderNumber))
+                order = await _db.Orders.FirstOrDefaultAsync(o => o.OrderNumber == orderNumber);
+            if (order == null && !string.IsNullOrEmpty(reference))
+                order = await _db.Orders.FirstOrDefaultAsync(o => o.PaymentReference == reference);
 
             if (order != null && !order.IsPaid)
             {
+                // Verify the amount actually paid covers what we charged. The HMAC already proves the
+                // payload is genuinely from Paystack, but this guards against a stale/mismatched
+                // charge (e.g. a partial payment) marking a full order as paid.
+                if (amount + 0.01m < order.Total)
+                {
+                    _logger.LogWarning(
+                        "Paystack webhook amount mismatch for {OrderNumber}: paid {Paid} but order total is {Total}",
+                        order.OrderNumber, amount, order.Total);
+                    order.AdminNotes = $"[{DateTime.UtcNow:u}] Webhook amount mismatch: paid ₦{amount:N2} vs total ₦{order.Total:N2}. Needs review; not auto-fulfilled.";
+                    await _db.SaveChangesAsync();
+                    return Ok(); // ack so Paystack stops retrying; flagged for a human
+                }
+
                 order.IsPaid = true;
                 order.PaidAt = DateTime.UtcNow;
                 order.Status = OrderStatus.Confirmed;

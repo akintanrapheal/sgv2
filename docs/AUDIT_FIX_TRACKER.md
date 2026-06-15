@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-15 (FX-42 quick-wins batch — OP-25, OP-9, OP-30 done; OP-29 confirmed already done)
+**Last updated:** 2026-06-15 (FX-43 webhook hardening — OP-6 done: exact order match + amount guard)
 
 **Legend:** severity 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low ·
 status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
@@ -82,7 +82,7 @@ status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
 | ~~OP-44~~ | ✅ **DONE** (FX-32) — anonymous order-confirmation PII leak closed via Data-Protection-signed token (owner-or-token) | security audit | — |
 | ~~OP-4~~ | ✅ **DONE** — Phase 1 (FX-36) per-variant balances/grid/POS + Phase 2 (FX-37) storefront availability, cart guard, **online reservation/fulfilment per variant**. (Per-variant stock-take *UI* still pool-level — minor, OP-48.) | R1 | — |
 | OP-5 | POS sells against `OnHand` ignoring `QuantityReserved` → can drop `OnHand` below `Reserved`, leaving an online order short at fulfilment | #11 / I1 | POS sell against *available*, or accept + warn on low-available. |
-| OP-6 | Payment webhook matches order by `reference.Contains(OrderNumber)` (substring) | R3 | Match exact `PaymentReference` / metadata `order_id`. |
+| ~~OP-6~~ | ✅ **DONE** (FX-43) — Paystack webhook now resolves the order by **exact** `metadata.order_number` (stamped at initiation) with a fallback to exact `PaymentReference == reference`; the loose `reference.Contains(OrderNumber)` substring match is gone. Also added an **amount-verification guard**: if the paid amount is below the order total, the order is flagged in AdminNotes and **not** auto-fulfilled (acks 200 so Paystack stops retrying). Verified with signed payloads: underpaid → flagged, not paid; substring-only reference with non-matching metadata → no match (old bug closed); bad signature → 401; exact metadata + correct amount → marked paid. | R3 | — |
 | OP-7 | FK delete cascades destroy history: product delete → `OrderItems`+`StockMovements`; user delete → `Orders` | D2 | Change those FKs CASCADE→RESTRICT (behavior-affecting migration; soft-delete already exists). |
 | ~~OP-8~~ | ✅ **DONE** (FX-35) — store-level (writes-only) authorization: per-user branch assignment + enforcement on stock/stock-take/transfers/till; admin assignment UI | H7 | — |
 | ~~OP-9~~ | ✅ **DONE** (FX-42) — `_ValidationScriptsPartial` referenced non-existent `wwwroot/lib/jquery-validation*` (404 + MIME errors) and the CDN fallback can't load under our `script-src 'self'` CSP; jQuery isn't loaded site-wide either, so client validation never actually ran. Made the partial a no-op with a comment — these auth forms are fully validated server-side (ModelState). Verified: Login page emits **no** jquery script refs. Follow-up: vendor jquery+validation+unobtrusive locally to satisfy CSP if client-side validation is wanted. | R11 | — |
