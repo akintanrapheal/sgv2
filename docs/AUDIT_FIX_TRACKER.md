@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-15 (FX-49 data-cache merch aggregation — OP-42 done)
+**Last updated:** 2026-06-15 (FX-50 static-asset long-cache/immutable headers — OP-43 done, code side)
 
 **Legend:** severity 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low ·
 status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
@@ -115,7 +115,7 @@ status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
 | OP-23 | `ParkedSale` stored as opaque, unversioned `CartJson` | R12 | Versioned schema. |
 | OP-24 | Session/cache default in-memory (no horizontal scale unless Redis set) | R13 | Configure Redis for prod. |
 | ~~OP-42~~ | ✅ **DONE** (FX-49) — addressed via **data-caching** rather than full-page OutputCache: full-page caching is unsafe here because every storefront page embeds a per-request antiforgery token and a per-session nav (cart badge / wishlist / auth state), which would be shared across users. Instead cached the genuinely expensive, non-personalized query — `MerchandisingService.BestSellersAsync` (a GROUP BY over the whole OrderItems ledger, called **twice per home load** for all-time + trending) and `NewArrivalsAsync` — in `IMemoryCache` with a 5-min TTL. HTML still renders per-request so nav/tokens stay correct. Verified: across 5 home loads the best-seller GROUP BY ran only **twice** (once per cache key) instead of 10×. Trade-off: best-sellers can be up to 5 min stale (fine for a merch row). Full-page OutputCache deferred (would need a client-side cart badge + token handling); featured/category queries are cheap indexed lookups left as-is. | perf audit | full-page OutputCache deferred |
-| OP-43 | No CDN / long-cache headers on static assets + product images served by the app | perf audit / CDN readiness | Front static + `/uploads` with a CDN; set `Cache-Control: immutable` on hashed assets. |
+| ~~OP-43~~ | ✅ **DONE** (FX-50, code side) — `UseStaticFiles` now sets `Cache-Control` via `OnPrepareResponse`: content-addressed assets get `public,max-age=31536000,immutable` — css/js carry a `?v=<hash>` (asp-append-version) and everything under `/uploads` is saved with a unique `{Guid:N}` filename (a replacement is always a new URL); other/unversioned assets (favicon) get `max-age=86400`. ETag/Last-Modified preserved (conditional GET still 304s). This makes the app CDN-ready. Verified: css `?v=` + `/uploads/*` → immutable 1yr; bare css/favicon → 1 day; `If-None-Match` → 304. **Remaining (infra, not code):** actually front `/uploads` + static with a CDN in production. | perf audit / CDN readiness | CDN provisioning is an ops task |
 | ~~OP-25~~ | ✅ **DONE** (FX-42) — renamed the action `Request` → `RequestTransfer` and kept the public route via `[ActionName("Request")]`, so it no longer hides `ControllerBase.Request` (CS0108 gone — **build is now 0 warnings**). Verified: `POST /Inventory/Transfers/Request` still resolves (302 → login, not 404). | — | — |
 | OP-26 | Storefront: no reviews/ratings, no abandoned-cart recovery, product images lack width/height (CLS) | H16–H18 | Conversion/SEO backlog. |
 | ~~OP-29~~ | ✅ **DONE** (already) — re-checked during the FX-42 batch: `OrdersController.ExportCsv` already calls `LogAsync("Export", "Order", null, …)` before returning the file. No change needed. | admin audit | — |

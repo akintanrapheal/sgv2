@@ -185,7 +185,21 @@ app.Use(async (context, next) =>
     await next();
 });
 
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        var req = ctx.Context.Request;
+        // Content-addressed assets never change in place, so they're safe to cache hard for a year:
+        //  • css/js carry a ?v=<content-hash> (asp-append-version) that changes when the file changes;
+        //  • everything under /uploads is saved with a unique Guid filename (a replacement = new URL).
+        var contentAddressed = req.Query.ContainsKey("v")
+            || req.Path.StartsWithSegments("/uploads", StringComparison.OrdinalIgnoreCase);
+        ctx.Context.Response.Headers.CacheControl = contentAddressed
+            ? "public,max-age=31536000,immutable"
+            : "public,max-age=86400"; // other/unversioned assets (e.g. favicon) — revalidate daily
+    }
+});
 app.UseRouting();
 app.UseRateLimiter();
 app.UseSession();
