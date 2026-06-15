@@ -56,6 +56,8 @@ public class ProfileViewModel
     public string ActiveTab { get; set; } = "profile";
     public bool EmailConfirmed { get; set; }
     public int LoyaltyPoints { get; set; }
+    public bool LoyaltyEnabled { get; set; }
+    public int LoyaltyNairaPerPoint { get; set; } = 100;
 
     public List<OrderSummaryViewModel> RecentOrders { get; set; } = new();
     public List<SterlingLams.Web.Models.Domain.Address> Addresses { get; set; } = new();

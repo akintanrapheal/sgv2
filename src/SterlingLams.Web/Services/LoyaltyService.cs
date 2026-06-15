@@ -17,14 +17,15 @@ public interface ILoyaltyService
 public class LoyaltyService : ILoyaltyService
 {
     private readonly ApplicationDbContext _db;
+    private readonly ISettingsService _settings;
     private readonly ILogger<LoyaltyService> _logger;
 
-    /// <summary>₦ spent per point earned (1 point per ₦100).</summary>
-    private const decimal NairaPerPoint = 100m;
+    private const decimal DefaultNairaPerPoint = 100m;
 
-    public LoyaltyService(ApplicationDbContext db, ILogger<LoyaltyService> logger)
+    public LoyaltyService(ApplicationDbContext db, ISettingsService settings, ILogger<LoyaltyService> logger)
     {
         _db = db;
+        _settings = settings;
         _logger = logger;
     }
 
@@ -37,6 +38,9 @@ public class LoyaltyService : ILoyaltyService
 
     public async Task AccrueForOrderAsync(int orderId)
     {
+        // Loyalty can be switched off entirely from Admin → Settings.
+        if (!await _settings.GetBoolAsync("loyalty.enabled", true)) return;
+
         var order = await _db.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
         if (order is null || !order.IsPaid) return;
 
@@ -48,7 +52,11 @@ public class LoyaltyService : ILoyaltyService
         // Idempotent: an order can only ever award points once (also guarded by a unique index).
         if (await _db.PointsLedgerEntries.AnyAsync(p => p.OrderId == orderId)) return;
 
-        var points = (int)Math.Floor(order.Total / NairaPerPoint);
+        // ₦ per point from settings (admin-tunable); guard against 0/negative.
+        var nairaPerPoint = await _settings.GetDecimalAsync("loyalty.naira_per_point", DefaultNairaPerPoint);
+        if (nairaPerPoint <= 0) nairaPerPoint = DefaultNairaPerPoint;
+
+        var points = (int)Math.Floor(order.Total / nairaPerPoint);
         if (points <= 0) return;
 
         var now = DateTime.UtcNow;

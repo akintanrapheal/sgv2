@@ -16,6 +16,7 @@ public class AccountController : Controller
     private readonly ILogger<AccountController> _logger;
     private readonly SterlingLams.Web.Services.IEmailService _email;
     private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
+    private readonly SterlingLams.Web.Services.ISettingsService _settings;
     private readonly IWebHostEnvironment _env;
 
     public AccountController(
@@ -25,6 +26,7 @@ public class AccountController : Controller
         ILogger<AccountController> logger,
         SterlingLams.Web.Services.IEmailService email,
         SterlingLams.Web.Services.ILoyaltyService loyalty,
+        SterlingLams.Web.Services.ISettingsService settings,
         IWebHostEnvironment env)
     {
         _userManager = userManager;
@@ -33,6 +35,7 @@ public class AccountController : Controller
         _logger = logger;
         _email = email;
         _loyalty = loyalty;
+        _settings = settings;
         _env = env;
     }
 
@@ -287,6 +290,8 @@ public class AccountController : Controller
             ActiveTab   = tab,
             EmailConfirmed = user.EmailConfirmed,
             LoyaltyPoints = await _loyalty.GetBalanceAsync(user.Id),
+            LoyaltyEnabled = await _settings.GetBoolAsync("loyalty.enabled", true),
+            LoyaltyNairaPerPoint = (int)await _settings.GetDecimalAsync("loyalty.naira_per_point", 100m),
             RecentOrders = orders,
             Addresses   = addresses
         };

@@ -68,6 +68,10 @@ public static class SettingsSeedData
         new() { Key = "notifications.low_stock",       Group = "Notifications", Label = "Low Stock Alerts",               Type = "boolean", Value = "true",  Description = "Send email to admin when stock falls below threshold.",     SortOrder = 3 },
         new() { Key = "notifications.order_confirmed", Group = "Notifications", Label = "Customer Order Confirmation",    Type = "boolean", Value = "true",  Description = "Send order confirmation email to customer after payment.",  SortOrder = 4 },
 
+        // ── Loyalty ───────────────────────────────────────────────────────────
+        new() { Key = "loyalty.enabled",         Group = "Loyalty", Label = "Enable Loyalty Points",     Type = "boolean", Value = "true", Description = "Award points to customers on completed orders.",                         SortOrder = 1 },
+        new() { Key = "loyalty.naira_per_point",  Group = "Loyalty", Label = "Naira per Point (₦)",       Type = "number",  Value = "100",  Description = "How much a customer spends to earn 1 point (e.g. 100 = 1 point per ₦100).", SortOrder = 2 },
+
         // ── Store Operations ──────────────────────────────────────────────────
         new() { Key = "store.accepting_orders",    Group = "Store", Label = "Accepting Orders",         Type = "boolean", Value = "true",  Description = "Turn off to temporarily stop customers from placing orders.",          SortOrder = 1 },
         new() { Key = "store.maintenance_mode",    Group = "Store", Label = "Maintenance Mode",         Type = "boolean", Value = "false", Description = "Shows a maintenance page to all visitors (admin still works).",        SortOrder = 2 },

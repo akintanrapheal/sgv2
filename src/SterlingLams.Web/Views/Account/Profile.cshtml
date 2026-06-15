@@ -19,13 +19,16 @@
     </div>
 
     <!-- Loyalty points -->
-    <div class="mb-8 flex items-center justify-between border border-neutral-200 bg-neutral-50 px-5 py-4 rounded-sm">
-        <div>
-            <p class="text-xs tracking-[0.15em] uppercase text-neutral-400">Loyalty points</p>
-            <p class="font-cormorant text-3xl font-light text-neutral-900">@Model.LoyaltyPoints.ToString("N0")</p>
+    @if (Model.LoyaltyEnabled)
+    {
+        <div class="mb-8 flex items-center justify-between border border-neutral-200 bg-neutral-50 px-5 py-4 rounded-sm">
+            <div>
+                <p class="text-xs tracking-[0.15em] uppercase text-neutral-400">Loyalty points</p>
+                <p class="font-cormorant text-3xl font-light text-neutral-900">@Model.LoyaltyPoints.ToString("N0")</p>
+            </div>
+            <p class="text-xs text-neutral-400 max-w-[14rem] text-right">Earn 1 point for every ₦@Model.LoyaltyNairaPerPoint.ToString("N0") spent on completed orders.</p>
         </div>
-        <p class="text-xs text-neutral-400 max-w-[14rem] text-right">Earn 1 point for every ₦100 spent on completed orders.</p>
-    </div>
+    }
 
     <!-- Tab bar -->
     <div class="flex border-b border-neutral-200 mb-10 gap-0">

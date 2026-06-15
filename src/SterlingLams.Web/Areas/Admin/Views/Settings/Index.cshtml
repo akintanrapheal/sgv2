@@ -100,7 +100,9 @@
                                                    data-setting-key="@s.Key" data-preview-id="@previewId" />
                                         </label>
                                         <span class="text-neutral-400 text-xs">or</span>
-                                        <input type="url" name="@s.Key" value="@s.Value" placeholder="https://…"
+                                        @* type=text (not url): uploads fill this with a relative path like
+                                           /uploads/settings/x.jpg, which HTML5 url-validation rejects. *@
+                                        <input type="text" name="@s.Key" value="@s.Value" placeholder="/uploads/… or https://…"
                                                id="url-@inputId"
                                                class="flex-1 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
                                     </div>
