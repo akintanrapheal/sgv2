@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.ViewModels;
 
@@ -27,47 +28,62 @@ public interface IMerchandisingService
 public class MerchandisingService : IMerchandisingService
 {
     private readonly ApplicationDbContext _db;
+    private readonly IMemoryCache _cache;
 
-    public MerchandisingService(ApplicationDbContext db) => _db = db;
+    // These sections are the same for every visitor and change slowly, but the best-seller query
+    // is a GROUP BY over the whole OrderItems ledger — caching it for a few minutes turns "every
+    // page hit re-aggregates" into one query per window. Short TTL keeps it fresh enough.
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
 
-    public async Task<List<ProductCardViewModel>> BestSellersAsync(int take, int? sinceDays = null)
+    public MerchandisingService(ApplicationDbContext db, IMemoryCache cache)
     {
-        var q = _db.OrderItems.AsQueryable();
-        if (sinceDays is int days)
+        _db = db;
+        _cache = cache;
+    }
+
+    public Task<List<ProductCardViewModel>> BestSellersAsync(int take, int? sinceDays = null) =>
+        _cache.GetOrCreateAsync($"merch:best:{take}:{sinceDays?.ToString() ?? "all"}", async entry =>
         {
-            var cutoff = DateTime.UtcNow.AddDays(-days);
-            q = q.Where(oi => oi.Order.CreatedAt >= cutoff);
-        }
+            entry.AbsoluteExpirationRelativeToNow = CacheTtl;
 
-        // Rank product ids by units sold. Over-fetch so inactive/deleted products can be
-        // filtered out while still returning `take` cards.
-        var ranked = await q
-            .GroupBy(oi => oi.ProductId)
-            .Select(g => new { ProductId = g.Key, Qty = g.Sum(x => x.Quantity) })
-            .OrderByDescending(x => x.Qty)
-            .Take(take * 3)
-            .ToListAsync();
+            var q = _db.OrderItems.AsQueryable();
+            if (sinceDays is int days)
+            {
+                var cutoff = DateTime.UtcNow.AddDays(-days);
+                q = q.Where(oi => oi.Order.CreatedAt >= cutoff);
+            }
 
-        var cards = await LoadCardsAsync(ranked.Select(r => r.ProductId).ToList());
-        return ranked
-            .Select(r => cards.GetValueOrDefault(r.ProductId))
-            .Where(c => c != null)
-            .Take(take)
-            .Select(c => c!)
-            .ToList();
-    }
+            // Rank product ids by units sold. Over-fetch so inactive/deleted products can be
+            // filtered out while still returning `take` cards.
+            var ranked = await q
+                .GroupBy(oi => oi.ProductId)
+                .Select(g => new { ProductId = g.Key, Qty = g.Sum(x => x.Quantity) })
+                .OrderByDescending(x => x.Qty)
+                .Take(take * 3)
+                .ToListAsync();
 
-    public async Task<List<ProductCardViewModel>> NewArrivalsAsync(int take)
-    {
-        var ids = await _db.Products
-            .Where(p => p.IsActive)
-            .OrderByDescending(p => p.IsNewArrival)
-            .ThenByDescending(p => p.CreatedAt)
-            .Take(take)
-            .Select(p => p.Id)
-            .ToListAsync();
-        return OrderBy(ids, await LoadCardsAsync(ids));
-    }
+            var cards = await LoadCardsAsync(ranked.Select(r => r.ProductId).ToList());
+            return ranked
+                .Select(r => cards.GetValueOrDefault(r.ProductId))
+                .Where(c => c != null)
+                .Take(take)
+                .Select(c => c!)
+                .ToList();
+        })!;
+
+    public Task<List<ProductCardViewModel>> NewArrivalsAsync(int take) =>
+        _cache.GetOrCreateAsync($"merch:new:{take}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = CacheTtl;
+            var ids = await _db.Products
+                .Where(p => p.IsActive)
+                .OrderByDescending(p => p.IsNewArrival)
+                .ThenByDescending(p => p.CreatedAt)
+                .Take(take)
+                .Select(p => p.Id)
+                .ToListAsync();
+            return OrderBy(ids, await LoadCardsAsync(ids));
+        })!;
 
     public async Task<List<ProductCardViewModel>> ByIdsAsync(IReadOnlyList<int> ids)
     {
