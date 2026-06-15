@@ -412,20 +412,43 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var products = await _db.Products.Where(p => ids.Contains(p.Id)).ToListAsync();
             var n = products.Count;
 
+            // Delete is special: skip products with order/stock history (RESTRICT FKs) and report.
+            if (op == "delete")
+            {
+                var blocked = new HashSet<int>();
+                foreach (var p in products)
+                    if (await ProductHasHistoryAsync(p.Id)) blocked.Add(p.Id);
+                var deletable = products.Where(p => !blocked.Contains(p.Id)).ToList();
+                _db.Products.RemoveRange(deletable);
+                try
+                {
+                    await _db.SaveChangesAsync();
+                }
+                catch (DbUpdateException)
+                {
+                    TempData["Error"] = "Some products are referenced by existing records and can't be deleted. Deactivate them instead.";
+                    return RedirectToAction(nameof(Index), back);
+                }
+                await LogAsync("Delete", "Product", null, $"Bulk delete: {deletable.Count} deleted, {blocked.Count} skipped (history)");
+                TempData[deletable.Count > 0 ? "Success" : "Error"] = blocked.Count > 0
+                    ? $"{deletable.Count} product(s) deleted; {blocked.Count} kept — they have order/stock history (deactivate instead)."
+                    : $"{deletable.Count} product(s) deleted.";
+                return RedirectToAction(nameof(Index), back);
+            }
+
             switch (op)
             {
                 case "activate":   products.ForEach(p => { p.IsActive = true;   p.UpdatedAt = DateTime.UtcNow; }); break;
                 case "deactivate": products.ForEach(p => { p.IsActive = false;  p.UpdatedAt = DateTime.UtcNow; }); break;
                 case "feature":    products.ForEach(p => { p.IsFeatured = true; p.UpdatedAt = DateTime.UtcNow; }); break;
                 case "unfeature":  products.ForEach(p => { p.IsFeatured = false;p.UpdatedAt = DateTime.UtcNow; }); break;
-                case "delete":     _db.Products.RemoveRange(products); break;
                 default:
                     TempData["Error"] = "Unknown bulk action.";
                     return RedirectToAction(nameof(Index), back);
             }
 
             await _db.SaveChangesAsync();
-            await LogAsync(op == "delete" ? "Delete" : "Update", "Product", null, $"Bulk {op} on {n} product(s)");
+            await LogAsync("Update", "Product", null, $"Bulk {op} on {n} product(s)");
             TempData["Success"] = $"{op} applied to {n} product(s).";
             return RedirectToAction(nameof(Index), back);
         }
@@ -472,15 +495,37 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var product = await _db.Products.FindAsync(id);
             if (product != null)
             {
+                // Products with sales or stock history can't be deleted — that would destroy order
+                // line items / the stock ledger (FKs are RESTRICT). Deactivate instead.
+                if (await ProductHasHistoryAsync(id))
+                {
+                    TempData["Error"] = $"'{product.Name}' has order or stock history and can't be deleted. Deactivate it instead.";
+                    return RedirectToAction(nameof(Index));
+                }
+
                 var name = product.Name;
                 _db.Products.Remove(product);
-                await _db.SaveChangesAsync();
+                try
+                {
+                    await _db.SaveChangesAsync();
+                }
+                catch (DbUpdateException)
+                {
+                    TempData["Error"] = $"'{name}' is referenced by existing records and can't be deleted. Deactivate it instead.";
+                    return RedirectToAction(nameof(Index));
+                }
                 await LogAsync("Delete", "Product", id.ToString(), $"Deleted product '{name}'");
                 TempData["Success"] = $"Product '{name}' deleted.";
             }
 
             return RedirectToAction(nameof(Index));
         }
+
+        /// <summary>True if the product is referenced by any order line item or stock-ledger row —
+        /// in which case it must be deactivated, not deleted (RESTRICT FKs preserve that history).</summary>
+        private async Task<bool> ProductHasHistoryAsync(int productId) =>
+            await _db.OrderItems.AnyAsync(oi => oi.ProductId == productId)
+            || await _db.StockMovements.AnyAsync(m => m.ProductId == productId);
 
         [HttpPost]
         [ValidateAntiForgeryToken]

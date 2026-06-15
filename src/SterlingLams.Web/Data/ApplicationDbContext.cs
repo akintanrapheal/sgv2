@@ -197,8 +197,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
         builder.Entity<StockMovement>(e =>
         {
             e.HasIndex(m => new { m.ProductId, m.StoreId, m.CreatedAt });
+            // RESTRICT: the ledger is permanent history — deleting a product must never wipe it
+            // (deactivate the product instead). OP-7.
             e.HasOne(m => m.Product).WithMany().HasForeignKey(m => m.ProductId)
-             .OnDelete(DeleteBehavior.Cascade);
+             .OnDelete(DeleteBehavior.Restrict);
             e.HasOne(m => m.ProductVariant).WithMany().HasForeignKey(m => m.ProductVariantId)
              .OnDelete(DeleteBehavior.SetNull);
             e.HasOne(m => m.Store).WithMany().HasForeignKey(m => m.StoreId)
@@ -244,6 +246,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
              .HasForeignKey(o => o.CustomerUserId)
              .OnDelete(DeleteBehavior.SetNull)
              .IsRequired(false);
+
+            // RESTRICT: orders are financial history — deleting a user must not delete their orders
+            // (was the EF convention default of Cascade). OP-7.
+            e.HasOne(o => o.User)
+             .WithMany(u => u.Orders)
+             .HasForeignKey(o => o.UserId)
+             .OnDelete(DeleteBehavior.Restrict);
         });
 
         // ─── ParkedSale (held POS sales) ────────────────────────────────────
@@ -283,6 +292,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             e.Property(oi => oi.UnitPrice).HasPrecision(18, 2);
             e.Property(oi => oi.DiscountAmount).HasPrecision(18, 2);
             e.Ignore(oi => oi.LineTotal);
+            // RESTRICT: order line items are sales history — deleting a product must not erase them
+            // (was the EF convention default of Cascade). The order still owns its items (cascade
+            // from Order is unchanged). OP-7.
+            e.HasOne(oi => oi.Product).WithMany().HasForeignKey(oi => oi.ProductId)
+             .OnDelete(DeleteBehavior.Restrict);
             e.ToTable(t =>
             {
                 t.HasCheckConstraint("CK_OrderItems_Quantity_Positive", "\"Quantity\" > 0");
