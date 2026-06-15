@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-15 (FX-44 online-order refund workflow — OP-28 done)
+**Last updated:** 2026-06-15 (FX-45 POS sells against available — OP-5 done)
 
 **Legend:** severity 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low ·
 status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
@@ -81,7 +81,7 @@ status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
 |----|------|-----|------------------|
 | ~~OP-44~~ | ✅ **DONE** (FX-32) — anonymous order-confirmation PII leak closed via Data-Protection-signed token (owner-or-token) | security audit | — |
 | ~~OP-4~~ | ✅ **DONE** — Phase 1 (FX-36) per-variant balances/grid/POS + Phase 2 (FX-37) storefront availability, cart guard, **online reservation/fulfilment per variant**. (Per-variant stock-take *UI* still pool-level — minor, OP-48.) | R1 | — |
-| OP-5 | POS sells against `OnHand` ignoring `QuantityReserved` → can drop `OnHand` below `Reserved`, leaving an online order short at fulfilment | #11 / I1 | POS sell against *available*, or accept + warn on low-available. |
+| ~~OP-5~~ | ✅ **DONE** (FX-45) — POS `Checkout` now sells against **available** (`GetAvailableAsync` = on-hand − reserved) in both the pre-check and the in-lock re-check, so the till can no longer sell units held for a pending online order. Till product search also shows `AvailableQuantity` so the cashier's number matches what's sellable. Verified (Playwright + DB) with on-hand 5 / reserved 3 (available 2): sell qty 3 → rejected "Not enough available stock"; qty 2 → sold (on-hand 5→3, reserved untouched, Sale ledger −2); qty 1 → rejected (available now 0). Test order/stock cleaned up. | #11 / I1 | — |
 | ~~OP-6~~ | ✅ **DONE** (FX-43) — Paystack webhook now resolves the order by **exact** `metadata.order_number` (stamped at initiation) with a fallback to exact `PaymentReference == reference`; the loose `reference.Contains(OrderNumber)` substring match is gone. Also added an **amount-verification guard**: if the paid amount is below the order total, the order is flagged in AdminNotes and **not** auto-fulfilled (acks 200 so Paystack stops retrying). Verified with signed payloads: underpaid → flagged, not paid; substring-only reference with non-matching metadata → no match (old bug closed); bad signature → 401; exact metadata + correct amount → marked paid. | R3 | — |
 | OP-7 | FK delete cascades destroy history: product delete → `OrderItems`+`StockMovements`; user delete → `Orders` | D2 | Change those FKs CASCADE→RESTRICT (behavior-affecting migration; soft-delete already exists). |
 | ~~OP-8~~ | ✅ **DONE** (FX-35) — store-level (writes-only) authorization: per-user branch assignment + enforcement on stock/stock-take/transfers/till; admin assignment UI | H7 | — |

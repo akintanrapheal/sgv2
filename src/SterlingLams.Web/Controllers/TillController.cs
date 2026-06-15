@@ -592,8 +592,9 @@ public class TillController : Controller
                 price = p.Price,
                 image = p.Images.Where(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
+                // Show AVAILABLE (on-hand − reserved) so the till number matches what can be sold.
                 stock = p.StoreInventories.Where(si => si.StoreId == storeId)
-                                          .Select(si => si.QuantityOnHand).FirstOrDefault(),
+                                          .Select(si => si.AvailableQuantity).FirstOrDefault(),
                 variants = p.ProductType == "variable"
                     ? p.Variants.Where(v => v.IsActive)
                         .Select(v => new { id = v.Id, name = v.Name, priceAdjustment = v.PriceAdjustment }).ToList()
@@ -685,8 +686,10 @@ public class TillController : Controller
             if (!products.TryGetValue(grp.Key.ProductId, out var prod))
                 return Json(new { success = false, message = "A product in the cart no longer exists." });
             var requested = grp.Sum(i => Math.Max(1, i.Quantity));
-            if (requested > await _stock.GetStockAsync(grp.Key.ProductId, grp.Key.VariantId, storeId))
-                return Json(new { success = false, message = $"Not enough stock for '{prod.Name}'." });
+            // Sell against AVAILABLE (on-hand − reserved), not raw on-hand — otherwise the till can
+            // sell units already held for a pending online order, which then can't be fulfilled.
+            if (requested > await _stock.GetAvailableAsync(grp.Key.ProductId, grp.Key.VariantId, storeId))
+                return Json(new { success = false, message = $"Not enough available stock for '{prod.Name}'." });
         }
 
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
@@ -711,8 +714,9 @@ public class TillController : Controller
         {
             var prod = products[grp.Key.ProductId];
             var requested = grp.Sum(i => Math.Max(1, i.Quantity));
-            if (requested > await _stock.GetStockAsync(grp.Key.ProductId, grp.Key.VariantId, storeId))
-                return Json(new { success = false, message = $"Not enough stock for '{prod.Name}'." });
+            // Re-check against available under the row lock (closes the check-then-act window).
+            if (requested > await _stock.GetAvailableAsync(grp.Key.ProductId, grp.Key.VariantId, storeId))
+                return Json(new { success = false, message = $"Not enough available stock for '{prod.Name}'." });
         }
 
         var order = new Order
