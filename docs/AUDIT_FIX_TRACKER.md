@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-15 (FX-47 reports aggregation pushed to SQL — OP-17 done)
+**Last updated:** 2026-06-15 (FX-48 guest-checkout account integrity — OP-11 done; OP-31 partly)
 
 **Legend:** severity 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low ·
 status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
@@ -88,14 +88,14 @@ status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
 | ~~OP-9~~ | ✅ **DONE** (FX-42) — `_ValidationScriptsPartial` referenced non-existent `wwwroot/lib/jquery-validation*` (404 + MIME errors) and the CDN fallback can't load under our `script-src 'self'` CSP; jQuery isn't loaded site-wide either, so client validation never actually ran. Made the partial a no-op with a comment — these auth forms are fully validated server-side (ModelState). Verified: Login page emits **no** jquery script refs. Follow-up: vendor jquery+validation+unobtrusive locally to satisfy CSP if client-side validation is wanted. | R11 | — |
 | OP-33 | **Back-in-stock notify is a no-op** — `ProductsController.NotifyRestock` only `LogInformation`s and discards the email; customers told "we'll notify you" but nothing is stored/sent (revenue leak + broken promise) | merch audit | Persist requests (table) + send on restock (hook in `StockService.ApplyAsync` when qty crosses 0→+). |
 | ~~OP-28~~ | ✅ **DONE** (FX-44) — built an online-order refund workflow in Admin → Order detail (full or partial, item-level), mirroring the POS return: creates a `Refund`+`RefundItems`, optionally returns stock to the fulfilling store via the `Return` ledger (FOR UPDATE + xmin), and attempts a gateway refund (new `IPaymentService.RefundPaymentAsync`; Paystack real `/refund`, Stripe/Flutterwave report "not automated"). Best-effort gateway: the refund record + restock are authoritative, gateway failures are flagged in AdminNotes for a manual refund. Full refund → status `Refunded`; partial leaves status. Closed the cosmetic hole: `UpdateStatus` now **rejects** setting `Refunded` (removed from the dropdown + server-side guard). Verified end-to-end (Playwright + DB): partial refund restocked 10→11 with a Return ledger row, status stayed Delivered; full refund → Refunded + form hidden; gateway "Transaction not found" handled gracefully; direct `UpdateStatus=Refunded` POST left status unchanged. | admin audit | — |
-| OP-31 | Guests can't view order history/tracking after leaving the confirmation page (guest account has a random password → can't log in) | storefront audit | Magic-link order lookup, or post-purchase set-password. Ties to OP-11/R4. |
+| OP-31 | Guests can't view order history/tracking after leaving the confirmation page (guest account has a random password → can't log in) | storefront audit | **Partly addressed by FX-48**: a guest can now Register with their email to upgrade the shell into a full account and see all their orders (or use password reset). Remaining: a no-account magic-link order lookup for guests who never register. |
 
 ### 🟡 Medium
 | ID | Item | Ref | Notes |
 |----|------|-----|-------|
 | ~~OP-10~~ | ✅ **DONE** (FX-33) — CSP header added (pragmatic, `'unsafe-inline'` for now) | R7 | — |
 | OP-45 | CSP still needs `'unsafe-inline'` for scripts — refactor inline `<script>`/`onsubmit`/`onchange` to nonces/external handlers to drop it (full XSS hardening) | follow-up to FX-33 | Nonce middleware + move inline handlers. |
-| OP-11 | Guest checkout creates unverified `ApplicationUser` keyed by email (account sprawl / cross-person history) | R4 | True guest order or email verification + merge. |
+| ~~OP-11~~ | ✅ **DONE** (FX-48) — added `ApplicationUser.IsGuest` (migration `UserIsGuest`). Guest checkout now: **(1)** never attaches an order to a real registered account — if the email belongs to a non-guest account it blocks with "an account exists, please sign in/reset password" (was: silently attached → cross-person history); **(2)** reuses the existing guest shell for the same email instead of creating a new one each time (no sprawl); **(3)** on Register with a guest email, **upgrades** the shell into a full account (sets the password, `IsGuest=false`) so they keep their guest orders (the "merge"). Verified (Playwright + DB): new guest → 1 shell (IsGuest=true); repeat guest → same shell reused (2 orders, 1 user); registered email → blocked; register with guest email → upgraded + signed in + both prior orders visible. Test data cleaned up. | R4 | — |
 | OP-12 | Auto-`MigrateAsync()` on production startup (bad migration → site down) | R5 | Run migrations as a gated deploy step. |
 | OP-13 | Only Paystack has a webhook; Stripe/Flutterwave rely on browser callback only | R6 | Add webhooks if those providers go live. |
 | OP-14 | Dev `EnsureCreated` vs Prod `Migrate` — migrations never exercised in dev | R8 | Use migrations in dev too. |

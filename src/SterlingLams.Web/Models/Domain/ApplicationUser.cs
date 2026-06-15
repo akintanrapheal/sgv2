@@ -13,6 +13,11 @@ public class ApplicationUser : IdentityUser
     /// <summary>Hashed PIN for quick till sign-in. Null = this user can't sign in at a till.</summary>
     public string? PinHash { get; set; }
 
+    /// <summary>True for shell accounts created automatically during guest checkout (random password,
+    /// can't sign in until they reset it). Guest checkout reuses a guest account for the same email
+    /// but never attaches an order to a real registered account it doesn't own.</summary>
+    public bool IsGuest { get; set; }
+
     public string FullName => $"{FirstName} {LastName}".Trim();
 
     public ICollection<Order> Orders { get; set; } = new List<Order>();

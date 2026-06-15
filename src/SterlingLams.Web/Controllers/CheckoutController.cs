@@ -166,8 +166,21 @@ public class CheckoutController : Controller
                 return View("Index", vm);
             }
 
-            // Look up existing user by email or create a guest account
-            user = await _userManager.FindByEmailAsync(vm.GuestEmail);
+            // Resolve the guest's account by email — but never silently attach this order to a real
+            // registered account (that would leak orders into a stranger's history). Reuse an existing
+            // *guest* shell for the same email (no account sprawl); create one only if none exists.
+            var existing = await _userManager.FindByEmailAsync(vm.GuestEmail);
+            if (existing != null && !existing.IsGuest)
+            {
+                ModelState.AddModelError("GuestEmail",
+                    "An account already exists with this email. Please sign in to place your order (or reset your password if you've forgotten it).");
+                vm.Cart = cart;
+                vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
+                    .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
+                return View("Index", vm);
+            }
+
+            user = existing;
             if (user == null)
             {
                 var guestName = vm.GuestName?.Trim() ?? "Guest";
@@ -179,6 +192,7 @@ public class CheckoutController : Controller
                     FirstName = nameParts.Length > 0 ? nameParts[0] : "Guest",
                     LastName  = nameParts.Length > 1 ? nameParts[1] : string.Empty,
                     PhoneNumber = vm.GuestPhone,
+                    IsGuest   = true,
                     CreatedAt = DateTime.UtcNow
                 };
                 var createResult = await _userManager.CreateAsync(user, Guid.NewGuid().ToString("N") + "Aa1!");

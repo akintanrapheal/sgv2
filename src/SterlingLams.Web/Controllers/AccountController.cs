@@ -103,6 +103,12 @@ public class AccountController : Controller
     {
         if (!ModelState.IsValid) return View(model);
 
+        // If a guest shell already exists for this email, upgrade it into a real account so the
+        // person keeps the orders they placed as a guest, instead of failing with "email taken".
+        var existing = await _userManager.FindByEmailAsync(model.Email);
+        if (existing != null && existing.IsGuest)
+            return await UpgradeGuestAsync(existing, model);
+
         var user = new ApplicationUser
         {
             UserName = model.Email,
@@ -130,6 +136,31 @@ public class AccountController : Controller
             ModelState.AddModelError("", error.Description);
 
         return View(model);
+    }
+
+    // Convert an existing guest shell (random password, IsGuest=true) into a real account, keeping
+    // its order history. ResetPassword replaces the shell's random password with the chosen one.
+    private async Task<IActionResult> UpgradeGuestAsync(ApplicationUser guest, RegisterViewModel model)
+    {
+        var token = await _userManager.GeneratePasswordResetTokenAsync(guest);
+        var pwResult = await _userManager.ResetPasswordAsync(guest, token, model.Password);
+        if (!pwResult.Succeeded)
+        {
+            foreach (var error in pwResult.Errors) ModelState.AddModelError("", error.Description);
+            return View("Register", model);
+        }
+
+        guest.FirstName = model.FirstName;
+        guest.LastName = model.LastName;
+        guest.PhoneNumber = model.Phone;
+        guest.IsGuest = false;
+        await _userManager.UpdateAsync(guest);
+
+        _logger.LogInformation("Guest account upgraded to a full account: {Email}", guest.Email);
+        await SendConfirmationEmailAsync(guest);
+        await _signInManager.SignInAsync(guest, isPersistent: false);
+        TempData["Success"] = $"Welcome back, {guest.FirstName}! Your account is ready and your previous orders are now linked.";
+        return RedirectToAction("Profile");
     }
 
     // ─── Email confirmation ────────────────────────────────────────────────────
