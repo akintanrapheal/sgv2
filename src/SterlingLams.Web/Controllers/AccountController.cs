@@ -15,6 +15,7 @@ public class AccountController : Controller
     private readonly ApplicationDbContext _db;
     private readonly ILogger<AccountController> _logger;
     private readonly SterlingLams.Web.Services.IEmailService _email;
+    private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
     private readonly IWebHostEnvironment _env;
 
     public AccountController(
@@ -23,6 +24,7 @@ public class AccountController : Controller
         ApplicationDbContext db,
         ILogger<AccountController> logger,
         SterlingLams.Web.Services.IEmailService email,
+        SterlingLams.Web.Services.ILoyaltyService loyalty,
         IWebHostEnvironment env)
     {
         _userManager = userManager;
@@ -30,6 +32,7 @@ public class AccountController : Controller
         _db = db;
         _logger = logger;
         _email = email;
+        _loyalty = loyalty;
         _env = env;
     }
 
@@ -283,6 +286,7 @@ public class AccountController : Controller
             CreatedAt   = user.CreatedAt,
             ActiveTab   = tab,
             EmailConfirmed = user.EmailConfirmed,
+            LoyaltyPoints = await _loyalty.GetBalanceAsync(user.Id),
             RecentOrders = orders,
             Addresses   = addresses
         };

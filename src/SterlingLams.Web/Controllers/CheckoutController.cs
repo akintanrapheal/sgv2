@@ -27,6 +27,7 @@ public class CheckoutController : Controller
     private readonly SterlingLams.Web.Services.DeliveryZoneService _zones;
     private readonly SterlingLams.Web.Services.IDiscountService _discounts;
     private readonly SterlingLams.Web.Services.IEmailService _email;
+    private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
     private readonly IDataProtector _confirmTokenProtector;
 
     public CheckoutController(
@@ -41,6 +42,7 @@ public class CheckoutController : Controller
         SterlingLams.Web.Services.DeliveryZoneService zones,
         SterlingLams.Web.Services.IDiscountService discounts,
         SterlingLams.Web.Services.IEmailService email,
+        SterlingLams.Web.Services.ILoyaltyService loyalty,
         IDataProtectionProvider dataProtection)
     {
         _db = db;
@@ -54,6 +56,7 @@ public class CheckoutController : Controller
         _zones = zones;
         _discounts = discounts;
         _email = email;
+        _loyalty = loyalty;
         _confirmTokenProtector = dataProtection.CreateProtector("Checkout.Confirmation.v1");
     }
 
@@ -383,6 +386,8 @@ public class CheckoutController : Controller
             // Deduct stock through the in-house ledger (multi-branch fulfilment).
             await _fulfilment.FulfilPaidOrderAsync(order.Id);
 
+            await _loyalty.AccrueForOrderAsync(order.Id);
+
             await SendOrderEmailsAsync(order.Id);
         }
 
@@ -424,6 +429,8 @@ public class CheckoutController : Controller
 
         // Deduct stock through the in-house ledger (multi-branch fulfilment).
         await _fulfilment.FulfilPaidOrderAsync(order.Id);
+
+        await _loyalty.AccrueForOrderAsync(order.Id);
 
         await SendOrderEmailsAsync(order.Id);
 

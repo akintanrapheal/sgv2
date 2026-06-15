@@ -15,17 +15,20 @@ public class WebhooksController : ControllerBase
     private readonly ApplicationDbContext _db;
     private readonly IPaymentService _payment;
     private readonly SterlingLams.Web.Services.IOrderFulfilmentService _fulfilment;
+    private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
     private readonly ILogger<WebhooksController> _logger;
 
     public WebhooksController(
         ApplicationDbContext db,
         IPaymentService payment,
         SterlingLams.Web.Services.IOrderFulfilmentService fulfilment,
+        SterlingLams.Web.Services.ILoyaltyService loyalty,
         ILogger<WebhooksController> logger)
     {
         _db = db;
         _payment = payment;
         _fulfilment = fulfilment;
+        _loyalty = loyalty;
         _logger = logger;
     }
 
@@ -99,6 +102,7 @@ public class WebhooksController : ControllerBase
                 // browser callback already fulfilled this order or the webhook is the only path
                 // that fires (e.g. customer closed the tab right after paying).
                 await _fulfilment.FulfilPaidOrderAsync(order.Id);
+                await _loyalty.AccrueForOrderAsync(order.Id);
 
                 _logger.LogInformation("Order {OrderNumber} marked as paid via webhook", order.OrderNumber);
             }

@@ -22,11 +22,13 @@ public class TillController : Controller
     private readonly UserManager<ApplicationUser> _userManager;
 
     private readonly SterlingLams.Web.Services.IStoreAccessService _access;
+    private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
 
     public TillController(ApplicationDbContext db, IStockService stock,
         SignInManager<ApplicationUser> signIn, IPasswordHasher<ApplicationUser> hasher,
         UserManager<ApplicationUser> userManager,
-        SterlingLams.Web.Services.IStoreAccessService access)
+        SterlingLams.Web.Services.IStoreAccessService access,
+        SterlingLams.Web.Services.ILoyaltyService loyalty)
     {
         _db = db;
         _stock = stock;
@@ -34,6 +36,7 @@ public class TillController : Controller
         _hasher = hasher;
         _userManager = userManager;
         _access = access;
+        _loyalty = loyalty;
     }
 
     private async Task<Register?> BoundRegisterAsync()
@@ -791,6 +794,9 @@ public class TillController : Controller
         {
             return Json(new { success = false, message = "Could not complete this sale. Please try again." });
         }
+
+        // Award loyalty points to the attached customer (no-op for walk-ins with no customer).
+        await _loyalty.AccrueForOrderAsync(order.Id);
 
         return Json(new { success = true, orderId = order.Id, orderNumber, total = order.Total, change = order.ChangeGiven });
     }

@@ -55,6 +55,7 @@ public class ProfileViewModel
     public DateTime CreatedAt { get; set; }
     public string ActiveTab { get; set; } = "profile";
     public bool EmailConfirmed { get; set; }
+    public int LoyaltyPoints { get; set; }
 
     public List<OrderSummaryViewModel> RecentOrders { get; set; } = new();
     public List<SterlingLams.Web.Models.Domain.Address> Addresses { get; set; } = new();

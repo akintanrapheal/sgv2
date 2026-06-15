@@ -40,10 +40,26 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<NewsletterSubscriber> NewsletterSubscribers => Set<NewsletterSubscriber>();
     public DbSet<Models.Domain.UserStore> UserStores => Set<Models.Domain.UserStore>();
+    public DbSet<LoyaltyAccount> LoyaltyAccounts => Set<LoyaltyAccount>();
+    public DbSet<PointsLedgerEntry> PointsLedgerEntries => Set<PointsLedgerEntry>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+
+        // ─── Loyalty ────────────────────────────────────────────────────────
+        builder.Entity<LoyaltyAccount>(e =>
+        {
+            e.HasIndex(a => a.UserId).IsUnique();
+            e.HasOne(a => a.User).WithMany().HasForeignKey(a => a.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<PointsLedgerEntry>(e =>
+        {
+            e.HasOne(p => p.Account).WithMany(a => a.Entries).HasForeignKey(p => p.LoyaltyAccountId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(p => p.Order).WithMany().HasForeignKey(p => p.OrderId).OnDelete(DeleteBehavior.SetNull);
+            // One accrual per order — makes point-awarding idempotent across the callback + webhook.
+            e.HasIndex(p => p.OrderId).IsUnique().HasFilter("\"OrderId\" IS NOT NULL");
+        });
 
         // ─── Product ────────────────────────────────────────────────────────
         builder.Entity<Product>(e =>

@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-15 (FX-52 Save for Later — OP-35 done)
+**Last updated:** 2026-06-15 (FX-53 Loyalty foundation — OP-37 done; redemption deferred)
 
 **Legend:** severity 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low ·
 status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
@@ -131,6 +131,6 @@ status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
 | ~~OP-34~~ | ✅ **DONE** (FX-51) — `MerchandisingService.FrequentlyBoughtTogetherAsync(productId, take)`: co-purchase analysis (orders containing the product → other products in those orders ranked by how many of those orders they share), `IMemoryCache` 5-min TTL. Shown as a "Frequently Bought Together" row on the product detail page (above Related), hidden when there are no co-purchases. Verified (seeded a 2-product order + DB/HTTP): band-ring ↔ pendant cross-show correctly; a product with no co-purchase shows no section. Test order cleaned up. | merch audit | — |
 | ~~OP-35~~ | ✅ **DONE** (FX-52) — added `CartViewModel.SavedItems` (in the session cart) + `SaveForLater` / `MoveToBag` / `RemoveSaved` actions. Cart page shows a "Save for later" link per line and a "Saved for later" section (Move to bag / Remove); saved items don't count toward totals or checkout, and the bag-empty message only shows when both lists are empty. `MoveToBag` re-checks live availability. Verified (Playwright): Add → Save (item leaves bag, enters Saved) → Move to bag (returns) → Save + Remove (both empty). | merch audit | — |
 | OP-36 | **Abandoned-cart recovery** not implemented (no cart capture/email) | merch audit / H17 | Persist cart w/ email on checkout-start; background job emails after N hrs; recovery link. |
-| OP-37 | **Loyalty foundation** not implemented | merch audit | `LoyaltyAccount`/`PointsLedger` tables; accrue on paid order; redeem at checkout. |
+| ~~OP-37~~ | ✅ **DONE** (FX-53, foundation) — `LoyaltyAccount` + `PointsLedgerEntry` tables (migration `LoyaltyFoundation`); `ILoyaltyService.AccrueForOrderAsync` awards **1 pt per ₦100** on a paid order, **idempotent** (existence check + unique index on `OrderId`). Hooked into every paid-order path: online callback, **webhook**, dev-confirm, and POS till (credits the attached customer; walk-ins earn nothing). Balance shown on the account Profile page. Verified (signed webhook + DB + Playwright): a ₦10,000 order awarded exactly 100 pts, **two webhooks → still 100** (idempotent), profile shows "100"; stock fulfilled correctly. Test data cleaned up. **Redemption at checkout is the remaining step** (deliberately out of this foundation). | merch audit | redemption deferred |
 
 > Full Medium/Low long-tail is in `docs/AUDIT_REPORT.md` (Medium Findings, Low Findings, Reports Gap Analysis).
