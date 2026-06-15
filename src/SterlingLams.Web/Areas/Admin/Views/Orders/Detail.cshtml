@@ -41,6 +41,14 @@
                 </tbody>
                 <tfoot class="border-t border-neutral-100">
                     <tr><td colspan="4" class="px-6 py-2 text-xs text-right text-neutral-400">Subtotal</td><td class="px-6 py-2 text-xs text-right">₦@Model.Order.Subtotal.ToString("N0")</td></tr>
+                    @if (Model.Order.DiscountAmount > 0)
+                    {
+                        <tr><td colspan="4" class="px-6 py-2 text-xs text-right text-emerald-600">Discount@(string.IsNullOrEmpty(Model.Order.DiscountCode) ? "" : $" ({Model.Order.DiscountCode})")</td><td class="px-6 py-2 text-xs text-right text-emerald-600">-₦@Model.Order.DiscountAmount.ToString("N0")</td></tr>
+                    }
+                    @if (Model.Order.LoyaltyDiscount > 0)
+                    {
+                        <tr><td colspan="4" class="px-6 py-2 text-xs text-right text-emerald-600">Loyalty (@Model.Order.LoyaltyPointsRedeemed pts)</td><td class="px-6 py-2 text-xs text-right text-emerald-600">-₦@Model.Order.LoyaltyDiscount.ToString("N0")</td></tr>
+                    }
                     <tr><td colspan="4" class="px-6 py-2 text-xs text-right text-neutral-400">Delivery</td><td class="px-6 py-2 text-xs text-right">₦@Model.Order.DeliveryFee.ToString("N0")</td></tr>
                     <tr><td colspan="4" class="px-6 py-2 text-sm text-right font-medium">Total</td><td class="px-6 py-2 text-sm text-right font-medium">₦@Model.Order.Total.ToString("N0")</td></tr>
                 </tfoot>

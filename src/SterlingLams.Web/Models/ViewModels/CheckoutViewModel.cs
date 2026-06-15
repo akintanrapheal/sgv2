@@ -14,6 +14,13 @@ public class CheckoutViewModel : IValidatableObject
     /// <summary>When false (store.pickup_available off), the pickup option is hidden at checkout.</summary>
     public bool PickupAvailable { get; set; } = true;
 
+    // Loyalty redemption
+    public bool LoyaltyAvailable { get; set; }          // redemption on + signed-in + has points
+    public int LoyaltyPointsBalance { get; set; }
+    public decimal LoyaltyPointValue { get; set; } = 1; // ₦ per point
+    public decimal LoyaltyMaxDiscount { get; set; }     // capped at the order subtotal
+    public bool RedeemPoints { get; set; }              // posted: customer ticked "apply points"
+
     // Delivery
     public DeliveryAddressViewModel DeliveryAddress { get; set; } = new();
 

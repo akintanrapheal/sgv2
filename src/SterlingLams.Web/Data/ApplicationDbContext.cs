@@ -219,6 +219,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             e.Property(o => o.DeliveryFee).HasPrecision(18, 2);
             e.Property(o => o.Tax).HasPrecision(18, 2);
             e.Property(o => o.Total).HasPrecision(18, 2);
+            e.Property(o => o.LoyaltyDiscount).HasPrecision(18, 2);
             e.ToTable(t =>
             {
                 t.HasCheckConstraint("CK_Orders_Subtotal_NonNegative", "\"Subtotal\" >= 0");

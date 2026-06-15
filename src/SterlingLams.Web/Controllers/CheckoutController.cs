@@ -149,6 +149,21 @@ public class CheckoutController : Controller
             }).ToList()
         };
 
+        // Loyalty redemption (signed-in customers only).
+        if (user != null && await _loyalty.RedemptionEnabledAsync())
+        {
+            var balance = await _loyalty.GetBalanceAsync(user.Id);
+            if (balance > 0)
+            {
+                var pointValue = await _loyalty.PointValueAsync();
+                vm.LoyaltyAvailable = true;
+                vm.LoyaltyPointsBalance = balance;
+                vm.LoyaltyPointValue = pointValue;
+                // Cap the discount at the order subtotal (can't redeem more than the goods are worth).
+                vm.LoyaltyMaxDiscount = Math.Min(balance * pointValue, cart.Subtotal);
+            }
+        }
+
         return View(vm);
     }
 
@@ -283,6 +298,28 @@ public class CheckoutController : Controller
             deliveryFee = await _zones.CalculateFeeAsync(vm.DeliveryAddress.State, vm.SelectedDeliveryType);
         if (freeShipping) deliveryFee = 0;   // free-shipping discount waives the fee
 
+        // ── Loyalty redemption ──────────────────────────────────────────────
+        // Earmark points + discount now (reduces the amount charged); the actual point deduction
+        // happens on payment success (RedeemForOrderAsync) so an abandoned order never loses points.
+        int loyaltyPoints = 0;
+        decimal loyaltyDiscount = 0m;
+        if (vm.RedeemPoints && await _loyalty.RedemptionEnabledAsync())
+        {
+            var balance = await _loyalty.GetBalanceAsync(user.Id);
+            if (balance > 0)
+            {
+                var pointValue = await _loyalty.PointValueAsync();
+                var preTotal = cart.Subtotal - discountAmount + deliveryFee;
+                // Cap by points held, by the goods value (after promo), and leave ≥₦1 to charge.
+                var cap = Math.Min(Math.Min(balance * pointValue, cart.Subtotal - discountAmount), preTotal - 1m);
+                if (cap > 0)
+                {
+                    loyaltyPoints = (int)Math.Floor(cap / pointValue);
+                    loyaltyDiscount = loyaltyPoints * pointValue;
+                }
+            }
+        }
+
         // Build order
         var orderNumber = $"SL-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}";
 
@@ -298,7 +335,9 @@ public class CheckoutController : Controller
             DeliveryFee = deliveryFee,
             DiscountCode = discountCode,
             DiscountAmount = discountAmount,
-            Total = cart.Subtotal - discountAmount + deliveryFee,
+            LoyaltyPointsRedeemed = loyaltyPoints,
+            LoyaltyDiscount = loyaltyDiscount,
+            Total = cart.Subtotal - discountAmount + deliveryFee - loyaltyDiscount,
             Items = cart.Items.Select(i => new OrderItem
             {
                 ProductId = i.ProductId,
@@ -406,6 +445,7 @@ public class CheckoutController : Controller
             // Deduct stock through the in-house ledger (multi-branch fulfilment).
             await _fulfilment.FulfilPaidOrderAsync(order.Id);
 
+            await _loyalty.RedeemForOrderAsync(order.Id);
             await _loyalty.AccrueForOrderAsync(order.Id);
 
             await SendOrderEmailsAsync(order.Id);
@@ -450,6 +490,7 @@ public class CheckoutController : Controller
         // Deduct stock through the in-house ledger (multi-branch fulfilment).
         await _fulfilment.FulfilPaidOrderAsync(order.Id);
 
+        await _loyalty.RedeemForOrderAsync(order.Id);
         await _loyalty.AccrueForOrderAsync(order.Id);
 
         await SendOrderEmailsAsync(order.Id);

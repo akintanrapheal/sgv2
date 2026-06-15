@@ -72,10 +72,24 @@
                 }
             </div>
 
-            <div class="border-t border-neutral-100 pt-4 flex justify-between text-sm font-medium">
-                <span>Total</span>
-                <span>₦@Model.Total.ToString("N0")</span>
-            </div>
+            @if (Model.LoyaltyDiscount > 0)
+            {
+                <div class="border-t border-neutral-100 pt-4 flex justify-between text-sm text-emerald-600">
+                    <span class="font-light">Loyalty points (@Model.LoyaltyPointsRedeemed)</span>
+                    <span>-₦@Model.LoyaltyDiscount.ToString("N0")</span>
+                </div>
+                <div class="flex justify-between text-sm font-medium pt-2">
+                    <span>Total</span>
+                    <span>₦@Model.Total.ToString("N0")</span>
+                </div>
+            }
+            else
+            {
+                <div class="border-t border-neutral-100 pt-4 flex justify-between text-sm font-medium">
+                    <span>Total</span>
+                    <span>₦@Model.Total.ToString("N0")</span>
+                </div>
+            }
         </div>
     </div>
 

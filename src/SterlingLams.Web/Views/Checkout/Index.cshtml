@@ -225,6 +225,20 @@
                                 <span class="text-emerald-600">@Model.FormattedDiscount</span>
                             </div>
                         }
+                        @if (Model.LoyaltyAvailable)
+                        {
+                            <div class="flex items-start justify-between text-sm gap-3 pt-1">
+                                <label class="flex items-start gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" name="RedeemPoints" value="true" id="redeem-points"
+                                           class="mt-0.5 rounded-none border-neutral-300 text-neutral-900"
+                                           onchange="updateSummary(CURRENT_FEE)" />
+                                    <span class="text-neutral-600 font-light">Use @Model.LoyaltyPointsBalance loyalty points
+                                        <span class="block text-[11px] text-neutral-400">₦@Model.LoyaltyMaxDiscount.ToString("N0") off this order</span>
+                                    </span>
+                                </label>
+                                <span id="summary-loyalty" class="text-emerald-600">—</span>
+                            </div>
+                        }
                         <div class="flex justify-between text-sm">
                             <span class="text-neutral-500 font-light">Delivery</span>
                             <span id="summary-delivery">—</span>
@@ -263,6 +277,8 @@ const PRICING = @Html.Raw(Model.DeliveryPricingJson);
 const SUBTOTAL = @Model.Subtotal.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 const DISCOUNT = @Model.DiscountAmount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 const FREE_SHIPPING = @(Model.Cart.FreeShipping ? "true" : "false");
+const LOYALTY_DISCOUNT = @Model.LoyaltyMaxDiscount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+let CURRENT_FEE = 0;
 
 // ── Fulfillment toggle ────────────────────────────────────────────────────
 function toggleFulfillment(type) {
@@ -338,9 +354,14 @@ function selectDeliveryType(type, fee) {
 
 function updateSummary(fee) {
     if (FREE_SHIPPING) fee = 0;   // free-shipping promo waives the delivery fee
-    const total = parseFloat(SUBTOTAL) - parseFloat(DISCOUNT) + parseFloat(fee);
+    CURRENT_FEE = fee;
+    const redeem = document.getElementById('redeem-points');
+    const loyalty = (redeem && redeem.checked) ? parseFloat(LOYALTY_DISCOUNT) : 0;
+    const total = parseFloat(SUBTOTAL) - parseFloat(DISCOUNT) + parseFloat(fee) - loyalty;
     document.getElementById('summary-delivery').textContent = fee === 0 ? 'Free' : '₦' + Number(fee).toLocaleString();
-    document.getElementById('summary-total').textContent    = '₦' + Math.round(total).toLocaleString();
+    const loyaltyEl = document.getElementById('summary-loyalty');
+    if (loyaltyEl) loyaltyEl.textContent = loyalty > 0 ? '-₦' + Number(loyalty).toLocaleString() : '—';
+    document.getElementById('summary-total').textContent    = '₦' + Math.round(Math.max(0, total)).toLocaleString();
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────

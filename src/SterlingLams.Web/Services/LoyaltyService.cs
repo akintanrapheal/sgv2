@@ -12,6 +12,16 @@ public interface ILoyaltyService
 
     /// <summary>Current points balance for a user (0 if they have no wallet yet).</summary>
     Task<int> GetBalanceAsync(string userId);
+
+    /// <summary>Whether redeeming points at checkout is enabled.</summary>
+    Task<bool> RedemptionEnabledAsync();
+
+    /// <summary>₦ value of one point when redeemed.</summary>
+    Task<decimal> PointValueAsync();
+
+    /// <summary>Deducts the points earmarked on a paid order (Order.LoyaltyPointsRedeemed), once.
+    /// Safe to call from every paid-order path — idempotent via Order.LoyaltyRedeemedAt.</summary>
+    Task RedeemForOrderAsync(int orderId);
 }
 
 public class LoyaltyService : ILoyaltyService
@@ -34,6 +44,51 @@ public class LoyaltyService : ILoyaltyService
         if (string.IsNullOrEmpty(userId)) return 0;
         return await _db.LoyaltyAccounts.Where(a => a.UserId == userId)
             .Select(a => (int?)a.PointsBalance).FirstOrDefaultAsync() ?? 0;
+    }
+
+    public async Task<bool> RedemptionEnabledAsync() =>
+        await _settings.GetBoolAsync("loyalty.enabled", true)
+        && await _settings.GetBoolAsync("loyalty.redemption_enabled", true);
+
+    public async Task<decimal> PointValueAsync()
+    {
+        var v = await _settings.GetDecimalAsync("loyalty.point_value", 1m);
+        return v <= 0 ? 1m : v;
+    }
+
+    public async Task RedeemForOrderAsync(int orderId)
+    {
+        var order = await _db.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order is null || order.LoyaltyPointsRedeemed <= 0) return;
+        if (order.LoyaltyRedeemedAt != null) return; // already deducted (idempotent)
+
+        var userId = order.Channel == OrderChannel.Pos ? order.CustomerUserId : order.UserId;
+        if (string.IsNullOrEmpty(userId)) return;
+
+        var account = await _db.LoyaltyAccounts.FirstOrDefaultAsync(a => a.UserId == userId);
+        // Clamp to the balance actually available now (guards a concurrent spend between
+        // earmark-at-checkout and deduct-at-payment); the shop never goes below zero.
+        var toDeduct = Math.Min(order.LoyaltyPointsRedeemed, account?.PointsBalance ?? 0);
+        var now = DateTime.UtcNow;
+        order.LoyaltyRedeemedAt = now;
+
+        if (account != null && toDeduct > 0)
+        {
+            account.PointsBalance -= toDeduct;
+            account.UpdatedAt = now;
+            account.Entries.Add(new PointsLedgerEntry
+            {
+                Points = -toDeduct,
+                Reason = $"Redeemed on order {order.OrderNumber}",
+                OrderId = null, // earn entry already holds this order's OrderId (unique); keep ref in Reason
+                CreatedAt = now
+            });
+            if (toDeduct < order.LoyaltyPointsRedeemed)
+                _logger.LogWarning("Order {OrderNumber} earmarked {Earmarked} pts but only {Deducted} were available.",
+                    order.OrderNumber, order.LoyaltyPointsRedeemed, toDeduct);
+        }
+
+        await _db.SaveChangesAsync();
     }
 
     public async Task AccrueForOrderAsync(int orderId)

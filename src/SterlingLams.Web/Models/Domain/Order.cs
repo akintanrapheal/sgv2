@@ -76,6 +76,13 @@ public class Order
     public string? DiscountCode { get; set; }
     public decimal DiscountAmount { get; set; }
 
+    /// <summary>Loyalty points the buyer chose to redeem on this order (earmarked at placement).</summary>
+    public int LoyaltyPointsRedeemed { get; set; }
+    /// <summary>₦ discount from redeemed points (already reflected in <see cref="Total"/>).</summary>
+    public decimal LoyaltyDiscount { get; set; }
+    /// <summary>Set when the earmarked points were actually deducted (on payment) — idempotency guard.</summary>
+    public DateTime? LoyaltyRedeemedAt { get; set; }
+
     public string? PaymentReference { get; set; }
     public string? PaymentProvider { get; set; }
     public bool IsPaid { get; set; }

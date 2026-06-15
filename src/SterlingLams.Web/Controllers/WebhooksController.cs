@@ -102,6 +102,7 @@ public class WebhooksController : ControllerBase
                 // browser callback already fulfilled this order or the webhook is the only path
                 // that fires (e.g. customer closed the tab right after paying).
                 await _fulfilment.FulfilPaidOrderAsync(order.Id);
+                await _loyalty.RedeemForOrderAsync(order.Id);
                 await _loyalty.AccrueForOrderAsync(order.Id);
 
                 _logger.LogInformation("Order {OrderNumber} marked as paid via webhook", order.OrderNumber);

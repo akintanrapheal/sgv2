@@ -71,6 +71,8 @@ public static class SettingsSeedData
         // ── Loyalty ───────────────────────────────────────────────────────────
         new() { Key = "loyalty.enabled",         Group = "Loyalty", Label = "Enable Loyalty Points",     Type = "boolean", Value = "true", Description = "Award points to customers on completed orders.",                         SortOrder = 1 },
         new() { Key = "loyalty.naira_per_point",  Group = "Loyalty", Label = "Naira per Point (₦)",       Type = "number",  Value = "100",  Description = "How much a customer spends to earn 1 point (e.g. 100 = 1 point per ₦100).", SortOrder = 2 },
+        new() { Key = "loyalty.point_value",        Group = "Loyalty", Label = "Point Value on Redemption (₦)",          Type = "number",  Value = "1",    Description = "₦ discount per point when redeemed at checkout (e.g. 1 = 1 point is worth ₦1).", SortOrder = 3 },
+        new() { Key = "loyalty.redemption_enabled", Group = "Loyalty", Label = "Allow Redeeming Points at Checkout",     Type = "boolean", Value = "true", Description = "Let signed-in customers apply their points for a discount at checkout.",        SortOrder = 4 },
 
         // ── Store Operations ──────────────────────────────────────────────────
         new() { Key = "store.accepting_orders",    Group = "Store", Label = "Accepting Orders",         Type = "boolean", Value = "true",  Description = "Turn off to temporarily stop customers from placing orders.",          SortOrder = 1 },
