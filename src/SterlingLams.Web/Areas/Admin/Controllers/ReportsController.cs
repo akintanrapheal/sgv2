@@ -52,7 +52,6 @@ public class ReportsController : AdminBaseController
         var orders = _db.Orders.Where(o => o.IsPaid && o.CreatedAt >= f && o.CreatedAt < t);
         if (storeId.HasValue) orders = orders.Where(o => o.PickupStoreId == storeId);
 
-        var list = await orders.Select(o => new { o.Total, o.PaymentProvider, o.Channel, o.CreatedAt, o.PickupStoreId }).ToListAsync();
         var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
         var storeName = stores.ToDictionary(s => s.Id, s => s.Name);
 
@@ -60,23 +59,39 @@ public class ReportsController : AdminBaseController
         if (storeId.HasValue) refunds = refunds.Where(r => r.OriginalOrder.PickupStoreId == storeId);
         var refundTotal = await refunds.SumAsync(r => (decimal?)r.Amount) ?? 0;
 
+        // Aggregations run in SQL instead of loading every paid order into memory.
+        var totals = await orders.GroupBy(_ => 1)
+            .Select(g => new { Count = g.Count(), Gross = g.Sum(o => o.Total) }).FirstOrDefaultAsync();
+
+        var byPaymentRaw = await orders.GroupBy(o => o.PaymentProvider)
+            .Select(g => new { g.Key, Total = g.Sum(o => o.Total) }).ToListAsync();
+
+        var byDay = (await orders.GroupBy(o => o.CreatedAt.Date)
+                .Select(g => new { Day = g.Key, Count = g.Count(), Total = g.Sum(o => o.Total) })
+                .ToListAsync())
+            .Select(x => new DayRow(x.Day, x.Count, x.Total))
+            .OrderByDescending(d => d.Day).ToList();
+
+        var byBranchRaw = await orders.GroupBy(o => o.PickupStoreId)
+            .Select(g => new { g.Key, Count = g.Count(), Total = g.Sum(o => o.Total) }).ToListAsync();
+
         var vm = new SalesVm
         {
             From = f, To = t.AddDays(-1), StoreId = storeId, Stores = stores,
-            Count = list.Count,
-            Gross = list.Sum(x => x.Total),
+            Count = totals?.Count ?? 0,
+            Gross = totals?.Gross ?? 0,
             Refunds = refundTotal,
-            ByPayment = list.GroupBy(x => string.IsNullOrEmpty(x.PaymentProvider) ? "Other" : x.PaymentProvider)
-                            .Select(g => new KV(g.Key, g.Sum(x => x.Total)))
-                            .OrderByDescending(k => k.Amount).ToList(),
-            ByDay = list.GroupBy(x => x.CreatedAt.Date)
-                        .Select(g => new DayRow(g.Key, g.Count(), g.Sum(x => x.Total)))
-                        .OrderByDescending(d => d.Day).ToList(),
-            ByBranch = list.GroupBy(x => x.PickupStoreId)
-                           .Select(g => new BranchRow(
-                               g.Key.HasValue && storeName.ContainsKey(g.Key.Value) ? storeName[g.Key.Value] : "Online / unassigned",
-                               g.Count(), g.Sum(x => x.Total)))
-                           .OrderByDescending(b => b.Total).ToList()
+            // Null/empty providers collapse to "Other" (re-grouped here since SQL keeps them distinct).
+            ByPayment = byPaymentRaw
+                .GroupBy(x => string.IsNullOrEmpty(x.Key) ? "Other" : x.Key)
+                .Select(g => new KV(g.Key, g.Sum(x => x.Total)))
+                .OrderByDescending(k => k.Amount).ToList(),
+            ByDay = byDay,
+            ByBranch = byBranchRaw
+                .Select(x => new BranchRow(
+                    x.Key.HasValue && storeName.ContainsKey(x.Key.Value) ? storeName[x.Key.Value] : "Online / unassigned",
+                    x.Count, x.Total))
+                .OrderByDescending(b => b.Total).ToList()
         };
         return View(vm);
     }
@@ -129,32 +144,35 @@ public class ReportsController : AdminBaseController
     {
         ViewData["Title"] = "Stock Report";
 
-        var inv = await _db.StoreInventories
-            .Select(si => new
-            {
-                si.StoreId,
-                StoreName = si.Store.Name,
-                si.QuantityOnHand,
-                Price = si.Product.Price,
-                Product = si.Product.Name,
-                si.Product.LowStockThreshold,
-                Active = si.Product.IsActive
-            })
-            .Where(x => x.Active)
-            .ToListAsync();
+        // Aggregation pushed to SQL — don't pull the whole inventory table into memory.
+        var inv = _db.StoreInventories.Where(si => si.Product.IsActive);
+
+        var totals = await inv.GroupBy(_ => 1).Select(g => new
+        {
+            Units = g.Sum(si => si.QuantityOnHand),
+            Value = g.Sum(si => si.QuantityOnHand * si.Product.Price),
+            OutOfStock = g.Count(si => si.QuantityOnHand <= 0)
+        }).FirstOrDefaultAsync();
+
+        var byBranch = (await inv.GroupBy(si => si.Store.Name)
+                .Select(g => new { Name = g.Key, Units = g.Sum(si => si.QuantityOnHand), Value = g.Sum(si => si.QuantityOnHand * si.Product.Price) })
+                .ToListAsync())
+            .Select(x => new BranchRow(x.Name, x.Units, x.Value))
+            .OrderByDescending(b => b.Total).ToList();
+
+        var lowStock = await inv
+            .Where(si => si.QuantityOnHand > 0 && si.QuantityOnHand <= si.Product.LowStockThreshold)
+            .OrderBy(si => si.QuantityOnHand)
+            .Select(si => new LowStockRow(si.Product.Name, si.Store.Name, si.QuantityOnHand, si.Product.LowStockThreshold))
+            .Take(100).ToListAsync();
 
         var vm = new StockVm
         {
-            TotalUnits = inv.Sum(x => x.QuantityOnHand),
-            TotalValue = inv.Sum(x => x.QuantityOnHand * x.Price),
-            OutOfStock = inv.Count(x => x.QuantityOnHand <= 0),
-            ByBranch = inv.GroupBy(x => x.StoreName)
-                          .Select(g => new BranchRow(g.Key, g.Sum(x => x.QuantityOnHand), g.Sum(x => x.QuantityOnHand * x.Price)))
-                          .OrderByDescending(b => b.Total).ToList(),
-            LowStock = inv.Where(x => x.QuantityOnHand > 0 && x.QuantityOnHand <= x.LowStockThreshold)
-                          .OrderBy(x => x.QuantityOnHand)
-                          .Select(x => new LowStockRow(x.Product, x.StoreName, x.QuantityOnHand, x.LowStockThreshold))
-                          .Take(100).ToList()
+            TotalUnits = totals?.Units ?? 0,
+            TotalValue = totals?.Value ?? 0,
+            OutOfStock = totals?.OutOfStock ?? 0,
+            ByBranch = byBranch,
+            LowStock = lowStock
         };
         return View(vm);
     }
