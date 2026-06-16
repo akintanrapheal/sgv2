@@ -176,6 +176,18 @@ builder.Services.AddHttpContextAccessor();
 var app = builder.Build();
 
 // ─── Middleware Pipeline ─────────────────────────────────────────────────────
+// Behind Render / any reverse proxy: honour X-Forwarded-Proto/For so the app knows the request
+// actually came in over HTTPS. Without this, generated links + auth redirects come out as http://
+// (the proxy forwards plain HTTP internally). Proxy IP is dynamic, so clear the known lists.
+var forwardedOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
+                     | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto
+};
+forwardedOptions.KnownNetworks.Clear();
+forwardedOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedOptions);
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
@@ -242,6 +254,11 @@ app.UseAuthorization();
 
 // Public storefront maintenance page (store.maintenance_mode). After auth so staff are exempt.
 app.UseMiddleware<SterlingLams.Web.Infrastructure.MaintenanceModeMiddleware>();
+
+// Friendly redirects for the staff-area roots — the area default controller is "Home", which
+// doesn't exist, so a bare /Admin or /Inventory would 404. Send them to the real landing pages.
+app.MapGet("/Admin", () => Results.Redirect("/Admin/Dashboard"));
+app.MapGet("/Inventory", () => Results.Redirect("/Inventory/Overview"));
 
 app.MapControllerRoute(
     name: "areas",

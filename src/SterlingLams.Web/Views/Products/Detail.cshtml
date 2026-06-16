@@ -75,7 +75,7 @@
         <span class="text-neutral-700">@Model.Name</span>
     </nav>
 
-    <div class="grid md:grid-cols-2 gap-16 lg:gap-24">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-16 lg:gap-24">
 
         <!-- ─── Image Gallery ─────────────────────────────────────────── -->
         <div class="space-y-3">
@@ -95,6 +95,26 @@
                         </button>
                     }
                 </div>
+            }
+        </div>
+
+        <!-- Mobile fullscreen image lightbox (tap-to-open; hover-zoom is desktop-only) -->
+        <div id="img-lightbox" class="hidden fixed inset-0 z-[300] bg-black md:hidden" role="dialog" aria-modal="true" aria-label="Product image">
+            <button type="button" id="lightbox-close" class="absolute top-4 right-4 z-10 text-white p-2" aria-label="Close image">
+                <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+            <div id="lightbox-stage" class="w-full h-full flex items-center justify-center p-4">
+                <img id="lightbox-img" src="" alt="@Model.Name" class="max-w-full max-h-full object-contain" />
+            </div>
+            @if (Model.ImageUrls.Count > 1)
+            {
+                <button type="button" id="lightbox-prev" class="absolute left-1 top-1/2 -translate-y-1/2 text-white p-3" aria-label="Previous image">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7"/></svg>
+                </button>
+                <button type="button" id="lightbox-next" class="absolute right-1 top-1/2 -translate-y-1/2 text-white p-3" aria-label="Next image">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5l7 7-7 7"/></svg>
+                </button>
+                <div id="lightbox-counter" class="absolute bottom-4 left-1/2 -translate-x-1/2 text-white text-xs tracking-[0.2em]"></div>
             }
         </div>
 
@@ -234,7 +254,7 @@
                             <input type="hidden" name="productId" value="@Model.Id" />
                             <input type="email" name="email" required
                                    placeholder="your@email.com"
-                                   class="flex-1 border border-neutral-300 px-4 py-3 text-sm focus:outline-none focus:border-brand-500 transition-colors" />
+                                   class="flex-1 min-w-0 border border-neutral-300 px-4 py-3 text-sm focus:outline-none focus:border-brand-500 transition-colors" />
                             <button type="submit"
                                     class="bg-brand-500 text-white text-xs tracking-[0.15em] uppercase px-6 py-3 hover:bg-brand-600 transition-colors whitespace-nowrap">
                                 Notify Me
@@ -347,7 +367,7 @@
             <div class="prod-tab-panel" data-panel="description">
                 @if (!string.IsNullOrWhiteSpace(fullDescription))
                 {
-                    <div class="text-sm text-neutral-600 leading-relaxed font-light" style="white-space: pre-line;">@fullDescription</div>
+                    <div class="text-sm text-neutral-600 leading-relaxed font-light break-words" style="white-space: pre-line;">@fullDescription</div>
                 }
                 else
                 {
@@ -365,7 +385,7 @@
             <div class="prod-tab-panel hidden" data-panel="shipping">
                 @if (!string.IsNullOrWhiteSpace(shippingPolicy))
                 {
-                    <div class="text-sm text-neutral-600 leading-relaxed font-light" style="white-space: pre-line;">@shippingPolicy</div>
+                    <div class="text-sm text-neutral-600 leading-relaxed font-light break-words" style="white-space: pre-line;">@shippingPolicy</div>
                 }
                 else
                 {
@@ -432,11 +452,13 @@
     let selectedVariantId = null;
     let qty = 1;
 
-    // ── Image zoom (mouse-move zoom within container) ─────────────────────────
+    // ── Image zoom: desktop = move-to-zoom; touch/mobile = tap to open fullscreen lightbox ──
     const zoomContainer = document.getElementById('zoom-container');
     const mainImg = document.getElementById('main-image');
+    const canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
-    if (zoomContainer && mainImg) {
+    if (zoomContainer && mainImg && canHover) {
+        // Desktop: hover anywhere on the image to zoom into that point.
         zoomContainer.addEventListener('mousemove', (e) => {
             const rect = zoomContainer.getBoundingClientRect();
             const x = ((e.clientX - rect.left) / rect.width) * 100;
@@ -448,6 +470,48 @@
             mainImg.style.transform = 'scale(1)';
             mainImg.style.transformOrigin = 'center center';
         });
+    }
+
+    // Touch/mobile: tap the image to open a swipeable fullscreen viewer.
+    const lightbox = document.getElementById('img-lightbox');
+    const lightboxImg = document.getElementById('lightbox-img');
+    if (zoomContainer && mainImg && lightbox && lightboxImg && !canHover) {
+        zoomContainer.classList.remove('cursor-zoom-in');
+        const thumbs = Array.from(document.querySelectorAll('.thumb-btn'));
+        const images = thumbs.length ? thumbs.map(b => b.getAttribute('data-img-url'))
+                                     : [mainImg.getAttribute('src')];
+        const counter = document.getElementById('lightbox-counter');
+        let idx = 0;
+        const show = (i) => {
+            idx = (i + images.length) % images.length;
+            lightboxImg.src = images[idx];
+            if (counter) counter.textContent = (idx + 1) + ' / ' + images.length;
+        };
+        const open = () => {
+            const cur = images.indexOf(mainImg.getAttribute('src'));
+            show(cur >= 0 ? cur : 0);
+            lightbox.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        };
+        const close = () => {
+            lightbox.classList.add('hidden');
+            document.body.style.overflow = '';
+        };
+        zoomContainer.addEventListener('click', open);
+        document.getElementById('lightbox-close')?.addEventListener('click', close);
+        document.getElementById('lightbox-prev')?.addEventListener('click', () => show(idx - 1));
+        document.getElementById('lightbox-next')?.addEventListener('click', () => show(idx + 1));
+        // Tap the dark area (not the image/controls) to close.
+        lightbox.addEventListener('click', (e) => {
+            if (e.target.id === 'img-lightbox' || e.target.id === 'lightbox-stage') close();
+        });
+        // Swipe left/right to change image.
+        let startX = 0;
+        lightbox.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; }, { passive: true });
+        lightbox.addEventListener('touchend', (e) => {
+            const dx = e.changedTouches[0].clientX - startX;
+            if (Math.abs(dx) > 50 && images.length > 1) show(dx < 0 ? idx + 1 : idx - 1);
+        }, { passive: true });
     }
 
     // ── Thumbnail switch ──────────────────────────────────────────────────────
