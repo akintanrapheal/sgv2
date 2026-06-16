@@ -20,7 +20,9 @@ on:
   workflow_dispatch: {}      # lets you run it manually from the Actions tab
 
 env:
-  AZURE_WEBAPP_NAME: sterlinglams                       # <-- change to your App Service name
+  # Set this in GitHub: Settings -> Secrets and variables -> Actions -> Variables -> New
+  # repository variable named AZURE_WEBAPP_NAME (value = your App Service name). No code edit needed.
+  AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
   PROJECT: src/SterlingLams.Web/SterlingLams.Web.csproj
   DOTNET_VERSION: '9.0.x'
   NODE_VERSION: '20'
