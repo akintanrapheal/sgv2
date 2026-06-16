@@ -1,0 +1,41 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Render Blueprint — Sterlin Glams platform. Developed by Dev Rapheal.
+#  Creates a free web service (built from the Dockerfile) + a free PostgreSQL,
+#  wired together automatically. Deploy: Render Dashboard -> New -> Blueprint -> pick this repo.
+# ─────────────────────────────────────────────────────────────────────────────
+databases:
+  - name: sterlinglams-db
+    plan: free
+    databaseName: sterlinglams
+    user: sterlinglams
+    region: oregon
+
+services:
+  - type: web
+    name: sterlinglams
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /
+    autoDeploy: true          # redeploy automatically on every push to the connected branch
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      # Render's ephemeral single instance: let the app apply migrations on startup
+      # (the OP-12 escape hatch). On a multi-instance host you'd run migrations as a deploy step.
+      - key: Database__AutoMigrate
+        value: "true"
+      - key: ASPNETCORE_URLS
+        value: http://0.0.0.0:8080
+      - key: PORT
+        value: "8080"
+      - key: AllowedHosts
+        value: "*"
+      # The database connection, injected by Render as a postgres:// URL.
+      # Program.cs converts DATABASE_URL into an Npgsql connection string.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: sterlinglams-db
+          property: connectionString

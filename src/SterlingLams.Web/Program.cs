@@ -24,8 +24,26 @@ Log.Logger = new LoggerConfiguration()
 builder.Host.UseSerilog();
 
 // ─── Database ───────────────────────────────────────────────────────────────
+// Render/Heroku/Railway hand the database to the app as a postgres:// URL in DATABASE_URL.
+// Convert it to the Npgsql key/value format; otherwise use ConnectionStrings:DefaultConnection.
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+if (!string.IsNullOrWhiteSpace(databaseUrl))
+{
+    var uri = new Uri(databaseUrl);
+    var creds = uri.UserInfo.Split(':', 2);
+    connectionString = new Npgsql.NpgsqlConnectionStringBuilder
+    {
+        Host = uri.Host,
+        Port = uri.Port > 0 ? uri.Port : 5432,
+        Database = uri.AbsolutePath.TrimStart('/'),
+        Username = Uri.UnescapeDataString(creds[0]),
+        Password = creds.Length > 1 ? Uri.UnescapeDataString(creds[1]) : string.Empty,
+        SslMode = Npgsql.SslMode.Require
+    }.ConnectionString;
+}
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(connectionString));
 
 // ─── Data Protection ──────────────────────────────────────────────────────────
 // Persist keys so antiforgery tokens, auth cookies and other protected payloads survive
