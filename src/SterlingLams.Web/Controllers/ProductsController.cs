@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Data;
+using SterlingLams.Web.Models.Domain;
 using SterlingLams.Web.Models.ViewModels;
 
 namespace SterlingLams.Web.Controllers;
@@ -248,10 +249,26 @@ public class ProductsController : Controller
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("auth")]
-    public IActionResult NotifyRestock(int productId, string email)
+    public async Task<IActionResult> NotifyRestock(int productId, string email)
     {
-        if (!string.IsNullOrWhiteSpace(email))
-            _logger.LogInformation("Restock notification requested: product {ProductId} for {Email}", productId, email);
+        email = (email ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(email) && new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(email)
+            && await _db.Products.AnyAsync(p => p.Id == productId && p.IsActive))
+        {
+            // Persist the request (deduped: one pending row per product+email). The BackInStockNotifier
+            // background service emails them once the product is available again.
+            var alreadyPending = await _db.BackInStockRequests
+                .AnyAsync(r => r.ProductId == productId && r.Email == email && r.NotifiedAt == null);
+            if (!alreadyPending)
+            {
+                _db.BackInStockRequests.Add(new BackInStockRequest
+                {
+                    ProductId = productId, Email = email, CreatedAt = DateTime.UtcNow
+                });
+                await _db.SaveChangesAsync();
+                _logger.LogInformation("Back-in-stock request saved: product {ProductId} for {Email}", productId, email);
+            }
+        }
 
         return Json(new { success = true });
     }

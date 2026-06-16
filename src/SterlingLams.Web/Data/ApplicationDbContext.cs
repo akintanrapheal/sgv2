@@ -42,10 +42,22 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Models.Domain.UserStore> UserStores => Set<Models.Domain.UserStore>();
     public DbSet<LoyaltyAccount> LoyaltyAccounts => Set<LoyaltyAccount>();
     public DbSet<PointsLedgerEntry> PointsLedgerEntries => Set<PointsLedgerEntry>();
+    public DbSet<BackInStockRequest> BackInStockRequests => Set<BackInStockRequest>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+
+        // ─── Back-in-stock requests ─────────────────────────────────────────
+        builder.Entity<BackInStockRequest>(e =>
+        {
+            e.HasIndex(r => new { r.ProductId, r.NotifiedAt }); // sweep: pending per product
+            // One pending request per product+email (a customer can't queue duplicates).
+            e.HasIndex(r => new { r.ProductId, r.Email })
+             .IsUnique().HasFilter("\"NotifiedAt\" IS NULL");
+            e.HasOne(r => r.Product).WithMany().HasForeignKey(r => r.ProductId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
 
         // ─── Loyalty ────────────────────────────────────────────────────────
         builder.Entity<LoyaltyAccount>(e =>

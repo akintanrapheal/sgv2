@@ -141,6 +141,7 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.ReservationSwe
 // admin for ones that stay stuck (e.g. genuine stock shortage). See OP-2.
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.FulfilmentRetryService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.LowStockAlertService>();
+builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.BackInStockNotifier>();
 
 // ─── MVC ────────────────────────────────────────────────────────────────────
 builder.Services.AddControllersWithViews()
