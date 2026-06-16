@@ -141,9 +141,7 @@
                                 <span class="text-sm text-neutral-700">@store.StoreName</span>
                                 @if (store.IsAvailable)
                                 {
-                                    <span class="text-xs text-emerald-700 tracking-wider">
-                                        @store.Quantity in stock
-                                    </span>
+                                    <span class="text-xs text-emerald-700 tracking-wider">In Stock</span>
                                 }
                                 else
                                 {
@@ -200,7 +198,8 @@
                         id = v.Id,
                         name = v.Name,
                         priceAdjustment = v.PriceAdjustment,
-                        available = v.Available,
+                        // Boolean only — never expose exact stock counts to the storefront / page source.
+                        inStock = v.Available > 0,
                         attributes = v.AttributeLabels.ToDictionary(a => a.AttributeName, a => a.Value)
                     })))
                 </script>
@@ -586,7 +585,7 @@
         }
         if (hasVariants && selectedVariantId) {
             const v = variants.find(x => x.id === selectedVariantId);
-            if (v && (v.available ?? 0) <= 0) {
+            if (v && !v.inStock) {
                 e.stopImmediatePropagation();
                 if (prompt) { prompt.textContent = 'Sorry, this option is out of stock.'; prompt.classList.remove('hidden'); }
                 return false;
