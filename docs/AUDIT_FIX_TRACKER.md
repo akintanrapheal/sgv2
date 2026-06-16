@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-16 (FX-68 storefront CSP nonces — dropped 'unsafe-inline' for scripts on public pages, OP-45)
+**Last updated:** 2026-06-16 (FX-69 homepage-feature help text — clarified that "Links To" gates the button/clickable image; settings metadata now syncs on startup)
 
 ### Email customizer (FX-67)
 New **Settings → Emails** group (no separate admin screen — uses the existing settings page):

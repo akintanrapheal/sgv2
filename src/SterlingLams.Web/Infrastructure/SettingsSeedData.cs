@@ -29,6 +29,19 @@ public static class SettingsSeedData
         if (heroImg != null && heroImg.Type == "url")
             heroImg.Type = "image";
 
+        // Keep each setting's METADATA (label/help text/type/group/order) in step with the
+        // definitions above for already-seeded keys — without touching the admin-edited Value.
+        var defByKey = definitions.ToDictionary(d => d.Key);
+        foreach (var s in await db.SiteSettings.ToListAsync())
+        {
+            if (!defByKey.TryGetValue(s.Key, out var def)) continue;
+            if (s.Label != def.Label)             s.Label = def.Label;
+            if (s.Description != def.Description)  s.Description = def.Description;
+            if (s.Type != def.Type)               s.Type = def.Type;
+            if (s.Group != def.Group)             s.Group = def.Group;
+            if (s.SortOrder != def.SortOrder)     s.SortOrder = def.SortOrder;
+        }
+
         await db.SaveChangesAsync();
     }
 
@@ -116,15 +129,15 @@ public static class SettingsSeedData
         new() { Key = "home.feature.heading",     Group = "Homepage Feature", Label = "Section Heading",        Type = "text",     Value = "Icons of Summer", Description = "Centred heading above the two images.",                                   SortOrder = 1 },
 
         new() { Key = "home.feature.b1.image",     Group = "Homepage Feature", Label = "Block 1 — Image",        Type = "image",    Value = "",                Description = "Left model photo. Recommended: portrait, at least 800×1000px.",           SortOrder = 2 },
-        new() { Key = "home.feature.b1.title",     Group = "Homepage Feature", Label = "Block 1 — Title",        Type = "text",     Value = "",                Description = "e.g. \"Knot by Sterlin Glams\".",                                          SortOrder = 3 },
-        new() { Key = "home.feature.b1.text",      Group = "Homepage Feature", Label = "Block 1 — Description",  Type = "textarea", Value = "",                Description = "Short line under the title.",                                             SortOrder = 4 },
-        new() { Key = "home.feature.b1.category",  Group = "Homepage Feature", Label = "Block 1 — Links To",     Type = "category", Value = "",                Description = "Category the \"Shop the Collection\" link opens.",                         SortOrder = 5 },
-        new() { Key = "home.feature.b1.link_text", Group = "Homepage Feature", Label = "Block 1 — Button Text",  Type = "text",     Value = "Shop the Collection", Description = "Link label under the description.",                                    SortOrder = 6 },
+        new() { Key = "home.feature.b1.title",     Group = "Homepage Feature", Label = "Block 1 — Title",        Type = "text",     Value = "",                Description = "Optional heading shown under the image. e.g. \"Knot by Sterlin Glams\".",                                          SortOrder = 3 },
+        new() { Key = "home.feature.b1.text",      Group = "Homepage Feature", Label = "Block 1 — Description",  Type = "textarea", Value = "",                Description = "Optional short line shown under the title.",                                             SortOrder = 4 },
+        new() { Key = "home.feature.b1.category",  Group = "Homepage Feature", Label = "Block 1 — Links To",     Type = "category", Value = "",                Description = "Required — the image becomes clickable and the button appears only once you pick a category here.",                         SortOrder = 5 },
+        new() { Key = "home.feature.b1.link_text", Group = "Homepage Feature", Label = "Block 1 — Button Text",  Type = "text",     Value = "Shop the Collection", Description = "Button label. Only shows when 'Links To' (category) is set.",                                    SortOrder = 6 },
 
         new() { Key = "home.feature.b2.image",     Group = "Homepage Feature", Label = "Block 2 — Image",        Type = "image",    Value = "",                Description = "Right model photo. Recommended: portrait, at least 800×1000px.",          SortOrder = 7 },
-        new() { Key = "home.feature.b2.title",     Group = "Homepage Feature", Label = "Block 2 — Title",        Type = "text",     Value = "",                Description = "e.g. \"HardWear by Sterlin Glams\".",                                      SortOrder = 8 },
-        new() { Key = "home.feature.b2.text",      Group = "Homepage Feature", Label = "Block 2 — Description",  Type = "textarea", Value = "",                Description = "Short line under the title.",                                             SortOrder = 9 },
-        new() { Key = "home.feature.b2.category",  Group = "Homepage Feature", Label = "Block 2 — Links To",     Type = "category", Value = "",                Description = "Category the \"Shop the Collection\" link opens.",                         SortOrder = 10 },
-        new() { Key = "home.feature.b2.link_text", Group = "Homepage Feature", Label = "Block 2 — Button Text",  Type = "text",     Value = "Shop the Collection", Description = "Link label under the description.",                                    SortOrder = 11 },
+        new() { Key = "home.feature.b2.title",     Group = "Homepage Feature", Label = "Block 2 — Title",        Type = "text",     Value = "",                Description = "Optional heading shown under the image. e.g. \"HardWear by Sterlin Glams\".",                                      SortOrder = 8 },
+        new() { Key = "home.feature.b2.text",      Group = "Homepage Feature", Label = "Block 2 — Description",  Type = "textarea", Value = "",                Description = "Optional short line shown under the title.",                                             SortOrder = 9 },
+        new() { Key = "home.feature.b2.category",  Group = "Homepage Feature", Label = "Block 2 — Links To",     Type = "category", Value = "",                Description = "Required — the image becomes clickable and the button appears only once you pick a category here.",                         SortOrder = 10 },
+        new() { Key = "home.feature.b2.link_text", Group = "Homepage Feature", Label = "Block 2 — Button Text",  Type = "text",     Value = "Shop the Collection", Description = "Button label. Only shows when 'Links To' (category) is set.",                                    SortOrder = 11 },
     };
 }
