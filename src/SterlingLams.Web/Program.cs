@@ -226,7 +226,10 @@ app.Use(async (context, next) =>
         "connect-src 'self'; " +
         "object-src 'none'; " +
         "base-uri 'self'; " +
-        "form-action 'self'; " +
+        // Allow the checkout form to redirect to the Paystack hosted payment page (the payment
+        // callback returns to our own origin, covered by 'self'). Without this, CSP blocks the
+        // cross-origin redirect to checkout.paystack.com and the user is never sent to pay.
+        "form-action 'self' https://checkout.paystack.com https://*.paystack.com https://*.paystack.co; " +
         "frame-ancestors 'none'";
     await next();
 });
