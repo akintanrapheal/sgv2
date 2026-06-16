@@ -1,0 +1,95 @@
+@model SterlingLams.Web.Models.ViewModels.TrackOrderViewModel
+@using SterlingLams.Web.Models.Domain
+@{
+    ViewData["Title"] = "Track Your Order";
+    ViewData["Description"] = "Check the status of your Sterlin Glams order with your order number and email.";
+    Layout = "_Layout";
+
+    static (string Label, string Css) StatusBadge(OrderStatus s) => s switch
+    {
+        OrderStatus.Pending        => ("Pending payment", "bg-amber-50 text-amber-700 border-amber-200"),
+        OrderStatus.Confirmed      => ("Confirmed",        "bg-blue-50 text-blue-700 border-blue-200"),
+        OrderStatus.Processing     => ("Processing",       "bg-blue-50 text-blue-700 border-blue-200"),
+        OrderStatus.ReadyForPickup => ("Ready for pickup", "bg-emerald-50 text-emerald-700 border-emerald-200"),
+        OrderStatus.Shipped        => ("Shipped",          "bg-emerald-50 text-emerald-700 border-emerald-200"),
+        OrderStatus.Delivered      => ("Delivered",        "bg-emerald-50 text-emerald-700 border-emerald-200"),
+        OrderStatus.Cancelled      => ("Cancelled",        "bg-neutral-100 text-neutral-500 border-neutral-200"),
+        OrderStatus.Refunded       => ("Refunded",         "bg-rose-50 text-rose-700 border-rose-200"),
+        _                          => (s.ToString(),       "bg-neutral-100 text-neutral-600 border-neutral-200"),
+    };
+}
+
+<div class="max-w-2xl mx-auto px-6 py-16">
+    <div class="text-center mb-10">
+        <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-3">Order status</p>
+        <h1 class="font-cormorant text-4xl font-light">Track Your Order</h1>
+        <p class="text-sm text-neutral-500 font-light mt-3">Enter your order number and the email you used at checkout.</p>
+    </div>
+
+    <form asp-controller="OrderTrack" asp-action="Index" method="post" class="space-y-4 max-w-md mx-auto">
+        @Html.AntiForgeryToken()
+        <div asp-validation-summary="ModelOnly" class="text-sm text-red-600 bg-red-50 px-4 py-3 border border-red-100"></div>
+
+        <div>
+            <label asp-for="OrderNumber" class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Order Number</label>
+            <input asp-for="OrderNumber" class="form-input" placeholder="SL-20260101120000-1234" autocomplete="off" />
+            <span asp-validation-for="OrderNumber" class="text-xs text-red-500 mt-1 block"></span>
+        </div>
+        <div>
+            <label asp-for="Email" class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Email</label>
+            <input asp-for="Email" type="email" class="form-input" placeholder="your@email.com" autocomplete="email" />
+            <span asp-validation-for="Email" class="text-xs text-red-500 mt-1 block"></span>
+        </div>
+        <button type="submit" class="w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-4 hover:bg-brand-600 transition-colors">
+            Track Order
+        </button>
+    </form>
+
+    @if (Model.Order != null)
+    {
+        var o = Model.Order;
+        var badge = StatusBadge(o.Status);
+        <div class="mt-12 border border-neutral-200 rounded-sm">
+            <div class="px-6 py-5 border-b border-neutral-100 flex items-center justify-between gap-4">
+                <div>
+                    <p class="text-xs text-neutral-400">Order</p>
+                    <p class="font-medium text-neutral-800">@o.OrderNumber</p>
+                    <p class="text-xs text-neutral-400 mt-1">Placed @o.CreatedAt.ToString("dd MMM yyyy")</p>
+                </div>
+                <span class="text-xs px-3 py-1.5 rounded-full border @badge.Css">@badge.Label</span>
+            </div>
+
+            <div class="px-6 py-4 border-b border-neutral-100 text-sm space-y-1.5">
+                <p class="text-neutral-600"><span class="text-neutral-400">Fulfilment:</span> @o.FulfillmentType</p>
+                @if (o.FulfillmentType == FulfillmentType.StorePickup && o.PickupStore != null)
+                {
+                    <p class="text-neutral-600"><span class="text-neutral-400">Pickup at:</span> @o.PickupStore.Name</p>
+                }
+                @if (o.FulfillmentType == FulfillmentType.Delivery && o.DeliveryAddress != null)
+                {
+                    <p class="text-neutral-600"><span class="text-neutral-400">Delivering to:</span> @o.DeliveryAddress.City, @o.DeliveryAddress.State</p>
+                }
+                @if (!string.IsNullOrWhiteSpace(o.TrackingNumber))
+                {
+                    <p class="text-neutral-600"><span class="text-neutral-400">Tracking #:</span> <span class="font-mono">@o.TrackingNumber</span></p>
+                }
+            </div>
+
+            <div class="px-6 py-4">
+                @foreach (var item in o.Items)
+                {
+                    <div class="flex justify-between text-sm py-1">
+                        <span class="text-neutral-600 font-light">
+                            @item.ProductName@(string.IsNullOrEmpty(item.VariantName) ? "" : $" ({item.VariantName})") × @item.Quantity
+                        </span>
+                        <span class="text-neutral-700">₦@item.LineTotal.ToString("N0")</span>
+                    </div>
+                }
+                <div class="flex justify-between text-sm font-medium border-t border-neutral-100 mt-3 pt-3">
+                    <span>Total</span>
+                    <span>₦@o.Total.ToString("N0")</span>
+                </div>
+            </div>
+        </div>
+    }
+</div>
