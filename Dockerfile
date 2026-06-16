@@ -13,10 +13,11 @@ RUN npm run build:css
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS dotnet-builder
 WORKDIR /src
 
-# Restore NuGet packages (cached layer)
-COPY SterlingLams.sln ./
+# Restore NuGet packages (cached layer).
+# Restore the web project specifically — restoring the .sln would also pull in the
+# test project, which isn't copied into this build stage.
 COPY src/SterlingLams.Web/SterlingLams.Web.csproj ./src/SterlingLams.Web/
-RUN dotnet restore
+RUN dotnet restore src/SterlingLams.Web/SterlingLams.Web.csproj
 
 # Copy rest and build
 COPY . .
