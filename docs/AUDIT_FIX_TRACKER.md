@@ -4,7 +4,17 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-16 (FX-64 back-in-stock notify now persists + emails on restock, OP-33)
+**Last updated:** 2026-06-16 (FX-65 dev email pickup folder — email pipeline now verifiable without SMTP)
+
+### Email pickup folder (FX-65)
+`SmtpEmailService` previously **no-op'd** when SMTP was unconfigured, so none of the email features
+(order confirmation, password reset, email confirmation, low-stock, fulfilment alert, back-in-stock)
+could be seen or verified before SMTP is wired. Now, when SMTP isn't configured, it writes the fully
+rendered branded `.html` to a **pickup folder** (`App_Data/sent-emails`, gitignored) and returns
+success — in **Development only** (or when `Email:PickupDirectory` is set); Production with no SMTP
+still safely skips. Verified: on startup the low-stock alert wrote a 39 KB branded email
+("Low stock alert — 100 product(s)") to the folder. This makes the whole email suite demonstrable
+now; real delivery still needs SMTP creds in `Email:*`.
 
 > Minor cruft noticed: `StoreInventories.LastSyncedAt` is still NOT NULL (leftover from the retired
 > ERPNext sync). Harmless but pointless; a future migration could drop it.
