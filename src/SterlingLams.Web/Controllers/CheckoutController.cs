@@ -104,27 +104,7 @@ public class CheckoutController : Controller
         var stores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
 
         // Build delivery pricing JSON for client-side zone detection
-        var lagosExpressFee   = await _settings.GetDecimalAsync("shipping.lagos_abuja_express_fee",  4000);
-        var lagosExpressDays  = await _settings.GetAsync("shipping.lagos_abuja_express_days",        "24 - 48 hours");
-        var lagosStdFee       = await _settings.GetDecimalAsync("shipping.lagos_abuja_standard_fee", 2000);
-        var lagosStdDays      = await _settings.GetAsync("shipping.lagos_abuja_standard_days",       "2 - 4 working days");
-        var natStdFee         = await _settings.GetDecimalAsync("shipping.national_standard_fee",    7500);
-        var natStdDays        = await _settings.GetAsync("shipping.national_standard_days",          "2 - 5 working days");
-
-        var pricingJson = System.Text.Json.JsonSerializer.Serialize(new
-        {
-            lagosAbuja = new[]
-            {
-                new { type = "Express",  label = "Express Delivery",  fee = lagosExpressFee, timeframe = lagosExpressDays },
-                new { type = "Standard", label = "Standard Delivery", fee = lagosStdFee,     timeframe = lagosStdDays     },
-            },
-            national = new[]
-            {
-                new { type = "Standard", label = "Standard Delivery", fee = natStdFee, timeframe = natStdDays },
-            },
-            lagosLGAs       = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs,
-            abujaKeywords   = new[] { "FCT", "Abuja", "Federal Capital" },
-        });
+        var pricingJson = await BuildDeliveryPricingJsonAsync();
 
         var vm = new CheckoutViewModel
         {
@@ -167,11 +147,84 @@ public class CheckoutController : Controller
         return View(vm);
     }
 
+    // Build the client-side delivery-pricing JSON (zone detection + fees).
+    private async Task<string> BuildDeliveryPricingJsonAsync()
+    {
+        var lagosExpressFee   = await _settings.GetDecimalAsync("shipping.lagos_abuja_express_fee",  4000);
+        var lagosExpressDays  = await _settings.GetAsync("shipping.lagos_abuja_express_days",        "24 - 48 hours");
+        var lagosStdFee       = await _settings.GetDecimalAsync("shipping.lagos_abuja_standard_fee", 2000);
+        var lagosStdDays      = await _settings.GetAsync("shipping.lagos_abuja_standard_days",       "2 - 4 working days");
+        var natStdFee         = await _settings.GetDecimalAsync("shipping.national_standard_fee",    7500);
+        var natStdDays        = await _settings.GetAsync("shipping.national_standard_days",          "2 - 5 working days");
+
+        return System.Text.Json.JsonSerializer.Serialize(new
+        {
+            lagosAbuja = new[]
+            {
+                new { type = "Express",  label = "Express Delivery",  fee = lagosExpressFee, timeframe = lagosExpressDays },
+                new { type = "Standard", label = "Standard Delivery", fee = lagosStdFee,     timeframe = lagosStdDays     },
+            },
+            national = new[]
+            {
+                new { type = "Standard", label = "Standard Delivery", fee = natStdFee, timeframe = natStdDays },
+            },
+            lagosLGAs       = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs,
+            abujaKeywords   = new[] { "FCT", "Abuja", "Federal Capital" },
+        });
+    }
+
+    // Re-populate the display-only fields the checkout view needs (states, stores, pricing, totals,
+    // loyalty). POST model binding only fills the submitted form fields, so this MUST run before
+    // re-rendering the checkout view on a validation error — otherwise the State dropdown, delivery
+    // options and order summary all come back empty.
+    private async Task RehydrateCheckoutDisplayAsync(CheckoutViewModel vm)
+    {
+        var cart = GetCart();
+        var user = await _userManager.GetUserAsync(User);
+
+        vm.Cart                = cart;
+        vm.Subtotal            = cart.Subtotal;
+        vm.DiscountAmount      = cart.DiscountAmount;
+        vm.AppliedDiscountCode = cart.AppliedDiscountCode;
+        vm.DiscountDescription = cart.DiscountDescription;
+        vm.DeliveryPricingJson = await BuildDeliveryPricingJsonAsync();
+        vm.NigerianStates      = SterlingLams.Web.Services.DeliveryZoneService.NigerianStates;
+        vm.LagosLGAs           = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs;
+        vm.PaystackPublicKey   = _config["Payment:Paystack:PublicKey"];
+        vm.PickupAvailable     = await _settings.GetBoolAsync("store.pickup_available", true);
+        vm.AvailableStores     = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
+            .Select(s => new StorePickupOptionViewModel
+            {
+                StoreId = s.Id, StoreName = s.Name, Address = s.Address,
+                OpeningHours = s.OpeningHours, AllItemsAvailable = true
+            }).ToList();
+
+        if (user != null && await _loyalty.RedemptionEnabledAsync())
+        {
+            var balance = await _loyalty.GetBalanceAsync(user.Id);
+            if (balance > 0)
+            {
+                var pointValue = await _loyalty.PointValueAsync();
+                vm.LoyaltyAvailable     = true;
+                vm.LoyaltyPointsBalance = balance;
+                vm.LoyaltyPointValue    = pointValue;
+                vm.LoyaltyMaxDiscount   = Math.Min(balance * pointValue, cart.Subtotal);
+            }
+        }
+    }
+
+    // Re-render checkout after a validation error, with all display data repopulated.
+    private async Task<IActionResult> RedisplayCheckoutAsync(CheckoutViewModel vm)
+    {
+        await RehydrateCheckoutDisplayAsync(vm);
+        return View("Index", vm);
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> PlaceOrder(CheckoutViewModel vm)
     {
-        if (!ModelState.IsValid) return View("Index", vm);
+        if (!ModelState.IsValid) return await RedisplayCheckoutAsync(vm);
 
         var cart = GetCart();
         if (cart.IsEmpty) return RedirectToAction("Index", "Cart");
@@ -201,7 +254,7 @@ public class CheckoutController : Controller
                 vm.Cart = cart;
                 vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
                     .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
-                return View("Index", vm);
+                return await RedisplayCheckoutAsync(vm);
             }
 
             // Resolve the guest's account by email — but never silently attach this order to a real
@@ -215,7 +268,7 @@ public class CheckoutController : Controller
                 vm.Cart = cart;
                 vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
                     .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
-                return View("Index", vm);
+                return await RedisplayCheckoutAsync(vm);
             }
 
             user = existing;
@@ -240,7 +293,7 @@ public class CheckoutController : Controller
                     vm.Cart = cart;
                     vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
                         .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
-                    return View("Index", vm);
+                    return await RedisplayCheckoutAsync(vm);
                 }
                 _logger.LogInformation("Guest account created for checkout: {Email}", vm.GuestEmail);
             }
@@ -255,7 +308,7 @@ public class CheckoutController : Controller
                 vm.Cart = cart;
                 vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
                     .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
-                return View("Index", vm);
+                return await RedisplayCheckoutAsync(vm);
             }
         }
 
@@ -409,7 +462,7 @@ public class CheckoutController : Controller
             }
 
             ModelState.AddModelError("", "Payment could not be initiated. Please try again.");
-            return View("Index", vm);
+            return await RedisplayCheckoutAsync(vm);
         }
 
         return Redirect(result.AuthorizationUrl!);

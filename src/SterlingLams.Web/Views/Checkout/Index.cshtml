@@ -294,6 +294,13 @@ function onStateChanged(state) {
     if (isLagos) {
         lagosSelect.classList.remove('hidden');
         cityInput.classList.add('hidden');
+        // Keep the (required, now-hidden) City field in sync with the chosen area so it isn't
+        // silently left empty — and re-select the saved area after a postback.
+        if (lagosSelect.value) {
+            cityInput.value = lagosSelect.value;
+        } else if (cityInput.value && [...lagosSelect.options].some(o => o.value === cityInput.value)) {
+            lagosSelect.value = cityInput.value;
+        }
     } else {
         lagosSelect.classList.add('hidden');
         cityInput.classList.remove('hidden');
