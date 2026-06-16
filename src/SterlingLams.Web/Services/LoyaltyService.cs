@@ -22,6 +22,10 @@ public interface ILoyaltyService
     /// <summary>Deducts the points earmarked on a paid order (Order.LoyaltyPointsRedeemed), once.
     /// Safe to call from every paid-order path — idempotent via Order.LoyaltyRedeemedAt.</summary>
     Task RedeemForOrderAsync(int orderId);
+
+    /// <summary>Reverses loyalty on a fully-refunded order: claws back the points earned and returns
+    /// the points redeemed. Once per order (idempotent via Order.LoyaltyReversedAt).</summary>
+    Task ReverseForOrderAsync(int orderId);
 }
 
 public class LoyaltyService : ILoyaltyService
@@ -86,6 +90,55 @@ public class LoyaltyService : ILoyaltyService
             if (toDeduct < order.LoyaltyPointsRedeemed)
                 _logger.LogWarning("Order {OrderNumber} earmarked {Earmarked} pts but only {Deducted} were available.",
                     order.OrderNumber, order.LoyaltyPointsRedeemed, toDeduct);
+        }
+
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task ReverseForOrderAsync(int orderId)
+    {
+        var order = await _db.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order is null || order.LoyaltyReversedAt != null) return; // idempotent
+
+        var now = DateTime.UtcNow;
+        order.LoyaltyReversedAt = now;
+
+        var userId = order.Channel == OrderChannel.Pos ? order.CustomerUserId : order.UserId;
+        var account = string.IsNullOrEmpty(userId)
+            ? null
+            : await _db.LoyaltyAccounts.FirstOrDefaultAsync(a => a.UserId == userId);
+
+        if (account != null)
+        {
+            // Points earned on this order (the accrual entry carries OrderId, Points > 0).
+            var earned = await _db.PointsLedgerEntries
+                .Where(p => p.OrderId == orderId && p.Points > 0)
+                .SumAsync(p => (int?)p.Points) ?? 0;
+            // Points the buyer redeemed (tracked on the order; the redeem ledger row has OrderId = null).
+            var redeemed = order.LoyaltyRedeemedAt != null ? order.LoyaltyPointsRedeemed : 0;
+
+            if (earned > 0)
+                account.Entries.Add(new PointsLedgerEntry
+                {
+                    Points = -earned, Reason = $"Reversed on refund of order {order.OrderNumber}",
+                    OrderId = null, CreatedAt = now
+                });
+            if (redeemed > 0)
+                account.Entries.Add(new PointsLedgerEntry
+                {
+                    Points = redeemed, Reason = $"Returned on refund of order {order.OrderNumber}",
+                    OrderId = null, CreatedAt = now
+                });
+
+            var newBalance = account.PointsBalance + redeemed - earned;
+            if (newBalance < 0)
+            {
+                _logger.LogWarning("Loyalty reversal for {OrderNumber} would go negative ({Balance}); clamped to 0.",
+                    order.OrderNumber, newBalance);
+                newBalance = 0;
+            }
+            account.PointsBalance = newBalance;
+            account.UpdatedAt = now;
         }
 
         await _db.SaveChangesAsync();

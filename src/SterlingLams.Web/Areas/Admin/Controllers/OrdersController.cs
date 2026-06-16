@@ -21,13 +21,15 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly ApplicationDbContext _db;
         private readonly IStockService _stock;
         private readonly IPaymentService _payment;
+        private readonly ILoyaltyService _loyalty;
         private const int PageSize = 25;
 
-        public OrdersController(ApplicationDbContext db, IStockService stock, IPaymentService payment)
+        public OrdersController(ApplicationDbContext db, IStockService stock, IPaymentService payment, ILoyaltyService loyalty)
         {
             _db = db;
             _stock = stock;
             _payment = payment;
+            _loyalty = loyalty;
         }
 
         public async Task<IActionResult> Index(string status = "", string q = "", int page = 1)
@@ -294,6 +296,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 TempData["Error"] = "Stock levels changed while processing the refund. Please try again.";
                 return RedirectToAction(nameof(Detail), new { id });
             }
+
+            // On a full refund, reverse loyalty: claw back points earned, return points redeemed.
+            if (fullyRefunded)
+                await _loyalty.ReverseForOrderAsync(order.Id);
 
             await LogAsync("Refund", "Order", order.Id.ToString(),
                 $"Refund {refundNumber} for {order.OrderNumber}: ₦{amount:N0}, {refund.Items.Sum(r => r.Quantity)} item(s)" +

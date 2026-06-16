@@ -82,6 +82,8 @@ public class Order
     public decimal LoyaltyDiscount { get; set; }
     /// <summary>Set when the earmarked points were actually deducted (on payment) — idempotency guard.</summary>
     public DateTime? LoyaltyRedeemedAt { get; set; }
+    /// <summary>Set when loyalty was reversed on a full refund (claw back earned, return redeemed) — idempotency guard.</summary>
+    public DateTime? LoyaltyReversedAt { get; set; }
 
     public string? PaymentReference { get; set; }
     public string? PaymentProvider { get; set; }
