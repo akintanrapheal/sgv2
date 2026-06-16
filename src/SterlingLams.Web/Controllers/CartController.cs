@@ -287,4 +287,58 @@ public class CartController : Controller
     {
         HttpContext.Session.SetString(CartSessionKey, JsonSerializer.Serialize(cart));
     }
+
+    private class SnapshotItem { public int ProductId { get; set; } public int? VariantId { get; set; } public int Quantity { get; set; } }
+
+    // ── Abandoned-cart recovery ───────────────────────────────────────────────
+    // Clicked from the recovery email. Rebuilds the bag from the snapshot, re-validating each item
+    // against current price/availability, then marks the snapshot recovered.
+    [HttpGet("/cart/recover")]
+    public async Task<IActionResult> Recover(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return RedirectToAction(nameof(Index));
+
+        var ab = await _db.AbandonedCarts.FirstOrDefaultAsync(a => a.Token == token);
+        if (ab == null)
+        {
+            TempData["Error"] = "That recovery link is no longer valid.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var snapshot = JsonSerializer.Deserialize<List<SnapshotItem>>(ab.ItemsJson) ?? new();
+        var cart = GetCart();
+        int added = 0;
+        foreach (var s in snapshot)
+        {
+            if (cart.Items.Any(i => i.ProductId == s.ProductId && i.VariantId == s.VariantId)) continue;
+            var product = await _db.Products.Include(p => p.Images).Include(p => p.Variants)
+                .FirstOrDefaultAsync(p => p.Id == s.ProductId && p.IsActive);
+            if (product == null) continue;
+            var available = await CombinedAvailableAsync(s.ProductId, s.VariantId);
+            if (available <= 0) continue;
+            var variant = s.VariantId.HasValue ? product.Variants.FirstOrDefault(v => v.Id == s.VariantId) : null;
+            cart.Items.Add(new CartItemViewModel
+            {
+                ProductId = product.Id,
+                VariantId = s.VariantId,
+                ProductName = product.Name,
+                VariantName = variant?.Name,
+                Slug = product.Slug,
+                ImageUrl = product.Images.FirstOrDefault(i => i.IsPrimary)?.Url ?? product.Images.FirstOrDefault()?.Url ?? "/images/placeholder.jpg",
+                UnitPrice = product.Price + (variant?.PriceAdjustment ?? 0),
+                Quantity = Math.Min(Math.Max(1, s.Quantity), available),
+                MaxQuantity = available
+            });
+            added++;
+        }
+        SaveCart(cart);
+
+        ab.RecoveredAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        TempData[added > 0 ? "Success" : "Error"] = added > 0
+            ? "Welcome back — we've restored your bag."
+            : "Those items are no longer available.";
+        return RedirectToAction(nameof(Index));
+    }
 }

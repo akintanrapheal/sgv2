@@ -67,6 +67,8 @@ public static class SettingsSeedData
         new() { Key = "notifications.new_order",       Group = "Notifications", Label = "New Order Alerts",               Type = "boolean", Value = "true",  Description = "Send email to admin when a new order is placed.",          SortOrder = 2 },
         new() { Key = "notifications.low_stock",       Group = "Notifications", Label = "Low Stock Alerts",               Type = "boolean", Value = "true",  Description = "Send email to admin when stock falls below threshold.",     SortOrder = 3 },
         new() { Key = "notifications.order_confirmed", Group = "Notifications", Label = "Customer Order Confirmation",    Type = "boolean", Value = "true",  Description = "Send order confirmation email to customer after payment.",  SortOrder = 4 },
+        new() { Key = "notifications.abandoned_cart",       Group = "Notifications", Label = "Abandoned Cart Recovery",        Type = "boolean", Value = "true", Description = "Email shoppers a recovery link if they reach checkout but don't pay.", SortOrder = 5 },
+        new() { Key = "notifications.abandoned_cart_hours", Group = "Notifications", Label = "Abandoned Cart Delay (hours)",   Type = "number",  Value = "4",    Description = "How long after checkout to send the recovery email.",               SortOrder = 6 },
 
         // ── Loyalty ───────────────────────────────────────────────────────────
         new() { Key = "loyalty.enabled",         Group = "Loyalty", Label = "Enable Loyalty Points",     Type = "boolean", Value = "true", Description = "Award points to customers on completed orders.",                         SortOrder = 1 },

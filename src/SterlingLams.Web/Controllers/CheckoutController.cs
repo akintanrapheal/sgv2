@@ -381,6 +381,9 @@ public class CheckoutController : Controller
             return RedirectToAction("Index", "Cart");
         }
 
+        // Snapshot the cart for abandoned-cart recovery (emailed later if payment isn't completed).
+        await CaptureAbandonedCartAsync(user.Email, cart);
+
         // Initiate payment
         var callbackUrl = Url.Action("PaymentCallback", "Checkout", null, Request.Scheme) ?? string.Empty;
         var result = await _payment.InitiatePaymentAsync(new InitiatePaymentRequest
@@ -610,4 +613,32 @@ public class CheckoutController : Controller
 
     private void SaveCart(CartViewModel cart) =>
         HttpContext.Session.SetString(CartSessionKey, JsonSerializer.Serialize(cart));
+
+    /// <summary>Upserts the abandoned-cart snapshot for an email (one row each), refreshing items +
+    /// resetting the clock so the recovery email fires only if this checkout isn't completed.</summary>
+    private async Task CaptureAbandonedCartAsync(string? email, CartViewModel cart)
+    {
+        if (string.IsNullOrWhiteSpace(email) || cart.IsEmpty) return;
+        var snapshot = JsonSerializer.Serialize(
+            cart.Items.Select(i => new { i.ProductId, i.VariantId, i.Quantity }));
+        var now = DateTime.UtcNow;
+
+        var existing = await _db.AbandonedCarts.FirstOrDefaultAsync(a => a.Email == email);
+        if (existing == null)
+        {
+            _db.AbandonedCarts.Add(new SterlingLams.Web.Models.Domain.AbandonedCart
+            {
+                Email = email, Token = Guid.NewGuid().ToString("N"),
+                ItemsJson = snapshot, Subtotal = cart.Subtotal, ItemCount = cart.TotalItems, CreatedAt = now
+            });
+        }
+        else
+        {
+            existing.Token = Guid.NewGuid().ToString("N");
+            existing.ItemsJson = snapshot; existing.Subtotal = cart.Subtotal; existing.ItemCount = cart.TotalItems;
+            existing.CreatedAt = now; existing.EmailedAt = null; existing.RecoveredAt = null;
+        }
+        try { await _db.SaveChangesAsync(); }
+        catch (DbUpdateException) { _db.ChangeTracker.Clear(); } // benign race on the unique email
+    }
 }

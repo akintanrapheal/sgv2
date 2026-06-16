@@ -142,6 +142,7 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.ReservationSwe
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.FulfilmentRetryService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.LowStockAlertService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.BackInStockNotifier>();
+builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.AbandonedCartService>();
 
 // ─── MVC ────────────────────────────────────────────────────────────────────
 builder.Services.AddControllersWithViews()

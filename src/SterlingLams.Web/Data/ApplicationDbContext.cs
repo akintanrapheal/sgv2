@@ -43,10 +43,20 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<LoyaltyAccount> LoyaltyAccounts => Set<LoyaltyAccount>();
     public DbSet<PointsLedgerEntry> PointsLedgerEntries => Set<PointsLedgerEntry>();
     public DbSet<BackInStockRequest> BackInStockRequests => Set<BackInStockRequest>();
+    public DbSet<AbandonedCart> AbandonedCarts => Set<AbandonedCart>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+
+        // ─── Abandoned carts ────────────────────────────────────────────────
+        builder.Entity<AbandonedCart>(e =>
+        {
+            e.HasIndex(a => a.Email).IsUnique();   // one snapshot per email (upserted each checkout)
+            e.HasIndex(a => a.Token).IsUnique();
+            e.HasIndex(a => new { a.RecoveredAt, a.EmailedAt, a.CreatedAt }); // sweep filter
+            e.Property(a => a.Subtotal).HasPrecision(18, 2);
+        });
 
         // ─── Back-in-stock requests ─────────────────────────────────────────
         builder.Entity<BackInStockRequest>(e =>
