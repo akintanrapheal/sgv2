@@ -182,14 +182,16 @@ public class AccountController : Controller
         if (_env.IsDevelopment())
             _logger.LogInformation("[DEV] Email confirmation link for {Email}: {Link}", user.Email, confirmLink);
 
+        var subject = await _settings.GetAsync("email.email_confirm.subject", "Confirm your email");
+        var intro = await _settings.GetAsync("email.email_confirm.intro", "Thanks for creating an account with us. Please confirm this is your email address by clicking below.");
         var body = $@"
             <h2 style=""font-size:18px;margin:0 0 16px;"">Confirm your email</h2>
-            <p>Thanks for creating an account with Sterlin Glams. Please confirm this is your email address by clicking below.</p>
+            <p>{System.Net.WebUtility.HtmlEncode(intro)}</p>
             <p style=""margin:28px 0;"">
                 <a href=""{confirmLink}"" style=""background:#0a0a0a;color:#ffffff;text-decoration:none;padding:12px 28px;display:inline-block;font-size:13px;letter-spacing:1px;text-transform:uppercase;"">Confirm Email</a>
             </p>
             <p style=""font-size:13px;color:#78716c;"">If you didn't create this account, you can safely ignore this email.</p>";
-        await _email.SendAsync(user.Email, "Confirm your email", body, $"{user.FirstName} {user.LastName}".Trim());
+        await _email.SendAsync(user.Email, subject, body, $"{user.FirstName} {user.LastName}".Trim());
     }
 
     [HttpGet]
@@ -414,14 +416,16 @@ public class AccountController : Controller
                 new { token, email = user.Email }, protocol: Request.Scheme)!;
             _logger.LogInformation("Password reset requested for {Email}.", email);
 
+            var subject = await _settings.GetAsync("email.password_reset.subject", "Reset your password");
+            var intro = await _settings.GetAsync("email.password_reset.intro", "We received a request to reset your password. Click below to choose a new one. This link expires shortly.");
             var body = $@"
                 <h2 style=""font-size:18px;margin:0 0 16px;"">Reset your password</h2>
-                <p>We received a request to reset the password for your account. Click the button below to choose a new one. This link expires shortly.</p>
+                <p>{System.Net.WebUtility.HtmlEncode(intro)}</p>
                 <p style=""margin:28px 0;"">
                     <a href=""{resetLink}"" style=""background:#0a0a0a;color:#ffffff;text-decoration:none;padding:12px 28px;display:inline-block;font-size:13px;letter-spacing:1px;text-transform:uppercase;"">Reset Password</a>
                 </p>
                 <p style=""font-size:13px;color:#78716c;"">If you didn't request this, you can safely ignore this email — your password won't change.</p>";
-            await _email.SendAsync(user.Email!, "Reset your password", body);
+            await _email.SendAsync(user.Email!, subject, body);
         }
 
         TempData["ForgotPasswordSent"] = true;

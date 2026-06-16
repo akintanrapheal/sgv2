@@ -531,12 +531,14 @@ public class CheckoutController : Controller
             if (!string.IsNullOrWhiteSpace(customerEmail)
                 && await _settings.GetBoolAsync("notifications.order_confirmed", true))
             {
+                var subject = await _settings.GetAsync("email.order_confirmed.subject", "Your order is confirmed");
+                var intro = await _settings.GetAsync("email.order_confirmed.intro", "Thank you for your order — here's your summary. We'll email you when it's on the way.");
                 var body = $@"
                     <h2 style=""font-size:18px;margin:0 0 16px;"">Thank you for your order</h2>
-                    <p>Your order <strong>{Enc(order.OrderNumber)}</strong> has been confirmed and is being prepared. Here's a summary:</p>
-                    {summary}
-                    <p style=""font-size:13px;color:#78716c;"">We'll be in touch with delivery or pickup details. Thank you for shopping with us.</p>";
-                await _email.SendAsync(customerEmail!, $"Order {order.OrderNumber} confirmed", body, ct: HttpContext.RequestAborted);
+                    <p>{Enc(intro)}</p>
+                    <p>Order <strong>{Enc(order.OrderNumber)}</strong>:</p>
+                    {summary}";
+                await _email.SendAsync(customerEmail!, subject, body, ct: HttpContext.RequestAborted);
             }
 
             // Admin new-order alert

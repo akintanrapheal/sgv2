@@ -76,6 +76,25 @@ public static class SettingsSeedData
         new() { Key = "loyalty.point_value",        Group = "Loyalty", Label = "Point Value on Redemption (₦)",          Type = "number",  Value = "1",    Description = "₦ discount per point when redeemed at checkout (e.g. 1 = 1 point is worth ₦1).", SortOrder = 3 },
         new() { Key = "loyalty.redemption_enabled", Group = "Loyalty", Label = "Allow Redeeming Points at Checkout",     Type = "boolean", Value = "true", Description = "Let signed-in customers apply their points for a discount at checkout.",        SortOrder = 4 },
 
+        // ── Emails (customizer) ───────────────────────────────────────────────
+        // Branding (shared by every email)
+        new() { Key = "email.from_name",    Group = "Emails", Label = "Sender Name",          Type = "text",     Value = "Sterlin Glams", Description = "Display name on the From line of every email.",            SortOrder = 1 },
+        new() { Key = "email.reply_to",     Group = "Emails", Label = "Reply-To Address",     Type = "email",    Value = "",              Description = "Where customer replies go (optional). Blank = no reply-to.", SortOrder = 2 },
+        new() { Key = "email.header_color", Group = "Emails", Label = "Header Colour",         Type = "color",    Value = "#0a0a0a",       Description = "Background colour of the email header band.",             SortOrder = 3 },
+        new() { Key = "email.footer_text",  Group = "Emails", Label = "Footer Text",           Type = "textarea", Value = "This is an automated message — please don't reply.", Description = "Small print at the bottom of every email.", SortOrder = 4 },
+
+        // Per-email subject + intro (structure/links stay code-controlled)
+        new() { Key = "email.order_confirmed.subject", Group = "Emails", Label = "Order Confirmation — Subject", Type = "text",     Value = "Your order is confirmed", Description = "Customer order confirmation.",                          SortOrder = 10 },
+        new() { Key = "email.order_confirmed.intro",   Group = "Emails", Label = "Order Confirmation — Intro",   Type = "textarea", Value = "Thank you for your order — here's your summary. We'll email you when it's on the way.", Description = "Opening line above the order summary.", SortOrder = 11 },
+        new() { Key = "email.password_reset.subject",  Group = "Emails", Label = "Password Reset — Subject",     Type = "text",     Value = "Reset your password", Description = "Password reset email.",                                     SortOrder = 12 },
+        new() { Key = "email.password_reset.intro",    Group = "Emails", Label = "Password Reset — Intro",       Type = "textarea", Value = "We received a request to reset your password. Click below to choose a new one. This link expires shortly.", Description = "Text above the reset button.", SortOrder = 13 },
+        new() { Key = "email.email_confirm.subject",   Group = "Emails", Label = "Email Confirmation — Subject", Type = "text",     Value = "Confirm your email", Description = "Sent after registration.",                                   SortOrder = 14 },
+        new() { Key = "email.email_confirm.intro",     Group = "Emails", Label = "Email Confirmation — Intro",   Type = "textarea", Value = "Thanks for creating an account with us. Please confirm this is your email address by clicking below.", Description = "Text above the confirm button.", SortOrder = 15 },
+        new() { Key = "email.back_in_stock.subject",   Group = "Emails", Label = "Back-in-Stock — Subject",      Type = "text",     Value = "Good news — it's back in stock", Description = "Sent when a watched item returns.",               SortOrder = 16 },
+        new() { Key = "email.back_in_stock.intro",     Group = "Emails", Label = "Back-in-Stock — Intro",        Type = "textarea", Value = "An item you wanted is available again. These pieces sell quickly, so don't wait.", Description = "Opening line (the product name is added below).", SortOrder = 17 },
+        new() { Key = "email.abandoned_cart.subject",  Group = "Emails", Label = "Abandoned Cart — Subject",     Type = "text",     Value = "You left something in your bag", Description = "Cart recovery email.",                            SortOrder = 18 },
+        new() { Key = "email.abandoned_cart.intro",    Group = "Emails", Label = "Abandoned Cart — Intro",       Type = "textarea", Value = "You have items waiting in your bag — we've saved them for you.", Description = "Opening line above the recovery button.", SortOrder = 19 },
+
         // ── Store Operations ──────────────────────────────────────────────────
         new() { Key = "store.accepting_orders",    Group = "Store", Label = "Accepting Orders",         Type = "boolean", Value = "true",  Description = "Turn off to temporarily stop customers from placing orders.",          SortOrder = 1 },
         new() { Key = "store.maintenance_mode",    Group = "Store", Label = "Maintenance Mode",         Type = "boolean", Value = "false", Description = "Shows a maintenance page to all visitors (admin still works).",        SortOrder = 2 },

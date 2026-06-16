@@ -51,6 +51,8 @@ public class AbandonedCartService : BackgroundService
         var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var baseUrl = (config["App:BaseUrl"] ?? "").TrimEnd('/');
+        var subject = await settings.GetAsync("email.abandoned_cart.subject", "You left something in your bag");
+        var intro = await settings.GetAsync("email.abandoned_cart.intro", "You have items waiting in your bag — we've saved them for you.");
         var now = DateTime.UtcNow;
         int sent = 0;
 
@@ -65,12 +67,13 @@ public class AbandonedCartService : BackgroundService
                 ? $@"<p style=""margin:24px 0;""><a href=""{link}"" style=""background:#0a0a0a;color:#fff;text-decoration:none;padding:12px 28px;display:inline-block;font-size:13px;letter-spacing:1px;text-transform:uppercase;"">Complete your order</a></p>"
                 : "<p>Return to our website to complete your order.</p>";
             var body = $@"
-                <h2 style=""font-size:18px;margin:0 0 12px;"">You left something behind</h2>
-                <p>You have {ab.ItemCount} item(s) (₦{ab.Subtotal:N0}) waiting in your bag. We've saved them for you.</p>
+                <h2 style=""font-size:18px;margin:0 0 12px;"">{System.Net.WebUtility.HtmlEncode(subject)}</h2>
+                <p>{System.Net.WebUtility.HtmlEncode(intro)}</p>
+                <p>{ab.ItemCount} item(s) · ₦{ab.Subtotal:N0}</p>
                 {cta}
                 <p style=""font-size:13px;color:#78716c;"">Stock is limited and these pieces sell quickly.</p>";
 
-            if (await email.SendAsync(ab.Email, "You left something in your bag", body, ct: ct))
+            if (await email.SendAsync(ab.Email, subject, body, ct: ct))
             {
                 ab.EmailedAt = now;
                 sent++;

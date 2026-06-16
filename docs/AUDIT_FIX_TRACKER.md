@@ -4,7 +4,18 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-16 (FX-66 abandoned-cart recovery — capture + email + recovery link, OP-36)
+**Last updated:** 2026-06-16 (FX-67 email customizer — admin Settings → Emails: branding + per-email copy)
+
+### Email customizer (FX-67)
+New **Settings → Emails** group (no separate admin screen — uses the existing settings page):
+**branding** (`email.from_name`, `email.reply_to`, `email.header_color` colour-picker, `email.footer_text`;
+logo via `general.logo_url` when an absolute URL is resolvable) applied to the shared `Wrap` shell + the
+From/Reply-To line in `EmailService`; and **per-email subject + intro** for order confirmation, password
+reset, email confirmation, back-in-stock and abandoned-cart (defaults match the previous hardcoded text, so
+nothing changes until edited). Structure/links stay code-controlled (no template engine / merge variables —
+deliberate, to avoid an admin breaking a critical email). Verified (DB + pickup folder): setting a custom
+header colour / sender / footer rendered in the next email (`#bb0000`, "CUSTOM BRAND", custom footer); the
+Emails tab renders all fields incl. a native colour input.
 
 ### Email pickup folder (FX-65)
 `SmtpEmailService` previously **no-op'd** when SMTP was unconfigured, so none of the email features

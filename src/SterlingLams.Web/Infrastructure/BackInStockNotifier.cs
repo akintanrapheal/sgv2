@@ -57,8 +57,11 @@ public class BackInStockNotifier : BackgroundService
             .ToDictionary(x => x.ProductId, x => x.Avail);
 
         var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
+        var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var baseUrl = (config["App:BaseUrl"] ?? "").TrimEnd('/');
+        var subject = await settings.GetAsync("email.back_in_stock.subject", "Good news — it's back in stock");
+        var intro = await settings.GetAsync("email.back_in_stock.intro", "An item you wanted is available again. These pieces sell quickly, so don't wait.");
         var now = DateTime.UtcNow;
         int notified = 0;
 
@@ -75,13 +78,14 @@ public class BackInStockNotifier : BackgroundService
                 : "<p>Visit our website to order before it sells out again.</p>";
             var name = System.Net.WebUtility.HtmlEncode(product.Name);
             var body = $@"
-                <h2 style=""font-size:18px;margin:0 0 12px;"">Good news — it's back in stock</h2>
-                <p><strong>{name}</strong> is available again. These pieces sell quickly, so don't wait.</p>
+                <h2 style=""font-size:18px;margin:0 0 12px;"">{System.Net.WebUtility.HtmlEncode(subject)}</h2>
+                <p><strong>{name}</strong> is back in stock.</p>
+                <p>{System.Net.WebUtility.HtmlEncode(intro)}</p>
                 {cta}";
 
             foreach (var req in group)
             {
-                if (await email.SendAsync(req.Email, $"Back in stock: {product.Name}", body, ct: ct))
+                if (await email.SendAsync(req.Email, subject, body, ct: ct))
                 {
                     req.NotifiedAt = now;
                     notified++;
