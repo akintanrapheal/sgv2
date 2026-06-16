@@ -6,6 +6,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>SterlingLams.Web</RootNamespace>
     <AssemblyName>SterlingLams.Web</AssemblyName>
+
+    <!-- Project authorship / assembly metadata -->
+    <Product>Sterlin Glams Platform</Product>
+    <Authors>Dev Rapheal</Authors>
+    <Company>Sterlin Glams</Company>
+    <Description>Sterlin Glams e-commerce storefront, admin back office, and in-house inventory/POS platform. Developed by Dev Rapheal.</Description>
+    <Copyright>Copyright © Sterlin Glams. Developed by Dev Rapheal.</Copyright>
   </PropertyGroup>
 
   <ItemGroup>

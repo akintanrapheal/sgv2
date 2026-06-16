@@ -1,0 +1,77 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Deploy Sterlin Glams to Azure App Service (Linux)
+#  Developed by Dev Rapheal.
+#
+#  Flow:  push to main  ->  build CSS + publish  ->  apply EF migrations (gated)  ->  deploy
+#
+#  Required GitHub repository secrets (Settings -> Secrets and variables -> Actions):
+#    AZURE_WEBAPP_PUBLISH_PROFILE  -- the App Service "Get publish profile" XML
+#    PROD_DB_CONNECTION            -- Npgsql connection string for the prod PostgreSQL DB
+#                                     e.g. Host=...postgres.database.azure.com;Port=5432;
+#                                          Database=sterlinglams;Username=...;Password=...;SSL Mode=Require;Trust Server Certificate=true
+#
+#  Set AZURE_WEBAPP_NAME below to your App Service name.
+# ─────────────────────────────────────────────────────────────────────────────
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}      # lets you run it manually from the Actions tab
+
+env:
+  AZURE_WEBAPP_NAME: sterlinglams                       # <-- change to your App Service name
+  PROJECT: src/SterlingLams.Web/SterlingLams.Web.csproj
+  DOTNET_VERSION: '9.0.x'
+  NODE_VERSION: '20'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-${{ github.ref }}        # never run two deploys at once (avoids migration races)
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Build the Tailwind CSS (package.json + scripts live at the repo root) ──
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build:css
+
+      # ── .NET publish (BuildTailwind=false: CSS already built above) ──
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - run: dotnet restore ${{ env.PROJECT }}
+      - run: >
+          dotnet publish ${{ env.PROJECT }}
+          --configuration Release --no-restore
+          /p:BuildTailwind=false
+          --output ${{ github.workspace }}/publish
+
+      # ── Apply database migrations as a GATED step (OP-12: the app does NOT auto-migrate) ──
+      # Build a self-contained migration bundle and run it against the prod DB BEFORE deploying.
+      - name: Apply EF Core migrations
+        run: |
+          dotnet tool install --global dotnet-ef --version 9.*
+          export PATH="$PATH:$HOME/.dotnet/tools"
+          dotnet ef migrations bundle \
+            --project ${{ env.PROJECT }} \
+            --configuration Release \
+            --self-contained -r linux-x64 \
+            --output efbundle --force
+          ./efbundle --connection "$PROD_DB_CONNECTION"
+        env:
+          PROD_DB_CONNECTION: ${{ secrets.PROD_DB_CONNECTION }}
+
+      # ── Deploy the published app to Azure App Service ──
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: ${{ github.workspace }}/publish

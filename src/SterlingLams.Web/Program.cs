@@ -1,3 +1,7 @@
+// ─────────────────────────────────────────────────────────────────────────────
+//  Sterlin Glams Platform — storefront, admin back office & in-house inventory/POS
+//  Developed by Dev Rapheal.
+// ─────────────────────────────────────────────────────────────────────────────
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;

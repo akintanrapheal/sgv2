@@ -186,3 +186,20 @@ src/SterlingLams.Web/
 
 - Ongoing platform audit + fixes are tracked in [`docs/AUDIT_FIX_TRACKER.md`](docs/AUDIT_FIX_TRACKER.md).
 - Imports: WooCommerce catalogue migration and EposNow barcode import utilities exist under `Services/` and `tools/`.
+
+---
+
+## Deployment
+
+Hosted on **Azure App Service (Linux)** with **Azure Database for PostgreSQL**, deployed
+via GitHub Actions on every push to `main`. See [`docs/AZURE_DEPLOYMENT.md`](docs/AZURE_DEPLOYMENT.md)
+for the full setup and the [`.github/workflows/azure-deploy.yml`](.github/workflows/azure-deploy.yml)
+pipeline.
+
+---
+
+## Developer
+
+Designed and built by **Dev Rapheal**.
+
+Copyright © Sterlin Glams. All rights reserved.
