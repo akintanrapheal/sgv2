@@ -239,7 +239,7 @@ public class WooCommerceImportService : IWooCommerceImportService
         foreach (var pid in productIds)
             foreach (var sid in storeIds)
                 if (!existingSet.Contains((pid, sid)))
-                    toCreate.Add(new StoreInventory { ProductId = pid, StoreId = sid, QuantityOnHand = 0, LastSyncedAt = DateTime.UtcNow });
+                    toCreate.Add(new StoreInventory { ProductId = pid, StoreId = sid, QuantityOnHand = 0, UpdatedAt = DateTime.UtcNow });
 
         if (toCreate.Any())
         {

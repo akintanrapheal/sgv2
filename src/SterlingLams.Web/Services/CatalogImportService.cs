@@ -289,7 +289,7 @@ public class CatalogImportService : ICatalogImportService
         foreach (var pid in productIds)
             foreach (var sid in storeIds)
                 if (!existing.Contains((pid, sid)))
-                    toCreate.Add(new StoreInventory { ProductId = pid, StoreId = sid, QuantityOnHand = 0, LastSyncedAt = DateTime.UtcNow });
+                    toCreate.Add(new StoreInventory { ProductId = pid, StoreId = sid, QuantityOnHand = 0, UpdatedAt = DateTime.UtcNow });
         if (toCreate.Count > 0)
         {
             _db.StoreInventories.AddRange(toCreate);

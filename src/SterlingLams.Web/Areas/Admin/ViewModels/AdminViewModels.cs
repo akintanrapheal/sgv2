@@ -178,7 +178,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
     {
         public List<Store> Stores { get; set; } = new();
         public List<ProductInventoryRow> Products { get; set; } = new();
-        public DateTime? LastSyncedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; }
         public string SearchQuery { get; set; } = "";
         public string CategoryFilter { get; set; } = "";
         public string StockFilter { get; set; } = "";

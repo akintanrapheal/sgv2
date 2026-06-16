@@ -119,7 +119,7 @@ public class StockService : IStockService
                 ProductVariantId = targetVid,
                 StoreId = storeId,
                 QuantityOnHand = 0,
-                LastSyncedAt = now
+                UpdatedAt = now
             };
             _db.StoreInventories.Add(inv);
         }
@@ -129,7 +129,7 @@ public class StockService : IStockService
             throw new InsufficientStockException(productId, storeId, inv.QuantityOnHand, quantityChange);
 
         inv.QuantityOnHand = newQty;
-        inv.LastSyncedAt = now;
+        inv.UpdatedAt = now;
 
         _db.StockMovements.Add(new StockMovement
         {

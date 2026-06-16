@@ -92,14 +92,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var pageRows = filteredRows.Skip((page - 1) * PageSize).Take(PageSize).ToList();
 
             var lastSync = allInventory.Any()
-                ? allInventory.Max(si => (DateTime?)si.LastSyncedAt)
-                : await _db.StoreInventories.MaxAsync(si => (DateTime?)si.LastSyncedAt);
+                ? allInventory.Max(si => (DateTime?)si.UpdatedAt)
+                : await _db.StoreInventories.MaxAsync(si => (DateTime?)si.UpdatedAt);
 
             return View(new AdminInventoryViewModel
             {
                 Stores              = stores,
                 Products            = pageRows,
-                LastSyncedAt        = lastSync,
+                UpdatedAt        = lastSync,
                 SearchQuery         = q,
                 CategoryFilter      = category,
                 StockFilter         = stock,
@@ -219,7 +219,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                             ProductId      = productId,
                             StoreId        = storeId,
                             QuantityOnHand = 0,
-                            LastSyncedAt   = DateTime.UtcNow,
+                            UpdatedAt   = DateTime.UtcNow,
                         });
                         created++;
                     }

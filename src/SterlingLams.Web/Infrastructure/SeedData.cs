@@ -182,9 +182,9 @@ public static class SeedData
                 },
                 StoreInventories = new List<StoreInventory>
                 {
-                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 8, QuantityReserved = 1, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeAllen.Id, QuantityOnHand = 5, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeIkota.Id, QuantityOnHand = 4, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow }
+                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 8, QuantityReserved = 1, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeAllen.Id, QuantityOnHand = 5, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeIkota.Id, QuantityOnHand = 4, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow }
                 }
             },
             new()
@@ -209,9 +209,9 @@ public static class SeedData
                 },
                 StoreInventories = new List<StoreInventory>
                 {
-                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 12, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeAllen.Id, QuantityOnHand =  8, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeIkota.Id, QuantityOnHand =  6, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow }
+                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 12, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeAllen.Id, QuantityOnHand =  8, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeIkota.Id, QuantityOnHand =  6, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow }
                 }
             },
             new()
@@ -238,9 +238,9 @@ public static class SeedData
                 },
                 StoreInventories = new List<StoreInventory>
                 {
-                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 3, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeAllen.Id, QuantityOnHand = 2, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeIkota.Id, QuantityOnHand = 2, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow }
+                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 3, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeAllen.Id, QuantityOnHand = 2, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeIkota.Id, QuantityOnHand = 2, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow }
                 }
             },
 
@@ -268,9 +268,9 @@ public static class SeedData
                 },
                 StoreInventories = new List<StoreInventory>
                 {
-                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 6, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeAllen.Id, QuantityOnHand = 4, QuantityReserved = 1, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeIkota.Id, QuantityOnHand = 3, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow }
+                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 6, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeAllen.Id, QuantityOnHand = 4, QuantityReserved = 1, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeIkota.Id, QuantityOnHand = 3, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow }
                 }
             },
             new()
@@ -297,9 +297,9 @@ public static class SeedData
                 },
                 StoreInventories = new List<StoreInventory>
                 {
-                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 9, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeAllen.Id, QuantityOnHand = 7, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeIkota.Id, QuantityOnHand = 5, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow }
+                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 9, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeAllen.Id, QuantityOnHand = 7, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeIkota.Id, QuantityOnHand = 5, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow }
                 }
             },
 
@@ -328,9 +328,9 @@ public static class SeedData
                 },
                 StoreInventories = new List<StoreInventory>
                 {
-                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 10, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeAllen.Id, QuantityOnHand =  7, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeIkota.Id, QuantityOnHand =  5, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow }
+                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 10, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeAllen.Id, QuantityOnHand =  7, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeIkota.Id, QuantityOnHand =  5, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow }
                 }
             },
             new()
@@ -355,9 +355,9 @@ public static class SeedData
                 },
                 StoreInventories = new List<StoreInventory>
                 {
-                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 15, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeAllen.Id, QuantityOnHand = 10, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeIkota.Id, QuantityOnHand =  8, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow }
+                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 15, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeAllen.Id, QuantityOnHand = 10, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeIkota.Id, QuantityOnHand =  8, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow }
                 }
             },
 
@@ -386,9 +386,9 @@ public static class SeedData
                 },
                 StoreInventories = new List<StoreInventory>
                 {
-                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 4, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeAllen.Id, QuantityOnHand = 2, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeIkota.Id, QuantityOnHand = 2, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow }
+                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 4, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeAllen.Id, QuantityOnHand = 2, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeIkota.Id, QuantityOnHand = 2, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow }
                 }
             },
             new()
@@ -413,9 +413,9 @@ public static class SeedData
                 },
                 StoreInventories = new List<StoreInventory>
                 {
-                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 8, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeAllen.Id, QuantityOnHand = 6, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow },
-                    new() { StoreId = storeIkota.Id, QuantityOnHand = 4, QuantityReserved = 0, LastSyncedAt = DateTime.UtcNow }
+                    new() { StoreId = storeAbuja.Id,    QuantityOnHand = 8, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeAllen.Id, QuantityOnHand = 6, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow },
+                    new() { StoreId = storeIkota.Id, QuantityOnHand = 4, QuantityReserved = 0, UpdatedAt = DateTime.UtcNow }
                 }
             }
         };

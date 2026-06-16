@@ -23,5 +23,5 @@ public class StoreInventory
 
     public int AvailableQuantity => Math.Max(0, QuantityOnHand - QuantityReserved);
 
-    public DateTime LastSyncedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

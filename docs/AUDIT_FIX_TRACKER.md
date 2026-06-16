@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-16 (FX-69 homepage-feature help text — clarified that "Links To" gates the button/clickable image; settings metadata now syncs on startup)
+**Last updated:** 2026-06-16 (FX-70 renamed StoreInventories.LastSyncedAt → UpdatedAt — legacy ERPNext name, column kept as a live last-updated timestamp)
 
 ### Email customizer (FX-67)
 New **Settings → Emails** group (no separate admin screen — uses the existing settings page):
@@ -27,8 +27,10 @@ still safely skips. Verified: on startup the low-stock alert wrote a 39 KB brand
 ("Low stock alert — 100 product(s)") to the folder. This makes the whole email suite demonstrable
 now; real delivery still needs SMTP creds in `Email:*`.
 
-> Minor cruft noticed: `StoreInventories.LastSyncedAt` is still NOT NULL (leftover from the retired
-> ERPNext sync). Harmless but pointless; a future migration could drop it.
+> ~~Minor cruft: `StoreInventories.LastSyncedAt`~~ — correction: it's **not** dead. `StockService.ApplyAsync`
+> stamps it on every stock change and the admin inventory VM reads it (a real "last updated" timestamp);
+> only the ERPNext-era *name* was legacy. **FX-70:** renamed the column/property `LastSyncedAt` → `UpdatedAt`
+> (RenameColumn migration, data preserved) across model/service/controllers/VM/seed/imports.
 
 ### Loyalty reversal on refund (FX-62)
 Closes the gap flagged after FX-44/FX-59: a fully-refunded order now reverses loyalty.
