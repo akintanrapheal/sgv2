@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-16 (FX-62 loyalty reversal on full refund — claw earned, return redeemed)
+**Last updated:** 2026-06-16 (FX-63 POS full refund also reverses loyalty)
 
 ### Loyalty reversal on refund (FX-62)
 Closes the gap flagged after FX-44/FX-59: a fully-refunded order now reverses loyalty.
@@ -14,7 +14,7 @@ refund is full) claws back the points **earned** on the order and returns the po
 `OrderLoyaltyReversedAt`). Verified (DB + admin refund): order earned 95 / redeemed 500 →
 after full refund the balance returned to the original 500, with `-95 reversed` / `+500
 returned` ledger rows and status Refunded. **Partial refunds don't reverse loyalty** (only
-full) — noted as acceptable for now. POS refunds don't yet reverse (separate follow-up).
+full) — noted as acceptable for now. **POS refunds now reverse too (FX-63):** `TillController.RefundProcess` computes full-refund the same way and calls `ReverseForOrderAsync`, clawing back points the attached customer earned on a fully-refunded POS sale (verified: earned 60 → balance 0 after full POS refund, `-60 reversed` ledger row).
 
 ### Dead-settings audit (FX-56)
 Audited every `SiteSettings` key for a consumer. Wired the rest of the dead ones:

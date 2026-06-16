@@ -277,6 +277,14 @@ public class TillController : Controller
 
         refund.Amount = amount;
         _db.Refunds.Add(refund);
+
+        // Whole sale refunded (every line's prior + this refund covers the qty sold)?
+        bool fullyRefunded = order.Items.All(oi =>
+            Done(oi.ProductId, oi.ProductVariantId)
+                + refund.Items.Where(ri => ri.ProductId == oi.ProductId && ri.ProductVariantId == oi.ProductVariantId)
+                              .Sum(ri => ri.Quantity)
+            >= oi.Quantity);
+
         try
         {
             await _db.SaveChangesAsync();
@@ -286,6 +294,10 @@ public class TillController : Controller
         {
             return Json(new { success = false, message = "Stock levels changed while processing this refund. Please try again." });
         }
+
+        // On a full refund, claw back any loyalty points the attached customer earned on this sale.
+        if (fullyRefunded)
+            await _loyalty.ReverseForOrderAsync(order.Id);
 
         return Json(new { success = true, refundNumber, amount });
     }
