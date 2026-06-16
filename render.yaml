@@ -39,3 +39,10 @@ services:
         fromDatabase:
           name: sterlinglams-db
           property: connectionString
+      # Paystack keys — sync:false means the VALUES are set in the Render Dashboard
+      # (Environment tab), never committed here. Required for the Proceed-to-Payment
+      # redirect (the server creates the transaction with the secret key).
+      - key: Payment__Paystack__SecretKey
+        sync: false
+      - key: Payment__Paystack__PublicKey
+        sync: false
