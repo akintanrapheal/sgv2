@@ -250,8 +250,29 @@ app.MapControllers(); // API controllers (WebhooksController)
         }
         else
         {
-            // Production: run pending migrations automatically on startup.
-            await db.Database.MigrateAsync();
+            // Production: do NOT silently auto-migrate on startup — a bad migration would take the
+            // site down, and concurrent instances could race applying them. Migrations should be
+            // applied as a gated deploy step (`dotnet ef database update` or a migration bundle)
+            // BEFORE the app starts. If there are unapplied migrations we fail fast with guidance.
+            // Opt back into startup migration with Database:AutoMigrate=true if you really want it.
+            var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
+            if (pending.Count == 0)
+            {
+                logger.LogInformation("Database schema is up to date.");
+            }
+            else if (app.Configuration.GetValue<bool>("Database:AutoMigrate"))
+            {
+                logger.LogWarning("Database:AutoMigrate=true — applying {Count} pending migration(s) on startup: {List}",
+                    pending.Count, string.Join(", ", pending));
+                await db.Database.MigrateAsync();
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    $"{pending.Count} pending database migration(s) not applied: {string.Join(", ", pending)}. " +
+                    "Apply them as a deploy step (dotnet ef database update / migration bundle) before starting, " +
+                    "or set Database:AutoMigrate=true to migrate on startup.");
+            }
         }
     }
     catch (Exception ex)
