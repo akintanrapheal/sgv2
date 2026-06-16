@@ -339,7 +339,7 @@
 </section>
 
 @section Scripts {
-<script>
+<script nonce="@Context.Items["csp-nonce"]">
 (function () {
     const form = document.getElementById('newsletter-form');
     if (!form) return;

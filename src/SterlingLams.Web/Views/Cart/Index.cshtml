@@ -186,7 +186,7 @@
 </div>
 
 @section Scripts {
-<script>
+<script nonce="@Context.Items["csp-nonce"]">
 (function () {
     const token = () => document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
 

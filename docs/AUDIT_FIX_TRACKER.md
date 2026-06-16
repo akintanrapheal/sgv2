@@ -4,7 +4,7 @@ Living checklist of every fix and recommendation from the ongoing audit. We add 
 audit, then work the **Open** list top-to-bottom. Companion to `docs/AUDIT_REPORT.md` (the
 original findings narrative) — IDs like `C1`/`H6` refer to that report.
 
-**Last updated:** 2026-06-16 (FX-67 email customizer — admin Settings → Emails: branding + per-email copy)
+**Last updated:** 2026-06-16 (FX-68 storefront CSP nonces — dropped 'unsafe-inline' for scripts on public pages, OP-45)
 
 ### Email customizer (FX-67)
 New **Settings → Emails** group (no separate admin screen — uses the existing settings page):
@@ -141,7 +141,7 @@ status ✅ done · 🔲 open · ⏳ in progress · ⛔ blocked
 | ID | Item | Ref | Notes |
 |----|------|-----|-------|
 | ~~OP-10~~ | ✅ **DONE** (FX-33) — CSP header added (pragmatic, `'unsafe-inline'` for now) | R7 | — |
-| OP-45 | CSP still needs `'unsafe-inline'` for scripts — refactor inline `<script>`/`onsubmit`/`onchange` to nonces/external handlers to drop it (full XSS hardening) | follow-up to FX-33 | Nonce middleware + move inline handlers. |
+| ~~OP-45~~ | ✅ **DONE** (FX-68, storefront-scoped) — per-request CSP **nonce** (hex; middleware sets `script-src 'self' 'nonce-…'` with **no `'unsafe-inline'`** on the public storefront; `/Admin`, `/Inventory`, `/Till` keep `'unsafe-inline'` as they're authenticated + still use inline handlers). Refactored every storefront inline handler to `addEventListener` (nav search links, listing sort `data-autosubmit`, profile edit toggle → app.js; checkout fulfilment/state/LGA/redeem + JS-built delivery options; product-detail thumbnails + variant selects → in-script wiring) and nonced the inline `<script>`/JSON-LD blocks. `style-src` keeps `'unsafe-inline'` (inline styles pervasive + low-risk). Verified (Playwright console): **0 CSP violations** across home, nav search, listing+sort, detail (thumb+variant), cart qty, checkout (fulfilment+delivery), profile edit; header nonce matches the body byte-for-byte; admin/Till still permissive. | follow-up to FX-33 | storefront only (admin/till deliberately permissive) |
 | ~~OP-11~~ | ✅ **DONE** (FX-48) — added `ApplicationUser.IsGuest` (migration `UserIsGuest`). Guest checkout now: **(1)** never attaches an order to a real registered account — if the email belongs to a non-guest account it blocks with "an account exists, please sign in/reset password" (was: silently attached → cross-person history); **(2)** reuses the existing guest shell for the same email instead of creating a new one each time (no sprawl); **(3)** on Register with a guest email, **upgrades** the shell into a full account (sets the password, `IsGuest=false`) so they keep their guest orders (the "merge"). Verified (Playwright + DB): new guest → 1 shell (IsGuest=true); repeat guest → same shell reused (2 orders, 1 user); registered email → blocked; register with guest email → upgraded + signed in + both prior orders visible. Test data cleaned up. | R4 | — |
 | OP-12 | Auto-`MigrateAsync()` on production startup (bad migration → site down) | R5 | Run migrations as a gated deploy step. |
 | OP-13 | Only Paystack has a webhook; Stripe/Flutterwave rely on browser callback only | R6 | Add webhooks if those providers go live. |

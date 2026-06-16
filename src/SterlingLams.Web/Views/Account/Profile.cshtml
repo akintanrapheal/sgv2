@@ -66,7 +66,7 @@
             <section>
                 <div class="flex items-baseline justify-between mb-6">
                     <h2 class="font-cormorant text-2xl font-light">Account Details</h2>
-                    <button onclick="document.getElementById('edit-form').classList.toggle('hidden');this.classList.toggle('hidden')"
+                    <button type="button" id="edit-toggle"
                             class="text-xs tracking-widest uppercase text-neutral-400 hover:text-neutral-900 transition-colors">
                         Edit
                     </button>
@@ -113,8 +113,7 @@
                     </div>
                     <div class="flex gap-3 pt-2">
                         <button type="submit" class="btn-primary text-sm py-3 px-8">Save Changes</button>
-                        <button type="button"
-                                onclick="document.getElementById('edit-form').classList.add('hidden');document.querySelector('[onclick*=edit-form]').classList.remove('hidden')"
+                        <button type="button" id="edit-cancel"
                                 class="btn-outline text-sm py-3 px-8">Cancel</button>
                     </div>
                 </form>

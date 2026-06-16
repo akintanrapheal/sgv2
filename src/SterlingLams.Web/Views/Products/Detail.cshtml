@@ -56,8 +56,8 @@
 }
 
 @section Head {
-    <script type="application/ld+json">@Html.Raw(productLd)</script>
-    <script type="application/ld+json">@Html.Raw(breadcrumbLd)</script>
+    <script type="application/ld+json" nonce="@Context.Items["csp-nonce"]">@Html.Raw(productLd)</script>
+    <script type="application/ld+json" nonce="@Context.Items["csp-nonce"]">@Html.Raw(breadcrumbLd)</script>
 }
 
 @* Antiforgery token for the AJAX POSTs on this page (Add to Bag, wishlist, notify-restock).
@@ -89,7 +89,7 @@
                 <div class="grid grid-cols-4 gap-2">
                     @foreach (var (url, i) in Model.ImageUrls.Select((u, i) => (u, i)))
                     {
-                        <button onclick="switchMainImage('@url', this)"
+                        <button type="button" data-img-url="@url"
                                 class="thumb-btn aspect-square bg-neutral-50 overflow-hidden border-2 @(i == 0 ? "border-brand-500" : "border-transparent") hover:border-brand-300 transition-colors">
                             <img src="@url" alt="@Model.Name view @(i+1)" class="w-full h-full object-cover" />
                         </button>
@@ -158,8 +158,7 @@
                             <select class="attr-select w-full border border-neutral-300 px-4 py-3 text-sm text-neutral-700
                                            focus:outline-none focus:border-neutral-900 bg-white transition-colors appearance-none
                                            cursor-pointer"
-                                    data-attr="@attrName"
-                                    onchange="onAttrSelectChange('@attrName', this.value)">
+                                    data-attr="@attrName">
                                 <option value="">— Select @attrName —</option>
                                 @foreach (var val in distinctValues)
                                 {
@@ -428,7 +427,7 @@
 </div>
 
 @section Scripts {
-<script>
+<script nonce="@Context.Items["csp-nonce"]">
 (function () {
     let selectedVariantId = null;
     let qty = 1;
@@ -480,8 +479,7 @@
     const selectedAttrs = {};
     const hasVariants = document.getElementById('add-to-cart')?.dataset.hasVariants === 'true';
 
-    // Exposed on window: the dropdowns call this via inline onchange="…", which
-    // resolves in global scope — a plain in-IIFE function would be undefined there.
+    // Variant dropdown change handler (wired via addEventListener below — CSP-safe).
     window.onAttrSelectChange = function(attr, val) {
         if (val) selectedAttrs[attr] = val;
         else     delete selectedAttrs[attr];
@@ -612,6 +610,12 @@
             btn.textContent = 'Notify Me';
         }
     });
+
+    // CSP-safe wiring (replaces inline onclick/onchange on thumbnails + variant selects).
+    document.querySelectorAll('.thumb-btn').forEach(t =>
+        t.addEventListener('click', () => window.switchMainImage(t.dataset.imgUrl, t)));
+    document.querySelectorAll('.attr-select').forEach(s =>
+        s.addEventListener('change', () => window.onAttrSelectChange(s.dataset.attr, s.value)));
 })();
 </script>
 }

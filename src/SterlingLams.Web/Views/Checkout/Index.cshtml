@@ -64,8 +64,7 @@
                     <div class="grid @(Model.PickupAvailable ? "grid-cols-2" : "grid-cols-1") gap-3">
                         <label class="fulfillment-option border border-neutral-300 p-5 cursor-pointer hover:border-neutral-900 transition-colors has-[:checked]:border-neutral-900 has-[:checked]:bg-neutral-50">
                             <input type="radio" name="FulfillmentType" value="Delivery" class="sr-only"
-                                   @(Model.FulfillmentType == FulfillmentChoice.Delivery ? "checked" : "")
-                                   onchange="toggleFulfillment('delivery')" />
+                                   @(Model.FulfillmentType == FulfillmentChoice.Delivery ? "checked" : "") />
                             <svg class="w-5 h-5 text-neutral-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12h12l1-12"/>
                             </svg>
@@ -77,8 +76,7 @@
                         {
                             <label class="fulfillment-option border border-neutral-300 p-5 cursor-pointer hover:border-neutral-900 transition-colors has-[:checked]:border-neutral-900 has-[:checked]:bg-neutral-50">
                                 <input type="radio" name="FulfillmentType" value="StorePickup" class="sr-only"
-                                       @(Model.FulfillmentType == FulfillmentChoice.StorePickup ? "checked" : "")
-                                       onchange="toggleFulfillment('pickup')" />
+                                       @(Model.FulfillmentType == FulfillmentChoice.StorePickup ? "checked" : "") />
                                 <svg class="w-5 h-5 text-neutral-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-2 10v-5a1 1 0 00-1-1h-2a1 1 0 00-1 1v5m4 0H9"/>
                                 </svg>
@@ -122,7 +120,6 @@
                             <div>
                                 <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">State</label>
                                 <select asp-for="DeliveryAddress.State" id="state-select"
-                                        onchange="onStateChanged(this.value)"
                                         class="form-input bg-white">
                                     <option value="">— Select state —</option>
                                     @foreach (var state in Model.NigerianStates)
@@ -138,8 +135,7 @@
                                 <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">City / Area</label>
 
                                 <!-- Lagos LGA dropdown (hidden unless Lagos selected) -->
-                                <select id="lagos-lga-select" class="form-input bg-white hidden"
-                                        onchange="document.getElementById('city-input').value = this.value">
+                                <select id="lagos-lga-select" class="form-input bg-white hidden">
                                     <option value="">— Select area —</option>
                                     @foreach (var lga in Model.LagosLGAs.OrderBy(x => x))
                                     {
@@ -230,8 +226,7 @@
                             <div class="flex items-start justify-between text-sm gap-3 pt-1">
                                 <label class="flex items-start gap-2 cursor-pointer select-none">
                                     <input type="checkbox" name="RedeemPoints" value="true" id="redeem-points"
-                                           class="mt-0.5 rounded-none border-neutral-300 text-neutral-900"
-                                           onchange="updateSummary(CURRENT_FEE)" />
+                                           class="mt-0.5 rounded-none border-neutral-300 text-neutral-900" />
                                     <span class="text-neutral-600 font-light">Use @Model.LoyaltyPointsBalance loyalty points
                                         <span class="block text-[11px] text-neutral-400">₦@Model.LoyaltyMaxDiscount.ToString("N0") off this order</span>
                                     </span>
@@ -271,7 +266,7 @@
 </div>
 
 @section Scripts {
-<script>
+<script nonce="@Context.Items["csp-nonce"]">
 // ── Pricing data from server ───────────────────────────────────────────────
 const PRICING = @Html.Raw(Model.DeliveryPricingJson);
 const SUBTOTAL = @Model.Subtotal.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
@@ -327,14 +322,15 @@ function renderDeliveryOptions(options, zone) {
         const card = document.createElement('label');
         card.className = 'delivery-opt-card border border-neutral-300 p-4 cursor-pointer hover:border-neutral-900 transition-colors';
         card.innerHTML = `
-            <input type="radio" name="_deliveryTypeUI" value="${opt.type}" class="sr-only" ${i === 0 ? 'checked' : ''}
-                   onchange="selectDeliveryType('${opt.type}', ${opt.fee})" />
+            <input type="radio" name="_deliveryTypeUI" value="${opt.type}" class="sr-only" ${i === 0 ? 'checked' : ''} />
             <div class="flex items-start justify-between mb-1">
                 <p class="text-sm font-medium text-neutral-800">${opt.label}</p>
                 <p class="text-sm font-medium text-neutral-900">&#8358;${Number(opt.fee).toLocaleString()}</p>
             </div>
             <p class="text-xs text-neutral-400">${opt.timeframe}</p>
         `;
+        // CSP-safe: wire the change handler instead of an inline onchange attribute.
+        card.querySelector('input[name="_deliveryTypeUI"]').addEventListener('change', () => selectDeliveryType(opt.type, opt.fee));
         card.addEventListener('click', () => {
             document.querySelectorAll('.delivery-opt-card').forEach(c => c.classList.remove('border-neutral-900','bg-neutral-50'));
             card.classList.add('border-neutral-900','bg-neutral-50');
@@ -366,6 +362,15 @@ function updateSummary(fee) {
 
 // ── Init ──────────────────────────────────────────────────────────────────
 (function init() {
+    // CSP-safe wiring (replaces inline onchange attributes).
+    document.querySelectorAll('input[name="FulfillmentType"]').forEach(r =>
+        r.addEventListener('change', () => toggleFulfillment(r.value === 'StorePickup' ? 'pickup' : 'delivery')));
+    document.getElementById('state-select')?.addEventListener('change', e => onStateChanged(e.target.value));
+    document.getElementById('lagos-lga-select')?.addEventListener('change', e => {
+        document.getElementById('city-input').value = e.target.value;
+    });
+    document.getElementById('redeem-points')?.addEventListener('change', () => updateSummary(CURRENT_FEE));
+
     const stateVal = document.getElementById('state-select').value;
     if (stateVal) onStateChanged(stateVal);
 })();

@@ -172,3 +172,24 @@ document.querySelectorAll('.wishlist-toggle').forEach(btn => {
         }
     });
 });
+
+// ── Auto-submit selects (CSP-safe; replaces inline onchange) ──────────────────
+document.querySelectorAll('[data-autosubmit]').forEach(function (el) {
+    el.addEventListener('change', function () {
+        const f = el.form || document.getElementById('filter-form');
+        if (f) f.submit();
+    });
+});
+
+// ── Profile edit toggle (CSP-safe; replaces inline onclick) ───────────────────
+(function () {
+    const toggle = document.getElementById('edit-toggle');
+    const form = document.getElementById('edit-form');
+    const cancel = document.getElementById('edit-cancel');
+    if (toggle && form) toggle.addEventListener('click', function () {
+        form.classList.toggle('hidden'); toggle.classList.toggle('hidden');
+    });
+    if (cancel && form && toggle) cancel.addEventListener('click', function () {
+        form.classList.add('hidden'); toggle.classList.remove('hidden');
+    });
+}());

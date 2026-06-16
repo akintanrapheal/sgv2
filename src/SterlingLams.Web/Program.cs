@@ -169,14 +169,23 @@ app.Use(async (context, next) =>
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
 
-    // Content-Security-Policy. Pragmatic policy: the app uses inline <script> blocks and inline
-    // event handlers (onsubmit/onchange) + inline style attributes, so 'unsafe-inline' is required
-    // until those are refactored to nonces (tracked separately). Even so this blocks injected
-    // EXTERNAL scripts/resources, framing, and form/base-uri abuse. Allowances: Google Fonts (CSS +
-    // font files) and external product images (https:).
+    // Per-request CSP nonce for inline <script> blocks (read in views via Context.Items["csp-nonce"]).
+    // Hex (not base64) so there are no +/= characters for Razor to HTML-encode — the attribute value
+    // then matches the header byte-for-byte.
+    var nonce = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+    context.Items["csp-nonce"] = nonce;
+
+    // Content-Security-Policy. The public storefront uses a strict nonce-based script-src (no
+    // 'unsafe-inline'), so injected inline scripts/handlers are blocked. Staff areas (/Admin,
+    // /Inventory, /Till) still rely on inline handlers, so they keep 'unsafe-inline' for now.
+    // style-src keeps 'unsafe-inline' (inline style attributes are pervasive + low-risk) + Google Fonts.
+    var p = context.Request.Path;
+    var staffArea = p.StartsWithSegments("/Admin") || p.StartsWithSegments("/Inventory") || p.StartsWithSegments("/Till");
+    var scriptSrc = staffArea ? "script-src 'self' 'unsafe-inline'" : $"script-src 'self' 'nonce-{nonce}'";
+
     context.Response.Headers["Content-Security-Policy"] =
         "default-src 'self'; " +
-        "script-src 'self' 'unsafe-inline'; " +
+        scriptSrc + "; " +
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
         "font-src 'self' https://fonts.gstatic.com; " +
         "img-src 'self' data: https:; " +

@@ -83,8 +83,8 @@
     <meta name="twitter:description" content="@seoDesc" />
 
     <!-- Organization + WebSite structured data -->
-    <script type="application/ld+json">@Html.Raw(orgLd)</script>
-    <script type="application/ld+json">@Html.Raw(websiteLd)</script>
+    <script type="application/ld+json" nonce="@Context.Items["csp-nonce"]">@Html.Raw(orgLd)</script>
+    <script type="application/ld+json" nonce="@Context.Items["csp-nonce"]">@Html.Raw(websiteLd)</script>
 
     <!-- Fonts: Cormorant Garamond (luxury serif) + Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com">

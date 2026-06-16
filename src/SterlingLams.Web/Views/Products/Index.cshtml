@@ -145,8 +145,7 @@
                 <p class="text-xs text-neutral-400">
                     Showing @((Model.Page - 1) * Model.PageSize + 1)–@Math.Min(Model.Page * Model.PageSize, Model.TotalCount) of @Model.TotalCount
                 </p>
-                <select name="sortBy" form="filter-form"
-                        onchange="document.getElementById('filter-form').submit()"
+                <select name="sortBy" form="filter-form" data-autosubmit
                         class="text-xs border border-neutral-200 px-3 py-2 text-neutral-600 focus:outline-none focus:border-neutral-900 bg-white">
                     <option value="newest" selected="@(Model.Filters.SortBy == "newest")">Newest</option>
                     <option value="price_asc" selected="@(Model.Filters.SortBy == "price_asc")">Price: Low to High</option>
