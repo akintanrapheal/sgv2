@@ -5,6 +5,8 @@
         : "border-transparent text-neutral-400 hover:text-neutral-700";
 }
 <div class="flex gap-1 border-b border-neutral-200 mb-6">
-    <a asp-area="Inventory" asp-controller="Reports" asp-action="Reorder" class="px-4 py-2.5 text-xs font-medium border-b-2 transition-colors @Cls("Reorder")">Reorder</a>
-    <a asp-area="Inventory" asp-controller="Reports" asp-action="Value"   class="px-4 py-2.5 text-xs font-medium border-b-2 transition-colors @Cls("Value")">Stock value</a>
+    <a asp-area="Inventory" asp-controller="Reports" asp-action="Reorder"   class="px-4 py-2.5 text-xs font-medium border-b-2 transition-colors @Cls("Reorder")">Reorder</a>
+    <a asp-area="Inventory" asp-controller="Reports" asp-action="Value"     class="px-4 py-2.5 text-xs font-medium border-b-2 transition-colors @Cls("Value")">Stock value</a>
+    <a asp-area="Inventory" asp-controller="Reports" asp-action="Movements" class="px-4 py-2.5 text-xs font-medium border-b-2 transition-colors @Cls("Movements")">Movements</a>
+    <a asp-area="Inventory" asp-controller="Reports" asp-action="Shrinkage" class="px-4 py-2.5 text-xs font-medium border-b-2 transition-colors @Cls("Shrinkage")">Shrinkage</a>
 </div>

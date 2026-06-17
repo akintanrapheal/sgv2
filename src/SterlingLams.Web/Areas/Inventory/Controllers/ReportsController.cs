@@ -109,6 +109,122 @@ public class ReportsController : InventoryAreaController
         return CsvFile(sb, "stock_value");
     }
 
+    // ── Movement ledger: every stock change (sale/purchase/transfer/adjustment/damage/loss),
+    //    filterable by type, branch, date range and product. ───────────────────────────────────
+    public async Task<IActionResult> Movements(int? type = null, int? storeId = null,
+        DateTime? from = null, DateTime? to = null, string q = "", int page = 1)
+    {
+        ViewData["Title"] = "Stock movements";
+        const int PageSize = 50;
+        var (f, t) = NormalizeRange(from, to);
+
+        var query = _db.StockMovements.Where(m => m.CreatedAt >= f && m.CreatedAt < t.AddDays(1));
+        if (type.HasValue) { var te = (StockMovementType)type.Value; query = query.Where(m => m.Type == te); }
+        if (storeId.HasValue) query = query.Where(m => m.StoreId == storeId.Value);
+        if (!string.IsNullOrWhiteSpace(q))
+            query = query.Where(m => EF.Functions.ILike(m.Product.Name, $"%{q}%")
+                                  || EF.Functions.ILike(m.Product.Sku ?? "", $"%{q}%"));
+
+        var total = await query.CountAsync();
+        var rows = await query.OrderByDescending(m => m.CreatedAt)
+            .Skip((page - 1) * PageSize).Take(PageSize)
+            .Select(m => new MovementLedgerRow
+            {
+                When = m.CreatedAt,
+                Product = m.Product.Name,
+                Variant = m.ProductVariantId == null ? null
+                    : _db.ProductVariants.Where(v => v.Id == m.ProductVariantId).Select(v => v.Name).FirstOrDefault(),
+                Store = m.Store.Name.Replace("Sterlin Glams ", ""),
+                Type = m.Type.ToString(),
+                Change = m.QuantityChange,
+                BalanceAfter = m.BalanceAfter,
+                Reference = m.Reference,
+                By = m.CreatedByUserId == null ? null
+                    : _db.Users.Where(u => u.Id == m.CreatedByUserId).Select(u => u.Email).FirstOrDefault()
+            }).ToListAsync();
+
+        ViewBag.Stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
+        ViewBag.Type = type; ViewBag.StoreId = storeId; ViewBag.Query = q;
+        ViewBag.From = f; ViewBag.To = t; ViewBag.Page = page;
+        ViewBag.TotalPages = (int)Math.Ceiling(total / (double)PageSize); ViewBag.Total = total;
+        return View(rows);
+    }
+
+    // ── Shrinkage report: stock written off as Damage or Loss (theft), by product. ──────────────
+    public async Task<IActionResult> Shrinkage(DateTime? from = null, DateTime? to = null, int? categoryId = null)
+    {
+        ViewData["Title"] = "Shrinkage report";
+        var (f, t) = NormalizeRange(from, to);
+
+        var q = _db.StockMovements
+            .Where(m => (m.Type == StockMovementType.Damage || m.Type == StockMovementType.Loss)
+                     && m.CreatedAt >= f && m.CreatedAt < t.AddDays(1));
+        if (categoryId.HasValue) q = q.Where(m => m.Product.CategoryId == categoryId.Value);
+
+        // Shrinkage data is small; group in memory (avoids GroupBy-translation pitfalls).
+        var moves = await q.Select(m => new { m.ProductId, m.Product.Name, m.Product.Sku, m.Product.Price, m.Type, m.QuantityChange })
+            .ToListAsync();
+
+        var rows = moves
+            .GroupBy(m => new { m.ProductId, m.Name, m.Sku, m.Price })
+            .Select(g => new ShrinkageRow
+            {
+                Name = g.Key.Name,
+                Sku = g.Key.Sku,
+                DamageUnits = g.Where(x => x.Type == StockMovementType.Damage).Sum(x => -x.QuantityChange),
+                LossUnits = g.Where(x => x.Type == StockMovementType.Loss).Sum(x => -x.QuantityChange),
+                Value = (g.Sum(x => -x.QuantityChange)) * g.Key.Price
+            })
+            .OrderByDescending(r => r.Value)
+            .ToList();
+
+        ViewBag.Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync();
+        ViewBag.CategoryId = categoryId; ViewBag.From = f; ViewBag.To = t;
+        return View(new ShrinkageVm
+        {
+            Rows = rows,
+            TotalDamage = rows.Sum(r => r.DamageUnits),
+            TotalLoss = rows.Sum(r => r.LossUnits),
+            TotalValue = rows.Sum(r => r.Value)
+        });
+    }
+
+    public async Task<IActionResult> ShrinkageCsv(DateTime? from = null, DateTime? to = null, int? categoryId = null)
+    {
+        var (f, t) = NormalizeRange(from, to);
+        var q = _db.StockMovements
+            .Where(m => (m.Type == StockMovementType.Damage || m.Type == StockMovementType.Loss)
+                     && m.CreatedAt >= f && m.CreatedAt < t.AddDays(1));
+        if (categoryId.HasValue) q = q.Where(m => m.Product.CategoryId == categoryId.Value);
+        var moves = await q.Select(m => new { m.Product.Name, m.Product.Sku, m.Product.Price, m.Type, m.QuantityChange }).ToListAsync();
+        var rows = moves.GroupBy(m => new { m.Name, m.Sku, m.Price })
+            .Select(g => new ShrinkageRow
+            {
+                Name = g.Key.Name, Sku = g.Key.Sku,
+                DamageUnits = g.Where(x => x.Type == StockMovementType.Damage).Sum(x => -x.QuantityChange),
+                LossUnits = g.Where(x => x.Type == StockMovementType.Loss).Sum(x => -x.QuantityChange),
+                Value = (g.Sum(x => -x.QuantityChange)) * g.Key.Price
+            }).OrderByDescending(r => r.Value).ToList();
+
+        var sb = new StringBuilder();
+        sb.AppendLine("Product,SKU,Damaged,Lost,Total units,Value");
+        foreach (var r in rows)
+            sb.Append(Csv(r.Name)).Append(',').Append(Csv(r.Sku)).Append(',').Append(r.DamageUnits)
+              .Append(',').Append(r.LossUnits).Append(',').Append(r.DamageUnits + r.LossUnits)
+              .Append(',').Append(r.Value).AppendLine();
+        await LogAsync("Export", "Inventory", null, $"Exported shrinkage report ({rows.Count} product(s))");
+        return CsvFile(sb, "shrinkage");
+    }
+
+    // Default the report window to the last 30 days when no range is supplied.
+    private static (DateTime from, DateTime to) NormalizeRange(DateTime? from, DateTime? to)
+    {
+        var t = (to ?? DateTime.UtcNow).Date;
+        var f = (from ?? t.AddDays(-30)).Date;
+        if (f > t) (f, t) = (t, f);
+        return (f, t);
+    }
+
     // Per-branch units + value computed in SQL (join inventory→product, group by store).
     private async Task<List<BranchValue>> PerBranchValueAsync(int? categoryId, List<Store> stores)
     {
@@ -181,3 +297,31 @@ public class StockValueVm
 }
 public class BranchValue { public string Store { get; set; } = ""; public int Units { get; set; } public decimal Value { get; set; } }
 public class ProductValue { public string Name { get; set; } = ""; public string? Sku { get; set; } public int Units { get; set; } public decimal Price { get; set; } public decimal Value { get; set; } }
+
+public class MovementLedgerRow
+{
+    public DateTime When { get; set; }
+    public string Product { get; set; } = "";
+    public string? Variant { get; set; }
+    public string Store { get; set; } = "";
+    public string Type { get; set; } = "";
+    public int Change { get; set; }
+    public int BalanceAfter { get; set; }
+    public string? Reference { get; set; }
+    public string? By { get; set; }
+}
+public class ShrinkageRow
+{
+    public string Name { get; set; } = "";
+    public string? Sku { get; set; }
+    public int DamageUnits { get; set; }
+    public int LossUnits { get; set; }
+    public decimal Value { get; set; }
+}
+public class ShrinkageVm
+{
+    public List<ShrinkageRow> Rows { get; set; } = new();
+    public int TotalDamage { get; set; }
+    public int TotalLoss { get; set; }
+    public decimal TotalValue { get; set; }
+}

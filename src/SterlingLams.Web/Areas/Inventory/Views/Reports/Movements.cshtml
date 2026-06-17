@@ -1,0 +1,95 @@
+@model List<SterlingLams.Web.Areas.Inventory.Controllers.MovementLedgerRow>
+@using SterlingLams.Web.Models.Domain
+@{
+    ViewData["Title"] = "Stock movements";
+    var stores = ViewBag.Stores as List<Store> ?? new();
+    int? type = ViewBag.Type; int? storeId = ViewBag.StoreId;
+    string q = ViewBag.Query ?? "";
+    DateTime from = ViewBag.From; DateTime to = ViewBag.To;
+    int curPage = ViewBag.Page ?? 1; int totalPages = ViewBag.TotalPages ?? 1; int total = ViewBag.Total ?? 0;
+    var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+    string Badge(string t) => t switch
+    {
+        "Sale" => "bg-blue-50 text-blue-700", "Purchase" => "bg-emerald-50 text-emerald-700",
+        "Transfer" => "bg-indigo-50 text-indigo-700", "Return" => "bg-teal-50 text-teal-700",
+        "Damage" => "bg-amber-50 text-amber-700", "Loss" => "bg-red-50 text-red-700",
+        _ => "bg-neutral-100 text-neutral-600"
+    };
+}
+
+@await Html.PartialAsync("_ReportTabs", "Movements")
+
+<form method="get" class="flex flex-wrap items-end gap-2 mb-4">
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">From</label>
+        <input type="date" name="from" value="@from.ToString("yyyy-MM-dd")" class="@selectCls" /></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">To</label>
+        <input type="date" name="to" value="@to.ToString("yyyy-MM-dd")" class="@selectCls" /></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Type</label>
+        <select name="type" class="@selectCls">
+            <option value="">All types</option>
+            @foreach (StockMovementType mt in Enum.GetValues(typeof(StockMovementType)))
+            {
+                <option value="@((int)mt)" selected="@(type == (int)mt)">@mt</option>
+            }
+        </select></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Branch</label>
+        <select name="storeId" class="@selectCls">
+            <option value="">All branches</option>
+            @foreach (var s in stores)
+            {
+                <option value="@s.Id" selected="@(storeId == s.Id)">@s.Name.Replace("Sterlin Glams ", "")</option>
+            }
+        </select></div>
+    <div class="flex-1 min-w-[160px]"><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Product</label>
+        <input type="text" name="q" value="@q" placeholder="Name or SKU…" class="@selectCls w-full" /></div>
+    <button type="submit" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700">Filter</button>
+</form>
+
+<p class="text-xs text-neutral-400 mb-2">@total movement(s)</p>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[720px]">
+        <thead>
+            <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
+                <th class="text-left px-4 py-3 font-medium">When</th>
+                <th class="text-left px-4 py-3 font-medium">Product</th>
+                <th class="text-left px-4 py-3 font-medium">Branch</th>
+                <th class="text-left px-4 py-3 font-medium">Type</th>
+                <th class="text-right px-4 py-3 font-medium">Change</th>
+                <th class="text-right px-4 py-3 font-medium">Balance</th>
+                <th class="text-left px-4 py-3 font-medium">Reason / ref</th>
+                <th class="text-left px-4 py-3 font-medium">By</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (!Model.Any()) { <tr><td colspan="8" class="px-4 py-12 text-center text-neutral-400">No movements for these filters.</td></tr> }
+            @foreach (var m in Model)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-2.5 text-xs text-neutral-500 whitespace-nowrap">@m.When.ToString("dd MMM yyyy HH:mm")</td>
+                    <td class="px-4 py-2.5">
+                        <span class="text-xs text-neutral-800">@m.Product</span>
+                        @if (!string.IsNullOrEmpty(m.Variant)) { <span class="text-[10px] text-neutral-400"> · @m.Variant</span> }
+                    </td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-600">@m.Store</td>
+                    <td class="px-4 py-2.5"><span class="text-[10px] px-2 py-0.5 rounded-full @Badge(m.Type)">@m.Type</span></td>
+                    <td class="px-4 py-2.5 text-right text-xs font-medium @(m.Change < 0 ? "text-red-600" : "text-emerald-700")">@(m.Change > 0 ? "+" : "")@m.Change</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-neutral-500">@m.BalanceAfter</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-500">@m.Reference</td>
+                    <td class="px-4 py-2.5 text-[11px] text-neutral-400">@m.By</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (totalPages > 1)
+{
+    var baseCls = "px-3 py-1.5 text-xs rounded-sm border border-neutral-200 text-neutral-600 hover:border-neutral-400 transition-colors";
+    Dictionary<string, string> rd(int pg) => new() { ["from"] = from.ToString("yyyy-MM-dd"), ["to"] = to.ToString("yyyy-MM-dd"), ["type"] = type?.ToString() ?? "", ["storeId"] = storeId?.ToString() ?? "", ["q"] = q, ["page"] = pg.ToString() };
+    <div class="flex items-center justify-center gap-1.5 mt-4 flex-wrap">
+        <span class="text-[11px] text-neutral-400 mr-1">Page @curPage of @totalPages</span>
+        @if (curPage > 1) { <a asp-action="Movements" asp-all-route-data="rd(curPage - 1)" class="@baseCls">‹ Prev</a> }
+        @if (curPage < totalPages) { <a asp-action="Movements" asp-all-route-data="rd(curPage + 1)" class="@baseCls">Next ›</a> }
+    </div>
+}

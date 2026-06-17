@@ -1,0 +1,75 @@
+@model SterlingLams.Web.Areas.Inventory.Controllers.ShrinkageVm
+@using SterlingLams.Web.Models.Domain
+@{
+    ViewData["Title"] = "Shrinkage report";
+    var categories = ViewBag.Categories as List<Category> ?? new();
+    int? categoryId = ViewBag.CategoryId;
+    DateTime from = ViewBag.From; DateTime to = ViewBag.To;
+    var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+    string Money(decimal v) => "₦" + v.ToString("N0");
+}
+
+@await Html.PartialAsync("_ReportTabs", "Shrinkage")
+
+<form method="get" class="flex flex-wrap items-end gap-2 mb-4">
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">From</label>
+        <input type="date" name="from" value="@from.ToString("yyyy-MM-dd")" class="@selectCls" /></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">To</label>
+        <input type="date" name="to" value="@to.ToString("yyyy-MM-dd")" class="@selectCls" /></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Category</label>
+        <select name="categoryId" class="@selectCls">
+            <option value="">All categories</option>
+            @foreach (var c in categories)
+            {
+                <option value="@c.Id" selected="@(categoryId == c.Id)">@c.Name</option>
+            }
+        </select></div>
+    <button type="submit" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700">Filter</button>
+    <a asp-action="ShrinkageCsv" asp-all-route-data="@(new Dictionary<string,string>{ ["from"]=from.ToString("yyyy-MM-dd"), ["to"]=to.ToString("yyyy-MM-dd"), ["categoryId"]=categoryId?.ToString() ?? "" })"
+       class="px-4 py-2 border border-neutral-200 text-neutral-700 text-xs rounded-sm hover:border-neutral-400">Export CSV</a>
+</form>
+
+<div class="grid grid-cols-3 gap-3 mb-5">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-[10px] text-neutral-400 uppercase tracking-widest">Damaged</p>
+        <p class="text-2xl font-light text-amber-700 mt-1">@Model.TotalDamage<span class="text-xs text-neutral-400"> units</span></p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-[10px] text-neutral-400 uppercase tracking-widest">Lost / theft</p>
+        <p class="text-2xl font-light text-red-700 mt-1">@Model.TotalLoss<span class="text-xs text-neutral-400"> units</span></p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-[10px] text-neutral-400 uppercase tracking-widest">Value lost (at retail)</p>
+        <p class="text-2xl font-light text-neutral-900 mt-1">@Money(Model.TotalValue)</p>
+    </div>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[560px]">
+        <thead>
+            <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
+                <th class="text-left px-4 py-3 font-medium">Product</th>
+                <th class="text-right px-4 py-3 font-medium">Damaged</th>
+                <th class="text-right px-4 py-3 font-medium">Lost</th>
+                <th class="text-right px-4 py-3 font-medium">Total units</th>
+                <th class="text-right px-4 py-3 font-medium">Value</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (!Model.Rows.Any()) { <tr><td colspan="5" class="px-4 py-12 text-center text-neutral-400">No damage or loss recorded in this period. 🎉</td></tr> }
+            @foreach (var r in Model.Rows)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-2.5">
+                        <span class="text-xs text-neutral-800">@r.Name</span>
+                        @if (!string.IsNullOrEmpty(r.Sku)) { <span class="text-[10px] text-neutral-400 font-mono"> · @r.Sku</span> }
+                    </td>
+                    <td class="px-4 py-2.5 text-right text-xs text-amber-700">@r.DamageUnits</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-red-700">@r.LossUnits</td>
+                    <td class="px-4 py-2.5 text-right text-xs font-medium text-neutral-800">@(r.DamageUnits + r.LossUnits)</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-neutral-600">@Money(r.Value)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
