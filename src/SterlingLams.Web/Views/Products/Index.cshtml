@@ -221,7 +221,14 @@
                                 <h3 class="text-sm font-light text-neutral-800 group-hover:text-neutral-900 transition-colors leading-snug mb-2">
                                     @product.Name
                                 </h3>
-                                <p class="text-sm text-neutral-700">@product.FormattedPrice</p>
+                                @if (product.IsOnSale)
+                                {
+                                    <p class="text-sm"><span class="text-brand-600 font-medium">@product.FormattedPrice</span> <span class="text-neutral-400 line-through ml-1">@product.FormattedRegularPrice</span></p>
+                                }
+                                else
+                                {
+                                    <p class="text-sm text-neutral-700">@product.FormattedPrice</p>
+                                }
                             </a>
                         </div>
                     }

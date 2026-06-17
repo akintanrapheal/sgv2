@@ -1,16 +1,39 @@
 @{
     var cc = ViewContext.RouteData.Values["controller"]?.ToString();
+    var ca = ViewContext.RouteData.Values["action"]?.ToString();
     var isFullAdmin = User.IsInRole("Admin");
     var pendingTransfers = ViewData["PendingTransfersCount"] as int? ?? 0;
-    (string Ctrl, string Label, string Icon)[] tabs =
+
+    // Icons (heroicons paths)
+    const string icoOverview  = "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6";
+    const string icoProducts  = "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4";
+    const string icoStock     = "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10";
+    const string icoTransfers = "M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4";
+    const string icoPos       = "M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z";
+    const string icoStocktake = "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z";
+    const string icoReport    = "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z";
+
+    // Grouped, Moniebook-style sidebar. Item = (Controller, Action, Label, Icon, MatchByAction, ShowTransferBadge)
+    var navGroups = new (string Header, (string Ctrl, string Action, string Label, string Icon, bool ByAction, bool Badge)[] Items)[]
     {
-        ("Overview",  "Overview",   "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"),
-        ("Products",  "Products",   "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"),
-        ("Stock",     "Stock",      "M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"),
-        ("Transfers", "Transfers",  "M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"),
-        ("Till",      "Till",       "M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z"),
-        ("Stocktake", "Stock-take", "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"),
-        ("Reports",   "Reports",    "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"),
+        ("", new [] {
+            ("Overview", "Index", "Overview", icoOverview, false, false),
+        }),
+        ("Point of sale", new [] {
+            ("Till", "Index", "POS", icoPos, false, false),
+        }),
+        ("Inventory", new [] {
+            ("Products",  "Index", "All items",        icoProducts,  false, false),
+            ("Stock",     "Index", "Stock adjustment", icoStock,     false, false),
+            ("Stocktake", "Index", "Stock-take",       icoStocktake, false, false),
+            ("Transfers", "Index", "Stock transfer",   icoTransfers, false, true),
+        }),
+        ("Reports", new [] {
+            ("Reports", "Reorder",   "Reorder",     icoReport, true, false),
+            ("Reports", "Value",     "Stock value", icoReport, true, false),
+            ("Reports", "Movements", "Movements",   icoReport, true, false),
+            ("Reports", "Shrinkage", "Shrinkage",   icoReport, true, false),
+        }),
     };
 }
 <!DOCTYPE html>
@@ -35,19 +58,28 @@
             <p class="text-[10px] text-emerald-400 tracking-widest uppercase mt-1 font-medium">Inventory System</p>
         </div>
 
-        <nav class="flex-1 px-3 py-6 space-y-1">
-            @foreach (var t in tabs)
+        <nav class="flex-1 px-3 py-4 space-y-4">
+            @foreach (var grp in navGroups)
             {
-                var active = cc == t.Ctrl;
-                <a asp-area="Inventory" asp-controller="@t.Ctrl" asp-action="Index"
-                   class="flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm transition-colors @(active ? "bg-emerald-600 text-white" : "text-neutral-400 hover:text-white hover:bg-neutral-800")">
-                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="@t.Icon"/></svg>
-                    <span class="flex-1">@t.Label</span>
-                    @if (t.Ctrl == "Transfers" && pendingTransfers > 0)
+                <div class="space-y-1">
+                    @if (!string.IsNullOrEmpty(grp.Header))
                     {
-                        <span class="text-[10px] font-medium bg-emerald-500 text-white rounded-full px-1.5 py-0.5 leading-none">@pendingTransfers</span>
+                        <p class="px-3 pt-3 pb-1 text-[10px] tracking-widest uppercase text-neutral-500">@grp.Header</p>
                     }
-                </a>
+                    @foreach (var it in grp.Items)
+                    {
+                        var active = it.ByAction ? (cc == it.Ctrl && ca == it.Action) : (cc == it.Ctrl);
+                        <a asp-area="Inventory" asp-controller="@it.Ctrl" asp-action="@it.Action"
+                           class="flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm transition-colors @(active ? "bg-emerald-600 text-white" : "text-neutral-400 hover:text-white hover:bg-neutral-800")">
+                            <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="@it.Icon"/></svg>
+                            <span class="flex-1">@it.Label</span>
+                            @if (it.Badge && pendingTransfers > 0)
+                            {
+                                <span class="text-[10px] font-medium bg-emerald-500 text-white rounded-full px-1.5 py-0.5 leading-none">@pendingTransfers</span>
+                            }
+                        </a>
+                    }
+                </div>
             }
         </nav>
 

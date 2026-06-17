@@ -17,8 +17,14 @@ public class ProductDetailViewModel
     public string? Description { get; set; }
     public string? ShortDescription { get; set; }
     public decimal Price { get; set; }
+    public decimal? SalePrice { get; set; }
     public string Currency { get; set; } = "NGN";
-    public string FormattedPrice => $"₦{Price:N0}";
+    public bool IsOnSale => SalePrice is decimal s && s > 0m && s < Price;
+    public decimal EffectivePrice => IsOnSale ? SalePrice!.Value : Price;
+    /// <summary>Sale price when on sale, otherwise the regular price.</summary>
+    public string FormattedPrice => $"₦{EffectivePrice:N0}";
+    /// <summary>Regular price — render struck-through when <see cref="IsOnSale"/>.</summary>
+    public string FormattedRegularPrice => $"₦{Price:N0}";
 
     public string? Material { get; set; }
     public string? Metal { get; set; }

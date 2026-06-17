@@ -13,6 +13,20 @@ public class Product
     public string? ShortDescription { get; set; }
 
     public decimal Price { get; set; }
+
+    /// <summary>Optional promotional/sale price. When set and below <see cref="Price"/>, this is the
+    /// price actually charged, and the storefront shows the regular Price struck-through next to it.
+    /// Null (or not below Price) = not on sale.</summary>
+    public decimal? SalePrice { get; set; }
+
+    /// <summary>True when a valid sale price is in effect.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public bool IsOnSale => SalePrice is decimal s && s > 0m && s < Price;
+
+    /// <summary>The price actually charged: the sale price when on sale, otherwise the regular price.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public decimal EffectivePrice => IsOnSale ? SalePrice!.Value : Price;
+
     public string Currency { get; set; } = "NGN";
 
     public string? Sku { get; set; }

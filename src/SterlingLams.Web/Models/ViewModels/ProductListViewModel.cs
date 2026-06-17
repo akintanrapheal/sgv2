@@ -7,8 +7,14 @@ public class ProductCardViewModel
     public string Slug { get; set; } = string.Empty;
     public string PrimaryImageUrl { get; set; } = "/images/placeholder.jpg";
     public decimal Price { get; set; }
+    public decimal? SalePrice { get; set; }
     public string Currency { get; set; } = "NGN";
-    public string FormattedPrice => $"₦{Price:N0}";
+    public bool IsOnSale => SalePrice is decimal s && s > 0m && s < Price;
+    public decimal EffectivePrice => IsOnSale ? SalePrice!.Value : Price;
+    /// <summary>The price to show prominently (sale price when on sale).</summary>
+    public string FormattedPrice => $"₦{EffectivePrice:N0}";
+    /// <summary>The regular price — render struck-through when <see cref="IsOnSale"/>.</summary>
+    public string FormattedRegularPrice => $"₦{Price:N0}";
     public bool IsAvailable { get; set; }
     public bool IsInWishlist { get; set; }
     public bool IsNewArrival { get; set; }

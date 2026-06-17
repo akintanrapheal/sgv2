@@ -1,6 +1,6 @@
 @model SterlingLams.Web.Areas.Inventory.Controllers.TillOversightViewModel
 @{
-    ViewData["Title"] = "Till";
+    ViewData["Title"] = "POS";
     var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
     int? storeId = ViewBag.StoreId;
     string status = ViewBag.Status ?? "all";
@@ -14,7 +14,7 @@
         <div><p class="text-xs text-neutral-400 uppercase tracking-wide">Open sessions</p><p class="text-xl font-semibold @(Model.OpenSessions > 0 ? "text-emerald-600" : "text-neutral-900")">@Model.OpenSessions</p></div>
     </div>
     <a href="/till" target="_blank" rel="noopener"
-       class="px-4 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Open Till App →</a>
+       class="px-4 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Open POS App →</a>
 </div>
 
 <form asp-area="Inventory" asp-controller="Till" asp-action="Index" method="get" class="flex gap-2 flex-wrap mb-3">

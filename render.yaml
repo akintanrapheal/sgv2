@@ -46,3 +46,11 @@ services:
         sync: false
       - key: Payment__Paystack__PublicKey
         sync: false
+      # Cloudinary (persistent image hosting). Values set in the Render Dashboard.
+      # Without these the app falls back to local disk, which is wiped on every redeploy.
+      - key: Cloudinary__CloudName
+        sync: false
+      - key: Cloudinary__ApiKey
+        sync: false
+      - key: Cloudinary__ApiSecret
+        sync: false

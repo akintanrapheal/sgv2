@@ -140,6 +140,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 Description      = product.Description ?? "",
                 ShortDescription = product.ShortDescription,
                 Price            = product.Price,
+                SalePrice        = product.SalePrice,
                 Colour           = product.Metal,
                 Weight           = product.Weight,
                 IsActive         = product.IsActive,
@@ -324,6 +325,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             product.Description = vm.Description;
             product.ShortDescription = vm.ShortDescription;
             product.Price = vm.Price;
+            // Sale price only applies when it's a positive number below the regular price.
+            product.SalePrice = vm.SalePrice is decimal sp && sp > 0m && sp < vm.Price ? sp : null;
             product.Sku = string.IsNullOrWhiteSpace(vm.Sku) ? null : vm.Sku.Trim();
             product.ProductType = vm.ProductType == "variable" ? "variable" : "simple";
             product.IsActive = vm.IsActive;

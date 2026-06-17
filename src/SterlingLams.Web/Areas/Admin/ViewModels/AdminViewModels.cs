@@ -127,6 +127,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string? Description { get; set; }
         public string? ShortDescription { get; set; }
         public decimal Price { get; set; }
+        public decimal? SalePrice { get; set; }
         public string? Colour { get; set; }
         public string? Weight { get; set; }
         public bool IsActive { get; set; } = true;

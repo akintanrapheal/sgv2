@@ -13,7 +13,7 @@ public class TillController : InventoryAreaController
     // Till oversight: cash-up sessions across all branches + today's POS totals.
     public async Task<IActionResult> Index(int? storeId = null, string status = "all")
     {
-        ViewData["Title"] = "Till";
+        ViewData["Title"] = "POS";
         var today = DateTime.UtcNow.Date;
 
         ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();

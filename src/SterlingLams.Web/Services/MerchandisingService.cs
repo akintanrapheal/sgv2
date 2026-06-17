@@ -135,6 +135,7 @@ public class MerchandisingService : IMerchandisingService
                 Name = p.Name,
                 Slug = p.Slug,
                 Price = p.Price,
+                SalePrice = p.SalePrice,
                 Currency = p.Currency,
                 PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
                     ?? "/images/placeholder.jpg",

@@ -36,6 +36,7 @@ public class HomeController : Controller
             Name = p.Name,
             Slug = p.Slug,
             Price = p.Price,
+            SalePrice = p.SalePrice,
             Currency = p.Currency,
             PrimaryImageUrl = p.Images.FirstOrDefault(i => i.IsPrimary)?.Url
                 ?? p.Images.FirstOrDefault()?.Url

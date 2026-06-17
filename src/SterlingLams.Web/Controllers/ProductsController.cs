@@ -72,6 +72,7 @@ public class ProductsController : Controller
                 Name = p.Name,
                 Slug = p.Slug,
                 Price = p.Price,
+                SalePrice = p.SalePrice,
                 Currency = p.Currency,
                 PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
                     ?? "/images/placeholder.jpg",
@@ -169,6 +170,7 @@ public class ProductsController : Controller
             Description = product.Description,
             ShortDescription = product.ShortDescription,
             Price = product.Price,
+            SalePrice = product.SalePrice,
             Currency = product.Currency,
             Material = product.Material,
             Metal = product.Metal,
@@ -210,6 +212,7 @@ public class ProductsController : Controller
                 Name = p.Name,
                 Slug = p.Slug,
                 Price = p.Price,
+                SalePrice = p.SalePrice,
                 PrimaryImageUrl = p.Images.FirstOrDefault()?.Url ?? "/images/placeholder.jpg",
                 IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0)
             }).ToList(),

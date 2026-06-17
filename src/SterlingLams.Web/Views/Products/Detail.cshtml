@@ -129,7 +129,17 @@
         <div class="flex flex-col">
             <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-2">@Model.CategoryName</p>
             <h1 class="font-cormorant text-4xl font-light text-neutral-900 mb-4">@Model.Name</h1>
-            <p class="text-2xl font-light text-neutral-800 mb-2">@Model.FormattedPrice</p>
+            @if (Model.IsOnSale)
+            {
+                <p class="mb-2 flex items-baseline gap-3 flex-wrap">
+                    <span class="text-2xl font-light text-brand-600">@Model.FormattedPrice</span>
+                    <span class="text-lg font-light text-neutral-400 line-through">@Model.FormattedRegularPrice</span>
+                </p>
+            }
+            else
+            {
+                <p class="text-2xl font-light text-neutral-800 mb-2">@Model.FormattedPrice</p>
+            }
             <p id="low-stock-nudge" class="text-sm text-amber-600 font-medium mb-6 flex items-center gap-1.5 @(isLowStock ? "" : "hidden")">
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                 Low stock — order soon
@@ -428,7 +438,14 @@
                                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                         </div>
                         <h3 class="text-sm font-light text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
-                        <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
+                        @if (p.IsOnSale)
+                        {
+                            <p class="text-xs mt-1"><span class="text-brand-600">@p.FormattedPrice</span> <span class="text-neutral-400 line-through ml-1">@p.FormattedRegularPrice</span></p>
+                        }
+                        else
+                        {
+                            <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
+                        }
                     </a>
                 }
             </div>
@@ -453,7 +470,14 @@
                                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                         </div>
                         <h3 class="text-sm font-light text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
-                        <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
+                        @if (p.IsOnSale)
+                        {
+                            <p class="text-xs mt-1"><span class="text-brand-600">@p.FormattedPrice</span> <span class="text-neutral-400 line-through ml-1">@p.FormattedRegularPrice</span></p>
+                        }
+                        else
+                        {
+                            <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
+                        }
                     </a>
                 }
             </div>

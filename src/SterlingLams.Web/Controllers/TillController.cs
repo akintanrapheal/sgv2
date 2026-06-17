@@ -604,7 +604,7 @@ public class TillController : Controller
                 name = p.Name,
                 sku = p.Sku,
                 barcode = p.Barcode,
-                price = p.Price,
+                price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price ? p.SalePrice.Value : p.Price,
                 image = p.Images.Where(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
                 // Show AVAILABLE (on-hand − reserved) so the till number matches what can be sold.
@@ -647,7 +647,7 @@ public class TillController : Controller
                 name = p.Name,
                 sku = p.Sku,
                 barcode = p.Barcode,
-                price = p.Price,
+                price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price ? p.SalePrice.Value : p.Price,
                 category = p.Category.Name,
                 stores = p.StoreInventories.OrderBy(si => si.Store.Name)
                     .Select(si => new { name = si.Store.Name, onHand = si.QuantityOnHand, reserved = si.QuantityReserved, available = si.AvailableQuantity }).ToList(),
@@ -759,7 +759,7 @@ public class TillController : Controller
             var prod = products[line.ProductId];
             var qty = Math.Max(1, line.Quantity);
             var variant = line.VariantId.HasValue ? prod.Variants.FirstOrDefault(v => v.Id == line.VariantId) : null;
-            var unitPrice = prod.Price + (variant?.PriceAdjustment ?? 0);
+            var unitPrice = prod.EffectivePrice + (variant?.PriceAdjustment ?? 0);
             var lineDiscount = Math.Max(0, Math.Min(line.DiscountAmount, unitPrice * qty));
             subtotal += unitPrice * qty;
             totalDiscount += lineDiscount;

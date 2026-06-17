@@ -36,7 +36,14 @@
                             }
                         </div>
                         <h3 class="font-light text-sm text-neutral-700 group-hover:text-neutral-900 transition-colors leading-snug">@p.Name</h3>
-                        <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
+                        @if (p.IsOnSale)
+                        {
+                            <p class="text-xs mt-1"><span class="text-brand-600">@p.FormattedPrice</span> <span class="text-neutral-400 line-through ml-1">@p.FormattedRegularPrice</span></p>
+                        }
+                        else
+                        {
+                            <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
+                        }
                     </a>
                 }
             </div>

@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <!-- Entity Framework Core (PostgreSQL) -->
+    <PackageReference Include="CloudinaryDotNet" Version="1.29.2" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.4">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
