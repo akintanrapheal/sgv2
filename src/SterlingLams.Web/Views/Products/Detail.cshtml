@@ -8,6 +8,11 @@
     ViewData["OgImage"] = Model.ImageUrls.FirstOrDefault();
     Layout = "_Layout";
 
+    // Low-stock nudge (storefront): show "Low stock" at/below this qty without ever revealing the count.
+    var lowStockThreshold = (int)await SettingsService.GetDecimalAsync("inventory.low_stock_threshold", 5);
+    var bestBranchQty = Model.StoreStock.Any() ? Model.StoreStock.Max(s => s.Quantity) : 0;
+    var isLowStock = Model.IsAvailableAnywhere && bestBranchQty <= lowStockThreshold;
+
     var fullDescription = !string.IsNullOrWhiteSpace(Model.Description)
         ? Model.Description
         : (Model.ShortDescription ?? "");
@@ -122,7 +127,11 @@
         <div class="flex flex-col">
             <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-2">@Model.CategoryName</p>
             <h1 class="font-cormorant text-4xl font-light text-neutral-900 mb-4">@Model.Name</h1>
-            <p class="text-2xl font-light text-neutral-800 mb-8">@Model.FormattedPrice</p>
+            <p class="text-2xl font-light text-neutral-800 mb-2">@Model.FormattedPrice</p>
+            <p id="low-stock-nudge" class="text-sm text-amber-600 font-medium mb-6 flex items-center gap-1.5 @(isLowStock ? "" : "hidden")">
+                <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                Low stock — order soon
+            </p>
 
             @if (!string.IsNullOrEmpty(Model.ShortDescription))
             {
@@ -139,7 +148,11 @@
                         {
                             <div class="flex items-center justify-between py-2.5 border-b border-neutral-100">
                                 <span class="text-sm text-neutral-700">@store.StoreName</span>
-                                @if (store.IsAvailable)
+                                @if (store.IsAvailable && store.Quantity <= lowStockThreshold)
+                                {
+                                    <span class="text-xs text-amber-600 tracking-wider">Low stock</span>
+                                }
+                                else if (store.IsAvailable)
                                 {
                                     <span class="text-xs text-emerald-700 tracking-wider">In Stock</span>
                                 }
@@ -198,8 +211,9 @@
                         id = v.Id,
                         name = v.Name,
                         priceAdjustment = v.PriceAdjustment,
-                        // Boolean only — never expose exact stock counts to the storefront / page source.
+                        // Booleans only — never expose exact stock counts to the storefront / page source.
                         inStock = v.Available > 0,
+                        lowStock = v.Available > 0 && v.Available <= lowStockThreshold,
                         attributes = v.AttributeLabels.ToDictionary(a => a.AttributeName, a => a.Value)
                     })))
                 </script>
@@ -558,6 +572,8 @@
             );
             if (match) {
                 selectedVariantId = match.id;
+                // Low-stock nudge follows the chosen variant (boolean flag only — no counts).
+                document.getElementById('low-stock-nudge')?.classList.toggle('hidden', !match.lowStock);
                 const adjEl = document.getElementById('variant-price-adj');
                 if (match.priceAdjustment && match.priceAdjustment !== 0 && adjEl) {
                     const sign = match.priceAdjustment > 0 ? '+' : '';
