@@ -4,6 +4,8 @@
 @{
     Layout = null;
     var siteName = await Settings.GetAsync("general.site_name", "Sterlin Glams");
+    var receiptHeader = await Settings.GetAsync("pos.receipt_header", "");
+    var receiptFooter = await Settings.GetAsync("pos.receipt_footer", "Thank you for shopping with us!");
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -29,6 +31,10 @@
     <div class="r">
         <h1>@siteName.ToUpper()</h1>
         <p class="c muted" style="font-size:12px;margin:0 0 8px;">@(Model.PickupStore?.Name ?? "Store")</p>
+        @if (!string.IsNullOrWhiteSpace(receiptHeader))
+        {
+            <p class="c muted" style="font-size:11px;margin:0 0 8px;">@receiptHeader</p>
+        }
         <hr />
         <div class="row"><span>Receipt</span><span>@Model.OrderNumber</span></div>
         <div class="row"><span>Date</span><span>@Model.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span></div>
@@ -52,7 +58,7 @@
             <div class="row"><span>Change</span><span>₦@((Model.ChangeGiven ?? 0).ToString("N0"))</span></div>
         }
         <hr />
-        <p class="c muted" style="font-size:11px;">Thank you!</p>
+        <p class="c muted" style="font-size:11px;white-space:pre-line;">@receiptFooter</p>
     </div>
     <div class="btns"><button onclick="window.print()">Print</button><a href="/Till">Next sale</a></div>
 </body>

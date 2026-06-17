@@ -12,7 +12,7 @@ namespace SterlingLams.Web.Infrastructure;
 public class ReservationSweeper : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan Ttl = TimeSpan.FromMinutes(30); // unpaid hold lifetime
+    private const int DefaultTtlMinutes = 30; // unpaid hold lifetime (overridable via order.reservation_timeout_minutes)
 
     private readonly IServiceProvider _sp;
     private readonly ILogger<ReservationSweeper> _logger;
@@ -39,8 +39,11 @@ public class ReservationSweeper : BackgroundService
         using var scope = _sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var fulfil = scope.ServiceProvider.GetRequiredService<IOrderFulfilmentService>();
+        var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
 
-        var cutoff = DateTime.UtcNow - Ttl;
+        var ttlMinutes = (int)await settings.GetDecimalAsync("order.reservation_timeout_minutes", DefaultTtlMinutes);
+        if (ttlMinutes < 1) ttlMinutes = DefaultTtlMinutes;
+        var cutoff = DateTime.UtcNow - TimeSpan.FromMinutes(ttlMinutes);
         var staleOrderIds = await db.StockReservations
             .Where(r => r.CreatedAt < cutoff && !r.Order.IsPaid)
             .Select(r => r.OrderId)

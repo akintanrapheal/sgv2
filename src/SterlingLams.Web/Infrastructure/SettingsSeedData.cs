@@ -79,10 +79,25 @@ public static class SettingsSeedData
         new() { Key = "notifications.admin_email",     Group = "Notifications", Label = "Admin Email",                    Type = "email",   Value = "rapheal@sterlinglamslogistics.com", Description = "Receives new order and low stock alerts.",         SortOrder = 1 },
         new() { Key = "notifications.new_order",       Group = "Notifications", Label = "New Order Alerts",               Type = "boolean", Value = "true",  Description = "Send email to admin when a new order is placed.",          SortOrder = 2 },
         new() { Key = "notifications.low_stock",       Group = "Notifications", Label = "Low Stock Alerts",               Type = "boolean", Value = "true",  Description = "Send email to admin when stock falls below threshold.",     SortOrder = 3 },
-        new() { Key = "inventory.low_stock_threshold", Group = "Notifications", Label = "Low Stock Threshold (units)",   Type = "number",  Value = "5",     Description = "At or below this quantity, the storefront shows a 'Low stock' nudge (the exact number is never shown to customers).", SortOrder = 7 },
+        new() { Key = "inventory.low_stock_threshold", Group = "Inventory", Label = "Low Stock Threshold (units)",   Type = "number",  Value = "5",     Description = "At or below this quantity an item counts as low: triggers the storefront nudge and low-stock alerts (the exact number is never shown to customers).", SortOrder = 1 },
         new() { Key = "notifications.order_confirmed", Group = "Notifications", Label = "Customer Order Confirmation",    Type = "boolean", Value = "true",  Description = "Send order confirmation email to customer after payment.",  SortOrder = 4 },
         new() { Key = "notifications.abandoned_cart",       Group = "Notifications", Label = "Abandoned Cart Recovery",        Type = "boolean", Value = "true", Description = "Email shoppers a recovery link if they reach checkout but don't pay.", SortOrder = 5 },
         new() { Key = "notifications.abandoned_cart_hours", Group = "Notifications", Label = "Abandoned Cart Delay (hours)",   Type = "number",  Value = "4",    Description = "How long after checkout to send the recovery email.",               SortOrder = 6 },
+
+        // ── Inventory ─────────────────────────────────────────────────────────
+        new() { Key = "inventory.show_low_stock_nudge", Group = "Inventory", Label = "Show \"Low stock\" Nudge", Type = "boolean", Value = "true", Description = "Show a 'Low stock — order soon' nudge on product pages when an item is at/below the threshold.", SortOrder = 2 },
+
+        // ── Orders ────────────────────────────────────────────────────────────
+        new() { Key = "order.number_prefix",               Group = "Orders", Label = "Online Order Number Prefix",     Type = "text",   Value = "SL-", Description = "Prefix for online order numbers (e.g. SL- → SL-20260617…). POS orders use POS-.", SortOrder = 1 },
+        new() { Key = "order.reservation_timeout_minutes", Group = "Orders", Label = "Unpaid Order Hold (minutes)",    Type = "number", Value = "30",  Description = "How long an unpaid online order holds its stock before it's auto-cancelled and the stock released.", SortOrder = 2 },
+        new() { Key = "order.min_value",                   Group = "Orders", Label = "Minimum Order Value (₦)",        Type = "number", Value = "0",   Description = "Reject online checkout below this subtotal. 0 = no minimum.", SortOrder = 3 },
+
+        // ── POS / Till ────────────────────────────────────────────────────────
+        new() { Key = "pos.receipt_header", Group = "POS / Till", Label = "Receipt Header Line", Type = "text",     Value = "",                                  Description = "Extra line printed at the top of POS receipts (e.g. a slogan or address). Blank = none.", SortOrder = 1 },
+        new() { Key = "pos.receipt_footer", Group = "POS / Till", Label = "Receipt Footer Line", Type = "textarea", Value = "Thank you for shopping with us!",    Description = "Message printed at the bottom of POS receipts.", SortOrder = 2 },
+
+        // ── Security ──────────────────────────────────────────────────────────
+        new() { Key = "security.require_email_confirmation", Group = "Security", Label = "Require Email Confirmation to Sign In", Type = "boolean", Value = "false", Description = "When on, customers must confirm their email before they can sign in. Leave off until existing users are confirmed and SMTP is live.", SortOrder = 1 },
 
         // ── Loyalty ───────────────────────────────────────────────────────────
         new() { Key = "loyalty.enabled",         Group = "Loyalty", Label = "Enable Loyalty Points",     Type = "boolean", Value = "true", Description = "Award points to customers on completed orders.",                         SortOrder = 1 },

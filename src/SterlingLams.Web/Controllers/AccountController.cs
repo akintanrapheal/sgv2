@@ -63,6 +63,19 @@ public class AccountController : Controller
         if (result.Succeeded)
         {
             var user = await _userManager.FindByEmailAsync(model.Email);
+
+            // Optional: require a confirmed email before customers can sign in (admin-toggled).
+            // Staff (any role) are exempt so enabling this can't lock out the back office.
+            if (user != null && !user.EmailConfirmed
+                && await _settings.GetBoolAsync("security.require_email_confirmation", false)
+                && (await _userManager.GetRolesAsync(user)).Count == 0)
+            {
+                await _signInManager.SignOutAsync();
+                ModelState.AddModelError(string.Empty,
+                    "Please confirm your email address before signing in — check your inbox for the confirmation link.");
+                return View(model);
+            }
+
             if (user != null)
             {
                 user.LastLoginAt = DateTime.UtcNow;

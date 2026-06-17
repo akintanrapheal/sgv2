@@ -10,6 +10,8 @@
 
     // Low-stock nudge (storefront): show "Low stock" at/below this qty without ever revealing the count.
     var lowStockThreshold = (int)await SettingsService.GetDecimalAsync("inventory.low_stock_threshold", 5);
+    // Admin can switch the whole low-stock nudge off (threshold 0 = nothing ever reads as low).
+    if (!await SettingsService.GetBoolAsync("inventory.show_low_stock_nudge", true)) lowStockThreshold = 0;
     var bestBranchQty = Model.StoreStock.Any() ? Model.StoreStock.Max(s => s.Quantity) : 0;
     var isLowStock = Model.IsAvailableAnywhere && bestBranchQty <= lowStockThreshold;
 

@@ -242,6 +242,14 @@ public class CheckoutController : Controller
             return RedirectToAction("Index");
         }
 
+        // Minimum order value (0 = no minimum).
+        var minOrder = await _settings.GetDecimalAsync("order.min_value", 0);
+        if (minOrder > 0 && cart.Subtotal < minOrder)
+        {
+            ModelState.AddModelError("", $"Minimum order value is {await _settings.GetAsync("store.currency_symbol", "₦")}{minOrder:N0}. Please add a little more to your bag.");
+            return await RedisplayCheckoutAsync(vm);
+        }
+
         // ── Resolve user (authenticated or guest) ──────────────────────────
         ApplicationUser? user = await _userManager.GetUserAsync(User);
 
@@ -374,7 +382,8 @@ public class CheckoutController : Controller
         }
 
         // Build order
-        var orderNumber = $"SL-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}";
+        var orderPrefix = await _settings.GetAsync("order.number_prefix", "SL-");
+        var orderNumber = $"{orderPrefix}{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}";
 
         var order = new Order
         {
