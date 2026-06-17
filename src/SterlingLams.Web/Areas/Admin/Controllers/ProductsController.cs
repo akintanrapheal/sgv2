@@ -33,7 +33,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
         public async Task<IActionResult> Index(
             string q = "", string category = "", string status = "", string type = "",
-            decimal? minPrice = null, decimal? maxPrice = null, int page = 1)
+            decimal? minPrice = null, decimal? maxPrice = null, string sort = "name_asc", int page = 1)
         {
             ViewData["Title"] = "Products";
 
@@ -45,7 +45,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             // ── Filters ──────────────────────────────────────────────────────
             if (!string.IsNullOrWhiteSpace(q))
-                query = query.Where(p => EF.Functions.ILike(p.Name, $"%{q}%"));
+                query = query.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
+                                      || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
+                                      || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
+                                      || p.Variants.Any(v => EF.Functions.ILike(v.Sku ?? "", $"%{q}%")
+                                                          || EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")));
 
             if (!string.IsNullOrWhiteSpace(category))
                 query = query.Where(p => p.Category != null && p.Category.Slug == category);
@@ -69,9 +73,20 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 case "new":      query = query.Where(p => p.IsNewArrival);       break;
             }
 
+            query = sort switch
+            {
+                "name_desc"     => query.OrderByDescending(p => p.Name),
+                "category_asc"  => query.OrderBy(p => p.Category != null ? p.Category.Name : ""),
+                "category_desc" => query.OrderByDescending(p => p.Category != null ? p.Category.Name : ""),
+                "price_asc"     => query.OrderBy(p => p.Price),
+                "price_desc"    => query.OrderByDescending(p => p.Price),
+                "status_asc"    => query.OrderBy(p => p.IsActive),
+                "status_desc"   => query.OrderByDescending(p => p.IsActive),
+                _               => query.OrderBy(p => p.Name),   // name_asc (default)
+            };
+
             var total    = await query.CountAsync();
             var products = await query
-                .OrderBy(p => p.Name)
                 .Skip((page - 1) * PageSize)
                 .Take(PageSize)
                 .ToListAsync();
@@ -80,6 +95,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             {
                 Products            = products,
                 SearchQuery         = q,
+                Sort                = sort,
                 CategoryFilter      = category,
                 StatusFilter        = status,
                 TypeFilter          = type,

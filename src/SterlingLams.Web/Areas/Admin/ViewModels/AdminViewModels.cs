@@ -103,6 +103,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
     {
         public List<Product> Products { get; set; } = new();
         public string SearchQuery { get; set; } = "";
+        public string Sort { get; set; } = "name_asc";
         public string CategoryFilter { get; set; } = "";
         public string StatusFilter { get; set; } = "";
         public string TypeFilter { get; set; } = "";

@@ -5,6 +5,25 @@
                       !string.IsNullOrEmpty(Model.CategoryFilter) ||
                       !string.IsNullOrEmpty(Model.StatusFilter) ||
                       Model.MinPrice.HasValue || Model.MaxPrice.HasValue;
+
+    // Clickable column-sort helpers — each click toggles asc/desc and preserves the active filters.
+    string sort = Model.Sort ?? "name_asc";
+    Dictionary<string, string> SortRoute(string col)
+    {
+        var next = sort == $"{col}_asc" ? $"{col}_desc" : $"{col}_asc";
+        return new Dictionary<string, string>
+        {
+            ["q"] = Model.SearchQuery ?? "", ["category"] = Model.CategoryFilter ?? "",
+            ["status"] = Model.StatusFilter ?? "", ["type"] = Model.TypeFilter ?? "",
+            ["minPrice"] = Model.MinPrice?.ToString() ?? "", ["maxPrice"] = Model.MaxPrice?.ToString() ?? "",
+            ["sort"] = next,
+        };
+    }
+    string SortIndicator(string col) => sort == $"{col}_asc" ? " ▲" : sort == $"{col}_desc" ? " ▼" : "";
+    var nameRoute = SortRoute("name");
+    var categoryRoute = SortRoute("category");
+    var priceRoute = SortRoute("price");
+    var statusRoute = SortRoute("status");
 }
 
 <!-- ── Action buttons (OUTSIDE the filter form — nested forms break HTML) -->
@@ -28,11 +47,12 @@
 
 <!-- ── Filter form (standalone — no nested forms) -->
 <form method="get" class="bg-white rounded-sm border border-neutral-100 p-4 mb-4 space-y-3">
+    <input type="hidden" name="sort" value="@Model.Sort" />
 
-    <!-- Row 1: Name search -->
+    <!-- Row 1: Name / SKU / barcode search -->
     <div class="flex gap-2">
         <input type="text" name="q" value="@Model.SearchQuery"
-               placeholder="Search by product name…"
+               placeholder="Search by name, SKU or barcode…"
                class="flex-1 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
         <button type="submit"
                 class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
@@ -172,10 +192,18 @@
             <tr class="bg-neutral-50 border-b border-neutral-100">
                 <th class="px-4 py-3 w-10"><input type="checkbox" id="check-all" class="align-middle cursor-pointer" /></th>
                 <th class="px-4 py-3 w-14"></th>
-                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Name</th>
-                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Category</th>
-                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Price</th>
-                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Status</th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">
+                    <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-all-route-data="nameRoute" class="hover:text-neutral-800">Name@(SortIndicator("name"))</a>
+                </th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">
+                    <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-all-route-data="categoryRoute" class="hover:text-neutral-800">Category@(SortIndicator("category"))</a>
+                </th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">
+                    <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-all-route-data="priceRoute" class="hover:text-neutral-800">Price@(SortIndicator("price"))</a>
+                </th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">
+                    <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-all-route-data="statusRoute" class="hover:text-neutral-800">Status@(SortIndicator("status"))</a>
+                </th>
                 <th class="text-right px-4 py-3 text-xs text-neutral-400 font-medium">Actions</th>
             </tr>
         </thead>
@@ -303,6 +331,7 @@
         ["type"] = Model.TypeFilter ?? "",
         ["minPrice"] = Model.MinPrice?.ToString() ?? "",
         ["maxPrice"] = Model.MaxPrice?.ToString() ?? "",
+        ["sort"] = Model.Sort ?? "name_asc",
     };
     var baseCls = "px-3 py-1.5 text-xs rounded-sm border border-neutral-200 text-neutral-600 hover:border-neutral-400 transition-colors";
 
