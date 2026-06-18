@@ -1,0 +1,174 @@
+@using Microsoft.AspNetCore.Mvc.Rendering
+@{
+    ViewData["Title"] = "New adjustment";
+    var storeItems = ViewBag.Stores as List<SelectListItem> ?? new();
+    var reasons = ViewBag.Reasons as string[] ?? Array.Empty<string>();
+    var inCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+}
+
+<div class="flex items-center justify-between mb-4">
+    <div>
+        <a asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← All adjustments</a>
+        <h1 class="font-cormorant text-2xl font-light text-neutral-900 mt-1">New stock adjustment</h1>
+    </div>
+</div>
+
+@Html.AntiForgeryToken()
+
+@if (!storeItems.Any())
+{
+    <div class="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-sm p-4">
+        You aren't assigned to any branch you can adjust stock for. Ask an administrator to assign you a branch.
+    </div>
+}
+else
+{
+<div class="bg-white border border-neutral-100 rounded-sm p-5 mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Branch</label>
+        <select id="adj-store" class="@inCls w-full">
+            @foreach (var s in storeItems) { <option value="@s.Value">@s.Text</option> }
+        </select></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Reason</label>
+        <select id="adj-reason" class="@inCls w-full">
+            @foreach (var r in reasons) { <option value="@r">@r</option> }
+        </select></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Note (optional)</label>
+        <input id="adj-note" type="text" class="@inCls w-full" placeholder="e.g. supplier invoice #1234" /></div>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm p-5 mb-4">
+    <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Add product</label>
+    <div class="relative max-w-md">
+        <input id="adj-search" type="text" autocomplete="off" class="@inCls w-full" placeholder="Search name, SKU or barcode…" />
+        <div id="adj-results" class="absolute z-20 left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-sm shadow-lg hidden max-h-72 overflow-y-auto"></div>
+    </div>
+    <p class="text-[11px] text-neutral-400 mt-1">Enter a positive quantity to add stock, or a negative quantity to remove it. Unit cost &amp; expiry are optional (used for received goods).</p>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto mb-4">
+    <table class="w-full text-sm min-w-[640px]">
+        <thead>
+            <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
+                <th class="text-left px-4 py-3 font-medium">Product</th>
+                <th class="text-right px-4 py-3 font-medium w-28">Qty (+/−)</th>
+                <th class="text-right px-4 py-3 font-medium w-32">Unit cost</th>
+                <th class="text-left px-4 py-3 font-medium w-40">Expiry</th>
+                <th class="px-4 py-3 w-10"></th>
+            </tr>
+        </thead>
+        <tbody id="adj-lines">
+            <tr id="adj-empty"><td colspan="5" class="px-4 py-10 text-center text-sm text-neutral-400">No lines yet — search for a product above.</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="flex items-center justify-between">
+    <div id="adj-msg" class="text-sm"></div>
+    <button id="adj-save" class="px-5 py-2.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 disabled:opacity-40" disabled>Save adjustment</button>
+</div>
+
+<script>
+(function () {
+    const token = document.querySelector('input[name="__RequestVerificationToken"]');
+    const searchEl = document.getElementById('adj-search');
+    const resultsEl = document.getElementById('adj-results');
+    const linesEl = document.getElementById('adj-lines');
+    const emptyEl = document.getElementById('adj-empty');
+    const saveBtn = document.getElementById('adj-save');
+    const msgEl = document.getElementById('adj-msg');
+    const inCls = '@inCls';
+    let seq = 0;
+
+    const refreshState = () => {
+        const has = linesEl.querySelectorAll('tr[data-line]').length > 0;
+        emptyEl.style.display = has ? 'none' : '';
+        saveBtn.disabled = !has;
+    };
+
+    // ── autocomplete ──
+    let timer = null;
+    searchEl.addEventListener('input', () => {
+        clearTimeout(timer);
+        const q = searchEl.value.trim();
+        if (q.length < 2) { resultsEl.classList.add('hidden'); return; }
+        timer = setTimeout(async () => {
+            const res = await fetch('@Url.Action("ProductSearch")?q=' + encodeURIComponent(q));
+            const items = await res.json();
+            resultsEl.innerHTML = '';
+            if (!items.length) { resultsEl.classList.add('hidden'); return; }
+            items.forEach(p => {
+                const div = document.createElement('div');
+                div.className = 'px-3 py-2 text-sm hover:bg-neutral-50 cursor-pointer border-b border-neutral-50';
+                div.textContent = p.name + (p.sku ? ' · ' + p.sku : '');
+                div.onclick = () => { addLine(p); searchEl.value = ''; resultsEl.classList.add('hidden'); };
+                resultsEl.appendChild(div);
+            });
+            resultsEl.classList.remove('hidden');
+        }, 200);
+    });
+    document.addEventListener('click', e => { if (!searchEl.contains(e.target) && !resultsEl.contains(e.target)) resultsEl.classList.add('hidden'); });
+
+    // ── line row ──
+    function addLine(p) {
+        seq++;
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-neutral-50';
+        tr.setAttribute('data-line', seq);
+        tr.setAttribute('data-pid', p.id);
+
+        let prodCell = '<div class="text-neutral-700">' + escapeHtml(p.name) + '</div>';
+        if (p.variants && p.variants.length) {
+            let opts = p.variants.map(v => '<option value="' + v.id + '">' + escapeHtml(v.name) + '</option>').join('');
+            prodCell += '<select class="adj-variant mt-1 ' + inCls + ' text-xs py-1">' + opts + '</select>';
+        }
+
+        tr.innerHTML =
+            '<td class="px-4 py-3">' + prodCell + '</td>' +
+            '<td class="px-4 py-3 text-right"><input type="number" step="1" class="adj-qty ' + inCls + ' w-24 text-right" value="0" /></td>' +
+            '<td class="px-4 py-3 text-right"><input type="number" step="0.01" min="0" class="adj-cost ' + inCls + ' w-28 text-right" placeholder="—" /></td>' +
+            '<td class="px-4 py-3"><input type="date" class="adj-expiry ' + inCls + '" /></td>' +
+            '<td class="px-4 py-3 text-center"><button type="button" class="adj-del text-neutral-300 hover:text-red-500 text-lg leading-none">&times;</button></td>';
+
+        tr.querySelector('.adj-del').onclick = () => { tr.remove(); refreshState(); };
+        linesEl.appendChild(tr);
+        refreshState();
+        tr.querySelector('.adj-qty').focus();
+    }
+
+    function escapeHtml(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    // ── save ──
+    saveBtn.addEventListener('click', async () => {
+        const lines = [...linesEl.querySelectorAll('tr[data-line]')].map(tr => {
+            const vSel = tr.querySelector('.adj-variant');
+            const cost = parseFloat(tr.querySelector('.adj-cost').value);
+            const exp = tr.querySelector('.adj-expiry').value;
+            return {
+                productId: parseInt(tr.getAttribute('data-pid'), 10),
+                variantId: vSel ? parseInt(vSel.value, 10) : null,
+                qtyDelta: parseInt(tr.querySelector('.adj-qty').value, 10) || 0,
+                unitCost: isNaN(cost) ? null : cost,
+                expiryDate: exp || null
+            };
+        }).filter(l => l.qtyDelta !== 0);
+
+        if (!lines.length) { msgEl.innerHTML = '<span class="text-red-600">Enter a non-zero quantity on at least one line.</span>'; return; }
+
+        saveBtn.disabled = true; msgEl.innerHTML = '<span class="text-neutral-400">Saving…</span>';
+        const res = await fetch('@Url.Action("Create")', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token ? token.value : '' },
+            body: JSON.stringify({
+                storeId: parseInt(document.getElementById('adj-store').value, 10),
+                reason: document.getElementById('adj-reason').value,
+                note: document.getElementById('adj-note').value,
+                lines: lines
+            })
+        });
+        const data = await res.json();
+        if (data.success) { window.location.href = '@Url.Action("Detail")/' + data.id; }
+        else { saveBtn.disabled = false; msgEl.innerHTML = '<span class="text-red-600">' + escapeHtml(data.message || 'Could not save.') + '</span>'; }
+    });
+})();
+</script>
+}

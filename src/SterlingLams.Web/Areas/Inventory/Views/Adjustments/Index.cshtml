@@ -1,0 +1,99 @@
+@model List<SterlingLams.Web.Areas.Inventory.Controllers.AdjustmentListRow>
+@using SterlingLams.Web.Models.Domain
+@{
+    ViewData["Title"] = "Stock adjustments";
+    var stores = ViewBag.Stores as List<Store> ?? new();
+    var reasons = ViewBag.Reasons as string[] ?? Array.Empty<string>();
+    DateTime? from = ViewBag.From; DateTime? to = ViewBag.To;
+    string? reason = ViewBag.Reason; int? storeId = ViewBag.StoreId;
+    int curPage = ViewBag.Page ?? 1; int totalPages = ViewBag.TotalPages ?? 1; int total = ViewBag.Total ?? 0;
+    var inCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+    string Badge(string r) => r switch
+    {
+        "Received" => "bg-emerald-50 text-emerald-700",
+        "Damage" => "bg-amber-50 text-amber-700",
+        "Loss / theft" => "bg-red-50 text-red-700",
+        "Stock count" => "bg-blue-50 text-blue-700",
+        _ => "bg-neutral-100 text-neutral-600"
+    };
+}
+
+<div class="flex items-center justify-between mb-4">
+    <h1 class="font-cormorant text-2xl font-light text-neutral-900">Stock adjustments</h1>
+    <a asp-action="Create" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700">+ New adjustment</a>
+</div>
+
+<form method="get" class="flex flex-wrap items-end gap-2 mb-4">
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">From</label>
+        <input type="date" name="from" value="@(from?.ToString("yyyy-MM-dd"))" class="@inCls" /></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">To</label>
+        <input type="date" name="to" value="@(to?.ToString("yyyy-MM-dd"))" class="@inCls" /></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Reason</label>
+        <select name="reason" class="@inCls">
+            <option value="">All reasons</option>
+            @foreach (var r in reasons)
+            {
+                <option value="@r" selected="@(reason == r)">@r</option>
+            }
+        </select></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Branch</label>
+        <select name="storeId" class="@inCls">
+            <option value="">All branches</option>
+            @foreach (var s in stores)
+            {
+                <option value="@s.Id" selected="@(storeId == s.Id)">@s.Name.Replace("Sterlin Glams ", "")</option>
+            }
+        </select></div>
+    <button type="submit" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700">Filter</button>
+</form>
+
+<p class="text-xs text-neutral-400 mb-2">@total record(s)</p>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[720px]">
+        <thead>
+            <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
+                <th class="text-left px-4 py-3 font-medium">Reference</th>
+                <th class="text-left px-4 py-3 font-medium">Date</th>
+                <th class="text-left px-4 py-3 font-medium">Branch</th>
+                <th class="text-left px-4 py-3 font-medium">Reason</th>
+                <th class="text-right px-4 py-3 font-medium">Lines</th>
+                <th class="text-right px-4 py-3 font-medium">Net units</th>
+                <th class="text-left px-4 py-3 font-medium">By</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (Model.Any())
+            {
+                @foreach (var a in Model)
+                {
+                    <tr class="hover:bg-neutral-50 cursor-pointer" onclick="location.href='@Url.Action("Detail", new { id = a.Id })'">
+                        <td class="px-4 py-3 font-mono text-xs text-neutral-800">@a.Number</td>
+                        <td class="px-4 py-3 text-neutral-500 text-xs">@a.When.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</td>
+                        <td class="px-4 py-3 text-neutral-600">@a.Store</td>
+                        <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-sm text-[11px] @Badge(a.Reason)">@a.Reason</span></td>
+                        <td class="px-4 py-3 text-right text-neutral-500">@a.Lines</td>
+                        <td class="px-4 py-3 text-right font-medium @(a.NetUnits >= 0 ? "text-emerald-600" : "text-red-600")">@(a.NetUnits >= 0 ? "+" : "")@a.NetUnits</td>
+                        <td class="px-4 py-3 text-neutral-400 text-xs">@a.By</td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr><td colspan="7" class="px-4 py-10 text-center text-sm text-neutral-400">No adjustments match these filters.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (totalPages > 1)
+{
+    <div class="flex items-center justify-center gap-2 mt-4 text-xs">
+        @for (int i = 1; i <= totalPages; i++)
+        {
+            <a asp-action="Index" asp-route-page="@i" asp-route-from="@(from?.ToString("yyyy-MM-dd"))"
+               asp-route-to="@(to?.ToString("yyyy-MM-dd"))" asp-route-reason="@reason" asp-route-storeId="@storeId"
+               class="px-3 py-1.5 rounded-sm @(i == curPage ? "bg-neutral-900 text-white" : "bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-50")">@i</a>
+        }
+    </div>
+}

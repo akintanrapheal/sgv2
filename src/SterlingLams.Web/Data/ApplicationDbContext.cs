@@ -26,6 +26,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<RefundItem> RefundItems => Set<RefundItem>();
     public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
     public DbSet<StockTransferItem> StockTransferItems => Set<StockTransferItem>();
+    public DbSet<StockAdjustment> StockAdjustments => Set<StockAdjustment>();
+    public DbSet<StockAdjustmentLine> StockAdjustmentLines => Set<StockAdjustmentLine>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
     public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
@@ -213,6 +215,27 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
                 t.HasCheckConstraint("CK_StockTransferItems_StageQty_NonNegative",
                     "(\"ApprovedQty\" IS NULL OR \"ApprovedQty\" >= 0) AND (\"DispatchedQty\" IS NULL OR \"DispatchedQty\" >= 0) AND (\"ReceivedQty\" IS NULL OR \"ReceivedQty\" >= 0)");
             });
+        });
+
+        // ─── StockAdjustment (header for grouped adjustments, "BSA#####") ────
+        builder.Entity<StockAdjustment>(e =>
+        {
+            e.HasIndex(a => a.AdjustmentNumber).IsUnique();
+            e.HasIndex(a => a.CreatedAt);   // list ordering / date filter
+            e.HasIndex(a => a.StoreId);     // branch filter
+            e.Property(a => a.AdjustmentNumber).HasMaxLength(32);
+            e.Property(a => a.Reason).HasMaxLength(64);
+            e.Property(a => a.Source).HasMaxLength(16);
+            e.HasOne(a => a.Store).WithMany().HasForeignKey(a => a.StoreId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(a => a.Lines).WithOne(l => l.StockAdjustment).HasForeignKey(l => l.StockAdjustmentId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── StockAdjustmentLine ────────────────────────────────────────────
+        builder.Entity<StockAdjustmentLine>(e =>
+        {
+            e.Property(l => l.UnitCost).HasColumnType("numeric");
+            e.HasOne(l => l.Product).WithMany().HasForeignKey(l => l.ProductId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(l => l.ProductVariant).WithMany().HasForeignKey(l => l.ProductVariantId).OnDelete(DeleteBehavior.SetNull);
         });
 
         // ─── StockMovement (stock ledger) ───────────────────────────────────

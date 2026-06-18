@@ -1,0 +1,73 @@
+@model SterlingLams.Web.Models.Domain.StockAdjustment
+@{
+    ViewData["Title"] = Model.AdjustmentNumber;
+    string? by = ViewBag.CreatedBy;
+    var net = Model.Lines.Sum(l => l.QtyDelta);
+    var hasCost = Model.Lines.Any(l => l.UnitCost.HasValue);
+    var hasExpiry = Model.Lines.Any(l => l.ExpiryDate.HasValue);
+    string Badge(string r) => r switch
+    {
+        "Received" => "bg-emerald-50 text-emerald-700",
+        "Damage" => "bg-amber-50 text-amber-700",
+        "Loss / theft" => "bg-red-50 text-red-700",
+        "Stock count" => "bg-blue-50 text-blue-700",
+        _ => "bg-neutral-100 text-neutral-600"
+    };
+}
+
+<div class="flex items-center justify-between mb-4">
+    <div>
+        <a asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← All adjustments</a>
+        <h1 class="font-cormorant text-2xl font-light text-neutral-900 mt-1">@Model.AdjustmentNumber</h1>
+    </div>
+    <a asp-action="Create" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700">+ New adjustment</a>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm p-5 mb-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Branch</div>
+        <div class="text-sm text-neutral-800">@Model.Store.Name.Replace("Sterlin Glams ", "")</div></div>
+    <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Reason</div>
+        <div><span class="px-2 py-0.5 rounded-sm text-[11px] @Badge(Model.Reason)">@Model.Reason</span></div></div>
+    <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Date</div>
+        <div class="text-sm text-neutral-800">@Model.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</div></div>
+    <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Net units</div>
+        <div class="text-sm font-medium @(net >= 0 ? "text-emerald-600" : "text-red-600")">@(net >= 0 ? "+" : "")@net</div></div>
+    <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Created by</div>
+        <div class="text-sm text-neutral-600">@(by ?? "—")</div></div>
+    <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Source</div>
+        <div class="text-sm text-neutral-600">@Model.Source</div></div>
+    @if (!string.IsNullOrWhiteSpace(Model.Note))
+    {
+        <div class="col-span-2"><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Note</div>
+            <div class="text-sm text-neutral-600">@Model.Note</div></div>
+    }
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[560px]">
+        <thead>
+            <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
+                <th class="text-left px-4 py-3 font-medium">Product</th>
+                <th class="text-right px-4 py-3 font-medium">Change</th>
+                <th class="text-right px-4 py-3 font-medium">Balance after</th>
+                @if (hasCost)   { <th class="text-right px-4 py-3 font-medium">Unit cost</th> }
+                @if (hasExpiry) { <th class="text-left px-4 py-3 font-medium">Expiry</th> }
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @foreach (var l in Model.Lines)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-3 text-neutral-700">
+                        @l.ProductName
+                        @if (!string.IsNullOrEmpty(l.VariantName)) { <span class="text-neutral-400 text-xs">· @l.VariantName</span> }
+                    </td>
+                    <td class="px-4 py-3 text-right font-medium @(l.QtyDelta >= 0 ? "text-emerald-600" : "text-red-600")">@(l.QtyDelta >= 0 ? "+" : "")@l.QtyDelta</td>
+                    <td class="px-4 py-3 text-right text-neutral-500">@l.BalanceAfter</td>
+                    @if (hasCost)   { <td class="px-4 py-3 text-right text-neutral-500">@(l.UnitCost.HasValue ? "₦" + l.UnitCost.Value.ToString("N0") : "—")</td> }
+                    @if (hasExpiry) { <td class="px-4 py-3 text-neutral-500 text-xs">@(l.ExpiryDate?.ToString("dd MMM yyyy") ?? "—")</td> }
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

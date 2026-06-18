@@ -145,7 +145,7 @@ public class StockController : InventoryAreaController
         // Classify the movement from the chosen reason so receipts, damage and shrinkage are
         // first-class (and reportable) instead of all being lumped under "Adjustment". The reason
         // label is still kept on the movement (Reference) for the audit trail.
-        var type = MovementTypeForReason(reason);
+        var type = AdjustmentReasons.MovementType(reason);
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var validStoreIds = (await _db.Stores.Where(s => s.IsActive).Select(s => s.Id).ToListAsync()).ToHashSet();
         var validProductIds = (await _db.Products
@@ -173,6 +173,14 @@ public class StockController : InventoryAreaController
         if (valid.Any(e => !writable.Contains(e.StoreId)))
             return Json(new { success = false, message = "You can only edit stock for your assigned branch(es)." });
 
+        // Name snapshots for the adjustment lines (so the record reads right even after a rename).
+        var pids = valid.Select(e => e.ProductId).Distinct().ToList();
+        var pnames = await _db.Products.Where(p => pids.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => p.Name);
+        var vids = valid.Where(e => e.VariantId.HasValue).Select(e => e.VariantId!.Value).Distinct().ToList();
+        var vnames = vids.Count == 0 ? new Dictionary<int, string>()
+            : await _db.ProductVariants.Where(v => vids.Contains(v.Id)).ToDictionaryAsync(v => v.Id, v => v.Name);
+
         var applied = 0;
         await using var tx = await _db.Database.BeginTransactionAsync();
 
@@ -186,18 +194,45 @@ public class StockController : InventoryAreaController
                 await _db.Database.ExecuteSqlInterpolatedAsync(
                     $"SELECT 1 FROM \"StoreInventories\" WHERE \"ProductId\" = {pid} AND \"StoreId\" = {sid} FOR UPDATE");
 
-        foreach (var e in valid)
+        // Group the save into one adjustment header per branch (Moniebook "BSA#####"), so the
+        // changes are auditable as a unit. Each line still raises a ledger movement that references
+        // the adjustment number; the reason rides on the header (and the movement note).
+        var seq = await NextAdjustmentSeqAsync();
+        foreach (var storeGrp in valid.GroupBy(e => e.StoreId))
         {
-            // Re-read the EXACT (variant or pool) row under the lock so the delta sets that row to
-            // the typed target — not measured against the shared pool via fallback.
-            var current = await _stock.GetStockAsync(e.ProductId, e.VariantId, e.StoreId, fallback: false);
-            var delta = e.Quantity - current;
-            if (delta != 0)
+            var header = new StockAdjustment
             {
-                await _stock.ApplyAsync(e.ProductId, e.VariantId, e.StoreId, delta, type, reason,
-                    userId: userId, materializeVariant: e.VariantId.HasValue);
+                AdjustmentNumber = $"BSA{seq++:D5}",
+                StoreId = storeGrp.Key,
+                Reason = reason,
+                Source = "Grid",
+                CreatedByUserId = userId,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            foreach (var e in storeGrp)
+            {
+                // Re-read the EXACT (variant or pool) row under the lock so the delta sets that row to
+                // the typed target — not measured against the shared pool via fallback.
+                var current = await _stock.GetStockAsync(e.ProductId, e.VariantId, e.StoreId, fallback: false);
+                var delta = e.Quantity - current;
+                if (delta == 0) continue;
+
+                var balance = await _stock.ApplyAsync(e.ProductId, e.VariantId, e.StoreId, delta, type,
+                    header.AdjustmentNumber, note: reason, userId: userId, materializeVariant: e.VariantId.HasValue);
+                header.Lines.Add(new StockAdjustmentLine
+                {
+                    ProductId = e.ProductId,
+                    ProductVariantId = e.VariantId,
+                    ProductName = pnames.GetValueOrDefault(e.ProductId, ""),
+                    VariantName = e.VariantId.HasValue ? vnames.GetValueOrDefault(e.VariantId.Value) : null,
+                    QtyDelta = delta,
+                    BalanceAfter = balance
+                });
                 applied++;
             }
+
+            if (header.Lines.Count > 0) _db.StockAdjustments.Add(header);
         }
 
         try
@@ -215,15 +250,14 @@ public class StockController : InventoryAreaController
         return Json(new { success = true, count = applied });
     }
 
-    // Maps an adjustment-reason label (from the Stock page's reason picker) to the ledger
-    // movement type, so the StockMovement record carries the true nature of the change.
-    private static StockMovementType MovementTypeForReason(string reason) => reason switch
+    // Next sequential BSA number. Computed from the latest row; the caller increments in memory
+    // for multiple headers in one save (so they don't collide before SaveChanges).
+    private async Task<int> NextAdjustmentSeqAsync()
     {
-        "Received"     => StockMovementType.Purchase,
-        "Damage"       => StockMovementType.Damage,
-        "Loss / theft" => StockMovementType.Loss,
-        _              => StockMovementType.Adjustment,
-    };
+        var last = await _db.StockAdjustments.OrderByDescending(a => a.Id)
+            .Select(a => a.AdjustmentNumber).FirstOrDefaultAsync();
+        return last != null && last.StartsWith("BSA") && int.TryParse(last[3..], out var p) ? p + 1 : 1;
+    }
 
     // Export per-branch stock levels to CSV.
     public async Task<IActionResult> ExportCsv(string q = "", int? categoryId = null)
