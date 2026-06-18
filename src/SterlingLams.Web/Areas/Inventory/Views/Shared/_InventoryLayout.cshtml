@@ -19,9 +19,8 @@
 
     // item = (Label, Controller, Action, Icon, MatchByAction, IsPlaceholder, ShowTransferBadge)
     (string Label, string Ctrl, string Action, string Icon, bool ByAction, bool Soon, bool Badge) R(string l, string c, string a, string ico, bool ba = false, bool badge = false) => (l, c, a, ico, ba, false, badge);
-    (string Label, string Ctrl, string Action, string Icon, bool ByAction, bool Soon, bool Badge) S(string l, string ico) => (l, "Soon", "Index", ico, false, true, false);
 
-    // Full Moniebook-style tree. Real pages link through; not-yet-built items are placeholders (→ Soon).
+    // Moniebook-style tree — only real, built pages are shown.
     var nav = new (string Header, bool Collapsible, (string Label, string Ctrl, string Action, string Icon, bool ByAction, bool Soon, bool Badge)[] Items)[]
     {
         ("", false, new[] { R("Overview", "Overview", "Index", icoOverview) }),
@@ -36,17 +35,11 @@
         ("Inventory", true, new[] {
             R("All items", "Products", "Index", icoProducts),
             R("Categories", "Categories", "Index", icoTag, true),
-            S("Taxes", icoTag),
             R("Stock levels", "Stock", "Index", icoStock),
             R("Stock adjustment", "Adjustments", "Index", icoStock),
             R("Stock-take", "Stocktake", "Index", icoStocktake),
             R("Stock transfer", "Transfers", "Index", icoTransfers, false, true),
-            R("Stock history", "Reports", "Movements", icoReport, true),
-            S("Batch management", icoStock),
-            S("Production & Recipes", icoStock),
-            S("Purchasing orders", icoStock),
-            S("Measurement Units", icoTag),
-            S("Suppliers", icoUsers) }),
+            R("Stock history", "Reports", "Movements", icoReport, true) }),
         ("Reports", true, new[] {
             R("Reorder", "Reports", "Reorder", icoReport, true),
             R("Stock value", "Reports", "Value", icoReport, true),
@@ -60,9 +53,7 @@
             R("Payment method", "Reports", "Payments", icoReport, true),
             R("Discounts", "Reports", "Discounts", icoReport, true),
             R("Expiring inventory", "Reports", "Expiring", icoReport, true),
-            R("Inventory valuation", "Reports", "Value", icoReport, true),
-            S("Sales by pricing groups", icoReport),
-            S("Taxes ", icoReport) }),
+            R("Inventory valuation", "Reports", "Value", icoReport, true) }),
         ("Administration", true, new[] {
             R("Staff & Roles", "Org", "Staff", icoUsers, true),
             R("Branches", "Org", "Branches", icoStock, true),
