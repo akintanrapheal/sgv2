@@ -418,6 +418,16 @@ public class TillController : Controller
         if (phone.Length == 0 && email == null)
             return Json(new { success = false, message = "Enter a phone number." });
 
+        // If a user with this email already exists, reuse it instead of creating a second account.
+        // (Creating a new shell here is what produced duplicate-email accounts that broke login.)
+        if (email != null)
+        {
+            var existing = await _db.Users
+                .FirstOrDefaultAsync(u => u.NormalizedEmail == _userManager.NormalizeEmail(email));
+            if (existing != null)
+                return Json(new { success = true, id = existing.Id, name = existing.FullName, phone = existing.PhoneNumber, reused = true });
+        }
+
         // POS customers are phone-first and don't log in: no password. UserName must be unique.
         var digits = new string(phone.Where(char.IsDigit).ToArray());
         var userName = email ?? (digits.Length > 0 ? $"pos-{digits}" : $"pos-{Guid.NewGuid():N}");

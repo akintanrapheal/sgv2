@@ -1,59 +1,43 @@
 @model SterlingLams.Web.Models.ViewModels.LoginViewModel
 @{
-    ViewData["Title"] = "Sign In";
+    // Staff heading into /Admin or /Inventory get a back-office sign-in (own minimal layout,
+    // no storefront chrome). Same form + POST handler — only the presentation differs.
+    var ru = Model.ReturnUrl ?? "";
+    var staff = ru.StartsWith("/Admin", StringComparison.OrdinalIgnoreCase)
+             || ru.StartsWith("/Inventory", StringComparison.OrdinalIgnoreCase)
+             || ru.StartsWith("/Till", StringComparison.OrdinalIgnoreCase);
+    if (staff) { Layout = "_StaffAuthLayout"; }
+    ViewData["Title"] = staff ? "Staff Sign In" : "Sign In";
 }
 
-<div class="min-h-[80vh] flex items-center justify-center py-16 px-4">
-    <div class="w-full max-w-md">
-        <div class="text-center mb-10">
-            <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-2">Welcome back</p>
-            <h1 class="font-cormorant text-4xl font-light">Sign In</h1>
-        </div>
-
-        <form asp-action="Login" method="post" class="space-y-5">
-            <input type="hidden" asp-for="ReturnUrl" />
-            @Html.AntiForgeryToken()
-
-            <div asp-validation-summary="ModelOnly" class="text-sm text-red-600 bg-red-50 px-4 py-3 border border-red-100"></div>
-
-            <div>
-                <label asp-for="Email" class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Email</label>
-                <input asp-for="Email" type="email" autocomplete="email"
-                       class="form-input @(ViewData.ModelState["Email"]?.Errors.Any() == true ? "border-red-400" : "")"
-                       placeholder="your@email.com" />
-                <span asp-validation-for="Email" class="text-xs text-red-500 mt-1 block"></span>
-            </div>
-
-            <div>
-                <div class="flex justify-between items-center mb-2">
-                    <label asp-for="Password" class="text-xs tracking-[0.15em] uppercase text-neutral-500">Password</label>
-                    <a asp-action="ForgotPassword" class="text-xs text-neutral-400 hover:text-brand-500 transition-colors">Forgot password?</a>
-                </div>
-                <input asp-for="Password" type="password" autocomplete="current-password"
-                       class="form-input @(ViewData.ModelState["Password"]?.Errors.Any() == true ? "border-red-400" : "")" />
-                <span asp-validation-for="Password" class="text-xs text-red-500 mt-1 block"></span>
-            </div>
-
-            <div class="flex items-center gap-2">
-                <input asp-for="RememberMe" type="checkbox"
-                       class="rounded-none border-neutral-300 text-neutral-900 focus:ring-0" />
-                <label asp-for="RememberMe" class="text-sm text-neutral-500 font-light">Remember me</label>
-            </div>
-
-            <button type="submit"
-                    class="w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-4 hover:bg-brand-600 transition-colors duration-300">
-                Sign In
-            </button>
-        </form>
-
-        <p class="text-center text-sm text-neutral-400 mt-8 font-light">
-            New to Sterlin Glams?
-            <a asp-action="Register" class="text-neutral-700 hover:text-brand-500 underline underline-offset-2 transition-colors">
-                Create an account
-            </a>
-        </p>
+@if (staff)
+{
+    <div class="text-center mb-6">
+        <h1 class="font-cormorant text-2xl font-light text-neutral-900">Staff sign in</h1>
+        <p class="text-xs text-neutral-400 mt-1">Sign in to continue to the back office</p>
     </div>
-</div>
+    <partial name="_LoginForm" model="Model" />
+}
+else
+{
+    <div class="min-h-[80vh] flex items-center justify-center py-16 px-4">
+        <div class="w-full max-w-md">
+            <div class="text-center mb-10">
+                <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-2">Welcome back</p>
+                <h1 class="font-cormorant text-4xl font-light">Sign In</h1>
+            </div>
+
+            <partial name="_LoginForm" model="Model" />
+
+            <p class="text-center text-sm text-neutral-400 mt-8 font-light">
+                New to Sterlin Glams?
+                <a asp-action="Register" class="text-neutral-700 hover:text-brand-500 underline underline-offset-2 transition-colors">
+                    Create an account
+                </a>
+            </p>
+        </div>
+    </div>
+}
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />

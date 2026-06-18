@@ -51,6 +51,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     {
         base.OnModelCreating(builder);
 
+        // ─── Users: enforce unique email ────────────────────────────────────
+        // Identity only makes usernames unique, not emails — which let a POS guest shell be
+        // created with an existing customer's email, breaking login (FindByEmailAsync = SingleOrDefault).
+        // Make the default EmailIndex UNIQUE, but only for real emails: guest/POS shells with a
+        // NULL/empty email are exempt (Postgres partial index), so they can still be created.
+        builder.Entity<ApplicationUser>(e =>
+            e.HasIndex(u => u.NormalizedEmail).HasDatabaseName("EmailIndex").IsUnique()
+                .HasFilter("\"NormalizedEmail\" IS NOT NULL AND \"NormalizedEmail\" <> ''"));
+
         // ─── Abandoned carts ────────────────────────────────────────────────
         builder.Entity<AbandonedCart>(e =>
         {

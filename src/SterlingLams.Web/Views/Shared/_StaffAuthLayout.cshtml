@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] — Sterlin Glams</title>
+    <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500&display=swap" rel="stylesheet" />
+</head>
+<body class="min-h-screen bg-neutral-900 flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+        <div class="text-center mb-8">
+            <a href="/" class="inline-block">
+                <div class="font-cormorant text-3xl font-light tracking-[0.2em] text-white">STERLIN GLAMS</div>
+                <div class="text-[10px] tracking-[0.35em] uppercase text-emerald-400 mt-1">Staff Workspace</div>
+            </a>
+        </div>
+        <div class="bg-white rounded-sm shadow-xl p-8">
+            @RenderBody()
+        </div>
+        <p class="text-center text-[11px] text-neutral-500 mt-6">Sterlin Glams Inventory &amp; Admin · authorised staff only</p>
+    </div>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

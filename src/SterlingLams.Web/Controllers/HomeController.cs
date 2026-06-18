@@ -113,6 +113,16 @@ public class HomeController : Controller
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public IActionResult Error()
     {
+        // Staff areas get a back-office error page (no storefront chrome) instead of being dumped
+        // on the customer-facing "Something went wrong" page.
+        var path = HttpContext.Features
+            .Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerPathFeature>()?.Path ?? "";
+        if (IsStaffPath(path)) return View("StaffError");
         return View();
     }
+
+    private static bool IsStaffPath(string path) =>
+        path.StartsWith("/Admin", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/Inventory", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/Till", StringComparison.OrdinalIgnoreCase);
 }
