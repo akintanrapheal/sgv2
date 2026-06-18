@@ -213,7 +213,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             {
                 t.HasCheckConstraint("CK_StockTransferItems_RequestedQty_Positive", "\"RequestedQty\" > 0");
                 t.HasCheckConstraint("CK_StockTransferItems_StageQty_NonNegative",
-                    "(\"ApprovedQty\" IS NULL OR \"ApprovedQty\" >= 0) AND (\"DispatchedQty\" IS NULL OR \"DispatchedQty\" >= 0) AND (\"ReceivedQty\" IS NULL OR \"ReceivedQty\" >= 0)");
+                    "(\"ApprovedQty\" IS NULL OR \"ApprovedQty\" >= 0) AND (\"DispatchedQty\" IS NULL OR \"DispatchedQty\" >= 0) AND (\"ReceivedQty\" IS NULL OR \"ReceivedQty\" >= 0) AND (\"DamagedQty\" IS NULL OR \"DamagedQty\" >= 0) AND (\"WontFulfilQty\" IS NULL OR \"WontFulfilQty\" >= 0)");
             });
         });
 

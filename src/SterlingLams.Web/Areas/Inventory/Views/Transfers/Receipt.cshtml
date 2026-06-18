@@ -1,0 +1,129 @@
+@model SterlingLams.Web.Models.Domain.StockTransfer
+@using SterlingLams.Web.Models.Domain
+@using SterlingLams.Web.Areas.Inventory
+@{
+    Layout = null;
+    var userNames = ViewBag.UserNames as Dictionary<string, string> ?? new();
+    string Who(string? uid) => uid != null && userNames.TryGetValue(uid, out var n) ? n : "—";
+    string Fmt(DateTime? dt) => dt.HasValue ? dt.Value.ToLocalTime().ToString("dd MMM yyyy, HH:mm") : "—";
+    bool reconciled = Model.ReceivedAt.HasValue;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Receipt @Model.TransferNumber</title>
+<style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; color: #1f2937; margin: 0; padding: 32px; font-size: 13px; }
+    .sheet { max-width: 800px; margin: 0 auto; }
+    .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #111; padding-bottom: 12px; margin-bottom: 20px; }
+    .brand { font-size: 20px; letter-spacing: 3px; font-weight: 600; }
+    .brand small { display:block; letter-spacing: 2px; font-size: 10px; color:#6b7280; font-weight:400; margin-top:2px; }
+    .doc { text-align: right; }
+    .doc h1 { font-size: 16px; margin: 0; }
+    .doc .ref { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px; }
+    .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; margin-bottom: 20px; }
+    .meta div { font-size: 12px; }
+    .meta .lbl { color: #6b7280; text-transform: uppercase; letter-spacing: 1px; font-size: 9px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    th, td { padding: 7px 8px; border-bottom: 1px solid #e5e7eb; }
+    th { text-align: right; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #6b7280; background:#f9fafb; }
+    th:first-child, td:first-child { text-align: left; }
+    td { text-align: right; }
+    tfoot td { font-weight: 600; border-top: 2px solid #111; border-bottom: none; }
+    .note { font-size: 12px; color: #374151; background:#f9fafb; padding:10px 12px; border-radius:4px; margin-bottom: 20px; }
+    .sigs { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 48px; }
+    .sig { border-top: 1px solid #9ca3af; padding-top: 6px; font-size: 11px; color: #6b7280; }
+    .foot { margin-top: 28px; text-align: center; font-size: 10px; color: #9ca3af; }
+    @@media print { body { padding: 0; } .noprint { display: none; } }
+    .noprint { text-align:center; margin-bottom: 16px; }
+    .noprint button { font-size: 13px; padding: 8px 20px; background:#111; color:#fff; border:none; border-radius:4px; cursor:pointer; }
+</style>
+</head>
+<body>
+<div class="sheet">
+    <div class="noprint"><button onclick="window.print()">Print this receipt</button></div>
+
+    <div class="head">
+        <div class="brand">STERLIN GLAMS<small>STOCK TRANSFER</small></div>
+        <div class="doc">
+            <h1>Transfer Receipt</h1>
+            <div class="ref">@Model.TransferNumber</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:4px;">@TransferStatusDisplay.Label(Model.Status)</div>
+        </div>
+    </div>
+
+    <div class="meta">
+        <div><div class="lbl">From branch</div>@Model.FromStore?.Name</div>
+        <div><div class="lbl">To branch</div>@Model.ToStore?.Name</div>
+        <div><div class="lbl">Dispatched</div>@Fmt(Model.DispatchedAt) · @Who(Model.DispatchedByUserId)</div>
+        <div><div class="lbl">Received</div>@Fmt(Model.ReceivedAt) · @Who(Model.ReceivedByUserId)</div>
+        @if (!string.IsNullOrEmpty(Model.TrackingNumber))
+        {
+            <div><div class="lbl">Tracking</div>@Model.TrackingNumber @(string.IsNullOrEmpty(Model.CourierName) ? "" : " · " + Model.CourierName)</div>
+        }
+        <div><div class="lbl">Requested</div>@Fmt(Model.CreatedAt) · @Who(Model.CreatedByUserId)</div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Dispatched</th>
+                <th>Received</th>
+                @if (reconciled)
+                {
+                    <th>Damaged</th>
+                    <th>Won't fulfil</th>
+                    <th>Pending</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var i in Model.Items)
+            {
+                <tr>
+                    <td>@i.ProductName@(string.IsNullOrEmpty(i.VariantName) ? "" : " (" + i.VariantName + ")")</td>
+                    <td>@(i.DispatchedQty?.ToString() ?? "—")</td>
+                    <td>@(i.ReceivedQty?.ToString() ?? "—")</td>
+                    @if (reconciled)
+                    {
+                        <td>@((i.DamagedQty ?? 0) > 0 ? i.DamagedQty.ToString() : "—")</td>
+                        <td>@((i.WontFulfilQty ?? 0) > 0 ? i.WontFulfilQty.ToString() : "—")</td>
+                        <td>@(i.PendingQty > 0 ? i.PendingQty.ToString() : "—")</td>
+                    }
+                </tr>
+            }
+        </tbody>
+        <tfoot>
+            <tr>
+                <td>Total</td>
+                <td>@Model.Items.Sum(i => i.DispatchedQty ?? 0)</td>
+                <td>@Model.Items.Sum(i => i.ReceivedQty ?? 0)</td>
+                @if (reconciled)
+                {
+                    <td>@Model.Items.Sum(i => i.DamagedQty ?? 0)</td>
+                    <td>@Model.Items.Sum(i => i.WontFulfilQty ?? 0)</td>
+                    <td>@Model.Items.Sum(i => i.PendingQty)</td>
+                }
+            </tr>
+        </tfoot>
+    </table>
+
+    @if (!string.IsNullOrEmpty(Model.ReceiveNotes))
+    {
+        <div class="note"><strong>Receive notes:</strong> @Model.ReceiveNotes</div>
+    }
+
+    <div class="sigs">
+        <div class="sig">Dispatched by — @Who(Model.DispatchedByUserId)</div>
+        <div class="sig">Received by — @Who(Model.ReceivedByUserId)</div>
+    </div>
+
+    <div class="foot">Generated @DateTime.UtcNow.ToLocalTime().ToString("dd MMM yyyy, HH:mm") · Sterlin Glams Inventory System</div>
+</div>
+<script>window.addEventListener('load', () => { setTimeout(() => window.print(), 300); });</script>
+</body>
+</html>

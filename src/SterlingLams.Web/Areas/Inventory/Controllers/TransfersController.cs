@@ -130,9 +130,16 @@ public class TransfersController : InventoryAreaController
         public string? CourierName { get; set; }
         public string? Notes { get; set; }
     }
+    public class ReceiveLine
+    {
+        public int ItemId { get; set; }
+        public int Received { get; set; }
+        public int Damaged { get; set; }
+        public int WontFulfil { get; set; }
+    }
     public class ReceiveRequest
     {
-        public List<ItemQtyDto> Items { get; set; } = new();
+        public List<ReceiveLine> Items { get; set; } = new();
         public string? Notes { get; set; }
     }
 
@@ -174,7 +181,8 @@ public class TransfersController : InventoryAreaController
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var deny = await DenyIfNoStoreAccessAsync(id, from: false, to: true); if (deny != null) return deny;
-        var result = await _workflow.ReceiveAsync(id, req.Items, req.Notes, userId);
+        var lines = req.Items.Select(i => new ReceiveLineDto(i.ItemId, i.Received, i.Damaged, i.WontFulfil)).ToList();
+        var result = await _workflow.ReceiveAsync(id, lines, req.Notes, userId);
         if (!result.Success) return Json(new { success = false, message = result.Error });
         await LogTransferAsync(id, "Receive", "Received");
         return Json(new { success = true });
@@ -230,6 +238,22 @@ public class TransfersController : InventoryAreaController
             .Where(si => si.StoreId == transfer.FromStoreId && productIds.Contains(si.ProductId))
             .ToDictionaryAsync(si => si.ProductId, si => si.AvailableQuantity);
 
+        return View(transfer);
+    }
+
+    // Printable transfer receipt — minimal standalone page (no app chrome) that auto-prints.
+    public async Task<IActionResult> Receipt(int id)
+    {
+        var transfer = await _db.StockTransfers
+            .Include(t => t.FromStore).Include(t => t.ToStore).Include(t => t.Items)
+            .FirstOrDefaultAsync(t => t.Id == id);
+        if (transfer == null) return NotFound();
+
+        var userIds = new[] { transfer.CreatedByUserId, transfer.DispatchedByUserId, transfer.ReceivedByUserId }
+            .Where(uid => uid != null).Cast<string>().Distinct().ToList();
+        ViewBag.UserNames = await _db.Users.Where(u => userIds.Contains(u.Id))
+            .ToDictionaryAsync(u => u.Id, u => u.Email ?? u.UserName ?? u.Id);
+        ViewData["Title"] = $"Receipt {transfer.TransferNumber}";
         return View(transfer);
     }
 }

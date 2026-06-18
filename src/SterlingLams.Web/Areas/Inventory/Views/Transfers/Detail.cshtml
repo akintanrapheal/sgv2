@@ -7,7 +7,9 @@
     string Who(string? uid) => uid != null && userNames.TryGetValue(uid, out var n) ? n : "—";
     string Fmt(DateTime? dt) => dt.HasValue ? dt.Value.ToLocalTime().ToString("dd MMM, HH:mm") : "—";
 
-    var hasShortage = Model.Items.Any(i => i.DispatchedQty.HasValue && i.ReceivedQty.HasValue && i.ReceivedQty < i.DispatchedQty);
+    var hasShortage = Model.Items.Any(i => i.DispatchedQty.HasValue && (i.PendingQty > 0 || (i.DamagedQty ?? 0) > 0 || (i.WontFulfilQty ?? 0) > 0) && Model.ReceivedAt.HasValue);
+    var receiving = Model.Status is TransferStatus.InTransit or TransferStatus.PartiallyReceived;
+    var afterDispatch = Model.DispatchedAt.HasValue;
     var showApproved = Model.ApprovedAt.HasValue;
     var showRejected = Model.Status == TransferStatus.Rejected;
     var showDispatched = Model.DispatchedAt.HasValue;
@@ -24,6 +26,11 @@
     <span class="text-neutral-200">/</span>
     <h1 class="text-lg font-medium text-neutral-800 font-mono">@Model.TransferNumber</h1>
     <span class="text-[10px] px-2 py-0.5 rounded-full @TransferStatusDisplay.BadgeClass(Model.Status)">@TransferStatusDisplay.Label(Model.Status)</span>
+    @if (Model.DispatchedAt.HasValue)
+    {
+        <a asp-action="Receipt" asp-route-id="@Model.Id" target="_blank"
+           class="ml-auto text-xs text-neutral-500 hover:text-neutral-800 border border-neutral-200 rounded-sm px-3 py-1.5">🖨 Print receipt</a>
+    }
 </div>
 
 <div id="t-alert" class="hidden mb-4 text-sm rounded-sm px-4 py-2"></div>
@@ -50,7 +57,7 @@
 
         <!-- Items -->
         <div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
-            <table class="w-full text-sm min-w-[560px]">
+            <table class="w-full text-sm min-w-[820px]">
                 <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
                     <tr>
                         <th class="text-left font-medium px-4 py-3">Product</th>
@@ -58,13 +65,20 @@
                         <th class="text-right font-medium px-4 py-3">Approved</th>
                         <th class="text-right font-medium px-4 py-3">Dispatched</th>
                         <th class="text-right font-medium px-4 py-3">Received</th>
+                        @if (afterDispatch)
+                        {
+                            <th class="text-right font-medium px-4 py-3">Damaged</th>
+                            <th class="text-right font-medium px-4 py-3">Won't&nbsp;fulfil</th>
+                            <th class="text-right font-medium px-4 py-3">Pending</th>
+                        }
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-neutral-100">
                     @foreach (var i in Model.Items)
                     {
-                        var shortage = i.DispatchedQty.HasValue && i.ReceivedQty.HasValue && i.ReceivedQty < i.DispatchedQty;
-                        <tr class="@(shortage ? "bg-red-50" : "")">
+                        var pending = i.PendingQty;
+                        var reconciled = Model.ReceivedAt.HasValue && ((i.DamagedQty ?? 0) > 0 || (i.WontFulfilQty ?? 0) > 0 || pending > 0);
+                        <tr class="@(reconciled ? "bg-amber-50" : "")">
                             <td class="px-4 py-3 text-neutral-800">
                                 @i.ProductName
                                 @if (!string.IsNullOrEmpty(i.VariantName)) { <span class="text-neutral-400">(@i.VariantName)</span> }
@@ -95,20 +109,48 @@
                                     @(i.DispatchedQty?.ToString() ?? "—")
                                 }
                             </td>
-                            <td class="px-4 py-3 text-right @(shortage ? "text-red-600 font-medium" : "text-neutral-600")">
-                                @if (Model.Status == TransferStatus.InTransit)
+                            <td class="px-4 py-3 text-right text-neutral-600">
+                                @if (receiving)
                                 {
-                                    <input type="number" class="receive-qty @inputCls" data-item-id="@i.Id" min="0" max="@(i.DispatchedQty ?? 0)" value="@(i.DispatchedQty ?? 0)" />
+                                    <input type="number" class="receive-qty @inputCls" data-item-id="@i.Id" min="0" max="@pending" value="@pending" />
                                 }
                                 else
                                 {
                                     @(i.ReceivedQty?.ToString() ?? "—")
                                 }
                             </td>
+                            @if (afterDispatch)
+                            {
+                                <td class="px-4 py-3 text-right text-neutral-600">
+                                    @if (receiving)
+                                    {
+                                        <input type="number" class="damaged-qty @inputCls" data-item-id="@i.Id" min="0" max="@pending" value="0" />
+                                    }
+                                    else
+                                    {
+                                        @(i.DamagedQty.HasValue && i.DamagedQty > 0 ? i.DamagedQty.ToString() : "—")
+                                    }
+                                </td>
+                                <td class="px-4 py-3 text-right text-neutral-600">
+                                    @if (receiving)
+                                    {
+                                        <input type="number" class="wont-qty @inputCls" data-item-id="@i.Id" min="0" max="@pending" value="0" />
+                                    }
+                                    else
+                                    {
+                                        @(i.WontFulfilQty.HasValue && i.WontFulfilQty > 0 ? i.WontFulfilQty.ToString() : "—")
+                                    }
+                                </td>
+                                <td class="px-4 py-3 text-right @(pending > 0 ? "text-amber-600 font-medium" : "text-neutral-400")">@pending</td>
+                            }
                         </tr>
                     }
                 </tbody>
             </table>
+            @if (receiving)
+            {
+                <p class="text-[11px] text-neutral-400 px-4 py-2 border-t border-neutral-100">Per line, received + damaged + won't-fulfil can't exceed the pending quantity. Only received units enter @Model.ToStore?.Name's stock.</p>
+            }
         </div>
     </div>
 
@@ -217,27 +259,21 @@
                 <button id="btn-dispatch" class="w-full bg-emerald-600 text-white text-sm rounded-sm py-2 hover:bg-emerald-700 transition-colors">Dispatch</button>
             </div>
         }
-        else if (Model.Status == TransferStatus.InTransit)
+        else if (Model.Status is TransferStatus.InTransit or TransferStatus.PartiallyReceived)
         {
             <div class="bg-white border border-neutral-100 rounded-sm p-4">
                 <h2 class="text-sm font-medium text-neutral-800 mb-1">Receive</h2>
-                <p class="text-[11px] text-neutral-400 mb-3">Confirm the quantity actually received per item (defaults to dispatched), then receive.</p>
+                <p class="text-[11px] text-neutral-400 mb-3">Reconcile each line in the table — received (defaults to all pending), damaged, or won't-fulfil. Lines with stock still pending stay open to receive later.</p>
+                @if (Model.Status == TransferStatus.PartiallyReceived)
+                {
+                    <p class="text-[11px] text-amber-600 mb-3">@Model.Items.Count(i => i.PendingQty > 0) line(s) still have pending stock.</p>
+                }
                 <textarea id="receive-notes" rows="2" placeholder="Notes (optional)" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm mb-3 focus:outline-none focus:border-emerald-400"></textarea>
                 <button id="btn-receive" class="w-full bg-emerald-600 text-white text-sm rounded-sm py-2 hover:bg-emerald-700 transition-colors">Receive</button>
-            </div>
-        }
-        else if (Model.Status == TransferStatus.PartiallyReceived)
-        {
-            <div class="bg-white border border-neutral-100 rounded-sm p-4">
-                <h2 class="text-sm font-medium text-neutral-800 mb-1">Shortage</h2>
-                <p class="text-[11px] text-neutral-500 mb-3">Some items were received in a lower quantity than dispatched. Mark this transfer completed once resolved or acknowledged.</p>
-                <ul class="text-xs text-red-600 space-y-1 mb-3">
-                    @foreach (var i in Model.Items.Where(i => i.DispatchedQty.HasValue && i.ReceivedQty.HasValue && i.ReceivedQty < i.DispatchedQty))
-                    {
-                        <li>@i.ProductName — short by @((i.DispatchedQty ?? 0) - (i.ReceivedQty ?? 0))</li>
-                    }
-                </ul>
-                <button id="btn-complete" class="w-full bg-emerald-600 text-white text-sm rounded-sm py-2 hover:bg-emerald-700 transition-colors">Mark Completed</button>
+                @if (Model.Status == TransferStatus.PartiallyReceived)
+                {
+                    <button id="btn-complete" class="w-full mt-2 bg-neutral-700 text-white text-sm rounded-sm py-2 hover:bg-neutral-800 transition-colors">Close transfer (write off pending)</button>
+                }
             </div>
         }
 
@@ -318,9 +354,18 @@
             notes: document.getElementById('dispatch-notes').value.trim()
         }, 'Transfer dispatched.'));
 
+    function receiveLines() {
+        const map = {};
+        const get = id => (map[id] = map[id] || { itemId: id, received: 0, damaged: 0, wontFulfil: 0 });
+        document.querySelectorAll('.receive-qty').forEach(el => get(+el.dataset.itemId).received = +el.value || 0);
+        document.querySelectorAll('.damaged-qty').forEach(el => get(+el.dataset.itemId).damaged = +el.value || 0);
+        document.querySelectorAll('.wont-qty').forEach(el => get(+el.dataset.itemId).wontFulfil = +el.value || 0);
+        return Object.values(map);
+    }
+
     document.getElementById('btn-receive')?.addEventListener('click', e =>
         run(e.target, 'Receive', {
-            items: itemQtys('.receive-qty'),
+            items: receiveLines(),
             notes: document.getElementById('receive-notes').value.trim()
         }, 'Items received.'));
 

@@ -12,6 +12,10 @@ public record TransferActionResult(bool Success, string? Error = null)
 
 public record ItemQtyDto(int ItemId, int Qty);
 
+/// <summary>Per-line receive reconciliation: of the dispatched units, how many arrived good,
+/// damaged, or are written off as won't-fulfil (this round). Pending is derived.</summary>
+public record ReceiveLineDto(int ItemId, int Received, int Damaged, int WontFulfil);
+
 public class TransferLine { public int ProductId { get; set; } public int Quantity { get; set; } }
 public class TransferRequest
 {
@@ -34,7 +38,7 @@ public interface ITransferWorkflowService
     Task<TransferActionResult> ApproveAsync(int transferId, List<ItemQtyDto> items, string? userId);
     Task<TransferActionResult> RejectAsync(int transferId, string reason, string? userId);
     Task<TransferActionResult> DispatchAsync(int transferId, List<ItemQtyDto> items, string? trackingNumber, string? courierName, string? notes, string? userId);
-    Task<TransferActionResult> ReceiveAsync(int transferId, List<ItemQtyDto> items, string? notes, string? userId);
+    Task<TransferActionResult> ReceiveAsync(int transferId, List<ReceiveLineDto> lines, string? notes, string? userId);
     Task<TransferActionResult> CompleteAsync(int transferId, string? userId);
     Task<TransferActionResult> CancelAsync(int transferId, string reason, string? userId);
 }
@@ -277,40 +281,59 @@ public class TransferWorkflowService : ITransferWorkflowService
         return TransferActionResult.Ok();
     }
 
-    public async Task<TransferActionResult> ReceiveAsync(int transferId, List<ItemQtyDto> items, string? notes, string? userId)
+    public async Task<TransferActionResult> ReceiveAsync(int transferId, List<ReceiveLineDto> lines, string? notes, string? userId)
     {
         var transfer = await _db.StockTransfers
             .Include(t => t.Items).Include(t => t.FromStore)
             .FirstOrDefaultAsync(t => t.Id == transferId);
         if (transfer == null) return TransferActionResult.Fail("Transfer not found.");
-        if (transfer.Status != TransferStatus.InTransit)
-            return TransferActionResult.Fail("Transfer is not in transit.");
+        // Receiving can happen on the first arrival (InTransit) and again to reconcile what was
+        // still pending (PartiallyReceived); amounts accumulate across rounds.
+        if (transfer.Status is not (TransferStatus.InTransit or TransferStatus.PartiallyReceived))
+            return TransferActionResult.Fail("Transfer is not awaiting receipt.");
 
-        var qtyByItem = items.ToDictionary(i => i.ItemId, i => i.Qty);
+        var byItem = (lines ?? new()).ToDictionary(l => l.ItemId, l => l);
+
+        // Validate: each round's amounts are non-negative and the accumulated received+damaged+
+        // won't-fulfil never exceeds what was dispatched.
         foreach (var item in transfer.Items)
         {
-            var qty = qtyByItem.GetValueOrDefault(item.Id, 0);
+            if (!byItem.TryGetValue(item.Id, out var l)) continue;
+            if (l.Received < 0 || l.Damaged < 0 || l.WontFulfil < 0)
+                return TransferActionResult.Fail($"Quantities for '{item.ProductName}' cannot be negative.");
             var dispatched = item.DispatchedQty ?? 0;
-            if (qty < 0 || qty > dispatched)
-                return TransferActionResult.Fail($"Received quantity for '{item.ProductName}' must be between 0 and {dispatched}.");
+            var alreadyAccounted = (item.ReceivedQty ?? 0) + (item.DamagedQty ?? 0) + (item.WontFulfilQty ?? 0);
+            var thisRound = l.Received + l.Damaged + l.WontFulfil;
+            if (alreadyAccounted + thisRound > dispatched)
+                return TransferActionResult.Fail(
+                    $"'{item.ProductName}': received + damaged + won't-fulfil ({alreadyAccounted + thisRound}) exceeds dispatched ({dispatched}).");
         }
+        if (transfer.Items.All(i => !byItem.ContainsKey(i.Id)
+                || (byItem[i.Id].Received + byItem[i.Id].Damaged + byItem[i.Id].WontFulfil) == 0))
+            return TransferActionResult.Fail("Enter at least one received, damaged or won't-fulfil quantity.");
 
         var now = DateTime.UtcNow;
         await using var tx = await _db.Database.BeginTransactionAsync();
 
-        var allFull = true;
         foreach (var item in transfer.Items)
         {
-            var received = qtyByItem.GetValueOrDefault(item.Id, 0);
-            if (received > 0)
-                await _stock.ApplyAsync(item.ProductId, item.ProductVariantId, transfer.ToStoreId, received,
+            if (!byItem.TryGetValue(item.Id, out var l)) continue;
+
+            // Only the good units received this round enter the destination's stock. Damaged and
+            // won't-fulfil units left the source at dispatch and never become destination stock —
+            // they're recorded on the line as the transit loss / shortage reconciliation.
+            if (l.Received > 0)
+                await _stock.ApplyAsync(item.ProductId, item.ProductVariantId, transfer.ToStoreId, l.Received,
                     StockMovementType.Transfer, transfer.TransferNumber, $"Received from {transfer.FromStore.Name}", userId);
 
-            item.ReceivedQty = received;
-            if (received != (item.DispatchedQty ?? 0)) allFull = false;
+            item.ReceivedQty = (item.ReceivedQty ?? 0) + l.Received;
+            item.DamagedQty = (item.DamagedQty ?? 0) + l.Damaged;
+            item.WontFulfilQty = (item.WontFulfilQty ?? 0) + l.WontFulfil;
         }
 
-        transfer.Status = allFull ? TransferStatus.Completed : TransferStatus.PartiallyReceived;
+        // Fully reconciled (nothing still pending on any line) → Completed, else PartiallyReceived.
+        var anyPending = transfer.Items.Any(i => i.PendingQty > 0);
+        transfer.Status = anyPending ? TransferStatus.PartiallyReceived : TransferStatus.Completed;
         transfer.ReceivedByUserId = userId;
         transfer.ReceivedAt = now;
         transfer.ReceiveNotes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();

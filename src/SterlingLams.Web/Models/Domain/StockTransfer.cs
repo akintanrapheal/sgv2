@@ -74,5 +74,14 @@ public class StockTransferItem
     public int RequestedQty { get; set; }
     public int? ApprovedQty { get; set; }
     public int? DispatchedQty { get; set; }
+
+    // Receive reconciliation (Moniebook-style): of the dispatched units, how many arrived good,
+    // arrived damaged, or were written off as won't-fulfil. Pending is whatever is still expected.
     public int? ReceivedQty { get; set; }
+    public int? DamagedQty { get; set; }
+    public int? WontFulfilQty { get; set; }
+
+    /// <summary>Units still in transit / unaccounted: dispatched − received − damaged − won't-fulfil.</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int PendingQty => Math.Max(0, (DispatchedQty ?? 0) - (ReceivedQty ?? 0) - (DamagedQty ?? 0) - (WontFulfilQty ?? 0));
 }
