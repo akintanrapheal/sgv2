@@ -224,11 +224,81 @@ public class ReportsController : InventoryAreaController
         return CsvFile(sb, "shrinkage");
     }
 
+    // ── Sales by staff (POS cashier), over a date range. ────────────────────────────────────────
+    public async Task<IActionResult> Sales(DateTime? from = null, DateTime? to = null)
+    {
+        ViewData["Title"] = "Sales by staff";
+        var (f, t) = NormalizeRange(from, to);
+
+        var orders = _db.Orders.Where(o => o.Channel == OrderChannel.Pos
+            && o.CreatedAt >= f && o.CreatedAt < t.AddDays(1)
+            && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded);
+
+        var agg = await orders.GroupBy(o => o.UserId)
+            .Select(g => new { UserId = g.Key, Sales = g.Sum(x => x.Total), Tx = g.Count() })
+            .OrderByDescending(x => x.Sales).ToListAsync();
+        var ids = agg.Select(a => a.UserId).ToList();
+        var names = await _db.Users.Where(u => ids.Contains(u.Id)).Select(u => new { u.Id, u.Email }).ToListAsync();
+
+        var rows = agg.Select(a => new SalesByStaffRow
+        {
+            Staff = names.FirstOrDefault(n => n.Id == a.UserId)?.Email ?? "—",
+            Transactions = a.Tx,
+            Sales = a.Sales,
+            Average = a.Tx > 0 ? a.Sales / a.Tx : 0
+        }).ToList();
+
+        ViewBag.From = f; ViewBag.To = t;
+        return View(new SalesByStaffVm
+        {
+            Rows = rows,
+            TotalSales = rows.Sum(r => r.Sales),
+            TotalTx = rows.Sum(r => r.Transactions)
+        });
+    }
+
+    // ── Payment-method breakdown across all channels, over a date range. ────────────────────────
+    public async Task<IActionResult> Payments(DateTime? from = null, DateTime? to = null)
+    {
+        ViewData["Title"] = "Payment methods";
+        var (f, t) = NormalizeRange(from, to);
+
+        var orders = _db.Orders.Where(o => o.CreatedAt >= f && o.CreatedAt < t.AddDays(1)
+            && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded);
+
+        var agg = await orders
+            .GroupBy(o => new { Method = o.PaymentProvider ?? "Unspecified", o.Channel })
+            .Select(g => new { g.Key.Method, g.Key.Channel, Amount = g.Sum(x => x.Total), Tx = g.Count() })
+            .ToListAsync();
+
+        var rows = agg
+            .GroupBy(a => a.Method)
+            .Select(g => new PaymentMethodRow
+            {
+                Method = g.Key,
+                Transactions = g.Sum(x => x.Tx),
+                Amount = g.Sum(x => x.Amount),
+                Pos = g.Where(x => x.Channel == OrderChannel.Pos).Sum(x => x.Amount),
+                Online = g.Where(x => x.Channel == OrderChannel.Online).Sum(x => x.Amount)
+            })
+            .OrderByDescending(r => r.Amount).ToList();
+
+        ViewBag.From = f; ViewBag.To = t;
+        return View(new PaymentMethodVm
+        {
+            Rows = rows,
+            TotalAmount = rows.Sum(r => r.Amount),
+            TotalTx = rows.Sum(r => r.Transactions)
+        });
+    }
+
     // Default the report window to the last 30 days when no range is supplied.
     private static (DateTime from, DateTime to) NormalizeRange(DateTime? from, DateTime? to)
     {
-        var t = (to ?? DateTime.UtcNow).Date;
-        var f = (from ?? t.AddDays(-30)).Date;
+        // Query-string dates bind with Kind=Unspecified; force UTC so Npgsql accepts them
+        // for the timestamptz columns (otherwise filtering by an explicit range throws).
+        var t = DateTime.SpecifyKind((to ?? DateTime.UtcNow).Date, DateTimeKind.Utc);
+        var f = DateTime.SpecifyKind((from ?? t.AddDays(-30)).Date, DateTimeKind.Utc);
         if (f > t) (f, t) = (t, f);
         return (f, t);
     }
@@ -332,4 +402,31 @@ public class ShrinkageVm
     public int TotalDamage { get; set; }
     public int TotalLoss { get; set; }
     public decimal TotalValue { get; set; }
+}
+public class SalesByStaffRow
+{
+    public string Staff { get; set; } = "";
+    public int Transactions { get; set; }
+    public decimal Sales { get; set; }
+    public decimal Average { get; set; }
+}
+public class SalesByStaffVm
+{
+    public List<SalesByStaffRow> Rows { get; set; } = new();
+    public decimal TotalSales { get; set; }
+    public int TotalTx { get; set; }
+}
+public class PaymentMethodRow
+{
+    public string Method { get; set; } = "";
+    public int Transactions { get; set; }
+    public decimal Amount { get; set; }
+    public decimal Pos { get; set; }
+    public decimal Online { get; set; }
+}
+public class PaymentMethodVm
+{
+    public List<PaymentMethodRow> Rows { get; set; } = new();
+    public decimal TotalAmount { get; set; }
+    public int TotalTx { get; set; }
 }

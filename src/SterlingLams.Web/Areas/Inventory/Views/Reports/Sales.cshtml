@@ -1,0 +1,64 @@
+@model SterlingLams.Web.Areas.Inventory.Controllers.SalesByStaffVm
+@{
+    ViewData["Title"] = "Sales by staff";
+    DateTime from = ViewBag.From; DateTime to = ViewBag.To;
+    var inCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+    decimal avg = Model.TotalTx > 0 ? Model.TotalSales / Model.TotalTx : 0;
+}
+
+@await Html.PartialAsync("_ReportTabs", "Sales")
+
+<form method="get" class="flex flex-wrap items-end gap-2 mb-4">
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">From</label>
+        <input type="date" name="from" value="@from.ToString("yyyy-MM-dd")" class="@inCls" /></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">To</label>
+        <input type="date" name="to" value="@to.ToString("yyyy-MM-dd")" class="@inCls" /></div>
+    <button type="submit" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700">Filter</button>
+</form>
+
+<div class="grid grid-cols-3 gap-3 mb-4">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Total sales</div>
+        <div class="text-2xl font-light text-emerald-600">₦@Model.TotalSales.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Transactions</div>
+        <div class="text-2xl font-light text-neutral-800">@Model.TotalTx.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Average sale</div>
+        <div class="text-2xl font-light text-neutral-800">₦@avg.ToString("N0")</div>
+    </div>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[480px]">
+        <thead>
+            <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
+                <th class="text-left px-4 py-3 font-medium">Staff (cashier)</th>
+                <th class="text-right px-4 py-3 font-medium">Transactions</th>
+                <th class="text-right px-4 py-3 font-medium">Avg sale</th>
+                <th class="text-right px-4 py-3 font-medium">Total sales</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (Model.Rows.Any())
+            {
+                @foreach (var r in Model.Rows)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-3 text-neutral-700">@r.Staff</td>
+                        <td class="px-4 py-3 text-right text-neutral-500">@r.Transactions.ToString("N0")</td>
+                        <td class="px-4 py-3 text-right text-neutral-500">₦@r.Average.ToString("N0")</td>
+                        <td class="px-4 py-3 text-right font-medium text-neutral-800">₦@r.Sales.ToString("N0")</td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr><td colspan="4" class="px-4 py-10 text-center text-sm text-neutral-400">No POS sales in this period.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+<p class="text-[11px] text-neutral-400 mt-2">POS sales only, grouped by the cashier who rang up the sale. Cancelled and refunded orders are excluded.</p>
