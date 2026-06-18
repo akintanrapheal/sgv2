@@ -11,6 +11,7 @@
     <form asp-action="PlaceOrder" method="post" id="checkout-form">
         @Html.AntiForgeryToken()
         <input type="hidden" name="SelectedDeliveryType" id="selected-delivery-type" value="Standard" />
+        <input type="hidden" name="TimeframeAcknowledged" id="ack-input" value="false" />
 
         <div class="grid md:grid-cols-5 gap-12">
 
@@ -265,6 +266,20 @@
     </form>
 </div>
 
+<!-- Delivery-timeframe agreement modal (shown when an item ships from a far branch) -->
+<div id="tf-modal" class="hidden fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-sm shadow-xl p-6">
+        <h3 class="font-cormorant text-2xl font-light text-neutral-900 mb-1">A note on delivery timing</h3>
+        <p class="text-sm text-neutral-500 mb-4">Some items in your bag aren't stocked at a branch near you, so they'll take a little longer to reach you:</p>
+        <ul id="tf-list" class="mb-4"></ul>
+        <p class="text-xs text-neutral-400 mb-5">You can remove an item to keep only what's available nearby, or agree to the longer timeframe and continue to payment.</p>
+        <div class="flex gap-3 justify-end">
+            <button type="button" id="tf-cancel" class="px-4 py-2.5 text-xs tracking-widest uppercase border border-neutral-300 text-neutral-600 hover:border-neutral-900 transition-colors">Go back</button>
+            <button type="button" id="tf-agree" class="px-4 py-2.5 text-xs tracking-widest uppercase bg-brand-500 text-white hover:bg-brand-600 transition-colors">I agree, continue</button>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
 <script nonce="@Context.Items["csp-nonce"]">
 // ── Pricing data from server ───────────────────────────────────────────────
@@ -380,6 +395,75 @@ function updateSummary(fee) {
 
     const stateVal = document.getElementById('state-select').value;
     if (stateVal) onStateChanged(stateVal);
+})();
+
+// ── Delivery-timeframe agreement (far-stock items) ─────────────────────────
+(function timeframeGate() {
+    const form = document.getElementById('checkout-form');
+    if (!form) return;
+    const token = form.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    const modal = document.getElementById('tf-modal');
+    const list = document.getElementById('tf-list');
+    const ack = document.getElementById('ack-input');
+    let ackPassed = false;
+
+    function esc(s){ const d=document.createElement('div'); d.textContent = s==null?'':String(s); return d.innerHTML; }
+
+    async function removeItem(pid, vid){
+        const fd = new URLSearchParams();
+        fd.set('__RequestVerificationToken', token);
+        fd.set('productId', pid);
+        if (vid !== null && vid !== undefined) fd.set('variantId', vid);
+        try { await fetch('/Cart/Remove', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd.toString()}); } catch {}
+        window.location.reload();
+    }
+
+    function showModal(items){
+        list.innerHTML = '';
+        items.forEach(it => {
+            const li = document.createElement('li');
+            li.className = 'flex items-start justify-between gap-3 py-3 border-b border-neutral-100';
+            li.innerHTML = '<div class="min-w-0"><div class="text-sm text-neutral-800 break-words">' + esc(it.productName) + '</div>'
+                + '<div class="text-xs text-amber-600 mt-0.5">Ships from our ' + esc(it.sourceStore) + ' store · allow ' + esc(it.eta) + '</div></div>';
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'text-xs text-red-500 hover:text-red-700 whitespace-nowrap shrink-0';
+            btn.textContent = 'Remove';
+            btn.addEventListener('click', () => removeItem(it.productId, it.variantId));
+            li.appendChild(btn);
+            list.appendChild(li);
+        });
+        modal.classList.remove('hidden');
+    }
+
+    form.addEventListener('submit', async (e) => {
+        if (ackPassed) return; // already agreed → let it through
+        e.preventDefault();
+        const ff = form.querySelector('input[name="FulfillmentType"]:checked')?.value || 'Delivery';
+        const fd = new URLSearchParams();
+        fd.set('__RequestVerificationToken', token);
+        fd.set('fulfillmentType', ff);
+        fd.set('state', document.getElementById('state-select')?.value || '');
+        fd.set('city', document.getElementById('city-input')?.value || '');
+        const storeId = form.querySelector('input[name="SelectedStoreId"]:checked')?.value;
+        if (storeId) fd.set('storeId', storeId);
+
+        let data = { delayed: [] };
+        try {
+            const r = await fetch('/Checkout/FulfilmentPreview', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd.toString()});
+            data = await r.json();
+        } catch { /* on error, don't block the sale */ }
+
+        if (!data.delayed || data.delayed.length === 0) { ackPassed = true; form.submit(); return; }
+        showModal(data.delayed);
+    });
+
+    document.getElementById('tf-agree')?.addEventListener('click', () => {
+        ack.value = 'true'; ackPassed = true;
+        modal.classList.add('hidden');
+        form.submit();
+    });
+    document.getElementById('tf-cancel')?.addEventListener('click', () => modal.classList.add('hidden'));
 })();
 </script>
 }

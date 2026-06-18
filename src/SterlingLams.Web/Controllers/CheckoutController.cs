@@ -176,6 +176,78 @@ public class CheckoutController : Controller
         });
     }
 
+    // ── Delivery-timeframe preview ──────────────────────────────────────────────
+    public class DelayedItemDto
+    {
+        public int ProductId { get; set; }
+        public int? VariantId { get; set; }
+        public string ProductName { get; set; } = "";
+        public string SourceStore { get; set; } = "";
+        public string Eta { get; set; } = "";
+    }
+
+    // Cart items that would ship slowly: the customer's nearby branch (or chosen pickup branch)
+    // can't cover them, so they must come from a far branch. Powers the checkout agreement modal
+    // and the server-side guard below.
+    private async Task<List<DelayedItemDto>> ComputeDelayedItemsAsync(
+        CartViewModel cart, FulfillmentChoice fulfilment, string? state, string? city, int? pickupStoreId)
+    {
+        var result = new List<DelayedItemDto>();
+        if (cart.IsEmpty) return result;
+
+        var activeStores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
+        if (activeStores.Count == 0) return result;
+        var crossEta = await _settings.GetAsync("shipping.cross_branch_days", "3 - 5 working days");
+
+        async Task<Store?> NearestWithStockAsync(int pid, int? vid, int need)
+        {
+            var ranked = SterlingLams.Web.Services.DeliveryZoneService.RankStoresByProximity(activeStores, state, city);
+            foreach (var s in ranked) if (await _stock.GetAvailableAsync(pid, vid, s.Id) >= need) return s;
+            foreach (var s in ranked) if (await _stock.GetAvailableAsync(pid, vid, s.Id) > 0) return s;
+            return null;
+        }
+
+        foreach (var grp in cart.Items.GroupBy(i => (i.ProductId, i.VariantId)))
+        {
+            var pid = grp.Key.ProductId; var vid = grp.Key.VariantId;
+            var need = grp.Sum(i => i.Quantity);
+            var name = grp.First().ProductName;
+
+            if (fulfilment == FulfillmentChoice.StorePickup)
+            {
+                if (!pickupStoreId.HasValue) continue;
+                if (await _stock.GetAvailableAsync(pid, vid, pickupStoreId.Value) >= need) continue; // ready at chosen branch
+                var src = await NearestWithStockAsync(pid, vid, need);
+                result.Add(new DelayedItemDto { ProductId = pid, VariantId = vid, ProductName = name,
+                    SourceStore = src?.Name.Replace("Sterlin Glams ", "") ?? "another branch", Eta = crossEta });
+            }
+            else // delivery: "near" = covered by a branch inside the customer's delivery zone
+            {
+                var zone = SterlingLams.Web.Services.DeliveryZoneService.GetZone(state ?? "");
+                var nearAvail = 0;
+                foreach (var s in activeStores.Where(s => SterlingLams.Web.Services.DeliveryZoneService.GetZone(s.State) == zone))
+                    nearAvail += await _stock.GetAvailableAsync(pid, vid, s.Id);
+                if (nearAvail >= need) continue;
+                var src = await NearestWithStockAsync(pid, vid, need);
+                result.Add(new DelayedItemDto { ProductId = pid, VariantId = vid, ProductName = name,
+                    SourceStore = src?.Name.Replace("Sterlin Glams ", "") ?? "another branch", Eta = crossEta });
+            }
+        }
+        return result;
+    }
+
+    // AJAX: the checkout page calls this when the customer clicks "Proceed to Payment" to decide
+    // whether to show the timeframe-agreement modal.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> FulfilmentPreview(string? fulfillmentType, string? state, string? city, int? storeId)
+    {
+        var cart = GetCart();
+        var choice = string.Equals(fulfillmentType, "StorePickup", StringComparison.OrdinalIgnoreCase)
+            ? FulfillmentChoice.StorePickup : FulfillmentChoice.Delivery;
+        var delayed = await ComputeDelayedItemsAsync(cart, choice, state, city, storeId);
+        return Json(new { delayed = delayed.Select(d => new { d.ProductId, d.VariantId, d.ProductName, d.SourceStore, d.Eta }) });
+    }
+
     // Re-populate the display-only fields the checkout view needs (states, stores, pricing, totals,
     // loyalty). POST model binding only fills the submitted form fields, so this MUST run before
     // re-rendering the checkout view on a validation error — otherwise the State dropdown, delivery
@@ -450,6 +522,17 @@ public class CheckoutController : Controller
                 TempData["Error"] = $"Sorry — \"{grp.First().ProductName}\" just sold out. Please review your bag.";
                 return RedirectToAction("Index", "Cart");
             }
+        }
+
+        // Far-stock delivery timeframe: if any item must ship from a branch far from the customer,
+        // they must have acknowledged the longer ETA in the modal. (The client shows it; this is the
+        // server-side backstop in case the modal is bypassed.)
+        var delayedItems = await ComputeDelayedItemsAsync(cart, vm.FulfillmentType,
+            vm.DeliveryAddress?.State, vm.DeliveryAddress?.City, vm.SelectedStoreId);
+        if (delayedItems.Count > 0 && !vm.TimeframeAcknowledged)
+        {
+            ModelState.AddModelError("", "Please acknowledge the delivery timeframe for items shipping from another branch.");
+            return await RedisplayCheckoutAsync(vm);
         }
 
         _db.Orders.Add(order);

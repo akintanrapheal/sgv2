@@ -28,6 +28,10 @@ public class CheckoutViewModel : IValidatableObject
     public string SelectedDeliveryType { get; set; } = "Standard";
     public List<DeliveryOptionViewModel> DeliveryOptions { get; set; } = new();
 
+    /// <summary>Set by the "I agree" delivery-timeframe modal — required before paying when the
+    /// order has an item that must ship from a branch far from the customer.</summary>
+    public bool TimeframeAcknowledged { get; set; }
+
     // Payment
     public string PaymentProvider { get; set; } = "Paystack";
     public string? PaystackPublicKey { get; set; }
