@@ -100,8 +100,14 @@ public class WebhooksController : ControllerBase
 
                 // Deduct stock through the in-house ledger. Idempotent, so it's safe whether the
                 // browser callback already fulfilled this order or the webhook is the only path
-                // that fires (e.g. customer closed the tab right after paying).
-                await _fulfilment.FulfilPaidOrderAsync(order.Id);
+                // that fires (e.g. customer closed the tab right after paying). If the item sold
+                // out before this payment landed, the service auto-cancels + refunds — skip loyalty.
+                var outcome = await _fulfilment.FulfilPaidOrderAsync(order.Id);
+                if (outcome == SterlingLams.Web.Services.FulfilOutcome.SoldOut)
+                {
+                    _logger.LogWarning("Order {OrderNumber} sold out before its webhook-confirmed payment — auto-refunded.", order.OrderNumber);
+                    return Ok();
+                }
                 await _loyalty.RedeemForOrderAsync(order.Id);
                 await _loyalty.AccrueForOrderAsync(order.Id);
 

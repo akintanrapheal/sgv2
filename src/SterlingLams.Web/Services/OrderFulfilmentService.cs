@@ -1,22 +1,32 @@
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.Domain;
+using SterlingLams.Web.Services.Payment;
 
 namespace SterlingLams.Web.Services;
 
+/// <summary>Result of trying to fulfil a paid order. Stock is no longer held before payment
+/// (no reservations) — it's committed first-come-first-served at payment time.</summary>
+public enum FulfilOutcome
+{
+    /// <summary>Stock committed (or order already fulfilled / not applicable).</summary>
+    Fulfilled,
+    /// <summary>An item sold out before this payment landed — caller should cancel + refund.</summary>
+    SoldOut,
+    /// <summary>Transient failure (e.g. concurrency/DB) — left for the retry service, do NOT refund.</summary>
+    Deferred
+}
+
 public interface IOrderFulfilmentService
 {
-    /// <summary>Reserves stock for a freshly-placed (unpaid) order so concurrent orders can't
-    /// oversell the same units before payment. Returns false (reserving nothing) if combined
-    /// available stock can't cover the order.</summary>
-    Task<bool> TryReserveAsync(int orderId);
-
-    /// <summary>Frees an order's reservation (e.g. payment failed or the order was abandoned).</summary>
+    /// <summary>Frees any legacy reservation rows for an order (no-op now that orders don't reserve
+    /// before payment; kept for the abandoned-order sweeper + failed-payment path).</summary>
     Task ReleaseReservationAsync(int orderId);
 
-    /// <summary>Fulfils a paid online order against the in-house stock ledger. Idempotent and
-    /// safe to call from every payment-confirmation path (browser callback and webhook).</summary>
-    Task FulfilPaidOrderAsync(int orderId);
+    /// <summary>Fulfils a paid online order against the in-house stock ledger, committing stock
+    /// first-come-first-served. Idempotent and safe to call from every payment-confirmation path
+    /// (browser callback and webhook). Returns SoldOut if an item is no longer available.</summary>
+    Task<FulfilOutcome> FulfilPaidOrderAsync(int orderId);
 }
 
 public class OrderFulfilmentService : IOrderFulfilmentService
@@ -24,13 +34,17 @@ public class OrderFulfilmentService : IOrderFulfilmentService
     private readonly ApplicationDbContext _db;
     private readonly IStockService _stock;
     private readonly ILogger<OrderFulfilmentService> _logger;
+    private readonly IPaymentService _payment;
+    private readonly IEmailService _email;
 
     public OrderFulfilmentService(ApplicationDbContext db, IStockService stock,
-        ILogger<OrderFulfilmentService> logger)
+        ILogger<OrderFulfilmentService> logger, IPaymentService payment, IEmailService email)
     {
         _db = db;
         _stock = stock;
         _logger = logger;
+        _payment = payment;
+        _email = email;
     }
 
     // Variant-level stock: an order line for variant V at store S draws on V's own inventory row
@@ -108,66 +122,7 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                 $"SELECT 1 FROM \"StoreInventories\" WHERE \"ProductId\" = {pid} AND \"StoreId\" = {sid} FOR UPDATE");
     }
 
-    // ── Reserve / release ──────────────────────────────────────────────────────
-    public async Task<bool> TryReserveAsync(int orderId)
-    {
-        var order = await _db.Orders.Include(o => o.Items).Include(o => o.DeliveryAddress)
-            .FirstOrDefaultAsync(o => o.Id == orderId);
-        if (order == null || order.Items.Count == 0) return false;
-
-        // Idempotent: a re-submit of the same order keeps its existing hold.
-        if (await _db.StockReservations.AnyAsync(r => r.OrderId == orderId)) return true;
-
-        var activeStores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
-        if (activeStores.Count == 0) return false;
-        var ranked = DeliveryZoneService.RankStoresByProximity(
-            activeStores, order.DeliveryAddress?.State, order.DeliveryAddress?.City);
-
-        var productIds = order.Items.Select(i => i.ProductId).Distinct().ToList();
-        var storeIds = activeStores.Select(s => s.Id).ToList();
-
-        await using var tx = await _db.Database.BeginTransactionAsync();
-
-        // Lock every (product, store) combo (pool + variant rows) this order could draw from.
-        await LockInventoryRowsAsync(productIds.SelectMany(pid => storeIds.Select(sid => (pid, sid))));
-
-        var rows = await _db.StoreInventories
-            .Where(si => productIds.Contains(si.ProductId) && storeIds.Contains(si.StoreId))
-            .ToListAsync();
-        var invMap = rows.ToDictionary(si => (si.ProductId, si.ProductVariantId, si.StoreId));
-        var effVid = EffectiveVariantResolver(rows);
-        int Available(int pid, int? vid, int sid) =>
-            invMap.TryGetValue((pid, effVid(pid, vid, sid), sid), out var si)
-                ? Math.Max(0, si.QuantityOnHand - si.QuantityReserved) : 0;
-
-        var (_, alloc, shortLine) = Allocate(order, activeStores, ranked, effVid, Available);
-        if (shortLine != null) return false; // not enough available — caller blocks checkout
-
-        var now = DateTime.UtcNow;
-        foreach (var ((sid, pid, vid), qty) in alloc)
-        {
-            // Hold against the effective row; record the line's variant on the reservation.
-            if (invMap.TryGetValue((pid, effVid(pid, vid, sid), sid), out var si))
-                si.QuantityReserved += qty;
-            _db.StockReservations.Add(new StockReservation
-            {
-                OrderId = orderId, StoreId = sid, ProductId = pid, ProductVariantId = vid,
-                Quantity = qty, CreatedAt = now
-            });
-        }
-
-        try
-        {
-            await _db.SaveChangesAsync();
-            await tx.CommitAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            return false; // stock changed under us — caller blocks checkout and the customer can retry
-        }
-        return true;
-    }
-
+    // ── Release (legacy holds + abandoned-order sweeper) ────────────────────────
     public async Task ReleaseReservationAsync(int orderId)
     {
         var rows = await _db.StockReservations.Where(r => r.OrderId == orderId).ToListAsync();
@@ -201,11 +156,13 @@ public class OrderFulfilmentService : IOrderFulfilmentService
     /// <summary>
     /// Picks the branch nearest the customer, transfers in any units it lacks from other
     /// branches (transfer-then-sell so every branch balance stays correct), then sells the
-    /// whole order from that branch — releasing this order's own reservation as it goes.
+    /// whole order from that branch. Stock is NOT held before payment — it's committed
+    /// first-come-first-served here, under a row lock, so a simultaneous payment for the last
+    /// unit serialises and the loser gets SoldOut (caller refunds).
     /// Variant-aware: allocation/transfer/sale all run against each line's effective row.
     /// Idempotent. Failures are logged, never thrown — the customer has already paid.
     /// </summary>
-    public async Task FulfilPaidOrderAsync(int orderId)
+    public async Task<FulfilOutcome> FulfilPaidOrderAsync(int orderId)
     {
         try
         {
@@ -214,128 +171,130 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                 .Include(o => o.PickupStore)
                 .Include(o => o.DeliveryAddress)
                 .FirstOrDefaultAsync(o => o.Id == orderId);
-            if (order == null) return;
+            if (order == null) return FulfilOutcome.Fulfilled;
 
             // Only online orders are fulfilled through this multi-branch pipeline. POS sales are
             // already settled (stock deducted) at the till — never re-fulfil one.
-            if (order.Channel != OrderChannel.Online) return;
+            if (order.Channel != OrderChannel.Online) return FulfilOutcome.Fulfilled;
 
             // Idempotency: a fulfilled order already has its branch + ledger movements.
-            if (order.FulfillingStoreId != null) return;
+            if (order.FulfillingStoreId != null) return FulfilOutcome.Fulfilled;
+            // Terminal already (e.g. a prior callback/webhook already refunded a sold-out order) —
+            // never re-process, so we can't double-refund.
+            if (order.Status is OrderStatus.Cancelled or OrderStatus.Refunded) return FulfilOutcome.Fulfilled;
 
             var activeStores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
             if (activeStores.Count == 0)
             {
                 _logger.LogError("No active stores — cannot fulfil order {OrderNumber}.", order.OrderNumber);
-                return;
+                return FulfilOutcome.Deferred;
             }
             var ranked = DeliveryZoneService.RankStoresByProximity(
                 activeStores, order.DeliveryAddress?.State, order.DeliveryAddress?.City);
 
             var productIds = order.Items.Select(i => i.ProductId).Distinct().ToList();
             var storeIds = activeStores.Select(s => s.Id).ToList();
-            var invRows = await _db.StoreInventories
-                .Where(si => productIds.Contains(si.ProductId) && storeIds.Contains(si.StoreId))
-                .ToListAsync();
-            var invMap = invRows.ToDictionary(si => (si.ProductId, si.ProductVariantId, si.StoreId));
-            var effVid = EffectiveVariantResolver(invRows);
-
-            // This order's own reservation — added back into availability so the sale draws on the
-            // units we already held (other orders' reservations stay off-limits). Keyed by effective row.
-            var resRows = await _db.StockReservations.Where(r => r.OrderId == orderId).ToListAsync();
-            var ownRes = new Dictionary<(int product, int? effVid, int store), int>();
-            foreach (var r in resRows)
-            {
-                var k = (r.ProductId, effVid(r.ProductId, r.ProductVariantId, r.StoreId), r.StoreId);
-                ownRes.TryGetValue(k, out var a);
-                ownRes[k] = a + r.Quantity;
-            }
-            int SaleAvail(int pid, int? vid, int sid)
-            {
-                var ev = effVid(pid, vid, sid);
-                if (!invMap.TryGetValue((pid, ev, sid), out var si)) return 0;
-                ownRes.TryGetValue((pid, ev, sid), out var mine);
-                return Math.Max(0, si.QuantityOnHand - si.QuantityReserved + mine);
-            }
-
-            var (fulfilStore, alloc, shortLine) = Allocate(order, activeStores, ranked, effVid, SaleAvail);
-            if (shortLine != null)
-            {
-                order.AdminNotes = $"Fulfilment held {DateTime.UtcNow:yyyy-MM-dd HH:mm}: insufficient stock for {shortLine.ProductName}.";
-                await _db.SaveChangesAsync();
-                _logger.LogWarning("Order {OrderNumber} held — insufficient stock for product {ProductId}.",
-                    order.OrderNumber, shortLine.ProductId);
-                return;
-            }
-
             var products = await _db.Products.Where(p => productIds.Contains(p.Id))
                 .ToDictionaryAsync(p => p.Id, p => p.Name);
             var now = DateTime.UtcNow;
-            await using var tx = await _db.Database.BeginTransactionAsync();
 
-            // Free this order's hold (units are now being sold, not just reserved).
-            if (resRows.Count > 0) await ReleaseRowsAsync(resRows);
-
-            // Transfers: every allocation that isn't already at the fulfilment branch moves in,
-            // per (product, variant). ApplyAsync resolves each side to its effective row.
-            foreach (var bySource in alloc.Where(kv => kv.Key.store != fulfilStore.Id).GroupBy(kv => kv.Key.store))
+            // Lock the candidate (product, store) rows for the whole allocate→deduct so two
+            // concurrent payments for the same last unit can't both succeed. Nothing is written
+            // on the sold-out path, so the lock is released cleanly before we refund.
+            var soldOut = false;
+            await using (var tx = await _db.Database.BeginTransactionAsync())
             {
-                var sourceStore = activeStores.First(s => s.Id == bySource.Key);
-                var transferNumber = $"TRF-{now:yyMMdd}-{now:HHmmssfff}-{sourceStore.Id}";
-                var transfer = new StockTransfer
+                await LockInventoryRowsAsync(productIds.SelectMany(pid => storeIds.Select(sid => (pid, sid))));
+
+                var invRows = await _db.StoreInventories
+                    .Where(si => productIds.Contains(si.ProductId) && storeIds.Contains(si.StoreId))
+                    .ToListAsync();
+                var invMap = invRows.ToDictionary(si => (si.ProductId, si.ProductVariantId, si.StoreId));
+                var effVid = EffectiveVariantResolver(invRows);
+                int SaleAvail(int pid, int? vid, int sid)
                 {
-                    TransferNumber = transferNumber,
-                    FromStoreId = sourceStore.Id,
-                    ToStoreId = fulfilStore.Id,
-                    Status = TransferStatus.Completed,
-                    CreatedByUserId = order.UserId,
-                    Note = $"Online order {order.OrderNumber}",
-                    CreatedAt = now,
-                    ApprovedAt = now,
-                    DispatchedAt = now,
-                    ReceivedAt = now
-                };
-                foreach (var kv in bySource)
-                {
-                    var pid = kv.Key.product;
-                    var vid = kv.Key.variant;
-                    var qty = kv.Value;
-                    transfer.Items.Add(new StockTransferItem
-                    {
-                        ProductId = pid,
-                        ProductVariantId = vid,
-                        ProductName = products.GetValueOrDefault(pid, $"#{pid}"),
-                        RequestedQty = qty,
-                        ApprovedQty = qty,
-                        DispatchedQty = qty,
-                        ReceivedQty = qty
-                    });
-                    await _stock.ApplyAsync(pid, vid, sourceStore.Id, -qty, StockMovementType.Transfer,
-                        transferNumber, $"To {fulfilStore.Name} (order {order.OrderNumber})", order.UserId);
-                    await _stock.ApplyAsync(pid, vid, fulfilStore.Id, qty, StockMovementType.Transfer,
-                        transferNumber, $"From {sourceStore.Name} (order {order.OrderNumber})", order.UserId);
+                    var ev = effVid(pid, vid, sid);
+                    return invMap.TryGetValue((pid, ev, sid), out var si)
+                        ? Math.Max(0, si.QuantityOnHand - si.QuantityReserved) : 0;
                 }
-                _db.StockTransfers.Add(transfer);
+
+                var (fulfilStore, alloc, shortLine) = Allocate(order, activeStores, ranked, effVid, SaleAvail);
+                if (shortLine != null)
+                {
+                    _logger.LogWarning("Order {OrderNumber} sold out before its payment landed — product {ProductId}.",
+                        order.OrderNumber, shortLine.ProductId);
+                    soldOut = true;
+                }
+                else
+                {
+                    // Transfers: every allocation that isn't already at the fulfilment branch moves in,
+                    // per (product, variant). ApplyAsync resolves each side to its effective row.
+                    foreach (var bySource in alloc.Where(kv => kv.Key.store != fulfilStore.Id).GroupBy(kv => kv.Key.store))
+                    {
+                        var sourceStore = activeStores.First(s => s.Id == bySource.Key);
+                        var transferNumber = $"TRF-{now:yyMMdd}-{now:HHmmssfff}-{sourceStore.Id}";
+                        var transfer = new StockTransfer
+                        {
+                            TransferNumber = transferNumber,
+                            FromStoreId = sourceStore.Id,
+                            ToStoreId = fulfilStore.Id,
+                            Status = TransferStatus.Completed,
+                            CreatedByUserId = order.UserId,
+                            Note = $"Online order {order.OrderNumber}",
+                            CreatedAt = now,
+                            ApprovedAt = now,
+                            DispatchedAt = now,
+                            ReceivedAt = now
+                        };
+                        foreach (var kv in bySource)
+                        {
+                            var pid = kv.Key.product;
+                            var vid = kv.Key.variant;
+                            var qty = kv.Value;
+                            transfer.Items.Add(new StockTransferItem
+                            {
+                                ProductId = pid,
+                                ProductVariantId = vid,
+                                ProductName = products.GetValueOrDefault(pid, $"#{pid}"),
+                                RequestedQty = qty,
+                                ApprovedQty = qty,
+                                DispatchedQty = qty,
+                                ReceivedQty = qty
+                            });
+                            await _stock.ApplyAsync(pid, vid, sourceStore.Id, -qty, StockMovementType.Transfer,
+                                transferNumber, $"To {fulfilStore.Name} (order {order.OrderNumber})", order.UserId);
+                            await _stock.ApplyAsync(pid, vid, fulfilStore.Id, qty, StockMovementType.Transfer,
+                                transferNumber, $"From {sourceStore.Name} (order {order.OrderNumber})", order.UserId);
+                        }
+                        _db.StockTransfers.Add(transfer);
+                    }
+
+                    // Sell the whole order from the fulfilment branch (consolidated there now).
+                    foreach (var line in order.Items)
+                        await _stock.ApplyAsync(line.ProductId, line.ProductVariantId, fulfilStore.Id,
+                            -line.Quantity, StockMovementType.Sale, order.OrderNumber,
+                            $"Online order {order.OrderNumber}", order.UserId);
+
+                    order.FulfillingStoreId = fulfilStore.Id;
+                    order.Status = order.FulfillmentType == FulfillmentType.StorePickup
+                        ? OrderStatus.ReadyForPickup
+                        : OrderStatus.Processing;
+                    await _db.SaveChangesAsync();
+                    await tx.CommitAsync();
+
+                    _logger.LogInformation(
+                        "Order {OrderNumber} fulfilled from {Store} ({Transfers} transfer(s)).",
+                        order.OrderNumber, fulfilStore.Name,
+                        alloc.Count(kv => kv.Key.store != fulfilStore.Id));
+                }
+            } // tx disposed — sold-out path wrote nothing, so the hold is released cleanly
+
+            if (soldOut)
+            {
+                await RefundSoldOutAsync(order);
+                return FulfilOutcome.SoldOut;
             }
-
-            // Sell the whole order from the fulfilment branch (everything is consolidated there now).
-            // ApplyAsync resolves each line to its effective row (variant row if stocked, else pool).
-            foreach (var line in order.Items)
-                await _stock.ApplyAsync(line.ProductId, line.ProductVariantId, fulfilStore.Id,
-                    -line.Quantity, StockMovementType.Sale, order.OrderNumber,
-                    $"Online order {order.OrderNumber}", order.UserId);
-
-            order.FulfillingStoreId = fulfilStore.Id;
-            order.Status = order.FulfillmentType == FulfillmentType.StorePickup
-                ? OrderStatus.ReadyForPickup
-                : OrderStatus.Processing;
-            await _db.SaveChangesAsync();
-            await tx.CommitAsync();
-
-            _logger.LogInformation(
-                "Order {OrderNumber} fulfilled from {Store} ({Transfers} transfer(s)).",
-                order.OrderNumber, fulfilStore.Name,
-                alloc.Count(kv => kv.Key.store != fulfilStore.Id));
+            return FulfilOutcome.Fulfilled;
         }
         catch (Exception ex)
         {
@@ -353,6 +312,53 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                 }
             }
             catch { /* never throw from fulfilment — the customer has already paid */ }
+            return FulfilOutcome.Deferred; // transient — retry service will pick it up (no refund)
         }
+    }
+
+    // Cancel + refund a paid order whose item sold out before its payment landed (the "first to
+    // pay wins" loser is made whole). Best-effort; runs from every payment path (callback/webhook/
+    // retry) and is guarded by the terminal-status check above so it can't double-refund.
+    private async Task RefundSoldOutAsync(Order order)
+    {
+        order.Status = OrderStatus.Cancelled;
+        string note;
+        try
+        {
+            var refund = await _payment.RefundPaymentAsync(new RefundPaymentRequest
+            {
+                Reference = order.PaymentReference ?? string.Empty,
+                Amount = order.Total,
+                Reason = "Item sold out before payment completed"
+            });
+            if (refund.Success)
+            {
+                order.Status = OrderStatus.Refunded;
+                note = $"Auto-refunded {DateTime.UtcNow:yyyy-MM-dd HH:mm}: item sold out before payment landed.";
+            }
+            else
+            {
+                note = $"SOLD OUT after payment {DateTime.UtcNow:yyyy-MM-dd HH:mm} — "
+                     + (refund.Supported ? $"auto-refund FAILED ({refund.ErrorMessage})" : $"{_payment.ProviderName} has no auto-refund")
+                     + "; refund MANUALLY.";
+            }
+        }
+        catch (Exception ex)
+        {
+            note = $"SOLD OUT after payment {DateTime.UtcNow:yyyy-MM-dd HH:mm} — refund error ({ex.Message}); refund MANUALLY.";
+        }
+        order.AdminNotes = note;
+        await _db.SaveChangesAsync();
+
+        try
+        {
+            var email = await _db.Users.Where(u => u.Id == order.UserId).Select(u => u.Email).FirstOrDefaultAsync();
+            if (!string.IsNullOrEmpty(email))
+                await _email.SendAsync(email, "Your Sterlin Glams order could not be completed",
+                    $"<p>We're so sorry — an item in your order <strong>{order.OrderNumber}</strong> sold out just before your payment completed, so we couldn't fulfil it.</p>"
+                  + $"<p>Your payment of ₦{order.Total:N0} has been refunded in full. Refunds typically settle within a few business days.</p>"
+                  + "<p>Please accept our apologies — you're welcome to reorder if it comes back in stock.</p>");
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Apology email failed for sold-out order {OrderNumber}", order.OrderNumber); }
     }
 }

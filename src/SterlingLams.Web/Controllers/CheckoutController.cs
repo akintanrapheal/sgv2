@@ -28,6 +28,7 @@ public class CheckoutController : Controller
     private readonly SterlingLams.Web.Services.IDiscountService _discounts;
     private readonly SterlingLams.Web.Services.IEmailService _email;
     private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
+    private readonly SterlingLams.Web.Services.IStockService _stock;
     private readonly IDataProtector _confirmTokenProtector;
 
     public CheckoutController(
@@ -43,6 +44,7 @@ public class CheckoutController : Controller
         SterlingLams.Web.Services.IDiscountService discounts,
         SterlingLams.Web.Services.IEmailService email,
         SterlingLams.Web.Services.ILoyaltyService loyalty,
+        SterlingLams.Web.Services.IStockService stock,
         IDataProtectionProvider dataProtection)
     {
         _db = db;
@@ -57,6 +59,7 @@ public class CheckoutController : Controller
         _discounts = discounts;
         _email = email;
         _loyalty = loyalty;
+        _stock = stock;
         _confirmTokenProtector = dataProtection.CreateProtector("Checkout.Confirmation.v1");
     }
 
@@ -430,18 +433,31 @@ public class CheckoutController : Controller
             order.DeliveryAddressId = addr.Id;
         }
 
+        // Stock is never held before payment (first-come-first-served). Re-check live availability
+        // right before sending the customer to pay, so if an item already sold out since the cart
+        // was loaded we block here — the second buyer sees "sold out" instead of paying. (A truly
+        // simultaneous payment for the last unit still slips through and is auto-refunded at the
+        // callback; this check stops the common "clicked pay after it sold out" case.)
+        var activeStoreIds = await _db.Stores.Where(s => s.IsActive).Select(s => s.Id).ToListAsync();
+        foreach (var grp in cart.Items.GroupBy(i => (i.ProductId, i.VariantId)))
+        {
+            var need = grp.Sum(i => i.Quantity);
+            var have = 0;
+            foreach (var sid in activeStoreIds)
+                have += await _stock.GetAvailableAsync(grp.Key.ProductId, grp.Key.VariantId, sid);
+            if (have < need)
+            {
+                TempData["Error"] = $"Sorry — \"{grp.First().ProductName}\" just sold out. Please review your bag.";
+                return RedirectToAction("Index", "Cart");
+            }
+        }
+
         _db.Orders.Add(order);
         await _db.SaveChangesAsync();
 
-        // Reserve the stock (atomic hold across branches). If another order claimed the last
-        // units between cart and here, this fails — cancel and send the customer back to the bag.
-        if (!await _fulfilment.TryReserveAsync(order.Id))
-        {
-            order.Status = OrderStatus.Cancelled;
-            await _db.SaveChangesAsync();
-            TempData["Error"] = "Sorry — one or more items just sold out. Please review your bag.";
-            return RedirectToAction("Index", "Cart");
-        }
+        // No stock is held before payment — it's committed first-come-first-served when payment
+        // lands (FulfilPaidOrderAsync). If an item sells out before this customer pays, the
+        // payment is auto-cancelled + refunded at the callback.
 
         // Snapshot the cart for abandoned-cart recovery (emailed later if payment isn't completed).
         await CaptureAbandonedCartAsync(user.Email, cart);
@@ -505,11 +521,19 @@ public class CheckoutController : Controller
             order.PaymentProvider = _payment.ProviderName;
             await _db.SaveChangesAsync();
 
+            // Commit stock first-come-first-served. If an item sold out before this payment
+            // landed, auto-cancel + refund instead of confirming.
+            var outcome = await _fulfilment.FulfilPaidOrderAsync(order.Id);
+            if (outcome == SterlingLams.Web.Services.FulfilOutcome.SoldOut)
+            {
+                // Stock was committed first-come-first-served; this payment lost the race. The
+                // fulfilment service already cancelled + refunded — just tell the customer.
+                TempData["Error"] = $"Sorry — an item in order {order.OrderNumber} sold out just before your payment completed. You've been refunded in full.";
+                HttpContext.Session.Remove(CartSessionKey);
+                return RedirectToAction("Confirmation", new { orderNumber = result.OrderNumber, token = ConfirmationToken(result.OrderNumber!) });
+            }
+
             await IncrementDiscountUsageAsync(order);
-
-            // Deduct stock through the in-house ledger (multi-branch fulfilment).
-            await _fulfilment.FulfilPaidOrderAsync(order.Id);
-
             await _loyalty.RedeemForOrderAsync(order.Id);
             await _loyalty.AccrueForOrderAsync(order.Id);
 
@@ -550,11 +574,15 @@ public class CheckoutController : Controller
         order.PaymentProvider = "Simulated (Dev Only)";
         await _db.SaveChangesAsync();
 
+        var outcome = await _fulfilment.FulfilPaidOrderAsync(order.Id);
+        if (outcome == SterlingLams.Web.Services.FulfilOutcome.SoldOut)
+        {
+            TempData["Error"] = $"Sorry — an item in order {order.OrderNumber} sold out just before your payment completed. You've been refunded in full.";
+            HttpContext.Session.Remove(CartSessionKey);
+            return RedirectToAction("Confirmation", new { orderNumber = order.OrderNumber, token = ConfirmationToken(order.OrderNumber) });
+        }
+
         await IncrementDiscountUsageAsync(order);
-
-        // Deduct stock through the in-house ledger (multi-branch fulfilment).
-        await _fulfilment.FulfilPaidOrderAsync(order.Id);
-
         await _loyalty.RedeemForOrderAsync(order.Id);
         await _loyalty.AccrueForOrderAsync(order.Id);
 
