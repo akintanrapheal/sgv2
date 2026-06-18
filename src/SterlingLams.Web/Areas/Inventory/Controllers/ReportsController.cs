@@ -126,6 +126,14 @@ public class ReportsController : InventoryAreaController
                                   || EF.Functions.ILike(m.Product.Sku ?? "", $"%{q}%"));
 
         var total = await query.CountAsync();
+
+        // KPI summary over the filtered set (Moniebook "Stock movement" parity).
+        var stockIn = await query.Where(m => m.QuantityChange > 0).SumAsync(m => (int?)m.QuantityChange) ?? 0;
+        var stockOut = -(await query.Where(m => m.QuantityChange < 0).SumAsync(m => (int?)m.QuantityChange) ?? 0);
+        ViewBag.StockIn = stockIn;
+        ViewBag.StockOut = stockOut;
+        ViewBag.NetChange = stockIn - stockOut;
+
         var rows = await query.OrderByDescending(m => m.CreatedAt)
             .Skip((page - 1) * PageSize).Take(PageSize)
             .Select(m => new MovementLedgerRow
