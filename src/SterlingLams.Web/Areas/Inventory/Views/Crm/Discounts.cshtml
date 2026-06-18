@@ -1,0 +1,66 @@
+@model List<SterlingLams.Web.Models.Domain.DiscountCode>
+@using SterlingLams.Web.Models.Domain
+@{
+    ViewData["Title"] = "Discounts";
+    string Value(DiscountCode d) => d.Type switch
+    {
+        DiscountType.Percentage => d.Value.ToString("0.#") + "%",
+        DiscountType.FixedAmount => "₦" + d.Value.ToString("N0"),
+        DiscountType.FreeShipping => "Free shipping",
+        _ => d.Value.ToString()
+    };
+    (string, string) Status(DiscountCode d)
+    {
+        if (!d.IsActive) return ("Inactive", "bg-neutral-100 text-neutral-500");
+        if (d.IsExpired) return ("Expired", "bg-red-50 text-red-700");
+        if (d.IsScheduled) return ("Scheduled", "bg-blue-50 text-blue-700");
+        if (d.IsUsedUp) return ("Used up", "bg-amber-50 text-amber-700");
+        return ("Live", "bg-emerald-50 text-emerald-700");
+    }
+}
+
+<div class="flex items-center justify-between mb-4">
+    <h1 class="font-cormorant text-2xl font-light text-neutral-900">Discounts</h1>
+    <a asp-area="Admin" asp-controller="Discounts" asp-action="Index" target="_blank"
+       class="text-xs text-neutral-500 hover:text-neutral-800 border border-neutral-200 rounded-sm px-3 py-1.5">Manage in Website Admin ↗</a>
+</div>
+
+<p class="text-xs text-neutral-400 mb-2">@Model.Count discount code(s)</p>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[720px]">
+        <thead>
+            <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
+                <th class="text-left px-4 py-3 font-medium">Code</th>
+                <th class="text-left px-4 py-3 font-medium">Description</th>
+                <th class="text-left px-4 py-3 font-medium">Value</th>
+                <th class="text-left px-4 py-3 font-medium">Scope</th>
+                <th class="text-right px-4 py-3 font-medium">Used</th>
+                <th class="text-left px-4 py-3 font-medium">Expires</th>
+                <th class="text-left px-4 py-3 font-medium">Status</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (Model.Any())
+            {
+                @foreach (var d in Model)
+                {
+                    var (label, cls) = Status(d);
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-3 font-mono text-xs text-neutral-800">@d.Code</td>
+                        <td class="px-4 py-3 text-neutral-600 text-xs">@(string.IsNullOrWhiteSpace(d.Description) ? "—" : d.Description)</td>
+                        <td class="px-4 py-3 text-neutral-700">@Value(d)</td>
+                        <td class="px-4 py-3 text-neutral-500 text-xs">@d.Scope@(d.IsAutomatic ? " · auto" : "")</td>
+                        <td class="px-4 py-3 text-right text-neutral-500">@d.UsedCount@(d.MaxUses.HasValue ? " / " + d.MaxUses : "")</td>
+                        <td class="px-4 py-3 text-neutral-400 text-xs">@(d.ExpiresAt?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")</td>
+                        <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-sm text-[11px] @cls">@label</span></td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr><td colspan="7" class="px-4 py-10 text-center text-sm text-neutral-400">No discount codes yet.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>

@@ -1,0 +1,65 @@
+@model SterlingLams.Web.Models.Domain.ApplicationUser
+@using SterlingLams.Web.Areas.Inventory.Controllers
+@{
+    ViewData["Title"] = Model.FullName;
+    var orders = ViewBag.Orders as List<SaleRow> ?? new();
+    decimal spend = ViewBag.Spend ?? 0m;
+    int? loyalty = ViewBag.Loyalty;
+}
+
+<div class="mb-4">
+    <a asp-action="Customers" class="text-xs text-neutral-400 hover:text-neutral-700">← Customers</a>
+    <h1 class="font-cormorant text-2xl font-light text-neutral-900 mt-1">@(string.IsNullOrWhiteSpace(Model.FullName) ? Model.Email : Model.FullName)</h1>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm p-5 mb-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Email</div>
+        <div class="text-sm text-neutral-800 break-words">@Model.Email</div></div>
+    <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Phone</div>
+        <div class="text-sm text-neutral-800">@(Model.PhoneNumber ?? "—")</div></div>
+    <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Total spent</div>
+        <div class="text-sm font-medium text-emerald-600">₦@spend.ToString("N0")</div></div>
+    <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Orders</div>
+        <div class="text-sm text-neutral-800">@orders.Count</div></div>
+    <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Joined</div>
+        <div class="text-sm text-neutral-600">@Model.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</div></div>
+    @if (loyalty.HasValue)
+    {
+        <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Loyalty points</div>
+            <div class="text-sm text-neutral-800">@loyalty.Value.ToString("N0")</div></div>
+    }
+</div>
+
+<h2 class="text-sm font-medium text-neutral-700 mb-2">Order history</h2>
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[560px]">
+        <thead>
+            <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
+                <th class="text-left px-4 py-3 font-medium">Order #</th>
+                <th class="text-left px-4 py-3 font-medium">Date</th>
+                <th class="text-left px-4 py-3 font-medium">Channel</th>
+                <th class="text-left px-4 py-3 font-medium">Status</th>
+                <th class="text-right px-4 py-3 font-medium">Total</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (orders.Any())
+            {
+                @foreach (var o in orders)
+                {
+                    <tr class="hover:bg-neutral-50 cursor-pointer" onclick="location.href='@Url.Action("Detail", "Sales", new { id = o.Id })'">
+                        <td class="px-4 py-3 font-mono text-xs text-neutral-800">@o.OrderNumber</td>
+                        <td class="px-4 py-3 text-neutral-500 text-xs">@o.When.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</td>
+                        <td class="px-4 py-3 text-neutral-600">@(o.Channel == "Pos" ? "POS" : "Online")</td>
+                        <td class="px-4 py-3 text-neutral-600 text-xs">@o.Status</td>
+                        <td class="px-4 py-3 text-right font-medium text-neutral-800">₦@o.Total.ToString("N0")</td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr><td colspan="5" class="px-4 py-10 text-center text-sm text-neutral-400">No orders.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>

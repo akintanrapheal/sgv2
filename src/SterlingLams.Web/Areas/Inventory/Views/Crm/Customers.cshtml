@@ -1,0 +1,64 @@
+@model List<SterlingLams.Web.Areas.Inventory.Controllers.CustomerRow>
+@{
+    ViewData["Title"] = "Customers";
+    string q = ViewBag.Query ?? "";
+    int curPage = ViewBag.Page ?? 1; int totalPages = ViewBag.TotalPages ?? 1; int total = ViewBag.Total ?? 0;
+    var inCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+}
+
+<div class="flex items-center justify-between mb-4">
+    <h1 class="font-cormorant text-2xl font-light text-neutral-900">Customers</h1>
+    <form method="get" class="flex gap-2">
+        <input type="text" name="q" value="@q" placeholder="Name, email or phone…" class="@inCls w-64" />
+        <button type="submit" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700">Search</button>
+    </form>
+</div>
+
+<p class="text-xs text-neutral-400 mb-2">@total customer(s) who have ordered</p>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[680px]">
+        <thead>
+            <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
+                <th class="text-left px-4 py-3 font-medium">Customer</th>
+                <th class="text-left px-4 py-3 font-medium">Phone</th>
+                <th class="text-right px-4 py-3 font-medium">Orders</th>
+                <th class="text-right px-4 py-3 font-medium">Total spent</th>
+                <th class="text-left px-4 py-3 font-medium">Last order</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (Model.Any())
+            {
+                @foreach (var c in Model)
+                {
+                    <tr class="hover:bg-neutral-50 cursor-pointer" onclick="location.href='@Url.Action("CustomerDetail", new { id = c.Id })'">
+                        <td class="px-4 py-3">
+                            <div class="text-neutral-800">@(string.IsNullOrWhiteSpace(c.Name) ? "—" : c.Name)</div>
+                            <div class="text-[11px] text-neutral-400">@c.Email</div>
+                        </td>
+                        <td class="px-4 py-3 text-neutral-600 text-xs">@(c.Phone ?? "—")</td>
+                        <td class="px-4 py-3 text-right text-neutral-500">@c.Orders</td>
+                        <td class="px-4 py-3 text-right font-medium text-neutral-800">₦@c.Spend.ToString("N0")</td>
+                        <td class="px-4 py-3 text-neutral-400 text-xs">@(c.LastOrder?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")</td>
+                    </tr>
+                }
+            }
+            else
+            {
+                <tr><td colspan="5" class="px-4 py-10 text-center text-sm text-neutral-400">No customers found.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (totalPages > 1)
+{
+    <div class="flex items-center justify-center gap-2 mt-4 text-xs">
+        @for (int i = 1; i <= totalPages; i++)
+        {
+            <a asp-action="Customers" asp-route-page="@i" asp-route-q="@q"
+               class="px-3 py-1.5 rounded-sm @(i == curPage ? "bg-neutral-900 text-white" : "bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-50")">@i</a>
+        }
+    </div>
+}
