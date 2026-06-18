@@ -62,7 +62,12 @@ public class AccountController : Controller
 
         if (result.Succeeded)
         {
-            var user = await _userManager.FindByEmailAsync(model.Email);
+            // Look up by user name (what just signed in) rather than by email: email isn't
+            // guaranteed unique in Identity, and FindByEmailAsync does a SingleOrDefault that
+            // throws ("Sequence contains more than one element") if two accounts share an email
+            // (e.g. a POS guest shell created with an existing customer's email).
+            var user = await _userManager.FindByNameAsync(model.Email)
+                       ?? await _userManager.Users.FirstOrDefaultAsync(u => u.NormalizedEmail == _userManager.NormalizeEmail(model.Email));
 
             // Optional: require a confirmed email before customers can sign in (admin-toggled).
             // Staff (any role) are exempt so enabling this can't lock out the back office.
