@@ -91,11 +91,15 @@ public class WebhooksController : ControllerBase
                     return Ok(); // ack so Paystack stops retrying; flagged for a human
                 }
 
+                var wasUnpaid = !order.IsPaid;
                 order.IsPaid = true;
                 order.PaidAt = DateTime.UtcNow;
                 order.Status = OrderStatus.Confirmed;
                 order.PaymentReference = reference;
                 order.PaymentProvider = "Paystack";
+                if (wasUnpaid)
+                    SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
+                        $"Payment via Paystack successful (Transaction Reference: {reference}).");
                 await _db.SaveChangesAsync();
 
                 // Deduct stock through the in-house ledger. Idempotent, so it's safe whether the

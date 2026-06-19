@@ -30,6 +30,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<StockAdjustmentLine> StockAdjustmentLines => Set<StockAdjustmentLine>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<OrderNote> OrderNotes => Set<OrderNote>();
     public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
     public DbSet<Address> Addresses => Set<Address>();
     public DbSet<DiscountCode> DiscountCodes => Set<DiscountCode>();
@@ -358,6 +359,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
                 t.HasCheckConstraint("CK_OrderItems_UnitPrice_NonNegative", "\"UnitPrice\" >= 0");
                 t.HasCheckConstraint("CK_OrderItems_Discount_NonNegative", "\"DiscountAmount\" >= 0");
             });
+        });
+
+        // ─── OrderNote ──────────────────────────────────────────────────────
+        // Timeline notes belong to the order — cascade-delete with it; newest read first.
+        builder.Entity<OrderNote>(e =>
+        {
+            e.HasOne(n => n.Order).WithMany(o => o.Timeline).HasForeignKey(n => n.OrderId)
+             .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(n => n.OrderId);
         });
 
         // ─── AuditLog ───────────────────────────────────────────────────────

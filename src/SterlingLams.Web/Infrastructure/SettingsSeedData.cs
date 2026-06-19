@@ -92,7 +92,7 @@ public static class SettingsSeedData
 
         // ── Orders ────────────────────────────────────────────────────────────
         new() { Key = "order.number_prefix",               Group = "Orders", Label = "Online Order Number Prefix",     Type = "text",   Value = "SL-", Description = "Prefix for online order numbers (e.g. SL- → SL-20260617…). POS orders use POS-.", SortOrder = 1 },
-        new() { Key = "order.reservation_timeout_minutes", Group = "Orders", Label = "Unpaid Order Hold (minutes)",    Type = "number", Value = "30",  Description = "How long an unpaid online order holds its stock before it's auto-cancelled and the stock released.", SortOrder = 2 },
+        new() { Key = "order.reservation_timeout_minutes", Group = "Orders", Label = "Auto-cancel unpaid orders after (minutes)",    Type = "number", Value = "60",  Description = "An unpaid online order is automatically cancelled this many minutes after it's placed if the customer hasn't paid. Stock is only deducted on payment (or when staff confirm), so nothing is held in the meantime.", SortOrder = 2 },
         new() { Key = "order.min_value",                   Group = "Orders", Label = "Minimum Order Value (₦)",        Type = "number", Value = "0",   Description = "Reject online checkout below this subtotal. 0 = no minimum.", SortOrder = 3 },
 
         // ── POS / Till ────────────────────────────────────────────────────────

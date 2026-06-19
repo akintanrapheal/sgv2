@@ -243,14 +243,23 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                 else if (alloc.All(kv => kv.Key.store == fulfilStore.Id))
                 {
                     // Everything is already at the nearest branch — sell + ship straight away.
+                    var reduced = new List<string>();
                     foreach (var line in order.Items)
-                        await _stock.ApplyAsync(line.ProductId, line.ProductVariantId, fulfilStore.Id,
+                    {
+                        var after = await _stock.ApplyAsync(line.ProductId, line.ProductVariantId, fulfilStore.Id,
                             -line.Quantity, StockMovementType.Sale, order.OrderNumber,
                             $"Online order {order.OrderNumber}", order.UserId);
+                        var label = line.ProductName + (string.IsNullOrEmpty(line.VariantName) ? "" : " – " + line.VariantName);
+                        reduced.Add($"{label} ({after + line.Quantity}→{after})");
+                    }
+                    if (reduced.Count > 0)
+                        OrderNotes.AddSystem(_db, order.Id, "Stock levels reduced: " + string.Join(", ", reduced) + ".");
 
+                    var prevStatus = order.Status;
                     order.FulfillingStoreId = fulfilStore.Id;
                     order.Status = order.FulfillmentType == FulfillmentType.StorePickup
                         ? OrderStatus.ReadyForPickup : OrderStatus.Processing;
+                    OrderNotes.AddSystem(_db, order.Id, $"Order status changed from {prevStatus} to {order.Status} (fulfilled from {fulfilStore.Name}).");
                     await _db.SaveChangesAsync();
                     await tx.CommitAsync();
                     shipNow = true; fulfilStoreForEmail = fulfilStore;
@@ -310,8 +319,12 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                         sourceNotices.Add((sourceStore, transferNumber, emailItems));
                     }
 
+                    var prevStatus = order.Status;
                     order.FulfillingStoreId = fulfilStore.Id;
                     order.Status = OrderStatus.AwaitingTransfer;
+                    OrderNotes.AddSystem(_db, order.Id,
+                        $"Order status changed from {prevStatus} to Awaiting Transfer — fulfilling from {fulfilStore.Name}; "
+                        + $"{sourceNotices.Count} inter-branch transfer(s) requested.");
                     await _db.SaveChangesAsync();
                     await tx.CommitAsync();
                     awaitingTransfer = true; fulfilStoreForEmail = fulfilStore;

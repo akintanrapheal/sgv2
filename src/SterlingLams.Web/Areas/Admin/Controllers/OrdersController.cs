@@ -22,14 +22,19 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly IStockService _stock;
         private readonly IPaymentService _payment;
         private readonly ILoyaltyService _loyalty;
+        private readonly IOrderFulfilmentService _fulfilment;
+        private readonly IEmailService _email;
         private const int PageSize = 25;
 
-        public OrdersController(ApplicationDbContext db, IStockService stock, IPaymentService payment, ILoyaltyService loyalty)
+        public OrdersController(ApplicationDbContext db, IStockService stock, IPaymentService payment,
+            ILoyaltyService loyalty, IOrderFulfilmentService fulfilment, IEmailService email)
         {
             _db = db;
             _stock = stock;
             _payment = payment;
             _loyalty = loyalty;
+            _fulfilment = fulfilment;
+            _email = email;
         }
 
         public async Task<IActionResult> Index(string status = "", string q = "", int page = 1)
@@ -110,6 +115,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .OrderByDescending(r => r.CreatedAt)
                 .ToListAsync();
 
+            var notes = await _db.OrderNotes
+                .Where(n => n.OrderId == id)
+                .OrderByDescending(n => n.CreatedAt).ThenByDescending(n => n.Id)
+                .ToListAsync();
+
             var refundedQty = refunds.SelectMany(r => r.Items)
                 .GroupBy(ri => new { ri.ProductId, ri.ProductVariantId })
                 .ToDictionary(g => (g.Key.ProductId, g.Key.ProductVariantId), g => g.Sum(x => x.Quantity));
@@ -123,6 +133,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 RefundedQty = refundedQty,
                 RefundedTotal = refunds.Sum(r => r.Amount),
                 RefundStoreId = order.FulfillingStoreId ?? order.PickupStoreId ?? 0,
+                Notes = notes,
                 // Online refunds only here; POS returns are handled at the till.
                 CanRefund = order.IsPaid && order.Channel == OrderChannel.Online && order.Status != OrderStatus.Refunded
             };
@@ -147,15 +158,106 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     return RedirectToAction(nameof(Detail), new { id });
                 }
 
-                var old = order.Status.ToString();
-                order.Status = newStatus;
-                order.UpdatedAt = DateTime.UtcNow;
-                await _db.SaveChangesAsync();
+                var old = order.Status;
+
+                // Deduct stock when staff move an online order forward for the first time (e.g. they
+                // confirmed an offline/bank-transfer payment). The fulfilment engine allocates from the
+                // nearest branch + sets up any inter-branch transfers, and is idempotent (it no-ops once
+                // FulfillingStoreId is set), so this is safe even if payment already fulfilled the order.
+                var needsFulfil = order.Channel == OrderChannel.Online
+                    && order.FulfillingStoreId == null
+                    && newStatus is OrderStatus.Confirmed or OrderStatus.Processing
+                        or OrderStatus.ReadyForPickup or OrderStatus.Shipped or OrderStatus.Delivered;
+
+                if (needsFulfil)
+                {
+                    var outcome = await _fulfilment.FulfilPaidOrderAsync(order.Id);
+                    await _db.Entry(order).ReloadAsync();
+                    if (outcome == FulfilOutcome.SoldOut)
+                    {
+                        TempData["Error"] = $"Order {order.OrderNumber} can't be confirmed — an item is out of stock. It was cancelled.";
+                        return RedirectToAction(nameof(Detail), new { id });
+                    }
+                    // The engine advances cross-branch orders to Awaiting Transfer (the transfer flow
+                    // must run) — don't override that. Otherwise honour the status the staff picked.
+                    if (order.Status != OrderStatus.AwaitingTransfer)
+                    {
+                        order.Status = newStatus;
+                        OrderNotes.AddSystem(_db, order.Id, $"Marked {newStatus} by staff (stock deducted).");
+                    }
+                    order.UpdatedAt = DateTime.UtcNow;
+                    await _db.SaveChangesAsync();
+                }
+                else
+                {
+                    order.Status = newStatus;
+                    order.UpdatedAt = DateTime.UtcNow;
+                    OrderNotes.AddSystem(_db, order.Id, $"Order status changed from {old} to {newStatus} by staff.");
+                    await _db.SaveChangesAsync();
+                }
+
                 await LogAsync("Update", "Order", order.Id.ToString(),
-                    $"Order {order.OrderNumber} status: {old} → {status}");
-                TempData["Success"] = $"Order {order.OrderNumber} updated to {status}.";
+                    $"Order {order.OrderNumber} status: {old} → {order.Status}");
+                TempData["Success"] = $"Order {order.OrderNumber} updated to {order.Status}.";
             }
 
+            return RedirectToAction(nameof(Detail), new { id });
+        }
+
+        // ── Order notes (WooCommerce-style timeline) ──────────────────────────
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> AddNote(int id, string content, string noteType = "private")
+        {
+            var order = await _db.Orders.Include(o => o.User).FirstOrDefaultAsync(o => o.Id == id);
+            if (order == null) return NotFound();
+            content = (content ?? string.Empty).Trim();
+            if (string.IsNullOrEmpty(content))
+            {
+                TempData["Error"] = "Note can't be empty.";
+                return RedirectToAction(nameof(Detail), new { id });
+            }
+
+            var isCustomerNote = string.Equals(noteType, "customer", StringComparison.OrdinalIgnoreCase);
+            var author = User.Identity?.Name ?? "Staff";
+
+            _db.OrderNotes.Add(new OrderNote
+            {
+                OrderId = id,
+                Content = content,
+                IsSystem = false,
+                IsCustomerNote = isCustomerNote,
+                AuthorName = author,
+                CreatedAt = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+            await LogAsync("Update", "Order", id.ToString(),
+                $"Added {(isCustomerNote ? "customer" : "private")} note to order {order.OrderNumber}");
+
+            // A "note to customer" is emailed to the buyer (best-effort).
+            if (isCustomerNote && !string.IsNullOrEmpty(order.User?.Email))
+            {
+                var html = $"<p>Hello {System.Net.WebUtility.HtmlEncode(order.User.FullName)},</p>"
+                         + $"<p>A note has been added to your order <strong>{order.OrderNumber}</strong>:</p>"
+                         + $"<blockquote style=\"border-left:3px solid #ec1c8e;padding-left:12px;color:#555\">{System.Net.WebUtility.HtmlEncode(content)}</blockquote>";
+                await _email.SendAsync(order.User.Email!, $"Update on your order {order.OrderNumber}", html, order.User.FullName);
+            }
+
+            TempData["Success"] = isCustomerNote ? "Note added and emailed to the customer." : "Private note added.";
+            return RedirectToAction(nameof(Detail), new { id });
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeleteNote(int id, int noteId)
+        {
+            var note = await _db.OrderNotes.FirstOrDefaultAsync(n => n.Id == noteId && n.OrderId == id);
+            if (note != null)
+            {
+                _db.OrderNotes.Remove(note);
+                await _db.SaveChangesAsync();
+                await LogAsync("Update", "Order", id.ToString(), $"Deleted an order note ({noteId})");
+            }
             return RedirectToAction(nameof(Detail), new { id });
         }
 
@@ -285,6 +387,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var stamp = $"[{now:u}] Refund {refundNumber}: ₦{amount:N2}, {refund.Items.Sum(r => r.Quantity)} item(s)" +
                         $"{(restock ? " (restocked)" : " (no restock)")}; {gatewayNote}.";
             order.AdminNotes = string.IsNullOrWhiteSpace(order.AdminNotes) ? stamp : order.AdminNotes + "\n" + stamp;
+            OrderNotes.AddSystem(_db, order.Id,
+                $"Refunded ₦{amount:N0} ({refund.Items.Sum(r => r.Quantity)} item(s)){(restock ? ", stock restocked" : "")} — {gatewayNote}."
+                + (fullyRefunded ? " Order fully refunded." : ""));
 
             try
             {

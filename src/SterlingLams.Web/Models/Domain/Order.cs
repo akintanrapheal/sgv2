@@ -105,4 +105,5 @@ public class Order
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public ICollection<OrderItem> Items { get; set; } = new List<OrderItem>();
+    public ICollection<OrderNote> Timeline { get; set; } = new List<OrderNote>();
 }

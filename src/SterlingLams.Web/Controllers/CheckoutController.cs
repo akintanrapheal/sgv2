@@ -547,6 +547,10 @@ public class CheckoutController : Controller
         _db.Orders.Add(order);
         await _db.SaveChangesAsync();
 
+        SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
+            $"Order placed by customer ({(order.FulfillmentType == FulfillmentType.StorePickup ? "store pickup" : "delivery")}). Awaiting payment.");
+        await _db.SaveChangesAsync();
+
         // No stock is held before payment — it's committed first-come-first-served when payment
         // lands (FulfilPaidOrderAsync). If an item sells out before this customer pays, the
         // payment is auto-cancelled + refunded at the callback.
@@ -606,11 +610,15 @@ public class CheckoutController : Controller
         var order = await _db.Orders.FirstOrDefaultAsync(o => o.OrderNumber == result.OrderNumber);
         if (order != null)
         {
+            var wasUnpaid = !order.IsPaid;
             order.IsPaid = true;
             order.PaidAt = DateTime.UtcNow;
             order.Status = OrderStatus.Confirmed;
             order.PaymentReference = refToVerify;
             order.PaymentProvider = _payment.ProviderName;
+            if (wasUnpaid)
+                SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
+                    $"Payment via {_payment.ProviderName} successful (Transaction Reference: {refToVerify}).");
             await _db.SaveChangesAsync();
 
             // Commit stock first-come-first-served. If an item sold out before this payment

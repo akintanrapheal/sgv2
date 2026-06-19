@@ -96,6 +96,9 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public int RefundStoreId { get; set; }
         public bool CanRefund { get; set; }
         public decimal RefundedTotal { get; set; }
+
+        /// <summary>Order timeline notes (system + staff), newest first.</summary>
+        public List<OrderNote> Notes { get; set; } = new();
     }
 
     // ─── Products ─────────────────────────────────────────────────────────

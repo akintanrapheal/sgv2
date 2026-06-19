@@ -6,13 +6,16 @@ using SterlingLams.Web.Services;
 namespace SterlingLams.Web.Infrastructure;
 
 /// <summary>
-/// Periodically frees stock reserved by online orders that were placed but never paid (the
-/// customer abandoned checkout), and cancels those orders — so held stock returns to sale.
+/// Periodically cancels online orders that were placed but never paid (the customer abandoned
+/// checkout) once they pass the unpaid timeout — default 60 minutes, overridable via the
+/// order.unpaid_cancel_minutes setting. Unpaid online orders hold no stock (it's only deducted on
+/// payment / staff confirmation), so cancelling just closes the order; any legacy reservation rows
+/// are released defensively.
 /// </summary>
 public class ReservationSweeper : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
-    private const int DefaultTtlMinutes = 30; // unpaid hold lifetime (overridable via order.reservation_timeout_minutes)
+    private const int DefaultTtlMinutes = 60; // cancel an unpaid order after this long
 
     private readonly IServiceProvider _sp;
     private readonly ILogger<ReservationSweeper> _logger;
@@ -44,25 +47,31 @@ public class ReservationSweeper : BackgroundService
         var ttlMinutes = (int)await settings.GetDecimalAsync("order.reservation_timeout_minutes", DefaultTtlMinutes);
         if (ttlMinutes < 1) ttlMinutes = DefaultTtlMinutes;
         var cutoff = DateTime.UtcNow - TimeSpan.FromMinutes(ttlMinutes);
-        var staleOrderIds = await db.StockReservations
-            .Where(r => r.CreatedAt < cutoff && !r.Order.IsPaid)
-            .Select(r => r.OrderId)
-            .Distinct()
+
+        // Unpaid, still-pending online orders past the cutoff. (POS sales are paid at the till;
+        // staff-confirmed orders leave Pending, so they're never swept.)
+        var staleOrderIds = await db.Orders
+            .Where(o => o.Channel == OrderChannel.Online
+                     && !o.IsPaid
+                     && o.Status == OrderStatus.Pending
+                     && o.CreatedAt < cutoff)
+            .Select(o => o.Id)
             .ToListAsync(ct);
 
         foreach (var id in staleOrderIds)
         {
-            await fulfil.ReleaseReservationAsync(id);
+            await fulfil.ReleaseReservationAsync(id); // defensive: release any legacy reservation rows
             var order = await db.Orders.FindAsync(new object[] { id }, ct);
-            if (order != null && !order.IsPaid && order.Status != OrderStatus.Cancelled)
+            if (order != null && !order.IsPaid && order.Status == OrderStatus.Pending)
             {
                 order.Status = OrderStatus.Cancelled;
-                order.AdminNotes = $"Auto-cancelled {DateTime.UtcNow:yyyy-MM-dd HH:mm}: payment not completed; reserved stock released.";
+                order.UpdatedAt = DateTime.UtcNow;
+                OrderNotes.AddSystem(db, id, $"Order auto-cancelled: payment not received within {ttlMinutes} minutes.");
                 await db.SaveChangesAsync(ct);
             }
         }
 
         if (staleOrderIds.Count > 0)
-            _logger.LogInformation("Reservation sweep released {Count} abandoned order(s).", staleOrderIds.Count);
+            _logger.LogInformation("Auto-cancelled {Count} unpaid order(s) past the {Ttl}-minute timeout.", staleOrderIds.Count, ttlMinutes);
     }
 }

@@ -223,6 +223,63 @@
             </form>
         </div>
 
+        <!-- Order notes (timeline) -->
+        <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
+            <h2 class="text-sm font-medium mb-3">Order notes</h2>
+
+            <!-- Add note -->
+            <form asp-area="Admin" asp-controller="Orders" asp-action="AddNote"
+                  asp-route-id="@Model.Order.Id" method="post" class="space-y-2 mb-4">
+                @Html.AntiForgeryToken()
+                <textarea name="content" rows="3" required
+                          placeholder="Add a note…"
+                          class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-neutral-400 resize-none"></textarea>
+                <div class="flex gap-2">
+                    <select name="noteType"
+                            class="flex-1 border border-neutral-200 rounded-sm px-2 py-2 text-xs bg-white focus:outline-none focus:border-neutral-400">
+                        <option value="private">Private note</option>
+                        <option value="customer">Note to customer</option>
+                    </select>
+                    <button type="submit"
+                            class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+                        Add
+                    </button>
+                </div>
+            </form>
+
+            <!-- Notes list (newest first) -->
+            <div class="space-y-2 max-h-96 overflow-auto">
+                @if (!Model.Notes.Any())
+                {
+                    <p class="text-xs text-neutral-400">No notes yet.</p>
+                }
+                @foreach (var n in Model.Notes)
+                {
+                    var tone = n.IsCustomerNote ? "bg-blue-50 border-blue-100"
+                             : n.IsSystem ? "bg-neutral-50 border-neutral-100"
+                             : "bg-purple-50 border-purple-100";
+                    var kind = n.IsSystem ? "" : n.IsCustomerNote ? "Note to customer" : "Private note";
+                    <div class="border rounded-sm p-3 @tone">
+                        <p class="text-xs text-neutral-700 whitespace-pre-line">@n.Content</p>
+                        <div class="flex items-center justify-between mt-2 text-[11px] text-neutral-400">
+                            <span>
+                                @n.CreatedAt.ToString("MMM d, yyyy 'at' h:mm tt")
+                                @if (!string.IsNullOrEmpty(kind)) { <text> · @kind</text> }
+                                @if (!string.IsNullOrEmpty(n.AuthorName)) { <text> · @n.AuthorName</text> }
+                            </span>
+                            <form asp-area="Admin" asp-controller="Orders" asp-action="DeleteNote"
+                                  asp-route-id="@Model.Order.Id" method="post"
+                                  onsubmit="return confirm('Delete this note?');">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="noteId" value="@n.Id" />
+                                <button type="submit" class="text-rose-400 hover:text-rose-600">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+
         <!-- Tracking Number -->
         <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
             <h2 class="text-sm font-medium mb-3">Tracking</h2>
