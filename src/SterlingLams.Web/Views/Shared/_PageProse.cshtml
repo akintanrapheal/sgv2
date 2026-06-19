@@ -1,0 +1,20 @@
+@model string
+@* Renders an admin-supplied page body (HTML) with sensible typographic defaults so plain
+   headings/paragraphs/lists/links look right without the admin needing Tailwind classes. *@
+<section class="py-20 md:py-24 bg-white">
+    <div class="page-prose max-w-3xl mx-auto px-6 text-neutral-600 font-light text-sm leading-relaxed">
+        @Html.Raw(Model)
+    </div>
+</section>
+<style>
+    .page-prose h1, .page-prose h2 { font-family: 'Cormorant Garamond', serif; font-weight: 300; color: #171717; line-height: 1.2; }
+    .page-prose h2 { font-size: 1.875rem; margin: 2rem 0 1rem; }
+    .page-prose h3 { font-size: 1.125rem; font-weight: 500; color: #262626; margin: 1.5rem 0 .5rem; }
+    .page-prose p  { margin: 0 0 1rem; }
+    .page-prose ul, .page-prose ol { margin: 0 0 1rem 1.25rem; }
+    .page-prose ul { list-style: disc; }
+    .page-prose ol { list-style: decimal; }
+    .page-prose li { margin: .25rem 0; }
+    .page-prose a  { color: #ec1c8e; text-decoration: underline; text-underline-offset: 2px; }
+    .page-prose strong { color: #262626; font-weight: 600; }
+</style>

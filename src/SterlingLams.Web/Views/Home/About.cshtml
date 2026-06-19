@@ -1,7 +1,10 @@
+@using SterlingLams.Web.Services
+@inject ISettingsService SettingsService
 @{
     ViewData["Title"] = "Our Story";
     ViewData["Description"] = "Discover the story behind Sterlin Glams — luxury jewellery crafted for the discerning Nigerian woman.";
     Layout = "_Layout";
+    var bodyOverride = await SettingsService.GetAsync("pages.about_body", "");
 }
 
 <!-- Hero -->
@@ -11,6 +14,13 @@
         <h1 class="font-cormorant text-5xl font-light text-neutral-900">Our Story</h1>
     </div>
 </section>
+
+@if (!string.IsNullOrWhiteSpace(bodyOverride))
+{
+    <partial name="_PageProse" model="bodyOverride" />
+}
+else
+{
 
 <!-- Story -->
 <section class="py-24 bg-white">
@@ -85,3 +95,4 @@
         </a>
     </div>
 </section>
+}

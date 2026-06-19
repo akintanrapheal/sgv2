@@ -1,7 +1,10 @@
+@using SterlingLams.Web.Services
+@inject ISettingsService SettingsService
 @{
     ViewData["Title"] = "Privacy Policy";
     ViewData["Description"] = "Sterlin Glams Privacy Policy — how we collect, use, and protect your personal information.";
     Layout = "_Layout";
+    var bodyOverride = await SettingsService.GetAsync("pages.privacy_body", "");
 }
 
 <!-- Hero -->
@@ -12,6 +15,12 @@
     </div>
 </section>
 
+@if (!string.IsNullOrWhiteSpace(bodyOverride))
+{
+    <partial name="_PageProse" model="bodyOverride" />
+}
+else
+{
 <section class="py-20 bg-white">
     <div class="max-w-3xl mx-auto px-6">
 
@@ -130,3 +139,4 @@
 
     </div>
 </section>
+}

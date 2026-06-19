@@ -147,6 +147,18 @@ public static class SettingsSeedData
         new() { Key = "homepage.trust_2",          Group = "Homepage", Label = "Trust Bar — Item 2",     Type = "text",   Value = "Secure Checkout",     Description = "Second label in the scrolling pink trust bar.",                SortOrder = 9 },
         new() { Key = "homepage.trust_3",          Group = "Homepage", Label = "Trust Bar — Item 3",     Type = "text",   Value = "Easy Returns",        Description = "Third label in the scrolling pink trust bar.",                 SortOrder = 10 },
 
+        // ── Content pages (leave blank to keep the built-in page; paste HTML to replace the body) ──
+        new() { Key = "pages.about_body",           Group = "Content Pages", Label = "Our Story (body)",       Type = "textarea", Value = "", Description = "Replace the 'Our Story' page body. Leave blank to keep the built-in page. Paste HTML — headings (<h2>/<h3>), paragraphs (<p>), lists (<ul><li>) and links are styled automatically.", SortOrder = 1 },
+        new() { Key = "pages.privacy_body",         Group = "Content Pages", Label = "Privacy Policy (body)",  Type = "textarea", Value = "", Description = "Replace the Privacy Policy body. Leave blank to keep the built-in page. Paste HTML.", SortOrder = 2 },
+        new() { Key = "pages.terms_body",           Group = "Content Pages", Label = "Terms of Service (body)",Type = "textarea", Value = "", Description = "Replace the Terms of Service body. Leave blank to keep the built-in page. Paste HTML.", SortOrder = 3 },
+        new() { Key = "pages.payment_returns_body", Group = "Content Pages", Label = "Payment & Returns (body)",Type = "textarea", Value = "", Description = "Replace the Payment & Returns body. Leave blank to keep the built-in page. Paste HTML.", SortOrder = 4 },
+
+        // ── Collections (Lookbook) card images — leave blank for the plain coloured card ──
+        new() { Key = "collections.image_rings",     Group = "Collections", Label = "Rings card image",     Type = "image", Value = "", Description = "Background image for the Rings collection card on the Collections page.",     SortOrder = 1 },
+        new() { Key = "collections.image_necklaces", Group = "Collections", Label = "Necklaces card image", Type = "image", Value = "", Description = "Background image for the Necklaces collection card.", SortOrder = 2 },
+        new() { Key = "collections.image_bracelets", Group = "Collections", Label = "Bracelets card image", Type = "image", Value = "", Description = "Background image for the Bracelets collection card.", SortOrder = 3 },
+        new() { Key = "collections.image_earrings",  Group = "Collections", Label = "Earrings card image",  Type = "image", Value = "", Description = "Background image for the Earrings collection card.", SortOrder = 4 },
+
         // ── Homepage Feature (two-up "Icons of Summer"-style section under Shop by Category) ──
         new() { Key = "home.feature.enabled",     Group = "Homepage Feature", Label = "Show Feature Section",   Type = "boolean",  Value = "true",            Description = "Show the two-image feature section under Shop by Category.",              SortOrder = 0 },
         new() { Key = "home.feature.heading",     Group = "Homepage Feature", Label = "Section Heading",        Type = "text",     Value = "Icons of Summer", Description = "Centred heading above the two images.",                                   SortOrder = 1 },

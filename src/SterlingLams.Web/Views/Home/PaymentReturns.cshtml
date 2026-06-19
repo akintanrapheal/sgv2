@@ -1,7 +1,10 @@
+@using SterlingLams.Web.Services
+@inject ISettingsService SettingsService
 @{
     ViewData["Title"] = "Payment & Returns";
     ViewData["Description"] = "Sterlin Glams payment methods, returns, refunds, and exchange policy.";
     Layout = "_Layout";
+    var bodyOverride = await SettingsService.GetAsync("pages.payment_returns_body", "");
 }
 
 <!-- Hero -->
@@ -12,6 +15,12 @@
     </div>
 </section>
 
+@if (!string.IsNullOrWhiteSpace(bodyOverride))
+{
+    <partial name="_PageProse" model="bodyOverride" />
+}
+else
+{
 <section class="py-20 bg-white">
     <div class="max-w-3xl mx-auto px-6 space-y-16">
 
@@ -107,3 +116,4 @@
 
     </div>
 </section>
+}

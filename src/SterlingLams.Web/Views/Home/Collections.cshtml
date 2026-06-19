@@ -1,7 +1,16 @@
+@using SterlingLams.Web.Services
+@inject ISettingsService SettingsService
 @{
     ViewData["Title"] = "Collections";
     ViewData["Description"] = "Explore our curated jewellery collections — rings, necklaces, bracelets and earrings crafted for the discerning woman.";
     Layout = "_Layout";
+    var collectionCards = new[]
+    {
+        ("Rings", "rings", await SettingsService.GetAsync("collections.image_rings", "")),
+        ("Necklaces", "necklaces", await SettingsService.GetAsync("collections.image_necklaces", "")),
+        ("Bracelets", "bracelets", await SettingsService.GetAsync("collections.image_bracelets", "")),
+        ("Earrings", "earrings", await SettingsService.GetAsync("collections.image_earrings", "")),
+    };
 }
 
 <!-- Hero -->
@@ -12,60 +21,33 @@
     </div>
 </section>
 
-<!-- Collections Grid -->
+<!-- Collections Grid (card images are admin-editable in Settings → Collections) -->
 <section class="py-24 bg-white">
     <div class="max-w-7xl mx-auto px-6">
-        <div class="grid md:grid-cols-2 gap-8 mb-8">
-
-            <!-- Rings -->
-            <a asp-controller="Products" asp-action="Index" asp-route-category="rings"
-               class="group relative overflow-hidden bg-stone-50 aspect-[4/3] flex items-end">
-                <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                <div class="relative z-10 p-8 w-full">
-                    <h2 class="font-cormorant text-3xl font-light text-neutral-900 group-hover:text-white transition-colors duration-300 mb-1">Rings</h2>
-                    <p class="text-xs tracking-widest uppercase text-neutral-500 group-hover:text-neutral-300 transition-colors duration-300">
-                        Shop Collection →
-                    </p>
-                </div>
-            </a>
-
-            <!-- Necklaces -->
-            <a asp-controller="Products" asp-action="Index" asp-route-category="necklaces"
-               class="group relative overflow-hidden bg-neutral-100 aspect-[4/3] flex items-end">
-                <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                <div class="relative z-10 p-8 w-full">
-                    <h2 class="font-cormorant text-3xl font-light text-neutral-900 group-hover:text-white transition-colors duration-300 mb-1">Necklaces</h2>
-                    <p class="text-xs tracking-widest uppercase text-neutral-500 group-hover:text-neutral-300 transition-colors duration-300">
-                        Shop Collection →
-                    </p>
-                </div>
-            </a>
-        </div>
-
         <div class="grid md:grid-cols-2 gap-8">
-            <!-- Bracelets -->
-            <a asp-controller="Products" asp-action="Index" asp-route-category="bracelets"
-               class="group relative overflow-hidden bg-neutral-100 aspect-[4/3] flex items-end">
-                <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                <div class="relative z-10 p-8 w-full">
-                    <h2 class="font-cormorant text-3xl font-light text-neutral-900 group-hover:text-white transition-colors duration-300 mb-1">Bracelets</h2>
-                    <p class="text-xs tracking-widest uppercase text-neutral-500 group-hover:text-neutral-300 transition-colors duration-300">
-                        Shop Collection →
-                    </p>
-                </div>
-            </a>
-
-            <!-- Earrings -->
-            <a asp-controller="Products" asp-action="Index" asp-route-category="earrings"
-               class="group relative overflow-hidden bg-stone-50 aspect-[4/3] flex items-end">
-                <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                <div class="relative z-10 p-8 w-full">
-                    <h2 class="font-cormorant text-3xl font-light text-neutral-900 group-hover:text-white transition-colors duration-300 mb-1">Earrings</h2>
-                    <p class="text-xs tracking-widest uppercase text-neutral-500 group-hover:text-neutral-300 transition-colors duration-300">
-                        Shop Collection →
-                    </p>
-                </div>
-            </a>
+            @foreach (var (title, cat, img) in collectionCards)
+            {
+                var hasImg = !string.IsNullOrWhiteSpace(img);
+                <a asp-controller="Products" asp-action="Index" asp-route-category="@cat"
+                   class="group relative overflow-hidden @(hasImg ? "bg-neutral-200" : "bg-stone-50") aspect-[4/3] flex items-end">
+                    @if (hasImg)
+                    {
+                        <img src="@img" alt="@title" loading="lazy"
+                             class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                        <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/70 via-neutral-900/20 to-transparent"></div>
+                    }
+                    else
+                    {
+                        <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                    }
+                    <div class="relative z-10 p-8 w-full">
+                        <h2 class="font-cormorant text-3xl font-light mb-1 transition-colors duration-300 @(hasImg ? "text-white" : "text-neutral-900 group-hover:text-white")">@title</h2>
+                        <p class="text-xs tracking-widest uppercase transition-colors duration-300 @(hasImg ? "text-neutral-200" : "text-neutral-500 group-hover:text-neutral-300")">
+                            Shop Collection →
+                        </p>
+                    </div>
+                </a>
+            }
         </div>
     </div>
 </section>
