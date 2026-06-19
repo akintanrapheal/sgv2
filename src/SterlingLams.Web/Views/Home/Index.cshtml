@@ -36,6 +36,8 @@
     };
 }
 
+<partial name="_QuickViewModal" />
+
 <!-- ─── Hero ──────────────────────────────────────────────────────────────── -->
 <section class="relative h-screen min-h-[600px] flex items-center overflow-hidden">
 
@@ -242,18 +244,28 @@
             {
                 @foreach (var p in featuredProducts)
                 {
-                    <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="group">
-                        <div class="aspect-square bg-neutral-100 mb-4 overflow-hidden relative">
-                            <img src="@p.PrimaryImageUrl" alt="@p.Name"
-                                 loading="lazy"
-                                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                            <div class="absolute inset-0 flex items-end justify-center pb-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                <span class="bg-white text-neutral-900 text-xs tracking-widest uppercase px-6 py-2 shadow-lg">Quick View</span>
+                    <div class="group">
+                        <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="block">
+                            <div class="aspect-square bg-neutral-100 mb-4 overflow-hidden relative">
+                                <img src="@p.PrimaryImageUrl" alt="@p.Name"
+                                     loading="lazy"
+                                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                                <div class="absolute inset-0 flex items-end justify-center pb-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                    <span class="bg-white text-neutral-900 text-xs tracking-widest uppercase px-6 py-2 shadow-lg">Quick View</span>
+                                </div>
                             </div>
-                        </div>
-                        <h3 class="font-light text-sm text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
-                        <p class="text-xs text-neutral-400 mt-1">₦@p.Price.ToString("N0")</p>
-                    </a>
+                            <h3 class="font-light text-sm text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
+                            @if (p.IsOnSale)
+                            {
+                                <p class="text-xs mt-1"><span class="text-neutral-400 line-through">@p.FormattedRegularPrice</span> <span class="text-brand-600 ml-1">@p.FormattedPrice</span></p>
+                            }
+                            else
+                            {
+                                <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
+                            }
+                        </a>
+                        <partial name="_ProductCardCta" model="p" />
+                    </div>
                 }
             }
             else

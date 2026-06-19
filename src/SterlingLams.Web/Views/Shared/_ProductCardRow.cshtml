@@ -20,31 +20,34 @@
             <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
                 @foreach (var p in Model)
                 {
-                    <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="group">
-                        <div class="aspect-square bg-neutral-100 mb-4 overflow-hidden relative">
-                            <img src="@p.PrimaryImageUrl" alt="@p.Name" loading="lazy"
-                                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                            @if (!p.IsAvailable)
+                    <div class="group">
+                        <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="block">
+                            <div class="aspect-square bg-neutral-100 mb-4 overflow-hidden relative">
+                                <img src="@p.PrimaryImageUrl" alt="@p.Name" loading="lazy"
+                                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                                @if (!p.IsAvailable)
+                                {
+                                    <div class="absolute inset-0 bg-white/50 flex items-center justify-center">
+                                        <span class="text-xs tracking-widest uppercase text-neutral-500">Sold Out</span>
+                                    </div>
+                                }
+                                else if (p.IsNewArrival)
+                                {
+                                    <span class="absolute top-3 left-3 bg-brand-500 text-white text-[9px] tracking-widest uppercase px-2 py-1">New</span>
+                                }
+                            </div>
+                            <h3 class="font-light text-sm text-neutral-700 group-hover:text-neutral-900 transition-colors leading-snug">@p.Name</h3>
+                            @if (p.IsOnSale)
                             {
-                                <div class="absolute inset-0 bg-white/50 flex items-center justify-center">
-                                    <span class="text-xs tracking-widest uppercase text-neutral-500">Sold Out</span>
-                                </div>
+                                <p class="text-xs mt-1"><span class="text-neutral-400 line-through">@p.FormattedRegularPrice</span> <span class="text-brand-600 ml-1">@p.FormattedPrice</span></p>
                             }
-                            else if (p.IsNewArrival)
+                            else
                             {
-                                <span class="absolute top-3 left-3 bg-brand-500 text-white text-[9px] tracking-widest uppercase px-2 py-1">New</span>
+                                <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
                             }
-                        </div>
-                        <h3 class="font-light text-sm text-neutral-700 group-hover:text-neutral-900 transition-colors leading-snug">@p.Name</h3>
-                        @if (p.IsOnSale)
-                        {
-                            <p class="text-xs mt-1"><span class="text-brand-600">@p.FormattedPrice</span> <span class="text-neutral-400 line-through ml-1">@p.FormattedRegularPrice</span></p>
-                        }
-                        else
-                        {
-                            <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
-                        }
-                    </a>
+                        </a>
+                        <partial name="_ProductCardCta" model="p" />
+                    </div>
                 }
             </div>
         </div>

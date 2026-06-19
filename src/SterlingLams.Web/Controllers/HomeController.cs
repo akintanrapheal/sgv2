@@ -25,6 +25,7 @@ public class HomeController : Controller
         var featured = await _db.Products
             .Include(p => p.Images)
             .Include(p => p.StoreInventories)
+            .Include(p => p.Variants)
             .Where(p => p.IsActive && p.IsFeatured)
             .OrderByDescending(p => p.CreatedAt)
             .Take(4)
@@ -41,7 +42,8 @@ public class HomeController : Controller
             PrimaryImageUrl = p.Images.FirstOrDefault(i => i.IsPrimary)?.Url
                 ?? p.Images.FirstOrDefault()?.Url
                 ?? "/images/placeholder.jpg",
-            IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0)
+            IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0),
+            HasVariants = p.Variants.Any(v => v.IsActive)
         }).ToList();
 
         // "Shop by Category" — active top-level categories. Prefer those with an
