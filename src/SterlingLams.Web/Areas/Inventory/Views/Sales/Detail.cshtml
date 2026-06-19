@@ -9,9 +9,10 @@
         OrderStatus.Delivered or OrderStatus.Shipped or OrderStatus.ReadyForPickup => "bg-emerald-50 text-emerald-700",
         OrderStatus.Refunded => "bg-red-50 text-red-700",
         OrderStatus.Cancelled => "bg-neutral-100 text-neutral-500",
-        OrderStatus.Pending => "bg-amber-50 text-amber-700",
+        OrderStatus.Pending or OrderStatus.AwaitingTransfer => "bg-amber-50 text-amber-700",
         _ => "bg-blue-50 text-blue-700"
     };
+    string StatusLabel(OrderStatus s) => s == OrderStatus.AwaitingTransfer ? "Awaiting transfer" : s.ToString();
 }
 
 <div class="flex items-center justify-between mb-4">
@@ -19,7 +20,7 @@
         <a asp-action="@back" class="text-xs text-neutral-400 hover:text-neutral-700">← @back sales</a>
         <h1 class="font-cormorant text-2xl font-light text-neutral-900 mt-1 font-mono">@Model.OrderNumber</h1>
     </div>
-    <span class="px-2 py-0.5 rounded-sm text-[11px] @StatusBadge(Model.Status)">@Model.Status</span>
+    <span class="px-2 py-0.5 rounded-sm text-[11px] @StatusBadge(Model.Status)">@StatusLabel(Model.Status)</span>
 </div>
 
 <div class="bg-white border border-neutral-100 rounded-sm p-5 mb-4 grid grid-cols-2 md:grid-cols-4 gap-4">

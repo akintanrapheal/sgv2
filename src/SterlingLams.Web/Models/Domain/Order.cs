@@ -9,7 +9,10 @@ public enum OrderStatus
     Shipped,
     Delivered,
     Cancelled,
-    Refunded
+    Refunded,
+    // NOTE: append only — persisted as int. Paid online order waiting for stock to be physically
+    // transferred between branches to the fulfilling branch before it can ship.
+    AwaitingTransfer
 }
 
 public enum FulfillmentType

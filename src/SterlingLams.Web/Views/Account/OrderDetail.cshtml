@@ -25,13 +25,15 @@
             OrderStatus.ReadyForPickup => ("bg-amber-50 border-amber-100", "text-amber-800", "Your order is ready for pickup."),
             OrderStatus.Cancelled   => ("bg-red-50 border-red-100",      "text-red-800",     "This order has been cancelled."),
             OrderStatus.Processing  => ("bg-neutral-50 border-neutral-200","text-neutral-700","Your order is being processed."),
+            OrderStatus.AwaitingTransfer => ("bg-amber-50 border-amber-100","text-amber-800","We're preparing your order — some items are coming in from another branch."),
             _                       => ("bg-neutral-50 border-neutral-200","text-neutral-700","Your order is confirmed.")
         };
+        string statusLabel = Model.Status == OrderStatus.AwaitingTransfer ? "Preparing your order" : Model.Status.ToString();
     }
     <div class="border rounded-sm px-6 py-4 mb-8 @bannerBg">
         <div class="flex items-center justify-between">
             <p class="text-sm font-medium @bannerText">@bannerMsg</p>
-            <span class="text-xs px-3 py-1 rounded-full bg-white/70 @bannerText border border-current/20">@Model.Status</span>
+            <span class="text-xs px-3 py-1 rounded-full bg-white/70 @bannerText border border-current/20">@statusLabel</span>
         </div>
     </div>
 

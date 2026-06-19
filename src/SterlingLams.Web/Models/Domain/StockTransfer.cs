@@ -29,6 +29,10 @@ public class StockTransfer
     public int ToStoreId { get; set; }
     public Store ToStore { get; set; } = null!;
 
+    /// <summary>Set when this transfer was auto-created to consolidate stock for an online order;
+    /// once all of an order's transfers are received the sale is committed and the order ships.</summary>
+    public int? OrderId { get; set; }
+
     public TransferStatus Status { get; set; } = TransferStatus.PendingApproval;
 
     public string? CreatedByUserId { get; set; }

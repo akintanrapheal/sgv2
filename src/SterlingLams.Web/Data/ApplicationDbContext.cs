@@ -210,6 +210,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             e.HasIndex(t => t.TransferNumber).IsUnique();
             e.HasIndex(t => t.Status);
             e.HasIndex(t => t.CreatedAt);
+            e.HasIndex(t => t.OrderId);   // find all transfers for an online order at finalisation
             e.HasOne(t => t.FromStore).WithMany().HasForeignKey(t => t.FromStoreId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(t => t.ToStore).WithMany().HasForeignKey(t => t.ToStoreId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(t => t.Items).WithOne(i => i.StockTransfer).HasForeignKey(i => i.StockTransferId).OnDelete(DeleteBehavior.Cascade);

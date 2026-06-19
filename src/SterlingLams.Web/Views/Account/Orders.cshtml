@@ -31,7 +31,7 @@
                         <div class="text-right">
                             <p class="text-sm text-neutral-700">₦@order.Total.ToString("N0")</p>
                             <span class="text-[10px] tracking-widest uppercase @(order.Status == OrderStatus.Delivered ? "text-emerald-600" : order.Status == OrderStatus.Cancelled ? "text-red-400" : "text-amber-600")">
-                                @order.Status
+                                @(order.Status == OrderStatus.AwaitingTransfer ? "Preparing your order" : order.Status.ToString())
                             </span>
                         </div>
                     </div>

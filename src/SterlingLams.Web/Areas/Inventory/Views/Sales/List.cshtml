@@ -14,9 +14,10 @@
         "Delivered" or "Shipped" or "ReadyForPickup" => "bg-emerald-50 text-emerald-700",
         "Refunded" => "bg-red-50 text-red-700",
         "Cancelled" => "bg-neutral-100 text-neutral-500",
-        "Pending" => "bg-amber-50 text-amber-700",
+        "Pending" or "AwaitingTransfer" => "bg-amber-50 text-amber-700",
         _ => "bg-blue-50 text-blue-700"
     };
+    string Label(string s) => s == "AwaitingTransfer" ? "Awaiting transfer" : s;
 }
 
 @await Html.PartialAsync("_SalesTabs", view)
@@ -73,7 +74,7 @@
                         <td class="px-4 py-3 text-neutral-500 text-xs">@r.When.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</td>
                         <td class="px-4 py-3 text-neutral-600">@(r.Channel == "Pos" ? "POS" : "Online")</td>
                         <td class="px-4 py-3 text-neutral-600 text-xs">@(r.Customer ?? "Walk-in")</td>
-                        <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-sm text-[11px] @StatusBadge(r.Status)">@r.Status</span></td>
+                        <td class="px-4 py-3"><span class="px-2 py-0.5 rounded-sm text-[11px] @StatusBadge(r.Status)">@Label(r.Status)</span></td>
                         <td class="px-4 py-3 text-xs @(r.Paid ? "text-emerald-600" : "text-amber-600")">@(r.Paid ? (r.PaymentProvider ?? "Paid") : "Unpaid")</td>
                         <td class="px-4 py-3 text-right font-medium text-neutral-800">₦@r.Total.ToString("N0")</td>
                     </tr>

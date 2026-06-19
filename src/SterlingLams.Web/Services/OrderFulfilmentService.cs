@@ -25,8 +25,15 @@ public interface IOrderFulfilmentService
 
     /// <summary>Fulfils a paid online order against the in-house stock ledger, committing stock
     /// first-come-first-served. Idempotent and safe to call from every payment-confirmation path
-    /// (browser callback and webhook). Returns SoldOut if an item is no longer available.</summary>
+    /// (browser callback and webhook). Returns SoldOut if an item is no longer available.
+    /// If the order needs stock from other branches it's left "Awaiting transfer" and finalised
+    /// later by <see cref="FinalizeAwaitingOrderAsync"/> once the transfers are received.</summary>
     Task<FulfilOutcome> FulfilPaidOrderAsync(int orderId);
+
+    /// <summary>Called when a transfer tied to an online order is received. If all of the order's
+    /// transfers are now in, commits the sale at the fulfilling branch and marks the order ready
+    /// to dispatch. Idempotent; no-op until every transfer is received.</summary>
+    Task FinalizeAwaitingOrderAsync(int orderId);
 }
 
 public class OrderFulfilmentService : IOrderFulfilmentService
@@ -36,15 +43,18 @@ public class OrderFulfilmentService : IOrderFulfilmentService
     private readonly ILogger<OrderFulfilmentService> _logger;
     private readonly IPaymentService _payment;
     private readonly IEmailService _email;
+    private readonly ISettingsService _settings;
 
     public OrderFulfilmentService(ApplicationDbContext db, IStockService stock,
-        ILogger<OrderFulfilmentService> logger, IPaymentService payment, IEmailService email)
+        ILogger<OrderFulfilmentService> logger, IPaymentService payment, IEmailService email,
+        ISettingsService settings)
     {
         _db = db;
         _stock = stock;
         _logger = logger;
         _payment = payment;
         _email = email;
+        _settings = settings;
     }
 
     // Variant-level stock: an order line for variant V at store S draws on V's own inventory row
@@ -202,6 +212,11 @@ public class OrderFulfilmentService : IOrderFulfilmentService
             // concurrent payments for the same last unit can't both succeed. Nothing is written
             // on the sold-out path, so the lock is released cleanly before we refund.
             var soldOut = false;
+            var shipNow = false;
+            var awaitingTransfer = false;
+            Store? fulfilStoreForEmail = null;
+            var sourceNotices = new List<(Store Source, string Ref, List<(string Name, int Qty)> Items)>();
+
             await using (var tx = await _db.Database.BeginTransactionAsync())
             {
                 await LockInventoryRowsAsync(productIds.SelectMany(pid => storeIds.Select(sid => (pid, sid))));
@@ -225,10 +240,41 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                         order.OrderNumber, shortLine.ProductId);
                     soldOut = true;
                 }
+                else if (alloc.All(kv => kv.Key.store == fulfilStore.Id))
+                {
+                    // Everything is already at the nearest branch — sell + ship straight away.
+                    foreach (var line in order.Items)
+                        await _stock.ApplyAsync(line.ProductId, line.ProductVariantId, fulfilStore.Id,
+                            -line.Quantity, StockMovementType.Sale, order.OrderNumber,
+                            $"Online order {order.OrderNumber}", order.UserId);
+
+                    order.FulfillingStoreId = fulfilStore.Id;
+                    order.Status = order.FulfillmentType == FulfillmentType.StorePickup
+                        ? OrderStatus.ReadyForPickup : OrderStatus.Processing;
+                    await _db.SaveChangesAsync();
+                    await tx.CommitAsync();
+                    shipNow = true; fulfilStoreForEmail = fulfilStore;
+                    _logger.LogInformation("Order {OrderNumber} fulfilled from {Store} (no transfer).", order.OrderNumber, fulfilStore.Name);
+                }
                 else
                 {
-                    // Transfers: every allocation that isn't already at the fulfilment branch moves in,
-                    // per (product, variant). ApplyAsync resolves each side to its effective row.
+                    // Cross-branch: don't move/sell yet. Hold the stock and create PENDING transfers;
+                    // staff Dispatch from each source and Receive at the fulfilling branch, then the
+                    // sale is committed (FinalizeAwaitingOrderAsync). Hold the fulfilling branch's own
+                    // (local) units via a reservation so they aren't sold away while we wait.
+                    foreach (var kv in alloc.Where(kv => kv.Key.store == fulfilStore.Id))
+                    {
+                        var ev = effVid(kv.Key.product, kv.Key.variant, fulfilStore.Id);
+                        if (invMap.TryGetValue((kv.Key.product, ev, fulfilStore.Id), out var si)) si.QuantityReserved += kv.Value;
+                        _db.StockReservations.Add(new StockReservation
+                        {
+                            OrderId = orderId, StoreId = fulfilStore.Id, ProductId = kv.Key.product,
+                            ProductVariantId = kv.Key.variant, Quantity = kv.Value, CreatedAt = now
+                        });
+                    }
+
+                    // One pre-approved transfer per source branch (units reserved at source, mirroring
+                    // a manual Approve — staff then Dispatch and the fulfilling branch Receives).
                     foreach (var bySource in alloc.Where(kv => kv.Key.store != fulfilStore.Id).GroupBy(kv => kv.Key.store))
                     {
                         var sourceStore = activeStores.First(s => s.Id == bySource.Key);
@@ -238,54 +284,39 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                             TransferNumber = transferNumber,
                             FromStoreId = sourceStore.Id,
                             ToStoreId = fulfilStore.Id,
-                            Status = TransferStatus.Completed,
+                            OrderId = orderId,
+                            Status = TransferStatus.Approved,
                             CreatedByUserId = order.UserId,
                             Note = $"Online order {order.OrderNumber}",
                             CreatedAt = now,
-                            ApprovedAt = now,
-                            DispatchedAt = now,
-                            ReceivedAt = now
+                            ApprovedByUserId = order.UserId,
+                            ApprovedAt = now
                         };
+                        var emailItems = new List<(string, int)>();
                         foreach (var kv in bySource)
                         {
-                            var pid = kv.Key.product;
-                            var vid = kv.Key.variant;
-                            var qty = kv.Value;
+                            var (pid, vid, qty) = (kv.Key.product, kv.Key.variant, kv.Value);
+                            var ev = effVid(pid, vid, sourceStore.Id);
+                            if (invMap.TryGetValue((pid, ev, sourceStore.Id), out var si)) si.QuantityReserved += qty; // reserve at source
+                            var pname = products.GetValueOrDefault(pid, $"#{pid}");
                             transfer.Items.Add(new StockTransferItem
                             {
-                                ProductId = pid,
-                                ProductVariantId = vid,
-                                ProductName = products.GetValueOrDefault(pid, $"#{pid}"),
-                                RequestedQty = qty,
-                                ApprovedQty = qty,
-                                DispatchedQty = qty,
-                                ReceivedQty = qty
+                                ProductId = pid, ProductVariantId = vid, ProductName = pname,
+                                RequestedQty = qty, ApprovedQty = qty
                             });
-                            await _stock.ApplyAsync(pid, vid, sourceStore.Id, -qty, StockMovementType.Transfer,
-                                transferNumber, $"To {fulfilStore.Name} (order {order.OrderNumber})", order.UserId);
-                            await _stock.ApplyAsync(pid, vid, fulfilStore.Id, qty, StockMovementType.Transfer,
-                                transferNumber, $"From {sourceStore.Name} (order {order.OrderNumber})", order.UserId);
+                            emailItems.Add((pname, qty));
                         }
                         _db.StockTransfers.Add(transfer);
+                        sourceNotices.Add((sourceStore, transferNumber, emailItems));
                     }
 
-                    // Sell the whole order from the fulfilment branch (consolidated there now).
-                    foreach (var line in order.Items)
-                        await _stock.ApplyAsync(line.ProductId, line.ProductVariantId, fulfilStore.Id,
-                            -line.Quantity, StockMovementType.Sale, order.OrderNumber,
-                            $"Online order {order.OrderNumber}", order.UserId);
-
                     order.FulfillingStoreId = fulfilStore.Id;
-                    order.Status = order.FulfillmentType == FulfillmentType.StorePickup
-                        ? OrderStatus.ReadyForPickup
-                        : OrderStatus.Processing;
+                    order.Status = OrderStatus.AwaitingTransfer;
                     await _db.SaveChangesAsync();
                     await tx.CommitAsync();
-
-                    _logger.LogInformation(
-                        "Order {OrderNumber} fulfilled from {Store} ({Transfers} transfer(s)).",
-                        order.OrderNumber, fulfilStore.Name,
-                        alloc.Count(kv => kv.Key.store != fulfilStore.Id));
+                    awaitingTransfer = true; fulfilStoreForEmail = fulfilStore;
+                    _logger.LogInformation("Order {OrderNumber} awaiting {N} transfer(s) into {Store}.",
+                        order.OrderNumber, sourceNotices.Count, fulfilStore.Name);
                 }
             } // tx disposed — sold-out path wrote nothing, so the hold is released cleanly
 
@@ -294,6 +325,8 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                 await RefundSoldOutAsync(order);
                 return FulfilOutcome.SoldOut;
             }
+            if (awaitingTransfer) await NotifyTransfersRequestedAsync(order, fulfilStoreForEmail!, sourceNotices);
+            else if (shipNow) await NotifyReadyToDispatchAsync(order, fulfilStoreForEmail!);
             return FulfilOutcome.Fulfilled;
         }
         catch (Exception ex)
@@ -314,6 +347,113 @@ public class OrderFulfilmentService : IOrderFulfilmentService
             catch { /* never throw from fulfilment — the customer has already paid */ }
             return FulfilOutcome.Deferred; // transient — retry service will pick it up (no refund)
         }
+    }
+
+    // ── Finalise an awaiting-transfer order once its branch transfers are all received ──────────
+    public async Task FinalizeAwaitingOrderAsync(int orderId)
+    {
+        try
+        {
+            var order = await _db.Orders.Include(o => o.Items).Include(o => o.PickupStore)
+                .Include(o => o.DeliveryAddress).FirstOrDefaultAsync(o => o.Id == orderId);
+            if (order == null || order.Status != OrderStatus.AwaitingTransfer || order.FulfillingStoreId == null) return;
+
+            // Every transfer for this order must be received (terminal) before we commit the sale.
+            var transfers = await _db.StockTransfers.Where(t => t.OrderId == orderId).ToListAsync();
+            if (transfers.Count == 0) return;
+            if (transfers.Any(t => t.Status != TransferStatus.Completed && t.Status != TransferStatus.PartiallyReceived))
+                return; // still awaiting at least one
+
+            var fulfilStoreId = order.FulfillingStoreId.Value;
+            var productIds = order.Items.Select(i => i.ProductId).Distinct().ToList();
+
+            await using var tx = await _db.Database.BeginTransactionAsync();
+            await LockInventoryRowsAsync(productIds.Select(pid => (pid, fulfilStoreId)));
+
+            // Free this order's local hold so the sale below can draw those units.
+            var resRows = await _db.StockReservations.Where(r => r.OrderId == orderId).ToListAsync();
+            if (resRows.Count > 0) await ReleaseRowsAsync(resRows);
+
+            // Make sure the fulfilling branch really has every line now — a short/partial transfer
+            // (damaged or won't-fulfil) means we can't complete; flag it rather than oversell.
+            var inv = await _db.StoreInventories.Where(si => productIds.Contains(si.ProductId) && si.StoreId == fulfilStoreId).ToListAsync();
+            var effVid = EffectiveVariantResolver(inv);
+            int OnHand(int pid, int? vid)
+            {
+                var ev = effVid(pid, vid, fulfilStoreId);
+                return inv.FirstOrDefault(x => x.ProductId == pid && x.ProductVariantId == ev)?.QuantityOnHand ?? 0;
+            }
+            var shortLine = order.Items.GroupBy(i => (i.ProductId, i.ProductVariantId))
+                .FirstOrDefault(g => OnHand(g.Key.ProductId, g.Key.ProductVariantId) < g.Sum(x => x.Quantity));
+            if (shortLine != null)
+            {
+                order.AdminNotes = $"Awaiting-transfer order short {DateTime.UtcNow:yyyy-MM-dd HH:mm}: not enough of "
+                    + $"'{shortLine.First().ProductName}' arrived (damaged/won't-fulfil). Resolve manually.";
+                await _db.SaveChangesAsync();
+                await tx.CommitAsync();
+                _logger.LogWarning("Order {OrderNumber} transfers received short — flagged for review.", order.OrderNumber);
+                return;
+            }
+
+            foreach (var line in order.Items)
+                await _stock.ApplyAsync(line.ProductId, line.ProductVariantId, fulfilStoreId, -line.Quantity,
+                    StockMovementType.Sale, order.OrderNumber, $"Online order {order.OrderNumber}", order.UserId);
+
+            order.Status = order.FulfillmentType == FulfillmentType.StorePickup
+                ? OrderStatus.ReadyForPickup : OrderStatus.Processing;
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+
+            var fulfilStore = await _db.Stores.FindAsync(fulfilStoreId);
+            if (fulfilStore != null) await NotifyReadyToDispatchAsync(order, fulfilStore);
+            _logger.LogInformation("Order {OrderNumber} finalised after its transfers were received.", order.OrderNumber);
+        }
+        catch (Exception ex) { _logger.LogError(ex, "FinalizeAwaitingOrder failed for {OrderId}", orderId); }
+    }
+
+    // ── Branch fulfilment emails ────────────────────────────────────────────────
+    private static string ItemRows(IEnumerable<(string Name, int Qty)> items) =>
+        string.Join("", items.Select(i => $"<li>{System.Net.WebUtility.HtmlEncode(i.Name)} &times; {i.Qty}</li>"));
+
+    private async Task SendBranchAsync(string? toEmail, string subject, string html)
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(toEmail)) await _email.SendAsync(toEmail!, subject, html);
+            var admin = await _settings.GetAsync("notifications.admin_email", "");
+            if (!string.IsNullOrWhiteSpace(admin) && !string.Equals(admin, toEmail, StringComparison.OrdinalIgnoreCase))
+                await _email.SendAsync(admin, "[copy] " + subject, html);
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Branch fulfilment email failed: {Subject}", subject); }
+    }
+
+    // Source branches: pack & send a transfer to the fulfilling branch for an online order.
+    private async Task NotifyTransfersRequestedAsync(Order order, Store fulfilStore,
+        List<(Store Source, string Ref, List<(string Name, int Qty)> Items)> notices)
+    {
+        if (!await _settings.GetBoolAsync("notifications.branch_fulfilment", true)) return;
+        var dest = fulfilStore.Name.Replace("Sterlin Glams ", "");
+        foreach (var n in notices)
+        {
+            var html = $"<h2>Transfer needed for online order {order.OrderNumber}</h2>"
+                + $"<p>Please pack and send the following to <strong>{System.Net.WebUtility.HtmlEncode(dest)}</strong> so the order can be fulfilled:</p>"
+                + $"<ul>{ItemRows(n.Items)}</ul>"
+                + $"<p>Transfer reference <strong>{n.Ref}</strong>. Mark it dispatched in Inventory System → Stock transfer once sent.</p>";
+            await SendBranchAsync(n.Source.Email, $"Send stock to {dest} — order {order.OrderNumber}", html);
+        }
+    }
+
+    // Fulfilling branch: all stock is in (or was already local) — pack & dispatch to the customer.
+    private async Task NotifyReadyToDispatchAsync(Order order, Store fulfilStore)
+    {
+        if (!await _settings.GetBoolAsync("notifications.branch_fulfilment", true)) return;
+        var items = order.Items.Select(i => (i.VariantName == null ? i.ProductName : $"{i.ProductName} ({i.VariantName})", i.Quantity));
+        var where = order.FulfillmentType == FulfillmentType.StorePickup
+            ? $"Customer pickup at {System.Net.WebUtility.HtmlEncode(fulfilStore.Name.Replace("Sterlin Glams ", ""))}."
+            : $"Deliver to {System.Net.WebUtility.HtmlEncode((order.DeliveryAddress?.City + ", " + order.DeliveryAddress?.State).Trim(' ', ','))}.";
+        var html = $"<h2>Order {order.OrderNumber} ready to dispatch</h2>"
+            + $"<p>All stock is now at your branch. Please pack and fulfil:</p><ul>{ItemRows(items)}</ul><p>{where}</p>";
+        await SendBranchAsync(fulfilStore.Email, $"Dispatch order {order.OrderNumber}", html);
     }
 
     // Cancel + refund a paid order whose item sold out before its payment landed (the "first to

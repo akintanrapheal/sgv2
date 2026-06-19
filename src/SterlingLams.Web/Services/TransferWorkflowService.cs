@@ -47,11 +47,13 @@ public class TransferWorkflowService : ITransferWorkflowService
 {
     private readonly ApplicationDbContext _db;
     private readonly IStockService _stock;
+    private readonly IOrderFulfilmentService _fulfilment;
 
-    public TransferWorkflowService(ApplicationDbContext db, IStockService stock)
+    public TransferWorkflowService(ApplicationDbContext db, IStockService stock, IOrderFulfilmentService fulfilment)
     {
         _db = db;
         _stock = stock;
+        _fulfilment = fulfilment;
     }
 
     /// <summary>
@@ -340,6 +342,12 @@ public class TransferWorkflowService : ITransferWorkflowService
 
         await _db.SaveChangesAsync();
         await tx.CommitAsync();
+
+        // If this transfer was consolidating stock for an online order, try to finalise it (commits
+        // the sale + marks the order ready once ALL its transfers are in). No-op otherwise.
+        if (transfer.OrderId.HasValue)
+            await _fulfilment.FinalizeAwaitingOrderAsync(transfer.OrderId.Value);
+
         return TransferActionResult.Ok();
     }
 
