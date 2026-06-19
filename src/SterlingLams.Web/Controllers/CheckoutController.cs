@@ -299,6 +299,15 @@ public class CheckoutController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> PlaceOrder(CheckoutViewModel vm)
     {
+        // Store pickup doesn't use the delivery address, but the form still POSTs those fields empty.
+        // They're non-nullable strings, so the framework's implicit "required" fails them ("The State
+        // field is required") and the order silently bounced back to checkout ("just reloads"). Drop
+        // those errors for pickup so it can proceed to payment. (Delivery still validates them via
+        // CheckoutViewModel.Validate.)
+        if (vm.FulfillmentType == FulfillmentChoice.StorePickup)
+            foreach (var key in ModelState.Keys.Where(k => k.StartsWith("DeliveryAddress", StringComparison.Ordinal)).ToList())
+                ModelState.Remove(key);
+
         if (!ModelState.IsValid) return await RedisplayCheckoutAsync(vm);
 
         var cart = GetCart();
