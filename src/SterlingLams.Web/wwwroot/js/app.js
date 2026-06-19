@@ -113,36 +113,160 @@ document.querySelectorAll('.add-to-bag-quick').forEach(btn => {
         e.preventDefault();
         e.stopPropagation();
 
-        // Products with options need a selection — send the shopper to the detail page.
+        // Products with options need a selection — open the quick-view popup.
         if (btn.dataset.hasVariants === 'true') {
-            window.location.href = '/products/' + btn.dataset.productSlug;
+            openQuickView(btn.dataset.productSlug);
             return;
         }
-
-        const productId = btn.dataset.productId;
-        const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
-
-        btn.disabled = true;
-        try {
-            const res = await fetch('/Cart/Add', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: `productId=${productId}&quantity=1&__RequestVerificationToken=${encodeURIComponent(token)}`
-            });
-            const data = res.ok ? await res.json().catch(() => null) : null;
-            if (data && data.success) {
-                updateCartBadge(data.cartCount);
-                showToast('Added to bag');
-            } else {
-                showToast((data && data.message) || 'Sorry, we couldn’t add this to your bag.');
-            }
-        } catch (err) {
-            console.error('Add to bag failed', err);
-            showToast('Sorry, we couldn’t add this to your bag.');
-        } finally {
-            btn.disabled = false;
-        }
+        await addToBag(btn.dataset.productId, null, 1, btn);
     });
+});
+
+// Shared add-to-bag — used by the hover icon, the card "Add to Cart" button and the popup.
+async function addToBag(productId, variantId, qty, btn) {
+    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+    if (btn) btn.disabled = true;
+    try {
+        const body = new URLSearchParams({ productId, quantity: qty || 1, __RequestVerificationToken: token });
+        if (variantId) body.append('variantId', variantId);
+        const res = await fetch('/Cart/Add', { method: 'POST', body });
+        const data = res.ok ? await res.json().catch(() => null) : null;
+        if (data && data.success) {
+            updateCartBadge(data.cartCount);
+            showToast('Added to bag');
+            return true;
+        }
+        showToast((data && data.message) || 'Sorry, we couldn’t add this to your bag.');
+    } catch (err) {
+        console.error('Add to bag failed', err);
+        showToast('Sorry, we couldn’t add this to your bag.');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+    return false;
+}
+
+// ─── Card CTAs: "Add to Cart" (simple) and "Select Options" (variants) ─────
+document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.preventDefault(); addToBag(btn.dataset.productId, null, 1, btn); });
+});
+document.querySelectorAll('.select-options-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.preventDefault(); openQuickView(btn.dataset.productSlug); });
+});
+
+// ─── Quick-view popup (Select Options) ─────────────────────────────────────
+let qvState = null; // { price, salePrice, variants, selected:{}, variantId }
+function openQuickView(slug) {
+    const overlay = document.getElementById('quickview-overlay');
+    if (!overlay) { window.location.href = '/products/' + slug; return; }
+    fetch('/api/product-quickview?slug=' + encodeURIComponent(slug))
+        .then(r => r.ok ? r.json() : Promise.reject())
+        .then(d => { populateQuickView(d); overlay.classList.remove('hidden'); document.body.style.overflow = 'hidden'; })
+        .catch(() => { window.location.href = '/products/' + slug; });
+}
+function closeQuickView() {
+    const overlay = document.getElementById('quickview-overlay');
+    if (overlay) overlay.classList.add('hidden');
+    document.body.style.overflow = '';
+    qvState = null;
+}
+function fmtNaira(n) { return '₦' + Math.round(n).toLocaleString('en-US'); }
+
+function populateQuickView(d) {
+    qvState = { productId: d.id, price: d.price, salePrice: d.salePrice, variants: d.variants || [], selected: {}, variantId: null, defaultImage: d.primaryImage };
+    document.getElementById('qv-category').textContent = d.category || '';
+    document.getElementById('qv-name').textContent = d.name;
+    const img = document.getElementById('qv-image');
+    img.src = d.primaryImage; img.alt = d.name;
+    document.getElementById('qv-detail-link').href = '/products/' + d.slug;
+
+    // Build the option dropdowns.
+    const optsWrap = document.getElementById('qv-options');
+    optsWrap.innerHTML = '';
+    (d.attributes || []).forEach(attr => {
+        const label = document.createElement('label');
+        label.className = 'block text-xs tracking-[0.2em] uppercase text-neutral-500 mb-2';
+        label.textContent = attr.name;
+        const sel = document.createElement('select');
+        sel.className = 'attr-select w-full border border-neutral-300 px-4 py-3 text-sm text-neutral-700 bg-white';
+        sel.dataset.attr = attr.name;
+        sel.innerHTML = '<option value="">Choose an option</option>' +
+            attr.values.map(v => '<option value="' + v.replace(/"/g, '&quot;') + '">' + v + '</option>').join('');
+        sel.addEventListener('change', () => {
+            if (sel.value) qvState.selected[attr.name] = sel.value; else delete qvState.selected[attr.name];
+            onQuickViewSelect();
+        });
+        const block = document.createElement('div');
+        block.appendChild(label); block.appendChild(sel);
+        optsWrap.appendChild(block);
+    });
+
+    document.getElementById('qv-msg').classList.add('hidden');
+    updateQuickViewPrice();
+}
+
+function onQuickViewSelect() {
+    const entries = Object.entries(qvState.selected);
+    // Image: first variant matching the chosen attributes that has an image.
+    const img = document.getElementById('qv-image');
+    let url = qvState.defaultImage;
+    if (entries.length) {
+        const m = qvState.variants.find(v => v.imageUrl && entries.every(([k, val]) => v.attributes[k] === val));
+        if (m) url = m.imageUrl;
+    }
+    if (img.getAttribute('src') !== url) img.src = url;
+
+    // Fully resolved variant?
+    const selects = document.querySelectorAll('#qv-options .attr-select');
+    const allPicked = [...selects].every(s => s.value !== '');
+    qvState.variantId = null;
+    if (allPicked) {
+        const match = qvState.variants.find(v => entries.every(([k, val]) => v.attributes[k] === val));
+        if (match) qvState.variantId = match.id;
+    }
+    document.getElementById('qv-msg').classList.add('hidden');
+    updateQuickViewPrice();
+}
+
+function updateQuickViewPrice() {
+    let adj = 0;
+    if (qvState.variantId) {
+        const v = qvState.variants.find(x => x.id === qvState.variantId);
+        if (v && v.priceAdjustment) adj = v.priceAdjustment;
+    }
+    const eff = document.getElementById('qv-price-effective');
+    const reg = document.getElementById('qv-price-regular');
+    const regular = qvState.price + adj;
+    if (qvState.salePrice != null) {
+        eff.textContent = fmtNaira(qvState.salePrice + adj); eff.classList.add('text-brand-600');
+        reg.textContent = fmtNaira(regular); reg.classList.remove('hidden');
+    } else {
+        eff.textContent = fmtNaira(regular); eff.classList.remove('text-brand-600');
+        reg.classList.add('hidden');
+    }
+}
+
+document.getElementById('quickview-close')?.addEventListener('click', closeQuickView);
+document.getElementById('quickview-overlay')?.addEventListener('click', (e) => {
+    if (e.target.id === 'quickview-overlay') closeQuickView();
+});
+document.getElementById('qv-add')?.addEventListener('click', async (e) => {
+    if (!qvState) return;
+    const selects = document.querySelectorAll('#qv-options .attr-select');
+    const allPicked = [...selects].every(s => s.value !== '');
+    const msg = document.getElementById('qv-msg');
+    if (!allPicked || !qvState.variantId) {
+        if (msg) { msg.textContent = 'Please select all options before adding to bag.'; msg.classList.remove('hidden'); }
+        return;
+    }
+    const v = qvState.variants.find(x => x.id === qvState.variantId);
+    if (v && !v.inStock) {
+        if (msg) { msg.textContent = 'Sorry, this option is out of stock.'; msg.classList.remove('hidden'); }
+        return;
+    }
+    const btn = e.currentTarget;
+    const ok = await addToBag(qvState.productId, qvState.variantId, 1, btn);
+    if (ok) closeQuickView();
 });
 
 // ─── Wishlist Toggle (list page) ──────────────────────────────────────────

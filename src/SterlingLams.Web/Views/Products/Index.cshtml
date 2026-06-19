@@ -12,6 +12,7 @@
 
 <div class="max-w-7xl mx-auto px-6 py-12">
     @Html.AntiForgeryToken()
+    <partial name="_QuickViewModal" />
 
     <!-- Page Header -->
     <div class="text-center mb-12">
@@ -223,13 +224,38 @@
                                 </h3>
                                 @if (product.IsOnSale)
                                 {
-                                    <p class="text-sm"><span class="text-brand-600 font-medium">@product.FormattedPrice</span> <span class="text-neutral-400 line-through ml-1">@product.FormattedRegularPrice</span></p>
+                                    <p class="text-sm"><span class="text-neutral-400 line-through">@product.FormattedRegularPrice</span> <span class="text-brand-600 font-medium ml-1">@product.FormattedPrice</span></p>
                                 }
                                 else
                                 {
                                     <p class="text-sm text-neutral-700">@product.FormattedPrice</p>
                                 }
                             </a>
+
+                            <!-- CTA: Select Options (variants) / Add to Cart (simple) / Sold Out -->
+                            @if (!product.IsAvailable)
+                            {
+                                <button type="button" disabled
+                                        class="mt-3 w-full bg-neutral-100 text-neutral-400 text-xs tracking-[0.2em] uppercase py-3 cursor-not-allowed">
+                                    Sold Out
+                                </button>
+                            }
+                            else if (product.HasVariants)
+                            {
+                                <button type="button"
+                                        class="select-options-btn mt-3 w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 hover:bg-brand-600 transition-colors"
+                                        data-product-slug="@product.Slug">
+                                    Select Options
+                                </button>
+                            }
+                            else
+                            {
+                                <button type="button"
+                                        class="add-to-cart-btn mt-3 w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 hover:bg-brand-600 transition-colors"
+                                        data-product-id="@product.Id">
+                                    Add to Cart
+                                </button>
+                            }
                         </div>
                     }
                 </div>

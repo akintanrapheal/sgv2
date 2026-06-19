@@ -262,6 +262,58 @@ public class ProductsController : Controller
         return Json(results);
     }
 
+    // GET /api/product-quickview?slug=...  (data for the listing "Select Options" popup)
+    [HttpGet("/api/product-quickview")]
+    public async Task<IActionResult> QuickView(string slug)
+    {
+        var product = await _db.Products
+            .Include(p => p.Category)
+            .Include(p => p.Images.OrderBy(i => i.SortOrder))
+            .Include(p => p.Variants).ThenInclude(v => v.AttributeValues).ThenInclude(av => av.Attribute)
+            .Include(p => p.StoreInventories).ThenInclude(si => si.Store)
+            .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive);
+
+        if (product == null) return NotFound();
+
+        // Per-variant availability with the variant-row → product-pool fallback (matches Detail/cart).
+        var activeStores = product.StoreInventories.Where(si => si.Store.IsActive)
+            .Select(si => si.StoreId).Distinct().ToList();
+        int VariantAvailable(int variantId) => activeStores.Sum(storeId =>
+        {
+            var row = product.StoreInventories.FirstOrDefault(si => si.StoreId == storeId && si.ProductVariantId == variantId)
+                      ?? product.StoreInventories.FirstOrDefault(si => si.StoreId == storeId && si.ProductVariantId == null);
+            return row != null ? Math.Max(0, row.QuantityOnHand - row.QuantityReserved) : 0;
+        });
+
+        var onSale = product.SalePrice is decimal sp && sp > 0m && sp < product.Price;
+
+        return Json(new
+        {
+            id = product.Id,
+            name = product.Name,
+            slug = product.Slug,
+            category = product.Category.Name,
+            price = product.Price,
+            salePrice = onSale ? product.SalePrice : null,
+            currency = product.Currency,
+            primaryImage = product.Images.OrderByDescending(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
+                ?? "/images/placeholder.jpg",
+            attributes = product.Variants.Where(v => v.IsActive)
+                .SelectMany(v => v.AttributeValues)
+                .GroupBy(av => new { av.Attribute.Name, av.Attribute.SortOrder })
+                .OrderBy(g => g.Key.SortOrder)
+                .Select(g => new { name = g.Key.Name, values = g.Select(av => av.Value).Distinct().ToList() }),
+            variants = product.Variants.Where(v => v.IsActive).Select(v => new
+            {
+                id = v.Id,
+                imageUrl = v.ImageUrl,
+                priceAdjustment = v.PriceAdjustment,
+                inStock = VariantAvailable(v.Id) > 0,
+                attributes = v.AttributeValues.ToDictionary(av => av.Attribute.Name, av => av.Value)
+            })
+        });
+    }
+
     // POST /Products/NotifyRestock  (back-in-stock email capture)
     [HttpPost]
     [ValidateAntiForgeryToken]

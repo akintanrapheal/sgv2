@@ -1,0 +1,41 @@
+@* Quick-view popup opened by "Select Options" on a product card. Populated client-side
+   from /api/product-quickview (see wwwroot/js/app.js). One instance per page. *@
+<div id="quickview-overlay" class="hidden fixed inset-0 z-[400] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white max-w-3xl w-full max-h-[90vh] overflow-auto relative grid grid-cols-1 md:grid-cols-2">
+        <button type="button" id="quickview-close"
+                class="absolute top-3 right-3 z-10 flex items-center gap-1 text-sm text-neutral-600 hover:text-neutral-900 bg-white/80 rounded-full px-3 py-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"/></svg>
+            Close
+        </button>
+
+        <div class="aspect-square bg-neutral-50 overflow-hidden">
+            <img id="qv-image" src="" alt="" class="w-full h-full object-cover object-center" />
+        </div>
+
+        <div class="p-6 md:p-8 flex flex-col">
+            <p id="qv-category" class="text-[10px] tracking-[0.3em] uppercase text-neutral-400 mb-2"></p>
+            <h3 id="qv-name" class="font-cormorant text-2xl font-light text-neutral-900 mb-3"></h3>
+
+            <p class="mb-5 flex items-baseline gap-3 flex-wrap">
+                <span id="qv-price-effective" class="text-xl font-light text-neutral-800"></span>
+                <span id="qv-price-regular" class="text-base font-light text-neutral-400 line-through hidden"></span>
+            </p>
+
+            <div id="qv-options" class="space-y-4 mb-5"></div>
+
+            <p id="qv-msg" class="text-xs text-amber-600 mb-3 hidden"></p>
+
+            <button type="button" id="qv-add"
+                    class="w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-4 hover:bg-brand-600 transition-colors">
+                Add to Cart
+            </button>
+            <a id="qv-detail-link" href="#"
+               class="text-xs text-center text-neutral-500 hover:text-neutral-900 underline underline-offset-2 mt-3">
+                View full details
+            </a>
+        </div>
+    </div>
+</div>
+@* Template classes so Tailwind keeps the option-selector styles used when built in JS:
+   <select class="attr-select w-full border border-neutral-300 px-4 py-3 text-sm text-neutral-700 bg-white">
+   <label class="block text-xs tracking-[0.2em] uppercase text-neutral-500 mb-2"> *@
