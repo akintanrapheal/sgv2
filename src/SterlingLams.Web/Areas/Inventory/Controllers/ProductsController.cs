@@ -146,7 +146,7 @@ public class ProductsController : InventoryAreaController
         product.CategoryId = categoryId.Value;
         product.LowStockThreshold = lowStockThreshold;
         product.IsActive = isActive;
-        product.Description = description;
+        product.Description = SterlingLams.Web.Services.ProductHtml.Sanitize(description);
         product.UpdatedAt = DateTime.UtcNow;
 
         if (isNew)

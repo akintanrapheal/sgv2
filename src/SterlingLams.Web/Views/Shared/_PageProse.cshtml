@@ -3,7 +3,7 @@
    headings/paragraphs/lists/links look right without the admin needing Tailwind classes. *@
 <section class="py-20 md:py-24 bg-white">
     <div class="page-prose max-w-3xl mx-auto px-6 text-neutral-600 font-light text-sm leading-relaxed">
-        @Html.Raw(Model)
+        @Html.Raw(SterlingLams.Web.Services.ProductHtml.Sanitize(Model))
     </div>
 </section>
 <style>

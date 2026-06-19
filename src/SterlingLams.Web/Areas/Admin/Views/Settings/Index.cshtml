@@ -66,6 +66,10 @@
                                 <textarea name="@s.Key" rows="3"
                                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 resize-none">@s.Value</textarea>
                             }
+                            else if (s.Type == "html")
+                            {
+                                <partial name="_RichTextEditor" model='new SterlingLams.Web.Models.ViewModels.RichTextEditorVm(s.Key, "rte-" + s.Key.Replace(".", "-"), s.Value, "min-h-[12rem]")' />
+                            }
                             else if (s.Type == "number")
                             {
                                 <input type="number" name="@s.Key" value="@s.Value" min="0" step="0.01"

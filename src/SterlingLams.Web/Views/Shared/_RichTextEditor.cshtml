@@ -1,0 +1,105 @@
+@model SterlingLams.Web.Models.ViewModels.RichTextEditorVm
+@{
+    // The editing surface shows rendered HTML; the hidden textarea (named @Model.Name) holds the
+    // HTML source that gets posted. Legacy plain-text values are shown with line breaks preserved.
+    var initialHtml = SterlingLams.Web.Services.ProductHtml.LooksLikeHtml(Model.Html)
+        ? SterlingLams.Web.Services.ProductHtml.Sanitize(Model.Html)
+        : System.Net.WebUtility.HtmlEncode(Model.Html ?? string.Empty).Replace("\n", "<br>");
+}
+<div class="rte-wrap border border-neutral-200 rounded-sm overflow-hidden bg-white" data-editor="@Model.Id">
+    <div class="rte-toolbar flex flex-wrap items-center gap-1 border-b border-neutral-200 bg-neutral-50 px-2 py-1.5 text-neutral-600 select-none">
+        <select class="rte-font text-xs border border-neutral-200 rounded-sm px-1.5 py-1 bg-white" title="Font">
+            <option value="">Font</option>
+            <option value="Georgia, 'Times New Roman', serif">Serif</option>
+            <option value="Arial, Helvetica, sans-serif">Sans</option>
+            <option value="'Courier New', monospace">Mono</option>
+        </select>
+        <select class="rte-size text-xs border border-neutral-200 rounded-sm px-1.5 py-1 bg-white" title="Text size">
+            <option value="">Size</option>
+            <option value="2">Small</option>
+            <option value="3">Normal</option>
+            <option value="5">Large</option>
+            <option value="6">X-Large</option>
+        </select>
+        <span class="rte-sep"></span>
+        <button type="button" class="rte-btn" data-cmd="bold" title="Bold"><b>B</b></button>
+        <button type="button" class="rte-btn" data-cmd="italic" title="Italic"><i>I</i></button>
+        <button type="button" class="rte-btn" data-cmd="underline" title="Underline"><u>U</u></button>
+        <button type="button" class="rte-btn" data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+        <span class="rte-sep"></span>
+        <button type="button" class="rte-btn" data-cmd="insertUnorderedList" title="Bulleted list">&bull;&nbsp;List</button>
+        <button type="button" class="rte-btn" data-cmd="insertOrderedList" title="Numbered list">1.&nbsp;List</button>
+        <span class="rte-sep"></span>
+        <button type="button" class="rte-btn" data-cmd="justifyLeft" title="Align left">&#8676;</button>
+        <button type="button" class="rte-btn" data-cmd="justifyCenter" title="Align center">&#8801;</button>
+        <button type="button" class="rte-btn" data-cmd="justifyRight" title="Align right">&#8677;</button>
+        <span class="rte-sep"></span>
+        <button type="button" class="rte-btn" data-cmd="removeFormat" title="Clear formatting">&#10005;</button>
+    </div>
+    <div class="rte-editor px-3 py-2 text-sm text-neutral-800 @Model.MinHeight focus:outline-none" contenteditable="true" role="textbox" aria-multiline="true">@Html.Raw(initialHtml)</div>
+    <textarea name="@Model.Name" id="@Model.Id" class="hidden">@Model.Html</textarea>
+</div>
+
+<style>
+    .rte-btn {
+        min-width: 2rem; padding: 0.25rem 0.45rem; font-size: 0.8rem; line-height: 1;
+        border: 1px solid transparent; border-radius: 0.125rem; background: #fff;
+    }
+    .rte-btn:hover { background: #f1f5f9; border-color: #e2e8f0; }
+    .rte-sep { width: 1px; height: 1.25rem; background: #e2e8f0; margin: 0 0.25rem; }
+    .rte-editor { line-height: 1.6; }
+    .rte-editor:empty:before { content: attr(data-placeholder); color: #9ca3af; }
+    .rte-editor ul { list-style: disc; padding-left: 1.5rem; margin: 0.5rem 0; }
+    .rte-editor ol { list-style: decimal; padding-left: 1.5rem; margin: 0.5rem 0; }
+    .rte-editor p { margin: 0.4rem 0; }
+    .rte-editor a { color: #2563eb; text-decoration: underline; }
+</style>
+
+<script>
+    (function () {
+        function initRte(wrap) {
+            if (wrap.dataset.rteInit) return;
+            wrap.dataset.rteInit = "1";
+            var editor = wrap.querySelector('.rte-editor');
+            var ta = wrap.querySelector('textarea');
+            function sync() { ta.value = editor.innerHTML; }
+            try { document.execCommand('styleWithCSS', false, true); } catch (e) { }
+
+            editor.addEventListener('input', sync);
+            editor.addEventListener('blur', sync);
+
+            wrap.querySelectorAll('.rte-btn').forEach(function (b) {
+                // mousedown.preventDefault keeps the editor's selection while clicking the button.
+                b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+                b.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    editor.focus();
+                    try { document.execCommand('styleWithCSS', false, true); } catch (err) { }
+                    document.execCommand(b.dataset.cmd, false, null);
+                    sync();
+                });
+            });
+
+            var font = wrap.querySelector('.rte-font');
+            if (font) font.addEventListener('change', function () {
+                editor.focus();
+                if (font.value) document.execCommand('fontName', false, font.value);
+                sync();
+                font.selectedIndex = 0;
+            });
+
+            var size = wrap.querySelector('.rte-size');
+            if (size) size.addEventListener('change', function () {
+                editor.focus();
+                if (size.value) document.execCommand('fontSize', false, size.value);
+                sync();
+                size.selectedIndex = 0;
+            });
+
+            var form = wrap.closest('form');
+            if (form) form.addEventListener('submit', sync);
+            sync();
+        }
+        document.querySelectorAll('.rte-wrap').forEach(initRte);
+    })();
+</script>

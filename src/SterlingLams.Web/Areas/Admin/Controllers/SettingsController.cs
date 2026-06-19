@@ -45,7 +45,9 @@ public class SettingsController : AdminBaseController
             if (s.Type == "boolean")
                 updates[s.Key] = form.ContainsKey(s.Key) ? "true" : "false";
             else if (form.ContainsKey(s.Key))
-                updates[s.Key] = form[s.Key].ToString();
+                updates[s.Key] = s.Type == "html"
+                    ? ProductHtml.Sanitize(form[s.Key].ToString())
+                    : form[s.Key].ToString();
         }
 
         await _settings.SaveManyAsync(updates);

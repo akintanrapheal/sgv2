@@ -35,7 +35,7 @@
         ["@type"] = "Product",
         ["name"] = Model.Name,
         ["image"] = Model.ImageUrls.Select(SdAbs).ToArray(),
-        ["description"] = string.IsNullOrWhiteSpace(fullDescription) ? Model.Name : fullDescription,
+        ["description"] = string.IsNullOrWhiteSpace(fullDescription) ? Model.Name : SterlingLams.Web.Services.ProductHtml.ToPlainText(fullDescription),
         ["sku"] = string.IsNullOrWhiteSpace(Model.Sku) ? null : Model.Sku,
         ["brand"] = new Dictionary<string, object?> { ["@type"] = "Brand", ["name"] = "Sterlin Glams" },
         ["category"] = Model.CategoryName,
@@ -65,6 +65,16 @@
 @section Head {
     <script type="application/ld+json" nonce="@Context.Items["csp-nonce"]">@Html.Raw(productLd)</script>
     <script type="application/ld+json" nonce="@Context.Items["csp-nonce"]">@Html.Raw(breadcrumbLd)</script>
+    <style>
+        /* Rich-text product description authored in the back office */
+        .prod-rich-desc ul { list-style: disc; padding-left: 1.5rem; margin: 0.5rem 0; }
+        .prod-rich-desc ol { list-style: decimal; padding-left: 1.5rem; margin: 0.5rem 0; }
+        .prod-rich-desc li { margin: 0.2rem 0; }
+        .prod-rich-desc p { margin: 0.5rem 0; }
+        .prod-rich-desc h2, .prod-rich-desc h3, .prod-rich-desc h4 { font-weight: 500; color: #1f2937; margin: 0.75rem 0 0.4rem; }
+        .prod-rich-desc strong, .prod-rich-desc b { font-weight: 600; color: #374151; }
+        .prod-rich-desc blockquote { border-left: 2px solid #e5e7eb; padding-left: 1rem; color: #6b7280; margin: 0.5rem 0; }
+    </style>
 }
 
 @* Antiforgery token for the AJAX POSTs on this page (Add to Bag, wishlist, notify-restock).
@@ -396,7 +406,14 @@
             <div class="prod-tab-panel" data-panel="description">
                 @if (!string.IsNullOrWhiteSpace(fullDescription))
                 {
-                    <div class="text-sm text-neutral-600 leading-relaxed font-light break-words" style="white-space: pre-line;">@fullDescription</div>
+                    if (SterlingLams.Web.Services.ProductHtml.LooksLikeHtml(fullDescription))
+                    {
+                        <div class="prod-rich-desc text-sm text-neutral-600 leading-relaxed font-light break-words">@Html.Raw(SterlingLams.Web.Services.ProductHtml.Sanitize(fullDescription))</div>
+                    }
+                    else
+                    {
+                        <div class="text-sm text-neutral-600 leading-relaxed font-light break-words" style="white-space: pre-line;">@fullDescription</div>
+                    }
                 }
                 else
                 {

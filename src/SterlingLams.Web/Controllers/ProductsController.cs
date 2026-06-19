@@ -33,8 +33,13 @@ public class ProductsController : Controller
         var query = _db.Products.Where(p => p.IsActive);
 
         if (!string.IsNullOrWhiteSpace(filters.Search))
-            query = query.Where(p => EF.Functions.ILike(p.Name, $"%{filters.Search}%")
-                || EF.Functions.ILike(p.Description ?? "", $"%{filters.Search}%"));
+        {
+            var term = filters.Search.Trim();
+            query = query.Where(p => EF.Functions.ILike(p.Name, $"%{term}%")
+                || EF.Functions.ILike(p.Description ?? "", $"%{term}%")
+                || EF.Functions.ILike(p.Sku ?? "", $"%{term}%")
+                || p.Variants.Any(v => EF.Functions.ILike(v.Sku ?? "", $"%{term}%")));
+        }
 
         if (!string.IsNullOrWhiteSpace(filters.Category))
             query = query.Where(p => p.Category.Slug == filters.Category);
@@ -236,10 +241,13 @@ public class ProductsController : Controller
         if (string.IsNullOrWhiteSpace(q) || q.Length < 2)
             return Json(Array.Empty<object>());
 
+        var term = q.Trim();
         var results = await _db.Products
             .Where(p => p.IsActive && (
-                EF.Functions.ILike(p.Name, $"%{q}%") ||
-                EF.Functions.ILike(p.ShortDescription ?? "", $"%{q}%")))
+                EF.Functions.ILike(p.Name, $"%{term}%") ||
+                EF.Functions.ILike(p.ShortDescription ?? "", $"%{term}%") ||
+                EF.Functions.ILike(p.Sku ?? "", $"%{term}%") ||
+                p.Variants.Any(v => EF.Functions.ILike(v.Sku ?? "", $"%{term}%"))))
             .OrderBy(p => p.Name)
             .Take(6)
             .Select(p => new

@@ -322,7 +322,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             product.Slug = string.IsNullOrWhiteSpace(vm.Slug)
                 ? Regex.Replace(vm.Name.ToLower().Trim(), @"[^a-z0-9]+", "-")
                 : vm.Slug.Trim();
-            product.Description = vm.Description;
+            product.Description = SterlingLams.Web.Services.ProductHtml.Sanitize(vm.Description);
             product.ShortDescription = vm.ShortDescription;
             product.Price = vm.Price;
             // Sale price only applies when it's a positive number below the regular price.

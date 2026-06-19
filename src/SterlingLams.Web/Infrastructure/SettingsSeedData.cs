@@ -148,10 +148,10 @@ public static class SettingsSeedData
         new() { Key = "homepage.trust_3",          Group = "Homepage", Label = "Trust Bar — Item 3",     Type = "text",   Value = "Easy Returns",        Description = "Third label in the scrolling pink trust bar.",                 SortOrder = 10 },
 
         // ── Content pages (leave blank to keep the built-in page; paste HTML to replace the body) ──
-        new() { Key = "pages.about_body",           Group = "Content Pages", Label = "Our Story (body)",       Type = "textarea", Value = "", Description = "Replace the 'Our Story' page body. Leave blank to keep the built-in page. Paste HTML — headings (<h2>/<h3>), paragraphs (<p>), lists (<ul><li>) and links are styled automatically.", SortOrder = 1 },
-        new() { Key = "pages.privacy_body",         Group = "Content Pages", Label = "Privacy Policy (body)",  Type = "textarea", Value = "", Description = "Replace the Privacy Policy body. Leave blank to keep the built-in page. Paste HTML.", SortOrder = 2 },
-        new() { Key = "pages.terms_body",           Group = "Content Pages", Label = "Terms of Service (body)",Type = "textarea", Value = "", Description = "Replace the Terms of Service body. Leave blank to keep the built-in page. Paste HTML.", SortOrder = 3 },
-        new() { Key = "pages.payment_returns_body", Group = "Content Pages", Label = "Payment & Returns (body)",Type = "textarea", Value = "", Description = "Replace the Payment & Returns body. Leave blank to keep the built-in page. Paste HTML.", SortOrder = 4 },
+        new() { Key = "pages.about_body",           Group = "Content Pages", Label = "Our Story (body)",       Type = "html", Value = "", Description = "Replace the 'Our Story' page body. Leave blank to keep the built-in page. Use the toolbar to format text — bold, lists, alignment, fonts.", SortOrder = 1 },
+        new() { Key = "pages.privacy_body",         Group = "Content Pages", Label = "Privacy Policy (body)",  Type = "html", Value = "", Description = "Replace the Privacy Policy body. Leave blank to keep the built-in page.", SortOrder = 2 },
+        new() { Key = "pages.terms_body",           Group = "Content Pages", Label = "Terms of Service (body)",Type = "html", Value = "", Description = "Replace the Terms of Service body. Leave blank to keep the built-in page.", SortOrder = 3 },
+        new() { Key = "pages.payment_returns_body", Group = "Content Pages", Label = "Payment & Returns (body)",Type = "html", Value = "", Description = "Replace the Payment & Returns body. Leave blank to keep the built-in page.", SortOrder = 4 },
 
         // ── Collections (Lookbook) card images — leave blank for the plain coloured card ──
         new() { Key = "collections.image_rings",     Group = "Collections", Label = "Rings card image",     Type = "image", Value = "", Description = "Background image for the Rings collection card on the Collections page.",     SortOrder = 1 },
