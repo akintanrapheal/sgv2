@@ -147,19 +147,23 @@ public class ProductsController : Controller
         // Per-variant available across active branches, using the effective-row fallback (variant's
         // own row if stocked, else the product pool) — mirrors StockService/cart so the page, cart
         // and checkout agree.
-        var activeStoreIds = product.StoreInventories.Where(si => si.Store.IsActive)
-            .Select(si => si.StoreId).Distinct().ToList();
-        int VariantAvailable(int variantId)
-        {
-            var total = 0;
-            foreach (var sid in activeStoreIds)
+        var activeStores = product.StoreInventories.Where(si => si.Store.IsActive)
+            .Select(si => new { si.StoreId, si.Store.Name, si.Store.Slug })
+            .Distinct().OrderBy(s => s.Name).ToList();
+
+        // Per-branch available for a variant (variant's own row if stocked, else the product pool).
+        List<StoreStockViewModel> VariantStoreStock(int variantId) =>
+            activeStores.Select(s =>
             {
-                var row = product.StoreInventories.FirstOrDefault(si => si.StoreId == sid && si.ProductVariantId == variantId)
-                          ?? product.StoreInventories.FirstOrDefault(si => si.StoreId == sid && si.ProductVariantId == null);
-                if (row != null) total += Math.Max(0, row.QuantityOnHand - row.QuantityReserved);
-            }
-            return total;
-        }
+                var row = product.StoreInventories.FirstOrDefault(si => si.StoreId == s.StoreId && si.ProductVariantId == variantId)
+                          ?? product.StoreInventories.FirstOrDefault(si => si.StoreId == s.StoreId && si.ProductVariantId == null);
+                return new StoreStockViewModel
+                {
+                    StoreName = s.Name, StoreSlug = s.Slug,
+                    Quantity = row != null ? Math.Max(0, row.QuantityOnHand - row.QuantityReserved) : 0
+                };
+            }).ToList();
+        int VariantAvailable(int variantId) => VariantStoreStock(variantId).Sum(s => s.Quantity);
 
         var vm = new ProductDetailViewModel
         {
@@ -195,6 +199,7 @@ public class ProductsController : Controller
                 Name = v.Name,
                 PriceAdjustment = v.PriceAdjustment,
                 Available = VariantAvailable(v.Id),
+                StoreStock = VariantStoreStock(v.Id),
                 AttributeLabels = v.AttributeValues
                     .OrderBy(av => av.Attribute.SortOrder)
                     .Select(av => new AttributeLabelViewModel

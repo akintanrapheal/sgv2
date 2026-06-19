@@ -150,31 +150,36 @@
                 <p class="text-sm text-neutral-500 leading-relaxed mb-8 font-light">@Model.ShortDescription</p>
             }
 
-            <!-- ─── Store Stock ────────────────────────────────────────── -->
+            <!-- ─── Store Stock (per branch, with counts) ───────────────── -->
             @if (Model.StoreStock.Any())
             {
-                <div class="mb-8">
-                    <p class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-4">Availability</p>
-                    <div class="space-y-2">
-                        @foreach (var store in Model.StoreStock)
-                        {
-                            <div class="flex items-center justify-between py-2.5 border-b border-neutral-100">
-                                <span class="text-sm text-neutral-700">@store.StoreName</span>
-                                @if (store.IsAvailable && store.Quantity <= lowStockThreshold)
-                                {
-                                    <span class="text-xs text-amber-600 tracking-wider">Low stock</span>
-                                }
-                                else if (store.IsAvailable)
-                                {
-                                    <span class="text-xs text-emerald-700 tracking-wider">In Stock</span>
-                                }
-                                else
-                                {
-                                    <span class="text-xs text-neutral-400 tracking-wider">Out of stock</span>
-                                }
-                            </div>
-                        }
-                    </div>
+                <div class="mb-8" id="store-stock">
+                    <p class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-4">Availability by branch</p>
+                    @if (Model.Variants.Any())
+                    {
+                        @* Variant product: counts are per chosen option, so wait for a selection. *@
+                        <p id="stock-prompt" class="text-sm text-neutral-400">Select an option above to see stock at each branch.</p>
+                        <div id="store-stock-list" class="space-y-2 hidden"></div>
+                    }
+                    else
+                    {
+                        <div class="space-y-2">
+                            @foreach (var store in Model.StoreStock)
+                            {
+                                <div class="flex items-center justify-between py-2.5 border-b border-neutral-100">
+                                    <span class="text-sm text-neutral-700">@store.StoreName.Replace("Sterlin Glams ", "")</span>
+                                    @if (store.IsAvailable)
+                                    {
+                                        <span class="text-sm text-neutral-800"><strong>@store.Quantity</strong> in stock@(store.Quantity <= lowStockThreshold ? " · low" : "")</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-xs text-neutral-400 tracking-wider">Out of stock</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
             }
 
@@ -223,9 +228,14 @@
                         id = v.Id,
                         name = v.Name,
                         priceAdjustment = v.PriceAdjustment,
-                        // Booleans only — never expose exact stock counts to the storefront / page source.
                         inStock = v.Available > 0,
                         lowStock = v.Available > 0 && v.Available <= lowStockThreshold,
+                        // Per-branch stock for this variant, shown once the customer picks the option.
+                        stores = v.StoreStock.Select(s => new {
+                            name = s.StoreName.Replace("Sterlin Glams ", ""),
+                            qty = s.Quantity,
+                            low = s.Quantity > 0 && s.Quantity <= lowStockThreshold
+                        }),
                         attributes = v.AttributeLabels.ToDictionary(a => a.AttributeName, a => a.Value)
                     })))
                 </script>
@@ -576,6 +586,27 @@
     const selectedAttrs = {};
     const hasVariants = document.getElementById('add-to-cart')?.dataset.hasVariants === 'true';
 
+    // Per-branch stock display for the chosen variant.
+    const stockList = document.getElementById('store-stock-list');
+    const stockPrompt = document.getElementById('stock-prompt');
+    const escHtml = s => { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
+    function renderVariantStock(stores) {
+        if (!stockList) return;
+        stockList.innerHTML = (stores || []).map(s => {
+            const right = s.qty > 0
+                ? '<span class="text-sm text-neutral-800"><strong>' + s.qty + '</strong> in stock' + (s.low ? ' · low' : '') + '</span>'
+                : '<span class="text-xs text-neutral-400 tracking-wider">Out of stock</span>';
+            return '<div class="flex items-center justify-between py-2.5 border-b border-neutral-100">'
+                 + '<span class="text-sm text-neutral-700">' + escHtml(s.name) + '</span>' + right + '</div>';
+        }).join('');
+        stockList.classList.remove('hidden');
+        stockPrompt?.classList.add('hidden');
+    }
+    function resetVariantStock() {
+        stockList?.classList.add('hidden');
+        stockPrompt?.classList.remove('hidden');
+    }
+
     // Variant dropdown change handler (wired via addEventListener below — CSP-safe).
     window.onAttrSelectChange = function(attr, val) {
         if (val) selectedAttrs[attr] = val;
@@ -594,6 +625,7 @@
                 selectedVariantId = match.id;
                 // Low-stock nudge follows the chosen variant (boolean flag only — no counts).
                 document.getElementById('low-stock-nudge')?.classList.toggle('hidden', !match.lowStock);
+                renderVariantStock(match.stores);
                 const adjEl = document.getElementById('variant-price-adj');
                 if (match.priceAdjustment && match.priceAdjustment !== 0 && adjEl) {
                     const sign = match.priceAdjustment > 0 ? '+' : '';
@@ -604,9 +636,11 @@
                 }
             } else {
                 selectedVariantId = null;
+                resetVariantStock();
             }
         } else {
             selectedVariantId = null;
+            resetVariantStock();
         }
     }
 
