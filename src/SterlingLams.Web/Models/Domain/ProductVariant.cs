@@ -15,6 +15,9 @@ public class ProductVariant
     public int StockQuantity { get; set; }
     public bool IsActive { get; set; } = true;
 
+    // Optional image shown on the storefront when this variant (e.g. "Gold") is selected.
+    public string? ImageUrl { get; set; }
+
     // Which attribute values make up this variant (many-to-many)
     public ICollection<ProductAttributeValue> AttributeValues { get; set; } = new List<ProductAttributeValue>();
 }

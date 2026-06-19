@@ -304,6 +304,7 @@
                                 <tr class="text-left text-xs text-neutral-400 border-b border-neutral-100">
                                     <th class="py-2 pr-4">Option</th>
                                     <th class="py-2 pr-4">SKU</th>
+                                    <th class="py-2 pr-4">Image <span class="font-normal text-[10px] text-neutral-300">shown when selected</span></th>
                                     <th class="py-2 pr-4">Price Adj (₦) <span class="font-normal text-[10px] text-neutral-300">e.g. +500 or -200</span></th>
                                     <th class="py-2 pr-4 text-center">Active</th>
                                     <th class="py-2 text-right">Delete</th>
@@ -317,6 +318,18 @@
                                         <td class="py-2.5 pr-4">
                                             <input name="sku_@v.Id" value="@v.Sku" placeholder="SKU"
                                                    class="w-28 border border-neutral-200 rounded-sm px-2 py-1.5 text-xs focus:outline-none focus:border-neutral-400" />
+                                        </td>
+                                        <td class="py-2.5 pr-4">
+                                            <div class="flex items-center gap-2">
+                                                <img src="@v.ImageUrl" alt="" id="vimg-prev-@v.Id"
+                                                     class="w-9 h-9 object-cover rounded border border-neutral-200 @(string.IsNullOrEmpty(v.ImageUrl) ? "hidden" : "")" />
+                                                <input name="img_@v.Id" id="vimg-@v.Id" value="@v.ImageUrl" placeholder="/uploads/… or https://…"
+                                                       class="w-40 border border-neutral-200 rounded-sm px-2 py-1.5 text-xs focus:outline-none focus:border-neutral-400" />
+                                                <label class="cursor-pointer text-xs text-neutral-500 hover:text-neutral-800 underline whitespace-nowrap">
+                                                    Upload
+                                                    <input type="file" accept="image/*" class="hidden vimg-file" data-vid="@v.Id" />
+                                                </label>
+                                            </div>
                                         </td>
                                         <td class="py-2.5 pr-4">
                                             <input name="adj_@v.Id" type="number" step="0.01"
@@ -452,6 +465,36 @@
             document.querySelectorAll('input[name="ProductType"]').forEach(function (r) {
                 r.addEventListener('change', function () {
                     if (section) section.classList.toggle('hidden', this.value !== 'variable');
+                });
+            });
+
+            // Per-variant image upload → fills the URL input + preview (saved with "Save All Variants")
+            var token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+            document.querySelectorAll('.vimg-file').forEach(function (input) {
+                input.addEventListener('change', async function () {
+                    var file = input.files[0];
+                    if (!file) return;
+                    var vid = input.dataset.vid;
+                    var label = input.closest('label');
+                    var prev = label ? label.textContent : '';
+                    if (label) label.firstChild && (label.childNodes[0].nodeValue = 'Uploading…');
+                    var fd = new FormData();
+                    fd.append('file', file);
+                    fd.append('subfolder', 'products');
+                    fd.append('__RequestVerificationToken', token);
+                    try {
+                        var res = await fetch('/Admin/Upload/Image', { method: 'POST', body: fd });
+                        var data = await res.json();
+                        if (res.ok && data.url) {
+                            var urlInput = document.getElementById('vimg-' + vid);
+                            var img = document.getElementById('vimg-prev-' + vid);
+                            if (urlInput) urlInput.value = data.url;
+                            if (img) { img.src = data.url; img.classList.remove('hidden'); }
+                        } else {
+                            alert(data.error ?? 'Upload failed.');
+                        }
+                    } catch (e) { alert('Upload failed.'); }
+                    if (label && label.childNodes[0]) label.childNodes[0].nodeValue = 'Upload';
                 });
             });
         }());

@@ -64,6 +64,7 @@ public class ProductVariantOptionViewModel
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public decimal? PriceAdjustment { get; set; }
+    public string? ImageUrl { get; set; }   // optional per-variant image (swaps the main image when selected)
     public int Available { get; set; }   // combined available across active branches (per-variant, with pool fallback)
     public List<StoreStockViewModel> StoreStock { get; set; } = new();   // per-branch availability for this variant
     public List<AttributeLabelViewModel> AttributeLabels { get; set; } = new();

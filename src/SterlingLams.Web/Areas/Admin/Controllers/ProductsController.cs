@@ -160,6 +160,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     Id              = v.Id,
                     Name            = v.Name,
                     Sku             = v.Sku,
+                    ImageUrl        = v.ImageUrl,
                     PriceAdjustment = v.PriceAdjustment,
                     StockQuantity   = v.StockQuantity,
                     IsActive        = v.IsActive,
@@ -241,11 +242,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             {
                 var sku  = form[$"sku_{variant.Id}"].FirstOrDefault()?.Trim();
                 var adj  = form[$"adj_{variant.Id}"].FirstOrDefault();
+                var img  = form[$"img_{variant.Id}"].FirstOrDefault()?.Trim();
                 // The form sends hidden=false + optional checkbox=true; last value wins
                 var activeVals = form[$"active_{variant.Id}"];
                 var active = activeVals.Contains("true");
 
                 variant.Sku             = sku;
+                variant.ImageUrl        = string.IsNullOrWhiteSpace(img) ? null : img;
                 variant.PriceAdjustment = decimal.TryParse(adj,
                     System.Globalization.NumberStyles.Any,
                     System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;

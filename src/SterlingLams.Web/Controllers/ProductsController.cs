@@ -203,6 +203,7 @@ public class ProductsController : Controller
                 Id = v.Id,
                 Name = v.Name,
                 PriceAdjustment = v.PriceAdjustment,
+                ImageUrl = v.ImageUrl,
                 Available = VariantAvailable(v.Id),
                 StoreStock = VariantStoreStock(v.Id),
                 AttributeLabels = v.AttributeValues
