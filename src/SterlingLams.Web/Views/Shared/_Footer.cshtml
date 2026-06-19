@@ -137,7 +137,11 @@
             </div>
         }
 
-        <div class="@(string.IsNullOrEmpty(logoUrl) ? "border-t border-neutral-800 " : "")mt-8 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div class="@(string.IsNullOrEmpty(logoUrl) ? "border-t border-neutral-800 " : "")mt-8 pt-8 flex justify-center">
+            <partial name="_PaymentBadges" />
+        </div>
+
+        <div class="mt-8 pt-8 border-t border-neutral-800 flex flex-col md:flex-row justify-between items-center gap-4">
             <p class="text-xs text-neutral-500">&copy; @DateTime.UtcNow.Year Sterlin Glams. All rights reserved.</p>
             <div class="flex gap-6">
                 <a asp-controller="Home" asp-action="Privacy"        class="text-xs text-neutral-500 hover:text-brand-500 transition-colors">Privacy Policy</a>

@@ -1,0 +1,32 @@
+@using SterlingLams.Web.Services
+@inject ISettingsService SettingsService
+@{
+    // Optional admin-set image of payment methods; falls back to a clean built-in badge strip so
+    // there's never a broken image. Reused in the footer (all pages) and at checkout.
+    var badgesUrl = await SettingsService.GetAsync("general.payment_badges_url", "");
+    var caption = ViewData["PaymentBadgesCaption"] as string ?? "Secure payments · 256-bit SSL encrypted";
+    var pill = "bg-white rounded px-2 py-1 text-[11px] font-bold leading-none";
+}
+<div class="flex flex-col items-center gap-2">
+    @if (!string.IsNullOrWhiteSpace(badgesUrl))
+    {
+        <img src="@badgesUrl" alt="Accepted and secure payment methods" loading="lazy"
+             class="h-7 w-auto max-w-full" />
+    }
+    else
+    {
+        <div class="flex flex-wrap items-center justify-center gap-1.5">
+            <span class="@pill tracking-wide" style="color:#1A1F71">VISA</span>
+            <span class="@pill" style="color:#EB001B">master<span style="color:#F79E1B">card</span></span>
+            <span class="@pill" style="color:#E4032E">verve</span>
+            <span class="@pill" style="color:#0BA4DB">pay<span style="color:#011B33">stack</span></span>
+        </div>
+    }
+    <span class="text-[10px] text-neutral-400 tracking-wide flex items-center gap-1">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+        @caption
+    </span>
+</div>

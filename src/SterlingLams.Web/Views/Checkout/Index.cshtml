@@ -260,6 +260,11 @@
                     <p class="text-[11px] text-neutral-400 text-center mt-4 font-light">
                         You'll be redirected to Paystack's secure payment page.
                     </p>
+
+                    <div class="mt-5 pt-5 border-t border-neutral-100">
+                        @{ ViewData["PaymentBadgesCaption"] = "Your payment is secure · 256-bit SSL"; }
+                        <partial name="_PaymentBadges" />
+                    </div>
                 </div>
             </div>
         </div>
