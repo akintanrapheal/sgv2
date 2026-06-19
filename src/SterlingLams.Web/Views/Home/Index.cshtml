@@ -10,6 +10,7 @@
     var recentlyViewed = ViewBag.RecentlyViewed as List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> ?? new();
 
     var heroImageUrl  = await SettingsService.GetAsync("homepage.hero_image_url", "");
+    var heroEyebrow   = await SettingsService.GetAsync("homepage.hero_eyebrow",   "New Collection 2025");
     var heroHeadline  = await SettingsService.GetAsync("homepage.hero_headline",  "Timeless Elegance");
     var heroSubtext   = await SettingsService.GetAsync("homepage.hero_subtext",   "Luxury jewellery crafted for the discerning woman. Discover our newest arrivals.");
     var heroCta       = await SettingsService.GetAsync("homepage.hero_cta",       "Shop Collection");
@@ -19,6 +20,20 @@
     var featuredHeading = await SettingsService.GetAsync("homepage.featured_heading", "Featured Pieces");
     var storeBannerText = await SettingsService.GetAsync("homepage.store_banner_text",
         "Experience our jewellery in person at any of our three Lagos boutiques. Our consultants are ready to help you find the perfect piece.");
+
+    // Scrolling trust bar (editable labels + fixed icons).
+    var trustPaths = new[]
+    {
+        "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z",
+        "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z",
+        "M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z"
+    };
+    var trustItems = new[]
+    {
+        await SettingsService.GetAsync("homepage.trust_1", "Certified Authentic"),
+        await SettingsService.GetAsync("homepage.trust_2", "Secure Checkout"),
+        await SettingsService.GetAsync("homepage.trust_3", "Easy Returns")
+    };
 }
 
 <!-- ─── Hero ──────────────────────────────────────────────────────────────── -->
@@ -41,7 +56,7 @@
     </div>
 
     <div class="relative z-10 max-w-7xl mx-auto px-6 text-center">
-        <p class="text-xs tracking-[0.4em] uppercase @(hasHeroImage ? "text-brand-300" : "text-brand-500") mb-6">New Collection 2025</p>
+        <p class="text-xs tracking-[0.4em] uppercase @(hasHeroImage ? "text-brand-300" : "text-brand-500") mb-6">@heroEyebrow</p>
         <h1 class="font-cormorant text-6xl md:text-8xl font-light @(hasHeroImage ? "text-white" : "text-neutral-900") leading-none mb-6">
             @{
                 var parts = heroHeadline.Split(' ', 2);
@@ -73,34 +88,32 @@
     </div>
 </section>
 
-<!-- ─── Trust Bar ──────────────────────────────────────────────────────────── -->
-<section class="py-5 bg-brand-500">
-    <div class="max-w-7xl mx-auto px-6">
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center text-white">
-            <div class="flex items-center justify-center gap-3">
-                <svg class="w-5 h-5 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                          d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
-                </svg>
-                <span class="text-xs tracking-[0.2em] uppercase font-light">Certified Authentic</span>
+<!-- ─── Trust Bar (continuously scrolling marquee) ─────────────────────────── -->
+<section class="py-5 bg-brand-500 overflow-hidden" aria-label="Why shop with us">
+    <div class="trust-marquee flex w-max">
+        @* Two identical groups so the -50% translate loops seamlessly. *@
+        @for (var g = 0; g < 2; g++)
+        {
+            <div class="flex shrink-0" aria-hidden="@(g == 1 ? "true" : "false")">
+                @for (var i = 0; i < trustItems.Length; i++)
+                {
+                    <div class="flex items-center justify-center gap-3 text-white px-12">
+                        <svg class="w-5 h-5 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="@trustPaths[i]" />
+                        </svg>
+                        <span class="text-xs tracking-[0.2em] uppercase font-light whitespace-nowrap">@trustItems[i]</span>
+                    </div>
+                }
             </div>
-            <div class="flex items-center justify-center gap-3">
-                <svg class="w-5 h-5 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                          d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-                </svg>
-                <span class="text-xs tracking-[0.2em] uppercase font-light">Secure Checkout</span>
-            </div>
-            <div class="flex items-center justify-center gap-3">
-                <svg class="w-5 h-5 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                          d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z"/>
-                </svg>
-                <span class="text-xs tracking-[0.2em] uppercase font-light">Easy Returns</span>
-            </div>
-        </div>
+        }
     </div>
 </section>
+<style>
+    @@keyframes trustScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+    .trust-marquee { animation: trustScroll 30s linear infinite; }
+    .trust-marquee:hover { animation-play-state: paused; }
+    @@media (prefers-reduced-motion: reduce) { .trust-marquee { animation: none; } }
+</style>
 
 <!-- ─── Shop by Category ──────────────────────────────────────────────────── -->
 @{
