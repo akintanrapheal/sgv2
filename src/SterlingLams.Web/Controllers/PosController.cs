@@ -310,11 +310,23 @@ public class PosController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    [AllowAnonymous, HttpPost, ValidateAntiForgeryToken]
-    public IActionResult ChangeRegister()
+    // Moving the till to another register/branch is gated behind an admin PIN, so a cashier can't
+    // re-point the till on their own. The PIN entered must match an Admin who has a POS PIN set.
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ChangeRegister(string? pin)
     {
+        pin = (pin ?? "").Trim();
+        if (pin.Length == 0)
+            return Json(new { success = false, message = "Enter an admin PIN." });
+
+        var admins = await _userManager.GetUsersInRoleAsync("Admin");
+        var authorized = admins.Any(u => u.PinHash != null &&
+            _hasher.VerifyHashedPassword(u, u.PinHash, pin) != PasswordVerificationResult.Failed);
+        if (!authorized)
+            return Json(new { success = false, message = "Invalid admin PIN." });
+
         Response.Cookies.Delete(RegisterCookie);
-        return RedirectToAction(nameof(Index));
+        return Json(new { success = true });
     }
 
     [AllowAnonymous, HttpPost, ValidateAntiForgeryToken]

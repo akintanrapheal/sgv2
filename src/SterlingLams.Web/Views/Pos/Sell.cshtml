@@ -1486,12 +1486,21 @@
     menu.addEventListener('click', e => { if (e.target.closest('button, a')) closeMenu(); }, true);
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenu(); });
 
-    document.getElementById('menu-changeregister-btn').addEventListener('click', () => {
-        if (confirm('Change register? You\'ll need to pick a register again.')) {
-            const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
-            fetch('/Pos/ChangeRegister', { method: 'POST', headers: { 'RequestVerificationToken': token } })
-                .then(() => location.href = '/Pos');
-        }
+    document.getElementById('menu-changeregister-btn').addEventListener('click', async () => {
+        // Moving the till to another register/branch needs an admin's PIN.
+        const pin = prompt('Admin PIN required to change this till to another register/branch:');
+        if (pin === null || pin.trim() === '') return;
+        const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+        try {
+            const res = await fetch('/Pos/ChangeRegister', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token },
+                body: 'pin=' + encodeURIComponent(pin.trim())
+            });
+            const data = await res.json().catch(() => ({}));
+            if (data.success) location.href = '/Pos';
+            else showError(data.message || 'Invalid admin PIN.');
+        } catch { showError('Could not change register.'); }
     });
 
     document.getElementById('menu-receipts-btn').addEventListener('click', () => {

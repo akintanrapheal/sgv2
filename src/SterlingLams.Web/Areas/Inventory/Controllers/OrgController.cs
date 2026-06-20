@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Data;
@@ -6,12 +7,17 @@ using SterlingLams.Web.Models.Domain;
 namespace SterlingLams.Web.Areas.Inventory.Controllers;
 
 // Moniebook "Administration": branches, registers, activity log and staff & roles. Read views
-// over existing data (deep editing stays in the Website Admin).
+// over existing data (deep editing stays in the Website Admin) — plus cashier (POS-login) management.
 public class OrgController : InventoryAreaController
 {
     private readonly ApplicationDbContext _db;
+    private readonly UserManager<ApplicationUser> _userManager;
     private const int PageSize = 40;
-    public OrgController(ApplicationDbContext db) => _db = db;
+    public OrgController(ApplicationDbContext db, UserManager<ApplicationUser> userManager)
+    {
+        _db = db;
+        _userManager = userManager;
+    }
 
     public async Task<IActionResult> Branches()
     {
@@ -124,7 +130,110 @@ public class OrgController : InventoryAreaController
         ViewBag.RoleCounts = joined.GroupBy(x => x.Role!)
             .Select(g => new { Role = g.Key, Count = g.Select(x => x.Id).Distinct().Count() })
             .OrderByDescending(x => x.Count).ToDictionary(x => x.Role, x => x.Count);
+
+        // Cashiers = users with a POS PIN (they sign into the POS app via PIN, no back-office role).
+        var cashierUsers = await _db.Users.Where(u => u.PinHash != null)
+            .Select(u => new { u.Id, u.FirstName, u.LastName, u.PhoneNumber, u.LastLoginAt })
+            .ToListAsync();
+        var cashierIds = cashierUsers.Select(c => c.Id).ToList();
+        var storeMap = await (from us in _db.UserStores
+                              join s in _db.Stores on us.StoreId equals s.Id
+                              where cashierIds.Contains(us.UserId)
+                              select new { us.UserId, us.StoreId, s.Name }).ToListAsync();
+        ViewBag.Cashiers = cashierUsers.Select(c => new CashierRow
+        {
+            Id = c.Id,
+            Name = (c.FirstName + " " + c.LastName).Trim(),
+            Phone = c.PhoneNumber,
+            StoreId = storeMap.Where(m => m.UserId == c.Id).Select(m => (int?)m.StoreId).FirstOrDefault(),
+            Branches = storeMap.Where(m => m.UserId == c.Id).Select(m => m.Name.Replace("Sterlin Glams ", "")).ToList(),
+            LastLogin = c.LastLoginAt
+        }).OrderBy(c => c.Name).ToList();
+        ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+
         return View(staff);
+    }
+
+    // ── Cashier (POS-login) management ────────────────────────────────────────
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddCashier(string firstName, string lastName, string? phone, string? email, int storeId, string pin)
+    {
+        firstName = (firstName ?? "").Trim(); lastName = (lastName ?? "").Trim();
+        phone = (phone ?? "").Trim(); email = string.IsNullOrWhiteSpace(email) ? null : email.Trim();
+        pin = (pin ?? "").Trim();
+
+        if (firstName.Length == 0 && lastName.Length == 0)
+        { TempData["Error"] = "Enter the cashier's name."; return RedirectToAction(nameof(Staff)); }
+        if (pin.Length < 4 || pin.Length > 8 || !pin.All(char.IsDigit))
+        { TempData["Error"] = "PIN must be 4–8 digits."; return RedirectToAction(nameof(Staff)); }
+        if (email != null && await _db.Users.AnyAsync(u => u.NormalizedEmail == _userManager.NormalizeEmail(email)))
+        { TempData["Error"] = "A user with that email already exists."; return RedirectToAction(nameof(Staff)); }
+
+        var digits = new string(phone.Where(char.IsDigit).ToArray());
+        var userName = email ?? (digits.Length > 0 ? $"cashier-{digits}" : $"cashier-{Guid.NewGuid():N}");
+        if (await _userManager.FindByNameAsync(userName) != null) userName = $"cashier-{Guid.NewGuid():N}";
+
+        var user = new ApplicationUser
+        {
+            UserName = userName,
+            Email = email,
+            EmailConfirmed = email != null,
+            FirstName = firstName,
+            LastName = lastName,
+            PhoneNumber = phone.Length > 0 ? phone : null,
+            CreatedAt = DateTime.UtcNow
+        };
+        user.PinHash = _userManager.PasswordHasher.HashPassword(user, pin);
+        var res = await _userManager.CreateAsync(user);
+        if (!res.Succeeded)
+        { TempData["Error"] = string.Join(" ", res.Errors.Select(e => e.Description)); return RedirectToAction(nameof(Staff)); }
+
+        if (storeId > 0 && await _db.Stores.AnyAsync(s => s.Id == storeId))
+        {
+            _db.UserStores.Add(new UserStore { UserId = user.Id, StoreId = storeId });
+            await _db.SaveChangesAsync();
+        }
+        await LogAsync("Create", "User", user.Id, $"Created cashier '{user.FullName}'");
+        TempData["Success"] = $"Cashier {user.FullName} added.";
+        return RedirectToAction(nameof(Staff));
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetCashierPin(string id, string? pin)
+    {
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null) return NotFound();
+        pin = (pin ?? "").Trim();
+        if (pin.Length == 0)
+        {
+            user.PinHash = null;
+            await _userManager.UpdateAsync(user);
+            await LogAsync("Update", "User", id, $"Removed POS access (PIN) for {user.FullName}");
+            TempData["Success"] = $"POS access removed for {user.FullName}.";
+            return RedirectToAction(nameof(Staff));
+        }
+        if (pin.Length < 4 || pin.Length > 8 || !pin.All(char.IsDigit))
+        { TempData["Error"] = "PIN must be 4–8 digits."; return RedirectToAction(nameof(Staff)); }
+        user.PinHash = _userManager.PasswordHasher.HashPassword(user, pin);
+        await _userManager.UpdateAsync(user);
+        await LogAsync("Update", "User", id, $"Set POS PIN for {user.FullName}");
+        TempData["Success"] = $"PIN updated for {user.FullName}.";
+        return RedirectToAction(nameof(Staff));
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetCashierStore(string id, int storeId)
+    {
+        var user = await _db.Users.FindAsync(id);
+        if (user == null) return NotFound();
+        var existing = await _db.UserStores.Where(us => us.UserId == id).ToListAsync();
+        _db.UserStores.RemoveRange(existing);
+        if (storeId > 0 && await _db.Stores.AnyAsync(s => s.Id == storeId))
+            _db.UserStores.Add(new UserStore { UserId = id, StoreId = storeId });
+        await _db.SaveChangesAsync();
+        await LogAsync("Update", "User", id, $"Set cashier branch for {user.FullName}");
+        TempData["Success"] = $"Branch updated for {user.FullName}.";
+        return RedirectToAction(nameof(Staff));
     }
 }
 
@@ -133,5 +242,15 @@ public class StaffRow
     public string Name { get; set; } = "";
     public string Email { get; set; } = "";
     public List<string> Roles { get; set; } = new();
+    public DateTime? LastLogin { get; set; }
+}
+
+public class CashierRow
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? Phone { get; set; }
+    public int? StoreId { get; set; }
+    public List<string> Branches { get; set; } = new();
     public DateTime? LastLogin { get; set; }
 }
