@@ -228,6 +228,12 @@
                         </div>
                     </div>
 
+                    <!-- Customer-required hint (shown when cart has items but no customer attached) -->
+                    <div id="till-customer-hint" class="hidden px-3 pb-2 bg-neutral-50 text-[11px] text-amber-600 flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        Attach a customer to take payment.
+                    </div>
+
                     <!-- Action buttons: DELETE | HOLD | PAY -->
                     <div class="flex gap-0 border-t border-neutral-200">
                         <button type="button" id="till-void-btn"
@@ -555,6 +561,7 @@
             Object.values(tabPanels).forEach(p => p.classList.add('hidden'));
             tabPanels[name].classList.remove('hidden');
             if (name === 'orders') loadOrders();
+            if (name === 'customers') searchCustomers('');
         });
     });
 
@@ -794,7 +801,7 @@
             customerBanner.classList.remove('flex');
         }
     }
-    function setCustomer(c) { customer = c; renderCustomerBanner(); saveCart(); }
+    function setCustomer(c) { customer = c; renderCustomerBanner(); updatePayState(); saveCart(); }
     document.getElementById('customer-remove').addEventListener('click', () => setCustomer(null));
 
     function gotoTab(name) { document.querySelector(`.till-tab[data-tab="${name}"]`)?.click(); }
@@ -809,12 +816,16 @@
         gotoTab('products');
     }
     async function searchCustomers(q) {
-        if (!q.trim()) { custResults.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">Search for a customer, or add a new one below.</p>'; return; }
-        custResults.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">Searching…</p>';
+        const term = (q || '').trim();
+        custResults.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">' + (term ? 'Searching…' : 'Loading customers…') + '</p>';
         try {
-            const res = await fetch('/Till/CustomerSearch?q=' + encodeURIComponent(q.trim()));
+            const res = await fetch('/Till/CustomerSearch?q=' + encodeURIComponent(term));
             const list = await res.json();
-            if (!list.length) { custResults.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">No match. Add a new customer below.</p>'; return; }
+            if (!list.length) {
+                custResults.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">' +
+                    (term ? 'No match. Add a new customer below.' : 'No saved customers yet. Add one below.') + '</p>';
+                return;
+            }
             custResults.innerHTML = list.map(c =>
                 `<button type="button" data-cust='${JSON.stringify(c).replace(/'/g, "&#39;")}' class="cust-row w-full text-left px-3 py-2.5 hover:bg-neutral-50 transition-colors flex items-center justify-between gap-2">
                     <span class="min-w-0"><span class="block text-neutral-800 truncate">${c.name || '(no name)'}</span>${c.phone ? `<span class="block text-[11px] text-neutral-400">${c.phone}</span>` : ''}</span>
@@ -926,9 +937,16 @@
         totalDiscountEl.textContent = totalDiscount > 0 ? '-' + fmt(totalDiscount) : fmt(0);
         totalEl.textContent = fmt(total);
         dueEl.textContent = fmt(total);
-        payBtn.disabled = !cart.length;
+        updatePayState();
         updateChange();
         saveCart();
+    }
+
+    // Pay is only enabled once there's a cart AND an attached customer (mandatory on POS).
+    function updatePayState() {
+        payBtn.disabled = !cart.length || !customer;
+        const hint = document.getElementById('till-customer-hint');
+        if (hint) hint.classList.toggle('hidden', !(cart.length && !customer));
     }
 
     function qty(i, d) {
@@ -1110,7 +1128,7 @@
                 cart = []; tenderedEl.value = ''; setCustomer(null); clearSavedCart(); renderCart();
                 document.getElementById('till-done').classList.remove('hidden');
             } else showError(data.message || 'Could not complete the sale.');
-        } finally { payBtn.querySelector('span').textContent = 'Pay'; payBtn.disabled = !cart.length; }
+        } finally { payBtn.querySelector('span').textContent = 'Pay'; updatePayState(); }
     });
 
     document.getElementById('till-new').addEventListener('click', () => {
@@ -1134,10 +1152,12 @@
                 const dt = new Date(o.createdAt);
                 const when = dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' +
                              dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-                return `<div class="px-3 py-2.5 flex items-center gap-2">
+                const who = o.customerName ? ' · ' + o.customerName : '';
+                return `<div data-receipt="${o.id}" title="View / print receipt"
+                     class="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-neutral-50 transition-colors">
                     <div class="flex-1 min-w-0">
                         <p class="font-medium text-neutral-800 truncate">${o.orderNumber}</p>
-                        <p class="text-[11px] text-neutral-400">${when} · ${o.itemCount} item${o.itemCount === 1 ? '' : 's'} · ${o.method}</p>
+                        <p class="text-[11px] text-neutral-400 truncate">${when} · ${o.itemCount} item${o.itemCount === 1 ? '' : 's'} · ${o.method}${who}</p>
                     </div>
                     <span class="font-semibold text-neutral-800 flex-shrink-0">${fmt(o.total)}</span>
                     <a href="/Till/Receipt/${o.id}" target="_blank" title="Reprint receipt"
@@ -1150,6 +1170,12 @@
                     </button>
                 </div>`;
             }).join('');
+            // Click anywhere on a row (except the action buttons) to view/print the receipt.
+            el.querySelectorAll('[data-receipt]').forEach(row =>
+                row.addEventListener('click', (e) => {
+                    if (e.target.closest('a,button')) return;
+                    window.open('/Till/Receipt/' + row.dataset.receipt, '_blank');
+                }));
             el.querySelectorAll('[data-refund]').forEach(b =>
                 b.addEventListener('click', () => window.tillOpenRefund?.(b.dataset.refund)));
         } catch { el.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">Could not load orders.</p>'; }

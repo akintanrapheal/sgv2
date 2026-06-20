@@ -373,7 +373,10 @@ public class TillController : Controller
                 total = o.Total,
                 method = o.PaymentProvider,
                 createdAt = o.CreatedAt,
-                itemCount = o.Items.Sum(i => i.Quantity)
+                itemCount = o.Items.Sum(i => i.Quantity),
+                customerName = o.Customer != null
+                    ? (o.Customer.FirstName + " " + o.Customer.LastName).Trim()
+                    : null
             })
             .ToListAsync();
         return Json(orders);
@@ -384,7 +387,20 @@ public class TillController : Controller
     public async Task<IActionResult> CustomerSearch(string? q)
     {
         q = (q ?? "").Trim();
-        if (q.Length < 1) return Json(Array.Empty<object>());
+
+        // Empty query → list existing customers (POS-created buyers + anyone attached to an order),
+        // newest first, so the Customers tab shows saved customers without having to search.
+        if (q.Length < 1)
+        {
+            var recent = await _db.Users
+                .Where(u => u.UserName!.StartsWith("pos-")
+                         || _db.Orders.Any(o => o.CustomerUserId == u.Id))
+                .OrderByDescending(u => u.CreatedAt)
+                .Take(20)
+                .Select(u => new { id = u.Id, name = (u.FirstName + " " + u.LastName).Trim(), phone = u.PhoneNumber })
+                .ToListAsync();
+            return Json(recent);
+        }
 
         var matches = await _db.Users
             .Where(u => EF.Functions.ILike(u.FirstName + " " + u.LastName, $"%{q}%")
@@ -701,6 +717,11 @@ public class TillController : Controller
         var session = await OpenSessionAsync(register.Id);
         if (session == null) return Json(new { success = false, message = "Open the till before selling." });
 
+        // Customer is mandatory on POS sales — attach the buyer before taking payment.
+        var customerId = await ResolveCustomerIdAsync(req.CustomerUserId);
+        if (customerId == null)
+            return Json(new { success = false, message = "Add the customer's details before taking payment." });
+
         var storeId = register.StoreId;
         var productIds = req.Items.Select(i => i.ProductId).Distinct().ToList();
         var products = await _db.Products.Include(p => p.Variants)
@@ -753,7 +774,7 @@ public class TillController : Controller
             RegisterId = register.Id,
             TillSessionId = session.Id,
             UserId = userId,
-            CustomerUserId = await ResolveCustomerIdAsync(req.CustomerUserId),
+            CustomerUserId = customerId,
             Status = OrderStatus.Delivered,
             IsPaid = true,
             PaidAt = now,
