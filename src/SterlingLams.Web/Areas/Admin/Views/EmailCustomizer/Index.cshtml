@@ -72,6 +72,11 @@
                         <label class="block text-xs text-neutral-500 mb-1">Header colour</label>
                         <input name="headerColor" type="color" value="@Model.HeaderColor" class="h-9 w-full border border-neutral-200 rounded-sm px-1 py-1" />
                     </div>
+                    <div>
+                        <label class="block text-xs text-neutral-500 mb-1">Logo size (px)</label>
+                        <input id="f-logoheight" name="logoHeight" type="number" min="16" max="200" step="2" value="@Model.LogoHeight"
+                               class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                    </div>
                 </div>
                 <div>
                     <label class="block text-xs text-neutral-500 mb-1">Footer text</label>
@@ -102,7 +107,7 @@
     <div class="lg:sticky lg:top-6 self-start">
         <div class="flex items-center justify-between mb-2">
             <h2 class="text-sm font-medium text-neutral-700">Preview</h2>
-            <span class="text-[11px] text-neutral-400">Sample data</span>
+            <span class="text-[11px] text-neutral-400">Sample data — real emails use each customer's order &amp; address</span>
         </div>
         <iframe id="email-preview" title="Email preview"
                 class="w-full bg-white border border-neutral-200 rounded-sm" style="height:680px;"></iframe>
@@ -116,10 +121,11 @@
         const iframe = document.getElementById('email-preview');
         const subject = document.getElementById('f-subject');
         const intro = document.getElementById('f-intro');
+        const logoHeight = document.getElementById('f-logoheight');
 
         async function refresh() {
             try {
-                const qs = new URLSearchParams({ type, subject: subject.value, intro: intro.value });
+                const qs = new URLSearchParams({ type, subject: subject.value, intro: intro.value, logoHeight: logoHeight.value });
                 const res = await fetch('/Admin/EmailCustomizer/Preview?' + qs.toString());
                 iframe.srcdoc = await res.text();
             } catch { /* ignore preview errors */ }
@@ -129,6 +135,7 @@
         const debounced = () => { clearTimeout(t); t = setTimeout(refresh, 300); };
         subject.addEventListener('input', debounced);
         intro.addEventListener('input', debounced);
+        logoHeight.addEventListener('input', debounced);
         refresh();
 
         // Send test

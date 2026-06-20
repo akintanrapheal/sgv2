@@ -117,6 +117,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string ReplyTo { get; set; } = "";
         public string HeaderColor { get; set; } = "#0a0a0a";
         public string FooterText { get; set; } = "";
+        public int LogoHeight { get; set; } = 48;
     }
 
     // ─── Products ─────────────────────────────────────────────────────────

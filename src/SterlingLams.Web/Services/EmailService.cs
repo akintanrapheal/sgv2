@@ -32,8 +32,9 @@ public interface IEmailService
     /// </summary>
     Task<bool> SendAsync(string toEmail, string subject, string innerHtml, string? toName = null, CancellationToken ct = default);
 
-    /// <summary>Renders the branded email shell around the given inner HTML — for the admin preview.</summary>
-    Task<string> RenderAsync(string subject, string innerHtml);
+    /// <summary>Renders the branded email shell around the given inner HTML — for the admin preview.
+    /// An optional logo-height override lets the customizer preview size changes before saving.</summary>
+    Task<string> RenderAsync(string subject, string innerHtml, int? logoHeight = null);
 }
 
 public class SmtpEmailService : IEmailService
@@ -55,7 +56,7 @@ public class SmtpEmailService : IEmailService
     }
 
     /// <summary>Admin-customizable email branding (Settings → Emails), resolved per send.</summary>
-    private sealed record Branding(string FromName, string ReplyTo, string HeaderColor, string FooterText, string? LogoUrl);
+    private sealed record Branding(string FromName, string ReplyTo, string HeaderColor, string FooterText, string? LogoUrl, int LogoHeight);
 
     private async Task<Branding> GetBrandingAsync()
     {
@@ -64,6 +65,8 @@ public class SmtpEmailService : IEmailService
         var replyTo = await _settings.GetAsync("email.reply_to", "");
         var headerColor = await _settings.GetAsync("email.header_color", "#0a0a0a");
         var footerText = await _settings.GetAsync("email.footer_text", "This is an automated message — please don't reply.");
+        var logoHeight = (int)await _settings.GetDecimalAsync("email.logo_height", 48);
+        if (logoHeight is < 16 or > 200) logoHeight = 48;
 
         // Logo only renders in email if we can build an absolute URL (clients won't load relative paths).
         var logo = await _settings.GetAsync("general.logo_url", "");
@@ -77,7 +80,7 @@ public class SmtpEmailService : IEmailService
                 if (!string.IsNullOrEmpty(baseUrl)) logoUrl = baseUrl + "/" + logo.TrimStart('/');
             }
         }
-        return new Branding(fromName, replyTo, headerColor, footerText, logoUrl);
+        return new Branding(fromName, replyTo, headerColor, footerText, logoUrl, logoHeight);
     }
 
     public async Task<bool> SendAsync(string toEmail, string subject, string innerHtml, string? toName = null, CancellationToken ct = default)
@@ -133,8 +136,12 @@ public class SmtpEmailService : IEmailService
         }
     }
 
-    public async Task<string> RenderAsync(string subject, string innerHtml)
-        => Wrap(subject, innerHtml, await GetBrandingAsync());
+    public async Task<string> RenderAsync(string subject, string innerHtml, int? logoHeight = null)
+    {
+        var brand = await GetBrandingAsync();
+        if (logoHeight is int h && h is >= 16 and <= 200) brand = brand with { LogoHeight = h };
+        return Wrap(subject, innerHtml, brand);
+    }
 
     /// <summary>Dev/preview fallback: write the email to disk instead of sending it. Returns true so
     /// callers behave as if delivered (e.g. mark notified). Never throws.</summary>
@@ -164,7 +171,7 @@ public class SmtpEmailService : IEmailService
     {
         var headerInner = string.IsNullOrEmpty(brand.LogoUrl)
             ? $@"<span style=""color:#ffffff;font-size:20px;letter-spacing:3px;text-transform:uppercase;"">{System.Net.WebUtility.HtmlEncode(brand.FromName)}</span>"
-            : $@"<img src=""{brand.LogoUrl}"" alt=""{System.Net.WebUtility.HtmlEncode(brand.FromName)}"" style=""max-height:40px;""/>";
+            : $@"<img src=""{brand.LogoUrl}"" alt=""{System.Net.WebUtility.HtmlEncode(brand.FromName)}"" style=""max-height:{brand.LogoHeight}px;height:auto;width:auto;""/>";
         return $@"<!DOCTYPE html>
 <html><head><meta charset=""utf-8""><meta name=""viewport"" content=""width=device-width,initial-scale=1""></head>
 <body style=""margin:0;padding:0;background:#f5f5f4;font-family:Helvetica,Arial,sans-serif;color:#1c1917;"">

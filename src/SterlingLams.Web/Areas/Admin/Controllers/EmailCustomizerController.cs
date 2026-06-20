@@ -43,28 +43,30 @@ public class EmailCustomizerController : AdminBaseController
             ReplyTo = await _settings.GetAsync("email.reply_to", ""),
             HeaderColor = await _settings.GetAsync("email.header_color", "#0a0a0a"),
             FooterText = await _settings.GetAsync("email.footer_text", "This is an automated message — please don't reply."),
+            LogoHeight = (int)await _settings.GetDecimalAsync("email.logo_height", 48),
         };
         return View(vm);
     }
 
     // Full rendered email HTML for the live-preview iframe (loaded via srcdoc, not framed).
     // Optional subject/intro overrides let the preview reflect unsaved edits as the admin types.
-    public async Task<IActionResult> Preview(string type, string? subject = null, string? intro = null)
+    public async Task<IActionResult> Preview(string type, string? subject = null, string? intro = null, int? logoHeight = null)
     {
         var (s, body) = await BuildSampleAsync(type, subject, intro);
-        var html = await _email.RenderAsync(s, body);
+        var html = await _email.RenderAsync(s, body, logoHeight);
         return Content(html, "text/html");
     }
 
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Save(string type, string? subject, string? intro,
-        string? fromName, string? replyTo, string? headerColor, string? footerText)
+        string? fromName, string? replyTo, string? headerColor, string? footerText, int? logoHeight)
     {
         if (!Types.Any(t => t.Key == type))
         {
             TempData["Error"] = "Unknown email type.";
             return RedirectToAction(nameof(Index));
         }
+        var h = logoHeight is int lh && lh is >= 16 and <= 200 ? lh : 48;
         await _settings.SaveManyAsync(new Dictionary<string, string>
         {
             [$"email.{type}.subject"] = subject?.Trim() ?? "",
@@ -73,6 +75,7 @@ public class EmailCustomizerController : AdminBaseController
             ["email.reply_to"]        = replyTo?.Trim() ?? "",
             ["email.header_color"]    = string.IsNullOrWhiteSpace(headerColor) ? "#0a0a0a" : headerColor.Trim(),
             ["email.footer_text"]     = footerText?.Trim() ?? "",
+            ["email.logo_height"]     = h.ToString(),
         });
         await LogAsync("Update", "Setting", null, $"Updated email template '{type}' + branding");
         TempData["Success"] = "Email saved.";
