@@ -1,0 +1,10 @@
+@model int
+@* Yellow circular "-NN%" badge shown on a product image when it's on sale. Place inside a
+   position:relative image container. Renders nothing when there's no discount. *@
+@if (Model > 0)
+{
+    <span class="absolute top-2 left-2 z-10 flex items-center justify-center w-11 h-11 rounded-full
+                 bg-yellow-400 text-neutral-900 text-[11px] font-bold shadow-md pointer-events-none">
+        -@(Model)%
+    </span>
+}

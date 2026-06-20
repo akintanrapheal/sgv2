@@ -97,9 +97,10 @@
         <!-- ─── Image Gallery ─────────────────────────────────────────── -->
         <div class="space-y-3">
             <!-- Zoom container: hover to zoom, click to toggle pinned zoom -->
-            <div class="aspect-square bg-neutral-50 overflow-hidden zoom-container cursor-zoom-in" id="zoom-container">
+            <div class="aspect-square bg-neutral-50 overflow-hidden zoom-container cursor-zoom-in relative" id="zoom-container">
                 <img id="main-image" src="@Model.PrimaryImageUrl" alt="@Model.Name"
                      class="w-full h-full object-cover object-center transition-transform duration-300 will-change-transform" />
+                <partial name="_DiscountBadge" model="Model.DiscountPercent" />
             </div>
             @if (Model.ImageUrls.Count > 1)
             {

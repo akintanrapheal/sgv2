@@ -25,6 +25,10 @@ public class ProductDetailViewModel
     public string FormattedPrice => $"₦{EffectivePrice:N0}";
     /// <summary>Regular price — render struck-through when <see cref="IsOnSale"/>.</summary>
     public string FormattedRegularPrice => $"₦{Price:N0}";
+    /// <summary>Whole-number % off (e.g. 21) when on sale, else 0 — drives the discount badge.</summary>
+    public int DiscountPercent => IsOnSale && Price > 0m
+        ? (int)Math.Round((Price - SalePrice!.Value) / Price * 100m)
+        : 0;
 
     public string? Material { get; set; }
     public string? Metal { get; set; }

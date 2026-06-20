@@ -25,6 +25,7 @@
                             <div class="aspect-square bg-neutral-100 mb-4 overflow-hidden relative">
                                 <img src="@p.PrimaryImageUrl" alt="@p.Name" loading="lazy"
                                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                                <partial name="_DiscountBadge" model="p.DiscountPercent" />
                                 @if (!p.IsAvailable)
                                 {
                                     <div class="absolute inset-0 bg-white/50 flex items-center justify-center">
@@ -33,7 +34,7 @@
                                 }
                                 else if (p.IsNewArrival)
                                 {
-                                    <span class="absolute top-3 left-3 bg-brand-500 text-white text-[9px] tracking-widest uppercase px-2 py-1">New</span>
+                                    <span class="absolute top-3 right-3 bg-brand-500 text-white text-[9px] tracking-widest uppercase px-2 py-1">New</span>
                                 }
                             </div>
                             <h3 class="font-light text-sm text-neutral-700 group-hover:text-neutral-900 transition-colors leading-snug">@p.Name</h3>

@@ -180,6 +180,14 @@ function populateQuickView(d) {
     img.src = d.primaryImage; img.alt = d.name;
     document.getElementById('qv-detail-link').href = '/products/' + d.slug;
 
+    // Discount badge (product-level % off, mirrors the card badge)
+    const badge = document.getElementById('qv-badge');
+    if (badge) {
+        const pct = (d.salePrice != null && d.price > 0) ? Math.round((d.price - d.salePrice) / d.price * 100) : 0;
+        if (pct > 0) { badge.textContent = '-' + pct + '%'; badge.classList.remove('hidden'); }
+        else badge.classList.add('hidden');
+    }
+
     // Build the option dropdowns.
     const optsWrap = document.getElementById('qv-options');
     optsWrap.innerHTML = '';
