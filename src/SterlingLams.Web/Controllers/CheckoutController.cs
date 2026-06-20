@@ -728,10 +728,13 @@ public class CheckoutController : Controller
     {
         try
         {
-            var order = await _db.Orders.Include(o => o.Items).FirstOrDefaultAsync(o => o.Id == orderId);
+            var order = await _db.Orders.Include(o => o.Items)
+                .Include(o => o.DeliveryAddress).Include(o => o.PickupStore).Include(o => o.User)
+                .FirstOrDefaultAsync(o => o.Id == orderId);
             if (order == null) return;
 
-            var customerEmail = await _db.Users.Where(u => u.Id == order.UserId).Select(u => u.Email).FirstOrDefaultAsync();
+            var customerEmail = order.User?.Email
+                ?? await _db.Users.Where(u => u.Id == order.UserId).Select(u => u.Email).FirstOrDefaultAsync();
 
             string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
             var rows = string.Join("", order.Items.Select(i => $@"
@@ -745,17 +748,73 @@ public class CheckoutController : Controller
                     <tr><td style=""padding:12px 0 0;font-weight:bold;"">Total</td><td align=""right"" style=""padding:12px 0 0;font-weight:bold;"">&#8358;{order.Total:N0}</td></tr>
                 </table>";
 
-            // Customer confirmation
+            // Customer confirmation — rich WooCommerce-style layout (editable in Email Customizer).
             if (!string.IsNullOrWhiteSpace(customerEmail)
                 && await _settings.GetBoolAsync("notifications.order_confirmed", true))
             {
-                var subject = await _settings.GetAsync("email.order_confirmed.subject", "Your order is confirmed");
-                var intro = await _settings.GetAsync("email.order_confirmed.intro", "Thank you for your order — here's your summary. We'll email you when it's on the way.");
-                var body = $@"
-                    <h2 style=""font-size:18px;margin:0 0 16px;"">Thank you for your order</h2>
-                    <p>{Enc(intro)}</p>
-                    <p>Order <strong>{Enc(order.OrderNumber)}</strong>:</p>
-                    {summary}";
+                var subject = await _settings.GetAsync("email.order_confirmed.subject", "Your order is being processed");
+                var intro = await _settings.GetAsync("email.order_confirmed.intro",
+                    "Your order {order} ({date}) has been received and is now being processed.");
+
+                // Per-item primary image (absolute URL for email clients).
+                var baseUrl = (_config["App:BaseUrl"] ?? "").TrimEnd('/');
+                var pids = order.Items.Select(i => i.ProductId).Distinct().ToList();
+                var imgMap = await _db.ProductImages.Where(im => pids.Contains(im.ProductId))
+                    .GroupBy(im => im.ProductId)
+                    .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
+                    .ToDictionaryAsync(x => x.Pid, x => x.Url);
+                string? AbsImg(int pid)
+                {
+                    var u = imgMap.GetValueOrDefault(pid);
+                    if (string.IsNullOrWhiteSpace(u)) return null;
+                    return u.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? u
+                         : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + u.TrimStart('/'));
+                }
+
+                var items = order.Items.Select(i =>
+                    new SterlingLams.Web.Services.OrderEmailTemplate.Item(
+                        i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId))).ToList();
+
+                var custName = order.User?.FullName ?? order.DeliveryAddress?.FullName ?? "";
+                var a = order.DeliveryAddress;
+                var billing = new List<string> { custName };
+                if (a != null)
+                {
+                    billing.Add(a.Line1 + (string.IsNullOrWhiteSpace(a.Line2) ? "" : ", " + a.Line2));
+                    billing.Add($"{a.City}, {a.State}".Trim(' ', ','));
+                    if (!string.IsNullOrWhiteSpace(a.Phone)) billing.Add(a.Phone);
+                }
+                if (!string.IsNullOrWhiteSpace(customerEmail)) billing.Add(customerEmail!);
+
+                List<string> shipping;
+                string shippingLabel;
+                if (order.FulfillmentType == FulfillmentType.StorePickup)
+                {
+                    var store = order.PickupStore?.Name ?? "our store";
+                    shipping = new List<string> { custName, "Pickup at " + store };
+                    shippingLabel = $"Pickup at {store}";
+                }
+                else
+                {
+                    shipping = new List<string> { custName };
+                    if (a != null) { shipping.Add(a.Line1 + (string.IsNullOrWhiteSpace(a.Line2) ? "" : ", " + a.Line2)); shipping.Add($"{a.City}, {a.State}".Trim(' ', ',')); }
+                    shippingLabel = order.DeliveryFee > 0 ? $"Delivery — ₦{order.DeliveryFee:N0}" : "Delivery";
+                }
+
+                var introHtml = SterlingLams.Web.Services.OrderEmailTemplate.ApplyPlaceholders(
+                    intro, "#" + order.OrderNumber, order.CreatedAt, custName);
+                var body = SterlingLams.Web.Services.OrderEmailTemplate.Build(
+                    heading: subject,
+                    introHtml: introHtml,
+                    orderNumber: order.OrderNumber,
+                    orderDate: order.CreatedAt,
+                    items: items,
+                    subtotal: order.Subtotal,
+                    shippingLabel: shippingLabel,
+                    total: order.Total,
+                    paymentMethod: order.PaymentProvider ?? "—",
+                    billingLines: billing,
+                    shippingLines: shipping);
                 await _email.SendAsync(customerEmail!, subject, body, ct: HttpContext.RequestAborted);
             }
 

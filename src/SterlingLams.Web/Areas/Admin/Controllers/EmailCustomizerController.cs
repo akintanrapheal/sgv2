@@ -20,7 +20,7 @@ public class EmailCustomizerController : AdminBaseController
     // The customer-facing emails whose subject + intro are editable.
     public static readonly (string Key, string Label, string DefaultSubject, string DefaultIntro)[] Types = new[]
     {
-        ("order_confirmed", "Order confirmation", "Your order is confirmed", "Thank you for your order — here's your summary. We'll email you when it's on the way."),
+        ("order_confirmed", "Order confirmation", "Your order is being processed", "Your order {order} ({date}) has been received and is now being processed."),
         ("back_in_stock",   "Back in stock",      "Good news — it's back in stock", "An item you wanted is available again. These pieces sell quickly, so don't wait."),
         ("abandoned_cart",  "Abandoned cart",     "You left something in your bag", "You have items waiting in your bag — we've saved them for you."),
         ("password_reset",  "Password reset",     "Reset your password", "We received a request to reset your password. Click below to choose a new one. This link expires shortly."),
@@ -108,17 +108,31 @@ public class EmailCustomizerController : AdminBaseController
                 <td style=""background:#ec1c8e;border-radius:2px;""><a href=""{href}"" style=""display:inline-block;padding:12px 28px;color:#fff;font-size:13px;letter-spacing:1px;text-transform:uppercase;text-decoration:none;"">{label}</a></td>
             </tr></table>";
 
+        if (type == "order_confirmed")
+        {
+            var sampleDate = DateTime.UtcNow;
+            var introHtml = OrderEmailTemplate.ApplyPlaceholders(intro, "#62175", sampleDate, "Zino Idoro");
+            var body0 = OrderEmailTemplate.Build(
+                heading: subject,
+                introHtml: introHtml,
+                orderNumber: "62175",
+                orderDate: sampleDate,
+                items: new List<OrderEmailTemplate.Item>
+                {
+                    new("Pearl Dangle Loop Earrings", "Silver", 2, 15000m,
+                        "https://res.cloudinary.com/dxmadm7vj/image/upload/v1781722613/sterlinglams/products/cx7jwoftvtedwpdophjh.jpg"),
+                },
+                subtotal: 15000m,
+                shippingLabel: "PICK UP (AJAH) — NOTIFICATION WILL BE SENT WITHIN 1-2 WORKING DAYS",
+                total: 15000m,
+                paymentMethod: "DEBIT/CREDIT CARDS/BANK TRANSFER/USSD/OPAY",
+                billingLines: new[] { "Zino Idoro", "Victoria crest 3 estate Augusta amadi chevron", "Lagos", "08163866044", "zinoidoro@gmail.com" },
+                shippingLines: new[] { "Zino Idoro", "Victoria crest 3 estate Augusta amadi chevron", "Lagos" });
+            return (subject, body0);
+        }
+
         string body = type switch
         {
-            "order_confirmed" => $@"
-                <h2 style=""font-size:18px;margin:0 0 16px;"">Thank you for your order</h2>
-                <p>{E(intro)}</p>
-                <p>Order <strong>SL-20260101-1234</strong>:</p>
-                <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""margin:20px 0;font-size:14px;"">
-                    <tr><td style=""padding:8px 0;border-bottom:1px solid #f0efed;"">Pearl Dangle Loop Earrings — Silver &times; 2</td><td align=""right"" style=""padding:8px 0;border-bottom:1px solid #f0efed;"">&#8358;30,000</td></tr>
-                    <tr><td style=""padding:8px 0;border-bottom:1px solid #f0efed;"">2-Tone Band Ring &times; 1</td><td align=""right"" style=""padding:8px 0;border-bottom:1px solid #f0efed;"">&#8358;6,000</td></tr>
-                    <tr><td style=""padding:12px 0 0;font-weight:bold;"">Total</td><td align=""right"" style=""padding:12px 0 0;font-weight:bold;"">&#8358;36,000</td></tr>
-                </table>",
             "back_in_stock" => $@"
                 <h2 style=""font-size:18px;margin:0 0 16px;"">It's back in stock</h2>
                 <p>{E(intro)}</p>
