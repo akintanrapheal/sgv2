@@ -1,0 +1,153 @@
+@model SterlingLams.Web.Areas.Admin.ViewModels.EmailCustomizerViewModel
+@{
+    ViewData["Title"] = "Email Customizer";
+}
+
+<div class="flex items-center justify-between mb-5">
+    <div>
+        <h1 class="text-lg font-medium text-neutral-800">Email Customizer</h1>
+        <p class="text-xs text-neutral-400">Customise the wording and branding of the emails the store sends. Changes apply to every matching email.</p>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-sm px-4 py-2.5">@TempData["Success"]</div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="mb-4 text-sm text-red-700 bg-red-50 border border-red-100 rounded-sm px-4 py-2.5">@TempData["Error"]</div>
+}
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- ── Editor ───────────────────────────────────────────── -->
+    <div class="space-y-5">
+        <!-- Email type selector -->
+        <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
+            <label class="block text-xs font-medium text-neutral-700 mb-1">Email to customise</label>
+            <select id="email-type"
+                    class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-neutral-400"
+                    onchange="location.href='?type=' + this.value">
+                @foreach (var t in Model.Types)
+                {
+                    <option value="@t.Key" selected="@(t.Key == Model.Type)">@t.Label</option>
+                }
+            </select>
+        </div>
+
+        <form asp-area="Admin" asp-controller="EmailCustomizer" asp-action="Save" method="post" class="space-y-5">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="type" value="@Model.Type" />
+
+            <!-- Content for this email -->
+            <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4 space-y-3">
+                <h2 class="text-sm font-medium text-neutral-800">Content</h2>
+                <div>
+                    <label class="block text-xs text-neutral-500 mb-1">Subject</label>
+                    <input id="f-subject" name="subject" value="@Model.Subject"
+                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                </div>
+                <div>
+                    <label class="block text-xs text-neutral-500 mb-1">Intro message</label>
+                    <textarea id="f-intro" name="intro" rows="4"
+                              class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 resize-none">@Model.Intro</textarea>
+                </div>
+            </div>
+
+            <!-- Branding (applies to all emails) -->
+            <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4 space-y-3">
+                <h2 class="text-sm font-medium text-neutral-800">Branding <span class="text-xs font-normal text-neutral-400">(all emails)</span></h2>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-neutral-500 mb-1">Sender name</label>
+                        <input name="fromName" value="@Model.FromName" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                    </div>
+                    <div>
+                        <label class="block text-xs text-neutral-500 mb-1">Reply-to (optional)</label>
+                        <input name="replyTo" type="email" value="@Model.ReplyTo" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3 items-end">
+                    <div>
+                        <label class="block text-xs text-neutral-500 mb-1">Header colour</label>
+                        <input name="headerColor" type="color" value="@Model.HeaderColor" class="h-9 w-full border border-neutral-200 rounded-sm px-1 py-1" />
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs text-neutral-500 mb-1">Footer text</label>
+                    <textarea name="footerText" rows="2" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 resize-none">@Model.FooterText</textarea>
+                </div>
+                <p class="text-[11px] text-neutral-400">The logo comes from Settings → General (logo URL).</p>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <button type="submit" class="px-6 py-2.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Save email</button>
+                <span class="text-xs text-neutral-400">Saving also refreshes the preview with branding changes.</span>
+            </div>
+        </form>
+
+        <!-- Send a test -->
+        <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
+            <h2 class="text-sm font-medium text-neutral-800 mb-2">Send a test</h2>
+            <div class="flex gap-2">
+                <input id="test-email" type="email" placeholder="you@example.com"
+                       class="flex-1 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                <button type="button" id="send-test" class="px-4 py-2 bg-neutral-100 text-neutral-700 text-sm rounded-sm hover:bg-neutral-200 transition-colors">Send test</button>
+            </div>
+            <p id="test-result" class="text-xs mt-2"></p>
+        </div>
+    </div>
+
+    <!-- ── Live preview ─────────────────────────────────────── -->
+    <div class="lg:sticky lg:top-6 self-start">
+        <div class="flex items-center justify-between mb-2">
+            <h2 class="text-sm font-medium text-neutral-700">Preview</h2>
+            <span class="text-[11px] text-neutral-400">Sample data</span>
+        </div>
+        <iframe id="email-preview" title="Email preview"
+                class="w-full bg-white border border-neutral-200 rounded-sm" style="height:680px;"></iframe>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+    (function () {
+        const type = '@Model.Type';
+        const iframe = document.getElementById('email-preview');
+        const subject = document.getElementById('f-subject');
+        const intro = document.getElementById('f-intro');
+
+        async function refresh() {
+            try {
+                const qs = new URLSearchParams({ type, subject: subject.value, intro: intro.value });
+                const res = await fetch('/Admin/EmailCustomizer/Preview?' + qs.toString());
+                iframe.srcdoc = await res.text();
+            } catch { /* ignore preview errors */ }
+        }
+
+        let t;
+        const debounced = () => { clearTimeout(t); t = setTimeout(refresh, 300); };
+        subject.addEventListener('input', debounced);
+        intro.addEventListener('input', debounced);
+        refresh();
+
+        // Send test
+        const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+        document.getElementById('send-test').addEventListener('click', async () => {
+            const email = document.getElementById('test-email').value.trim();
+            const out = document.getElementById('test-result');
+            out.textContent = 'Sending…'; out.className = 'text-xs mt-2 text-neutral-400';
+            try {
+                const res = await fetch('/Admin/EmailCustomizer/SendTest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token },
+                    body: new URLSearchParams({ type, email })
+                });
+                const data = await res.json();
+                out.textContent = data.message;
+                out.className = 'text-xs mt-2 ' + (data.success ? 'text-emerald-600' : 'text-red-500');
+            } catch { out.textContent = 'Could not send.'; out.className = 'text-xs mt-2 text-red-500'; }
+        });
+    })();
+</script>
+}

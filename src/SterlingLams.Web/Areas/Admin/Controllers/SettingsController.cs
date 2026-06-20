@@ -28,8 +28,10 @@ public class SettingsController : AdminBaseController
             .OrderBy(c => c.Name)
             .Select(c => new { c.Name, c.Slug })
             .ToListAsync();
-        // POS receipt settings are managed in the Inventory System (Stage 2), so hide that group here.
-        var all = (await _settings.GetAllAsync()).Where(s => s.Group != "POS / Till").ToList();
+        // POS receipt settings live in the Inventory System; email settings live in the Email
+        // Customizer — hide both groups here so each has a single home.
+        var all = (await _settings.GetAllAsync())
+            .Where(s => s.Group != "POS / Till" && s.Group != "Emails").ToList();
         return View(all);
     }
 

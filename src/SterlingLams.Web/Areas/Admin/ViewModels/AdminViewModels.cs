@@ -106,6 +106,19 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public decimal CustomerAvgOrderValue { get; set; }
     }
 
+    // ─── Email Customizer ───────────────────────────────────────────────────
+    public class EmailCustomizerViewModel
+    {
+        public string Type { get; set; } = "order_confirmed";
+        public List<(string Key, string Label)> Types { get; set; } = new();
+        public string Subject { get; set; } = "";
+        public string Intro { get; set; } = "";
+        public string FromName { get; set; } = "";
+        public string ReplyTo { get; set; } = "";
+        public string HeaderColor { get; set; } = "#0a0a0a";
+        public string FooterText { get; set; } = "";
+    }
+
     // ─── Products ─────────────────────────────────────────────────────────
     public class AdminProductListViewModel
     {

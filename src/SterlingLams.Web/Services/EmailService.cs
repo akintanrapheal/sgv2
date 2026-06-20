@@ -31,6 +31,9 @@ public interface IEmailService
     /// (checkout, password reset) are never broken by mail problems.
     /// </summary>
     Task<bool> SendAsync(string toEmail, string subject, string innerHtml, string? toName = null, CancellationToken ct = default);
+
+    /// <summary>Renders the branded email shell around the given inner HTML — for the admin preview.</summary>
+    Task<string> RenderAsync(string subject, string innerHtml);
 }
 
 public class SmtpEmailService : IEmailService
@@ -129,6 +132,9 @@ public class SmtpEmailService : IEmailService
             return false;
         }
     }
+
+    public async Task<string> RenderAsync(string subject, string innerHtml)
+        => Wrap(subject, innerHtml, await GetBrandingAsync());
 
     /// <summary>Dev/preview fallback: write the email to disk instead of sending it. Returns true so
     /// callers behave as if delivered (e.g. mark notified). Never throws.</summary>
