@@ -114,15 +114,17 @@ public class OrgController : InventoryAreaController
         var joined = await (from ur in _db.UserRoles
                             join r in _db.Roles on ur.RoleId equals r.Id
                             join u in _db.Users on ur.UserId equals u.Id
-                            select new { u.Id, u.Email, u.FirstName, u.LastName, u.LastLoginAt, Role = r.Name })
+                            select new { u.Id, u.Email, u.FirstName, u.LastName, u.LastLoginAt, HasPin = u.PinHash != null, Role = r.Name })
                            .ToListAsync();
 
         var staff = joined.GroupBy(x => x.Id)
             .Select(g => new StaffRow
             {
+                Id = g.Key,
                 Name = (g.First().FirstName + " " + g.First().LastName).Trim(),
                 Email = g.First().Email ?? "",
                 Roles = g.Select(x => x.Role!).OrderBy(r => r).ToList(),
+                HasPin = g.First().HasPin,
                 LastLogin = g.First().LastLoginAt
             })
             .OrderBy(s => s.Name).ToList();
@@ -239,9 +241,11 @@ public class OrgController : InventoryAreaController
 
 public class StaffRow
 {
+    public string Id { get; set; } = "";
     public string Name { get; set; } = "";
     public string Email { get; set; } = "";
     public List<string> Roles { get; set; } = new();
+    public bool HasPin { get; set; }
     public DateTime? LastLogin { get; set; }
 }
 
