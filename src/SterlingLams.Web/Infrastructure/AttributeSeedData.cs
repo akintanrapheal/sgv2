@@ -51,7 +51,11 @@ public static class AttributeSeedData
 
     private static async Task SeedColourAsync(ApplicationDbContext db, ILogger logger)
     {
-        if (await db.ProductAttributes.AnyAsync(a => a.Slug == "colour")) return;
+        // Skip if a colour attribute already exists in any spelling — otherwise deleting the seeded
+        // "Colour" just brings it back on the next startup (e.g. when the store keeps its own "Color").
+        if (await db.ProductAttributes.AnyAsync(a =>
+                a.Slug == "colour" || a.Slug == "color" || a.Name.ToLower().StartsWith("colo")))
+            return;
 
         var attr = new ProductAttribute
         {
