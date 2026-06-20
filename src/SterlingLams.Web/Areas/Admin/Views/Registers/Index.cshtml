@@ -6,7 +6,7 @@
 }
 
 <partial name="_TillTabs" model="@("Tills")" />
-<p class="text-xs text-neutral-400 -mt-3 mb-5">Each physical till is bound to one of these. Open the till app at <span class="font-mono">/till</span>.</p>
+<p class="text-xs text-neutral-400 -mt-3 mb-5">Each physical till is bound to one of these. Open the till app at <span class="font-mono">/pos</span>.</p>
 
 @if (TempData["Success"] != null) { <div class="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-sm px-4 py-2">@TempData["Success"]</div> }
 @if (TempData["Error"] != null) { <div class="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-sm px-4 py-2">@TempData["Error"]</div> }

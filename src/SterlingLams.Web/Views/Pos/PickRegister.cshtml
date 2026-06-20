@@ -17,7 +17,7 @@
             <div class="space-y-3">
                 @foreach (var r in Model)
                 {
-                    <form asp-controller="Till" asp-action="SetRegister" method="post">
+                    <form asp-controller="Pos" asp-action="SetRegister" method="post">
                         <input type="hidden" name="registerId" value="@r.Id" />
                         <button type="submit"
                                 class="w-full text-left bg-white border border-neutral-200 rounded-lg px-5 py-4 hover:border-brand-500 transition-colors flex items-center justify-between">

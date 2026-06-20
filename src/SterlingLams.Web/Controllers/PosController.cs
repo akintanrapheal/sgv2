@@ -11,7 +11,7 @@ using SterlingLams.Web.Services;
 namespace SterlingLams.Web.Controllers;
 
 // No class-level [AllowAnonymous] — each action declares its own policy
-public class TillController : Controller
+public class PosController : Controller
 {
     private const string RegisterCookie = "till_register";
 
@@ -24,7 +24,7 @@ public class TillController : Controller
     private readonly SterlingLams.Web.Services.IStoreAccessService _access;
     private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
 
-    public TillController(ApplicationDbContext db, IStockService stock,
+    public PosController(ApplicationDbContext db, IStockService stock,
         SignInManager<ApplicationUser> signIn, IPasswordHasher<ApplicationUser> hasher,
         UserManager<ApplicationUser> userManager,
         SterlingLams.Web.Services.IStoreAccessService access,

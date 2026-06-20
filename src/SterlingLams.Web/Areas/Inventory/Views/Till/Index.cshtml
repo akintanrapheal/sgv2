@@ -13,7 +13,7 @@
         <div><p class="text-xs text-neutral-400 uppercase tracking-wide">Transactions</p><p class="text-xl font-semibold text-neutral-900">@Model.TxToday</p></div>
         <div><p class="text-xs text-neutral-400 uppercase tracking-wide">Open sessions</p><p class="text-xl font-semibold @(Model.OpenSessions > 0 ? "text-emerald-600" : "text-neutral-900")">@Model.OpenSessions</p></div>
     </div>
-    <a href="/till" target="_blank" rel="noopener"
+    <a href="/pos" target="_blank" rel="noopener"
        class="px-4 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Open POS App →</a>
 </div>
 
@@ -81,7 +81,7 @@
                         else { <span class="text-neutral-300">—</span> }
                     </td>
                     <td class="px-4 py-3 text-right">
-                        <a href="/Till/Zreport/@r.Session.Id" target="_blank" class="text-xs text-neutral-500 hover:text-emerald-600">Z-report</a>
+                        <a href="/Pos/Zreport/@r.Session.Id" target="_blank" class="text-xs text-neutral-500 hover:text-emerald-600">Z-report</a>
                     </td>
                 </tr>
             }

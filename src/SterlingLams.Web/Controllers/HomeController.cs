@@ -126,5 +126,6 @@ public class HomeController : Controller
     private static bool IsStaffPath(string path) =>
         path.StartsWith("/Admin", StringComparison.OrdinalIgnoreCase)
         || path.StartsWith("/Inventory", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/Till", StringComparison.OrdinalIgnoreCase);
+        || path.StartsWith("/Till", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/Pos", StringComparison.OrdinalIgnoreCase);
 }

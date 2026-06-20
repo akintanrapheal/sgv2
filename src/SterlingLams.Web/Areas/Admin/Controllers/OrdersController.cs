@@ -262,7 +262,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         }
 
         // ── Online order refund ───────────────────────────────────────────────
-        // Mirrors the POS return flow (TillController.RefundProcess) but for online orders:
+        // Mirrors the POS return flow (PosController.RefundProcess) but for online orders:
         // records a Refund + RefundItems, optionally returns stock to the fulfilling store, and
         // attempts a gateway refund. Item arrays are parallel and rendered in order on Detail;
         // variant id 0 means "no variant" (the product pool line).

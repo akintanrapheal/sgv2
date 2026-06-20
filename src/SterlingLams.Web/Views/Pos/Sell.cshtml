@@ -92,7 +92,7 @@
             </button>
         </nav>
         <div class="border-t border-neutral-100 p-2 flex-shrink-0">
-            <form asp-controller="Till" asp-action="Logout" method="post">
+            <form asp-controller="Pos" asp-action="Logout" method="post">
                 <button type="submit" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors text-left">
                     <svg class="w-5 h-5 flex-shrink-0 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
                     Sign out
@@ -582,7 +582,7 @@
     let activeCategoryId = null, debounce, lastResults = [];
 
     async function loadCategories() {
-        const res = await fetch('/Till/Categories');
+        const res = await fetch('/Pos/Categories');
         const cats = await res.json();
         if (!cats.length) {
             catGrid.innerHTML = '<p class="col-span-full text-sm text-neutral-400 py-8 text-center">No categories found. Products will show below.</p>';
@@ -626,7 +626,7 @@
         breadcrumbCat.classList.remove('hidden');
         breadcrumbCat.textContent = catName;
         resultsEl.innerHTML = '<p class="col-span-full text-sm text-neutral-400 py-6 text-center">Loading…</p>';
-        const res = await fetch('/Till/Search?categoryId=' + catId);
+        const res = await fetch('/Pos/Search?categoryId=' + catId);
         lastResults = await res.json();
         renderProducts(lastResults);
     }
@@ -639,7 +639,7 @@
         breadcrumbDivider.classList.add('hidden');
         breadcrumbCat.classList.add('hidden');
         activeCategoryId = null;
-        const res = await fetch('/Till/Search?q=' + encodeURIComponent(searchBox.value.trim()));
+        const res = await fetch('/Pos/Search?q=' + encodeURIComponent(searchBox.value.trim()));
         lastResults = await res.json();
         renderProducts(lastResults);
     }
@@ -677,7 +677,7 @@
 
     async function runSearch() {
         const q = searchBox.value.trim();
-        const url = '/Till/Search?q=' + encodeURIComponent(q) + (activeCategoryId ? '&categoryId=' + activeCategoryId : '');
+        const url = '/Pos/Search?q=' + encodeURIComponent(q) + (activeCategoryId ? '&categoryId=' + activeCategoryId : '');
         const res = await fetch(url);
         lastResults = await res.json();
         renderProducts(lastResults);
@@ -707,7 +707,7 @@
 
     async function onScan(code) {
         if (!code) return;
-        const res = await fetch('/Till/Search?q=' + encodeURIComponent(code));
+        const res = await fetch('/Pos/Search?q=' + encodeURIComponent(code));
         const items = await res.json();
         const exact = items.find(p => (p.barcode && p.barcode.toLowerCase() === code.toLowerCase()) || (p.sku && p.sku.toLowerCase() === code.toLowerCase()));
         if (exact && exact.stock > 0) { add(exact); searchBox.value = ''; }
@@ -819,7 +819,7 @@
         const term = (q || '').trim();
         custResults.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">' + (term ? 'Searching…' : 'Loading customers…') + '</p>';
         try {
-            const res = await fetch('/Till/CustomerSearch?q=' + encodeURIComponent(term));
+            const res = await fetch('/Pos/CustomerSearch?q=' + encodeURIComponent(term));
             const list = await res.json();
             if (!list.length) {
                 custResults.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">' +
@@ -850,7 +850,7 @@
         if (!body.firstName && !body.lastName) { showError('Enter a name.'); return; }
         if (!body.phone && !body.email) { showError('Enter a phone number.'); return; }
         try {
-            const res = await fetch('/Till/CustomerQuickAdd', {
+            const res = await fetch('/Pos/CustomerQuickAdd', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
                 body: JSON.stringify(body)
@@ -963,7 +963,7 @@
         if (!cart.length) { showError('Nothing to hold.'); return; }
         holdBtn.disabled = true;
         try {
-            const res = await fetch('/Till/Hold', {
+            const res = await fetch('/Pos/Hold', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
                 body: JSON.stringify({ customerUserId: customer?.id || null, items: cart })
@@ -984,7 +984,7 @@
 
     async function refreshHeldBadge() {
         try {
-            const res = await fetch('/Till/ParkedSales');
+            const res = await fetch('/Pos/ParkedSales');
             const list = await res.json();
             heldCountEl.textContent = list.length;
             heldCountEl.classList.toggle('hidden', list.length === 0);
@@ -1025,7 +1025,7 @@
     async function recallHeld(id) {
         if (cart.length && !confirm('Recall this held sale? Your current cart will be replaced.')) return;
         try {
-            const res = await fetch('/Till/RecallParkedSale/' + id, {
+            const res = await fetch('/Pos/RecallParkedSale/' + id, {
                 method: 'POST', headers: { 'RequestVerificationToken': token }
             });
             const data = await res.json();
@@ -1043,7 +1043,7 @@
     async function discardHeld(id) {
         if (!confirm('Discard this held sale?')) return;
         try {
-            await fetch('/Till/DeleteParkedSale/' + id, { method: 'POST', headers: { 'RequestVerificationToken': token } });
+            await fetch('/Pos/DeleteParkedSale/' + id, { method: 'POST', headers: { 'RequestVerificationToken': token } });
         } catch {}
         renderHeldList(await refreshHeldBadge());
     }
@@ -1112,7 +1112,7 @@
         if (!cart.length) return;
         payBtn.disabled = true; payBtn.querySelector('span').textContent = '…';
         try {
-            const res = await fetch('/Till/Checkout', {
+            const res = await fetch('/Pos/Checkout', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
                 body: JSON.stringify({ paymentMethod: method, amountTendered: parseFloat(tenderedEl.value) || 0,
@@ -1124,7 +1124,7 @@
                 document.getElementById('till-done-info').innerHTML =
                     `<span class="font-medium">${fmt(data.total)}</span> · ${data.orderNumber}` +
                     (data.change > 0 ? `<br>Change due: <span class="font-medium text-emerald-600">${fmt(data.change)}</span>` : '');
-                document.getElementById('till-receipt').href = '/Till/Receipt/' + data.orderId;
+                document.getElementById('till-receipt').href = '/Pos/Receipt/' + data.orderId;
                 cart = []; tenderedEl.value = ''; setCustomer(null); clearSavedCart(); renderCart();
                 document.getElementById('till-done').classList.remove('hidden');
             } else showError(data.message || 'Could not complete the sale.');
@@ -1142,7 +1142,7 @@
         const el = document.getElementById('orders-list');
         el.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">Loading…</p>';
         try {
-            const res = await fetch('/Till/RecentOrders');
+            const res = await fetch('/Pos/RecentOrders');
             const orders = await res.json();
             if (!orders.length) {
                 el.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">No sales yet on this till.</p>';
@@ -1161,7 +1161,7 @@
                         <p class="text-[11px] text-neutral-400 truncate">${when} · ${o.itemCount} item${o.itemCount === 1 ? '' : 's'} · ${o.method}${who}${by}</p>
                     </div>
                     <span class="font-semibold text-neutral-800 flex-shrink-0">${fmt(o.total)}</span>
-                    <a href="/Till/Receipt/${o.id}" target="_blank" title="Reprint receipt"
+                    <a href="/Pos/Receipt/${o.id}" target="_blank" title="Reprint receipt"
                        class="flex-shrink-0 text-neutral-400 hover:text-brand-500 transition-colors p-1">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
                     </a>
@@ -1175,7 +1175,7 @@
             el.querySelectorAll('[data-receipt]').forEach(row =>
                 row.addEventListener('click', (e) => {
                     if (e.target.closest('a,button')) return;
-                    window.open('/Till/Receipt/' + row.dataset.receipt, '_blank');
+                    window.open('/Pos/Receipt/' + row.dataset.receipt, '_blank');
                 }));
             el.querySelectorAll('[data-refund]').forEach(b =>
                 b.addEventListener('click', () => window.tillOpenRefund?.(b.dataset.refund)));
@@ -1196,7 +1196,7 @@
 
     async function loadDiscountReasons() {
         try {
-            const res = await fetch('/Till/DiscountReasons');
+            const res = await fetch('/Pos/DiscountReasons');
             discountReasons = await res.json();
         } catch { discountReasons = []; }
     }
@@ -1353,13 +1353,13 @@
     document.getElementById('cashup-confirm').addEventListener('click', async () => {
         const counted = parseFloat(document.getElementById('cashup-counted').value) || 0;
         const note = document.getElementById('cashup-note').value;
-        const res = await fetch('/Till/CloseSession', {
+        const res = await fetch('/Pos/CloseSession', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token },
             body: `countedCash=${counted}&note=${encodeURIComponent(note)}`
         });
         const data = await res.json();
-        if (data.success) location.href = '/Till/Zreport/' + data.sessionId;
+        if (data.success) location.href = '/Pos/Zreport/' + data.sessionId;
         else {
             const el = document.createElement('div');
             el.className = 'fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white text-sm px-5 py-3 rounded-lg shadow-lg z-[100]';
@@ -1413,7 +1413,7 @@
         msgEl.textContent = '';
         const num = document.getElementById('refund-order').value.trim();
         if (!num) return;
-        const res = await fetch('/Till/RefundLookup?orderNumber=' + encodeURIComponent(num));
+        const res = await fetch('/Pos/RefundLookup?orderNumber=' + encodeURIComponent(num));
         const data = await res.json();
         if (!data.found) { body.classList.add('hidden'); msgEl.textContent = 'No POS sale with that number.'; return; }
         orderId = data.orderId;
@@ -1459,7 +1459,7 @@
         if (!items.length) return;
         confirmBtn.disabled = true; confirmBtn.textContent = 'Processing…';
         try {
-            const res = await fetch('/Till/RefundProcess', {
+            const res = await fetch('/Pos/RefundProcess', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
                 body: JSON.stringify({ orderId, method, reason: document.getElementById('refund-reason').value, items })
@@ -1489,8 +1489,8 @@
     document.getElementById('menu-changeregister-btn').addEventListener('click', () => {
         if (confirm('Change till location? You\'ll need to pick a register again.')) {
             const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
-            fetch('/Till/ChangeRegister', { method: 'POST', headers: { 'RequestVerificationToken': token } })
-                .then(() => location.href = '/Till');
+            fetch('/Pos/ChangeRegister', { method: 'POST', headers: { 'RequestVerificationToken': token } })
+                .then(() => location.href = '/Pos');
         }
     });
 
@@ -1539,7 +1539,7 @@
         if (locationsLoaded) return;
         locationsLoaded = true;
         try {
-            const res = await fetch('/Till/StockLookupStores');
+            const res = await fetch('/Pos/StockLookupStores');
             const stores = await res.json();
             locationSelect.insertAdjacentHTML('beforeend', stores.map(s => `<option value="${s.name}">${s.name}</option>`).join(''));
         } catch { locationsLoaded = false; }
@@ -1646,7 +1646,7 @@
         if (!q) { lastItems = []; results.innerHTML = '<p class="text-center text-neutral-400 py-8 text-xs">Search for a product to see stock levels.</p>'; return; }
         results.innerHTML = '<p class="text-center text-neutral-400 py-8 text-xs">Searching…</p>';
         try {
-            const res = await fetch('/Till/StockLookup?q=' + encodeURIComponent(q));
+            const res = await fetch('/Pos/StockLookup?q=' + encodeURIComponent(q));
             lastItems = await res.json();
             renderResults();
         } catch { results.innerHTML = '<p class="text-center text-neutral-400 py-8 text-xs">Could not search.</p>'; }

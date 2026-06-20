@@ -19,7 +19,7 @@ public class SeoController : Controller
     {
         var sb = new StringBuilder();
         sb.AppendLine("User-agent: *");
-        foreach (var path in new[] { "/Admin", "/Till", "/Checkout", "/Cart", "/Account", "/Wishlist", "/api/" })
+        foreach (var path in new[] { "/Admin", "/Till", "/Pos", "/Checkout", "/Cart", "/Account", "/Wishlist", "/api/" })
             sb.AppendLine($"Disallow: {path}");
         sb.AppendLine();
         sb.AppendLine($"Sitemap: {BaseUrl}/sitemap.xml");

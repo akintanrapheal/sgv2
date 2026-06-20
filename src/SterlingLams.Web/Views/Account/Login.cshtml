@@ -5,7 +5,8 @@
     var ru = Model.ReturnUrl ?? "";
     var staff = ru.StartsWith("/Admin", StringComparison.OrdinalIgnoreCase)
              || ru.StartsWith("/Inventory", StringComparison.OrdinalIgnoreCase)
-             || ru.StartsWith("/Till", StringComparison.OrdinalIgnoreCase);
+             || ru.StartsWith("/Till", StringComparison.OrdinalIgnoreCase)
+             || ru.StartsWith("/Pos", StringComparison.OrdinalIgnoreCase);
     if (staff) { Layout = "_StaffAuthLayout"; }
     ViewData["Title"] = staff ? "Staff Sign In" : "Sign In";
 }

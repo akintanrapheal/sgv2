@@ -1,4 +1,4 @@
-@model SterlingLams.Web.Controllers.TillController.ZreportVm
+@model SterlingLams.Web.Controllers.PosController.ZreportVm
 @{
     ViewData["Title"] = "Z-Report";
     var s = Model.Session;
@@ -56,7 +56,7 @@
 
         <div class="flex gap-2 mt-4">
             <button onclick="window.print()" class="flex-1 border border-neutral-200 bg-white rounded-lg py-2.5 text-sm text-neutral-700 hover:border-neutral-400">Print</button>
-            <form asp-controller="Till" asp-action="Logout" method="post" class="flex-1">
+            <form asp-controller="Pos" asp-action="Logout" method="post" class="flex-1">
                 <button class="w-full bg-neutral-900 text-white rounded-lg py-2.5 text-sm hover:bg-neutral-700">Sign out</button>
             </form>
         </div>

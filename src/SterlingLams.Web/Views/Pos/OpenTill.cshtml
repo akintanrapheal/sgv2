@@ -16,7 +16,7 @@
             </div>
         </div>
         <p class="text-sm font-light tabular-nums text-neutral-500" id="till-clock"></p>
-        <form asp-controller="Till" asp-action="Logout" method="post">
+        <form asp-controller="Pos" asp-action="Logout" method="post">
             <button class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors border border-neutral-200 rounded-full px-4 py-2">Sign out</button>
         </form>
     </header>
@@ -33,7 +33,7 @@
             <h1 class="font-cormorant text-4xl font-light text-neutral-900 text-center mb-1">Open the Till</h1>
             <p class="text-sm text-neutral-400 text-center mb-8">Count the cash in the drawer and enter the opening float to begin today's session.</p>
 
-            <form asp-controller="Till" asp-action="OpenSession" method="post" class="space-y-5">
+            <form asp-controller="Pos" asp-action="OpenSession" method="post" class="space-y-5">
                 @Html.AntiForgeryToken()
 
                 <div class="bg-white border border-neutral-200 rounded-xl p-5 shadow-sm">
