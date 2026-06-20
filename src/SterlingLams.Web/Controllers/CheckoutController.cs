@@ -224,6 +224,10 @@ public class CheckoutController : Controller
             else // delivery: "near" = covered by a branch inside the customer's delivery zone
             {
                 var zone = SterlingLams.Web.Services.DeliveryZoneService.GetZone(state ?? "");
+                // The far-stock agreement only applies to Lagos & Abuja customers (the zones with a
+                // physical store, where buyers expect fast local delivery). Customers in other states
+                // already expect the standard nationwide timeframe, so never prompt them.
+                if (zone == SterlingLams.Web.Services.DeliveryZone.National) continue;
                 var nearAvail = 0;
                 foreach (var s in activeStores.Where(s => SterlingLams.Web.Services.DeliveryZoneService.GetZone(s.State) == zone))
                     nearAvail += await _stock.GetAvailableAsync(pid, vid, s.Id);
