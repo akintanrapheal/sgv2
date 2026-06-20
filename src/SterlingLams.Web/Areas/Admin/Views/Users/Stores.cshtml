@@ -11,7 +11,7 @@
     <p class="text-sm text-neutral-500 mb-6">@user?.FullName <span class="text-neutral-400">(@user?.Email)</span></p>
 
     <div class="bg-white rounded-sm border border-neutral-100 p-6">
-        <p class="text-sm text-neutral-600 mb-1">Tick the branches this user may <strong>make changes to</strong> — stock edits, stock-take, transfers, and till sales.</p>
+        <p class="text-sm text-neutral-600 mb-1">Tick the branches this user may <strong>make changes to</strong> — stock edits, stock-take, transfers, and POS sales.</p>
         <p class="text-xs text-neutral-400 mb-5">Leave every box unticked to keep them <strong>unrestricted</strong> (all branches). Administrators always have every branch. Viewing stock/reports is never restricted.</p>
 
         <form asp-action="SetStores" asp-route-id="@user?.Id" method="post" class="space-y-3">

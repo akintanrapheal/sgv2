@@ -60,10 +60,10 @@
         }
     </div>
 
-    <!-- Right column: Till + Jump To -->
+    <!-- Right column: POS + Jump To -->
     <div class="space-y-6">
         <div class="bg-white border border-neutral-100 rounded-sm p-5">
-            <h2 class="text-sm font-medium text-neutral-800 mb-3">Till today</h2>
+            <h2 class="text-sm font-medium text-neutral-800 mb-3">POS today</h2>
             <div class="flex items-baseline justify-between mb-1">
                 <span class="text-xs text-neutral-400">Sales</span>
                 <span class="text-lg font-semibold text-neutral-900">₦@Model.TillSalesToday.ToString("N0")</span>
@@ -76,7 +76,7 @@
                 <span class="text-xs text-neutral-400">Open sessions</span>
                 <span class="text-sm @(Model.OpenSessions > 0 ? "text-emerald-600 font-medium" : "text-neutral-700")">@Model.OpenSessions</span>
             </div>
-            <a asp-area="Inventory" asp-controller="Till" asp-action="Index" class="mt-3 block text-center text-xs text-emerald-600 hover:text-emerald-700 border border-emerald-200 rounded-sm py-2">Open Till management →</a>
+            <a asp-area="Inventory" asp-controller="Till" asp-action="Index" class="mt-3 block text-center text-xs text-emerald-600 hover:text-emerald-700 border border-emerald-200 rounded-sm py-2">Open POS management →</a>
         </div>
 
         <div class="bg-white border border-neutral-100 rounded-sm p-5">

@@ -1,6 +1,6 @@
 @model SterlingLams.Web.Models.Domain.Register
 @{
-    ViewData["Title"] = "Open Till";
+    ViewData["Title"] = "Open POS";
     var uid = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 }
 
@@ -30,7 +30,7 @@
                 </svg>
             </div>
 
-            <h1 class="font-cormorant text-4xl font-light text-neutral-900 text-center mb-1">Open the Till</h1>
+            <h1 class="font-cormorant text-4xl font-light text-neutral-900 text-center mb-1">Open the POS</h1>
             <p class="text-sm text-neutral-400 text-center mb-8">Count the cash in the drawer and enter the opening float to begin today's session.</p>
 
             <form asp-controller="Pos" asp-action="OpenSession" method="post" class="space-y-5">

@@ -32,12 +32,12 @@
     </select>
 </form>
 
-<p class="text-xs text-neutral-400 mb-3">Cash-ups across all tills.</p>
+<p class="text-xs text-neutral-400 mb-3">Cash-ups across all registers.</p>
 <div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
     <table class="w-full text-sm min-w-[800px]">
         <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
             <tr>
-                <th class="text-left font-medium px-4 py-3">Till</th>
+                <th class="text-left font-medium px-4 py-3">Register</th>
                 <th class="text-left font-medium px-4 py-3">Opened</th>
                 <th class="text-left font-medium px-4 py-3">Status</th>
                 <th class="text-right font-medium px-4 py-3">Sales</th>
@@ -50,7 +50,7 @@
         <tbody class="divide-y divide-neutral-100">
             @if (!Model.Rows.Any())
             {
-                <tr><td colspan="8" class="px-4 py-10 text-center text-neutral-400">No till sessions yet.</td></tr>
+                <tr><td colspan="8" class="px-4 py-10 text-center text-neutral-400">No POS sessions yet.</td></tr>
             }
             @foreach (var r in Model.Rows)
             {

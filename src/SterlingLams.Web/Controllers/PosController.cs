@@ -94,7 +94,7 @@ public class PosController : Controller
         if (register == null) return RedirectToAction(nameof(Index));
         if (!await _access.CanWriteAsync(User, register.StoreId))
         {
-            TempData["Error"] = "You're not assigned to this branch's till.";
+            TempData["Error"] = "You're not assigned to this branch's POS.";
             return RedirectToAction(nameof(Index));
         }
         if (await OpenSessionAsync(register.Id) == null)
@@ -115,9 +115,9 @@ public class PosController : Controller
     public async Task<IActionResult> CloseSession(decimal countedCash, string? note)
     {
         var register = await BoundRegisterAsync();
-        if (register == null) return Json(new { success = false, message = "Till not set up." });
+        if (register == null) return Json(new { success = false, message = "POS not set up." });
         var session = await OpenSessionAsync(register.Id);
-        if (session == null) return Json(new { success = false, message = "No open till." });
+        if (session == null) return Json(new { success = false, message = "No open POS session." });
 
         session.ClosedAt = DateTime.UtcNow;
         session.ClosedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -505,7 +505,7 @@ public class PosController : Controller
     public async Task<IActionResult> Hold([FromBody] HoldRequest req)
     {
         var register = await BoundRegisterAsync();
-        if (register == null) return Json(new { success = false, message = "This till isn't set up. Pick a register." });
+        if (register == null) return Json(new { success = false, message = "This POS isn't set up. Pick a register." });
         if (req.Items == null || req.Items.Count == 0) return Json(new { success = false, message = "Nothing to hold." });
 
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
@@ -713,13 +713,13 @@ public class PosController : Controller
     public async Task<IActionResult> Checkout([FromBody] TillCheckout req)
     {
         var register = await BoundRegisterAsync();
-        if (register == null) return Json(new { success = false, message = "This till isn't set up. Pick a register." });
+        if (register == null) return Json(new { success = false, message = "This POS isn't set up. Pick a register." });
         if (!await _access.CanWriteAsync(User, register.StoreId))
-            return Json(new { success = false, message = "You're not assigned to this branch's till." });
+            return Json(new { success = false, message = "You're not assigned to this branch's POS." });
         if (req.Items == null || req.Items.Count == 0) return Json(new { success = false, message = "Cart is empty." });
 
         var session = await OpenSessionAsync(register.Id);
-        if (session == null) return Json(new { success = false, message = "Open the till before selling." });
+        if (session == null) return Json(new { success = false, message = "Open the POS before selling." });
 
         // Customer is mandatory on POS sales — attach the buyer before taking payment.
         var customerId = await ResolveCustomerIdAsync(req.CustomerUserId);

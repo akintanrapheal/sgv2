@@ -227,7 +227,7 @@ function resetPwd(id, email) {
     document.getElementById('reset-' + id).submit();
 }
 function setPin(id, email) {
-    const pin = prompt('Set a 4–8 digit till PIN for ' + email + '\n(leave blank and press OK to remove their PIN):');
+    const pin = prompt('Set a 4–8 digit POS PIN for ' + email + '\n(leave blank and press OK to remove their PIN):');
     if (pin === null) return;            // cancelled
     if (pin !== '' && !/^\d{4,8}$/.test(pin)) { alert('PIN must be 4–8 digits.'); return; }
     document.getElementById('setpin-val-' + id).value = pin;
