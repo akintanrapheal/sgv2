@@ -481,6 +481,7 @@ public class CheckoutController : Controller
                 ? FulfillmentType.StorePickup
                 : FulfillmentType.Delivery,
             PickupStoreId = vm.FulfillmentType == FulfillmentChoice.StorePickup ? vm.SelectedStoreId : null,
+            Notes = string.IsNullOrWhiteSpace(vm.OrderNotes) ? null : vm.OrderNotes.Trim(),
             Subtotal = cart.Subtotal,
             DeliveryFee = deliveryFee,
             DiscountCode = discountCode,
@@ -554,6 +555,17 @@ public class CheckoutController : Controller
         SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
             $"Order placed by customer ({(order.FulfillmentType == FulfillmentType.StorePickup ? "store pickup" : "delivery")}). Awaiting payment.");
         await _db.SaveChangesAsync();
+
+        // Newsletter opt-in (deduped) when the customer ticked the box.
+        if (vm.SubscribeNewsletter && !string.IsNullOrWhiteSpace(user.Email))
+        {
+            var subEmail = user.Email.Trim().ToLowerInvariant();
+            if (!await _db.NewsletterSubscribers.AnyAsync(s => s.Email == subEmail))
+            {
+                _db.NewsletterSubscribers.Add(new Models.Domain.NewsletterSubscriber { Email = subEmail, CreatedAt = DateTime.UtcNow });
+                await _db.SaveChangesAsync();
+            }
+        }
 
         // No stock is held before payment — it's committed first-come-first-served when payment
         // lands (FulfilPaidOrderAsync). If an item sells out before this customer pays, the

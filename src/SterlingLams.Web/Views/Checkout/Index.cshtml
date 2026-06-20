@@ -185,6 +185,21 @@
                         }
                     </div>
                 </section>
+
+                <!-- Step 3: Order notes + newsletter -->
+                <section>
+                    <h2 class="font-cormorant text-2xl font-light mb-6">Additional details</h2>
+                    <label asp-for="OrderNotes" class="block text-xs tracking-[0.2em] uppercase text-neutral-500 mb-2">
+                        Order notes <span class="text-neutral-300 normal-case tracking-normal">(optional)</span>
+                    </label>
+                    <textarea asp-for="OrderNotes" rows="4"
+                              placeholder="Notes about your order, e.g. special notes for delivery."
+                              class="w-full border border-neutral-200 px-4 py-3 text-sm focus:outline-none focus:border-neutral-900 transition-colors resize-none"></textarea>
+                    <label class="flex items-start gap-3 mt-5 cursor-pointer">
+                        <input asp-for="SubscribeNewsletter" type="checkbox" class="mt-0.5 rounded-none border-neutral-300 text-neutral-900" />
+                        <span class="text-sm text-neutral-600 font-light">Subscribe to our newsletter</span>
+                    </label>
+                </section>
             </div>
 
             <!-- ─── Right: Order Summary + Payment ──────────────────────── -->
@@ -251,6 +266,21 @@
                         </svg>
                         <span>Secure checkout · SSL encrypted</span>
                     </div>
+
+                    <p class="text-[11px] text-neutral-400 font-light leading-relaxed mb-4 pt-4 border-t border-neutral-200">
+                        Your personal data will be used to process your order, support your experience throughout this website, and for other purposes described in our
+                        <a asp-controller="Home" asp-action="Privacy" target="_blank" class="font-medium text-neutral-600 underline hover:text-neutral-800">privacy policy</a>.
+                    </p>
+                    <label class="flex items-start gap-2 mb-1 cursor-pointer">
+                        <input asp-for="AcceptTerms" type="checkbox" id="accept-terms" class="mt-0.5 rounded-none border-neutral-300 text-neutral-900" />
+                        <span class="text-xs text-neutral-600 font-light">
+                            I have read and agree to the website
+                            <a asp-controller="Home" asp-action="Terms" target="_blank" class="font-medium text-neutral-600 underline hover:text-neutral-800">terms and conditions</a>
+                            <span class="text-brand-500">*</span>
+                        </span>
+                    </label>
+                    <span asp-validation-for="AcceptTerms" class="block text-xs text-red-500 mb-3"></span>
+                    <p id="terms-error" class="hidden text-xs text-red-500 mb-3">Please accept the terms and conditions.</p>
 
                     <button type="submit"
                             class="w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-4 hover:bg-brand-600 transition-colors duration-300">
@@ -442,6 +472,16 @@ function updateSummary(fee) {
     }
 
     form.addEventListener('submit', async (e) => {
+        // Terms & conditions must be accepted (checked on every submit, even after the timeframe step).
+        const terms = document.getElementById('accept-terms');
+        if (terms && !terms.checked) {
+            e.preventDefault();
+            document.getElementById('terms-error')?.classList.remove('hidden');
+            terms.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+        document.getElementById('terms-error')?.classList.add('hidden');
+
         if (ackPassed) return; // already agreed → let it through
         e.preventDefault();
         const ff = form.querySelector('input[name="FulfillmentType"]:checked')?.value || 'Delivery';

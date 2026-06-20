@@ -62,6 +62,11 @@ public class CheckoutViewModel : IValidatableObject
     public string? GuestName { get; set; }
     public string? GuestPhone { get; set; }
 
+    // Extra checkout details (WooCommerce-style)
+    public bool SubscribeNewsletter { get; set; } = true;
+    public string? OrderNotes { get; set; }
+    public bool AcceptTerms { get; set; }
+
     // Conditional validation: a delivery address is only required for Delivery; a store is only
     // required for Store Pickup. (Previously the address fields were unconditionally [Required],
     // which blocked pickup checkouts.)
@@ -85,6 +90,9 @@ public class CheckoutViewModel : IValidatableObject
             if (SelectedStoreId == null)
                 yield return new ValidationResult("Please select a store for pickup.", new[] { "SelectedStoreId" });
         }
+
+        if (!AcceptTerms)
+            yield return new ValidationResult("Please accept the terms and conditions to place your order.", new[] { "AcceptTerms" });
     }
 }
 
