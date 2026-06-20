@@ -60,7 +60,7 @@
         </button>
         @if (hasFilters)
         {
-            <a asp-area="Admin" asp-controller="Products" asp-action="Index"
+            <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-route-clear="1"
                class="px-4 py-2 border border-neutral-300 text-neutral-500 text-xs rounded-sm hover:border-neutral-500 transition-colors whitespace-nowrap">
                 ✕ Clear All
             </a>
@@ -214,7 +214,7 @@
                     <td colspan="7" class="px-6 py-16 text-center text-neutral-400 text-sm">
                         @if (hasFilters)
                         {
-                            <span>No products match your filters. <a asp-area="Admin" asp-controller="Products" asp-action="Index" class="underline hover:text-neutral-700">Clear all filters</a></span>
+                            <span>No products match your filters. <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-route-clear="1" class="underline hover:text-neutral-700">Clear all filters</a></span>
                         }
                         else
                         {

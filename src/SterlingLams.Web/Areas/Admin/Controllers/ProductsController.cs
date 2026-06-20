@@ -37,6 +37,27 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         {
             ViewData["Title"] = "Products";
 
+            // Sticky filters: remember the last filter/sort/page in the session so the list stays put
+            // when you come back to Products (refresh, the menu link, or returning from an edit) — until
+            // you change it or hit "Clear All" (which sends ?clear=1). A fresh visit with no query string
+            // restores the saved view.
+            const string FilterKey = "admin.products.filter";
+            if (Request.Query.ContainsKey("clear"))
+            {
+                HttpContext.Session.Remove(FilterKey);
+                return RedirectToAction(nameof(Index));
+            }
+            if (Request.Query.Count == 0)
+            {
+                var saved = HttpContext.Session.GetString(FilterKey);
+                if (!string.IsNullOrEmpty(saved))
+                    return Redirect(Url.Action(nameof(Index), "Products", new { area = "Admin" }) + saved);
+            }
+            else
+            {
+                HttpContext.Session.SetString(FilterKey, Request.QueryString.Value ?? "");
+            }
+
             var query = _db.Products
                 .Include(p => p.Category)
                 .Include(p => p.Images)          // ← images for thumbnails
