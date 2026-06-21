@@ -318,7 +318,9 @@ public class PosController : Controller
 
     // Moving the till to another register/branch is gated behind an admin PIN, so a cashier can't
     // re-point the till on their own. The PIN entered must match an Admin who has a POS PIN set.
+    // Rate-limited (per-IP) so the admin PIN can't be brute-forced.
     [Authorize, HttpPost, ValidateAntiForgeryToken]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("auth")]
     public async Task<IActionResult> ChangeRegister(string? pin)
     {
         pin = (pin ?? "").Trim();
@@ -335,7 +337,10 @@ public class PosController : Controller
         return Json(new { success = true });
     }
 
+    // PIN sign-in bypasses Identity's lockout (manual hash verify), so rate-limit it per-IP to stop
+    // brute-forcing a 4–8 digit cashier PIN (the login page exposes cashier user ids).
     [AllowAnonymous, HttpPost, ValidateAntiForgeryToken]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("auth")]
     public async Task<IActionResult> Login(string userId, string pin)
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.PinHash != null);

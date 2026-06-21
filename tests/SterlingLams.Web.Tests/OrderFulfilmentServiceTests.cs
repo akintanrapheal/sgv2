@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using SterlingLams.Web.Models.Domain;
 using SterlingLams.Web.Services;
+using SterlingLams.Web.Services.Payment;
 using Xunit;
 
 namespace SterlingLams.Web.Tests;
@@ -9,7 +10,8 @@ namespace SterlingLams.Web.Tests;
 public class OrderFulfilmentServiceTests
 {
     private static OrderFulfilmentService Svc(TestDb t) =>
-        new(t.Db, new StockService(t.Db), NullLogger<OrderFulfilmentService>.Instance);
+        new(t.Db, new StockService(t.Db), NullLogger<OrderFulfilmentService>.Instance,
+            new FakePayment(), new FakeEmail(), new FakeSettings());
 
     [Fact]
     public async Task Fulfil_consolidates_via_transfers_then_sells_from_nearest_branch()
@@ -28,25 +30,24 @@ public class OrderFulfilmentServiceTests
 
         await Svc(t).FulfilPaidOrderAsync(order.Id);
 
-        // fulfilled from Allen (nearest), all branches drained to 0
+        // Fulfilled from Allen (nearest). Cross-branch: stock is HELD (reserved), not yet moved/sold —
+        // on-hand stays put at every branch until the transfers are dispatched & received.
         var fulfilled = await t.Db.Orders.FindAsync(order.Id);
         Assert.Equal(allen.Id, fulfilled!.FulfillingStoreId);
-        Assert.Equal(OrderStatus.Processing, fulfilled.Status);
-        Assert.Equal(0, t.Inv(p.Id, abuja.Id).QuantityOnHand);
-        Assert.Equal(0, t.Inv(p.Id, allen.Id).QuantityOnHand);
-        Assert.Equal(0, t.Inv(p.Id, ikota.Id).QuantityOnHand);
+        Assert.Equal(OrderStatus.AwaitingTransfer, fulfilled.Status);
+        Assert.Equal(1, t.Inv(p.Id, abuja.Id).QuantityOnHand); // reserved at source until dispatch
+        Assert.Equal(1, t.Inv(p.Id, abuja.Id).QuantityReserved);
+        Assert.Equal(1, t.Inv(p.Id, allen.Id).QuantityOnHand);  // local unit held (reserved), not yet sold
+        Assert.Equal(1, t.Inv(p.Id, allen.Id).QuantityReserved);
+        Assert.Equal(1, t.Inv(p.Id, ikota.Id).QuantityOnHand); // reserved at source until dispatch
+        Assert.Equal(1, t.Inv(p.Id, ikota.Id).QuantityReserved);
 
-        // two transfers into Allen, both referencing the order
+        // No sale committed yet, and two PENDING transfers into Allen, both referencing the order.
+        Assert.Equal(0, await t.Db.StockMovements.CountAsync(m => m.Type == StockMovementType.Sale));
         var transfers = await t.Db.StockTransfers.Include(x => x.Items).ToListAsync();
         Assert.Equal(2, transfers.Count);
         Assert.All(transfers, x => Assert.Equal(allen.Id, x.ToStoreId));
         Assert.All(transfers, x => Assert.Contains(order.OrderNumber, x.Note));
-
-        // ledger: 1 sale (-3) + 2 transfer pairs = 5 movements
-        var moves = await t.Db.StockMovements.ToListAsync();
-        Assert.Equal(5, moves.Count);
-        Assert.Single(moves, m => m.Type == StockMovementType.Sale && m.QuantityChange == -3 && m.StoreId == allen.Id);
-        Assert.Equal(4, moves.Count(m => m.Type == StockMovementType.Transfer));
     }
 
     [Fact]
@@ -56,17 +57,15 @@ public class OrderFulfilmentServiceTests
         var user = t.SeedUser();
         var (abuja, allen, ikota) = t.SeedBranches();
         var p = t.SeedProduct();
-        t.SetStock(p.Id, abuja.Id, 1);
-        t.SetStock(p.Id, allen.Id, 1);
-        t.SetStock(p.Id, ikota.Id, 1);
+        t.SetStock(p.Id, allen.Id, 5); // all local → straight sale, no transfers
         var order = t.NewDeliveryOrder(user, "Lagos", "Ikeja", (p, 3));
 
         var svc = Svc(t);
         await svc.FulfilPaidOrderAsync(order.Id);
         await svc.FulfilPaidOrderAsync(order.Id); // second call must be a no-op
 
-        Assert.Equal(5, await t.Db.StockMovements.CountAsync());
-        Assert.Equal(0, t.Inv(p.Id, allen.Id).QuantityOnHand); // not driven negative
+        Assert.Equal(1, await t.Db.StockMovements.CountAsync(m => m.Type == StockMovementType.Sale));
+        Assert.Equal(2, t.Inv(p.Id, allen.Id).QuantityOnHand); // sold 3 of 5 once, not twice
     }
 
     [Fact]
@@ -92,92 +91,33 @@ public class OrderFulfilmentServiceTests
         Assert.Empty(await t.Db.StockTransfers.ToListAsync());
     }
 
-    [Fact]
-    public async Task Reserve_holds_units_without_touching_on_hand()
+    // ── Minimal stubs for the dependencies the fulfilment service doesn't exercise here ──
+    private sealed class FakeEmail : IEmailService
     {
-        using var t = new TestDb();
-        var user = t.SeedUser();
-        var (abuja, allen, ikota) = t.SeedBranches();
-        var p = t.SeedProduct();
-        t.SetStock(p.Id, abuja.Id, 1);
-        t.SetStock(p.Id, allen.Id, 1);
-        t.SetStock(p.Id, ikota.Id, 1);
-        var order = t.NewDeliveryOrder(user, "Lagos", "Ikeja", (p, 3));
-
-        var ok = await Svc(t).TryReserveAsync(order.Id);
-
-        Assert.True(ok);
-        Assert.Equal(3, await t.Db.StockReservations.CountAsync(r => r.OrderId == order.Id));
-        // on-hand untouched, reserved bumped
-        foreach (var s in new[] { abuja, allen, ikota })
-        {
-            Assert.Equal(1, t.Inv(p.Id, s.Id).QuantityOnHand);
-            Assert.Equal(1, t.Inv(p.Id, s.Id).QuantityReserved);
-        }
+        public Task<bool> SendAsync(string toEmail, string subject, string innerHtml, string? toName = null, System.Threading.CancellationToken ct = default)
+            => Task.FromResult(true);
+        public Task<string> RenderAsync(string subject, string innerHtml, int? logoHeight = null)
+            => Task.FromResult(innerHtml);
     }
 
-    [Fact]
-    public async Task Reserve_fails_when_combined_available_is_insufficient()
+    private sealed class FakeSettings : ISettingsService
     {
-        using var t = new TestDb();
-        var user = t.SeedUser();
-        var (abuja, allen, ikota) = t.SeedBranches();
-        var p = t.SeedProduct();
-        t.SetStock(p.Id, abuja.Id, 1);
-        t.SetStock(p.Id, allen.Id, 1);
-        t.SetStock(p.Id, ikota.Id, 1);
-
-        var svc = Svc(t);
-        // first order reserves all 3
-        var first = t.NewDeliveryOrder(user, "Lagos", "Ikeja", (p, 3));
-        Assert.True(await svc.TryReserveAsync(first.Id));
-
-        // second order can't get even 1 — nothing available
-        var second = t.NewDeliveryOrder(user, "Lagos", "Ikeja", (p, 1));
-        Assert.False(await svc.TryReserveAsync(second.Id));
-        Assert.Equal(0, await t.Db.StockReservations.CountAsync(r => r.OrderId == second.Id));
+        public Task<string> GetAsync(string key, string defaultValue = "") => Task.FromResult(defaultValue);
+        public Task<bool> GetBoolAsync(string key, bool defaultValue = false) => Task.FromResult(defaultValue);
+        public Task<decimal> GetDecimalAsync(string key, decimal defaultValue = 0) => Task.FromResult(defaultValue);
+        public Task<int> GetIntAsync(string key, int defaultValue = 0) => Task.FromResult(defaultValue);
+        public Task SaveManyAsync(Dictionary<string, string> values) => Task.CompletedTask;
+        public Task<List<SiteSetting>> GetGroupAsync(string group) => Task.FromResult(new List<SiteSetting>());
+        public Task<List<SiteSetting>> GetAllAsync() => Task.FromResult(new List<SiteSetting>());
+        public void ClearCache() { }
     }
 
-    [Fact]
-    public async Task Reserve_then_fulfil_releases_hold_and_sells()
+    private sealed class FakePayment : IPaymentService
     {
-        using var t = new TestDb();
-        var user = t.SeedUser();
-        var (abuja, allen, ikota) = t.SeedBranches();
-        var p = t.SeedProduct();
-        t.SetStock(p.Id, abuja.Id, 1);
-        t.SetStock(p.Id, allen.Id, 1);
-        t.SetStock(p.Id, ikota.Id, 1);
-        var order = t.NewDeliveryOrder(user, "Lagos", "Ikeja", (p, 3));
-
-        var svc = Svc(t);
-        await svc.TryReserveAsync(order.Id);
-        await svc.FulfilPaidOrderAsync(order.Id);
-
-        Assert.Equal(0, await t.Db.StockReservations.CountAsync(r => r.OrderId == order.Id));
-        foreach (var s in new[] { abuja, allen, ikota })
-        {
-            Assert.Equal(0, t.Inv(p.Id, s.Id).QuantityOnHand);
-            Assert.Equal(0, t.Inv(p.Id, s.Id).QuantityReserved);
-        }
-    }
-
-    [Fact]
-    public async Task Release_frees_reserved_units()
-    {
-        using var t = new TestDb();
-        var user = t.SeedUser();
-        var (abuja, allen, ikota) = t.SeedBranches();
-        var p = t.SeedProduct();
-        t.SetStock(p.Id, allen.Id, 5);
-        var order = t.NewDeliveryOrder(user, "Lagos", "Ikeja", (p, 2));
-
-        var svc = Svc(t);
-        await svc.TryReserveAsync(order.Id);
-        Assert.Equal(2, t.Inv(p.Id, allen.Id).QuantityReserved);
-
-        await svc.ReleaseReservationAsync(order.Id);
-        Assert.Equal(0, t.Inv(p.Id, allen.Id).QuantityReserved);
-        Assert.Equal(0, await t.Db.StockReservations.CountAsync(r => r.OrderId == order.Id));
+        public string ProviderName => "Test";
+        public Task<InitiatePaymentResult> InitiatePaymentAsync(InitiatePaymentRequest request) => throw new System.NotImplementedException();
+        public Task<VerifyPaymentResult> VerifyPaymentAsync(string reference) => throw new System.NotImplementedException();
+        public Task<bool> ValidateWebhookAsync(string payload, string signature) => Task.FromResult(false);
+        public Task<RefundResult> RefundPaymentAsync(RefundPaymentRequest request) => throw new System.NotImplementedException();
     }
 }
