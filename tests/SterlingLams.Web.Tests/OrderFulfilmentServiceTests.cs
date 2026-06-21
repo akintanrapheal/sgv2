@@ -91,6 +91,48 @@ public class OrderFulfilmentServiceTests
         Assert.Empty(await t.Db.StockTransfers.ToListAsync());
     }
 
+    // Variant-pool reconciliation: fulfilment must resolve a line to the VARIANT's own inventory row,
+    // never the shared product pool — matching StockService's deduction. If the variant has no row at
+    // any branch (only the pool holds stock), the order is sold-out → refunded, NOT charged-then-stuck
+    // (which is what happened when allocation read the pool but deduction targeted the empty variant row).
+    [Fact]
+    public async Task Variant_with_no_row_is_sold_out_not_drawn_from_product_pool()
+    {
+        using var t = new TestDb();
+        var user = t.SeedUser();
+        var store = t.SeedStore("Allen", "Lagos", "Ikeja");
+        var p = t.SeedProduct();
+        var variant = new ProductVariant { ProductId = p.Id, Name = "Gold", IsActive = true };
+        t.Db.ProductVariants.Add(variant);
+        t.Db.SaveChanges();
+
+        // Stock sits ONLY in the product-pool row (ProductVariantId == null); the variant has no row.
+        t.SetStock(p.Id, store.Id, onHand: 5);
+
+        // An online order for the VARIANT.
+        var order = new Order
+        {
+            OrderNumber = "T-" + System.Guid.NewGuid().ToString("N")[..10],
+            UserId = user.Id, Channel = OrderChannel.Online, FulfillmentType = FulfillmentType.Delivery,
+            Status = OrderStatus.Confirmed, Currency = "NGN", Subtotal = p.Price, Total = p.Price,
+            PaymentReference = "REF-1",
+            DeliveryAddress = new Address { UserId = user.Id, FullName = "Test", Phone = "0800",
+                Line1 = "1 St", City = "Ikeja", State = "Lagos", Country = "Nigeria" },
+            Items = new List<OrderItem> { new() { ProductId = p.Id, ProductVariantId = variant.Id,
+                ProductName = p.Name, VariantName = "Gold", Quantity = 1, UnitPrice = p.Price } }
+        };
+        t.Db.Orders.Add(order);
+        t.Db.SaveChanges();
+
+        var outcome = await Svc(t).FulfilPaidOrderAsync(order.Id);
+
+        Assert.Equal(FulfilOutcome.SoldOut, outcome);
+        Assert.Equal(5, t.Inv(p.Id, store.Id).QuantityOnHand);   // pool row untouched — not raided
+        Assert.Equal(0, await t.Db.StockMovements.CountAsync(m => m.Type == StockMovementType.Sale));
+        var after = await t.Db.Orders.FindAsync(order.Id);
+        Assert.True(after!.Status is OrderStatus.Refunded or OrderStatus.Cancelled); // made whole, not stuck
+    }
+
     // ── Minimal stubs for the dependencies the fulfilment service doesn't exercise here ──
     private sealed class FakeEmail : IEmailService
     {
@@ -118,6 +160,7 @@ public class OrderFulfilmentServiceTests
         public Task<InitiatePaymentResult> InitiatePaymentAsync(InitiatePaymentRequest request) => throw new System.NotImplementedException();
         public Task<VerifyPaymentResult> VerifyPaymentAsync(string reference) => throw new System.NotImplementedException();
         public Task<bool> ValidateWebhookAsync(string payload, string signature) => Task.FromResult(false);
-        public Task<RefundResult> RefundPaymentAsync(RefundPaymentRequest request) => throw new System.NotImplementedException();
+        public Task<RefundResult> RefundPaymentAsync(RefundPaymentRequest request)
+            => Task.FromResult(new RefundResult { Success = true, Supported = true });
     }
 }

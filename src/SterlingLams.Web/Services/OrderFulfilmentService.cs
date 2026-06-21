@@ -57,26 +57,25 @@ public class OrderFulfilmentService : IOrderFulfilmentService
         _settings = settings;
     }
 
-    // Variant-level stock: an order line for variant V at store S draws on V's own inventory row
-    // if one exists there, otherwise the shared product pool row (ProductVariantId == null). This
-    // resolver maps a requested (product, variant, store) to that EFFECTIVE row's variant id, so
-    // availability/reservation/deduction all agree — and two un-stocked variants that both fall
-    // back to the same pool share one counter (no oversell).
+    // Variant-level stock: an order line for variant V draws on V's OWN inventory row — variants
+    // never fall back to the shared product pool (ProductVariantId == null). A simple product
+    // (variantId == null) uses the pool row. This MUST match StockService's resolution
+    // (ResolveTargetVariantIdAsync, which now returns variantId verbatim — the pool-fallback
+    // transition is complete, stock lives on the variants): allocation/availability here pairs with
+    // the StockService deduction it commits, so both must target the same row. If allocation fell
+    // back to the pool while the deduction targeted the (empty) variant row, a paid order would be
+    // allocated then fail to deduct — left Deferred forever instead of refunded. Kept as a resolver
+    // (rather than inlining `vid`) so the lock-step with StockService is explicit at every call site.
     private static Func<int, int?, int, int?> EffectiveVariantResolver(IEnumerable<StoreInventory> rows)
-    {
-        var variantRows = rows.Where(r => r.ProductVariantId != null)
-            .Select(r => (r.ProductId, Vid: r.ProductVariantId!.Value, r.StoreId))
-            .ToHashSet();
-        return (pid, vid, sid) =>
-            vid.HasValue && variantRows.Contains((pid, vid.Value, sid)) ? vid : (int?)null;
-    }
+        => (_, vid, _) => vid;
 
     // ── Allocation ────────────────────────────────────────────────────────────
     // Spreads an order's lines across branches: the fulfilment branch first (pickup store, or
     // nearest to the customer), then the next-nearest. `avail(product, variant, store)` supplies the
-    // usable quantity of the effective row; `effVid` collapses lines that share a pool so they draw
-    // on one counter. Returns the per-(store, product, variant) allocation and the first line that
-    // couldn't be fully covered (null = success).
+    // usable quantity of the effective row; `effVid` maps each line to the inventory row it draws on
+    // (the variant's own row, or the pool row for a simple product) so repeated lines of the same
+    // product/variant decrement one balance. Returns the per-(store, product, variant) allocation and
+    // the first line that couldn't be fully covered (null = success).
     private static (Store fulfilStore, Dictionary<(int store, int product, int? variant), int> alloc, OrderItem? shortLine)
         Allocate(Order order, List<Store> activeStores, List<Store> ranked,
             Func<int, int?, int, int?> effVid, Func<int, int?, int, int> avail)
@@ -89,7 +88,7 @@ public class OrderFulfilmentService : IOrderFulfilmentService
         var storeOrder = new List<int> { fulfilStore.Id };
         storeOrder.AddRange(ranked.Where(s => s.Id != fulfilStore.Id).Select(s => s.Id));
 
-        // Keyed by the EFFECTIVE row so several lines sharing a pool decrement the same balance.
+        // Keyed by the EFFECTIVE row so repeated lines of the same product/variant share one balance.
         var remaining = new Dictionary<(int product, int? effVid, int store), int>();
         int Remaining(int pid, int? vid, int sid)
         {
