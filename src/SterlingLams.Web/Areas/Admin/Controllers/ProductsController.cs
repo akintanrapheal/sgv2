@@ -2,6 +2,8 @@ using System;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using CloudinaryDotNet;
+using CloudinaryDotNet.Actions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -19,16 +21,19 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly ApplicationDbContext _db;
         private readonly IWooCommerceImportService _wooImporter;
         private readonly IWebHostEnvironment _env;
+        private readonly IConfiguration _config;
         private const int PageSize = 30;
 
         public ProductsController(
             ApplicationDbContext db,
             IWooCommerceImportService wooImporter,
-            IWebHostEnvironment env)
+            IWebHostEnvironment env,
+            IConfiguration config)
         {
             _db = db;
             _wooImporter = wooImporter;
             _env = env;
+            _config = config;
         }
 
         public async Task<IActionResult> Index(
@@ -570,6 +575,41 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             await _db.OrderItems.AnyAsync(oi => oi.ProductId == productId)
             || await _db.StockMovements.AnyAsync(m => m.ProductId == productId);
 
+        // Stores an uploaded product image to Cloudinary (persistent + CDN) when configured — REQUIRED
+        // on ephemeral hosts like Render, where /wwwroot/uploads is wiped on every redeploy (which is
+        // why locally-saved product images broke on the storefront after a deploy). Falls back to local
+        // disk only in dev/when Cloudinary isn't configured. Returns the URL, or null on failure.
+        private async Task<string?> SaveProductImageAsync(IFormFile file)
+        {
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            var cloudName = _config["Cloudinary:CloudName"];
+            var apiKey    = _config["Cloudinary:ApiKey"];
+            var apiSecret = _config["Cloudinary:ApiSecret"];
+            if (!string.IsNullOrWhiteSpace(cloudName) && !string.IsNullOrWhiteSpace(apiKey) && !string.IsNullOrWhiteSpace(apiSecret))
+            {
+                var cloudinary = new Cloudinary(new Account(cloudName, apiKey, apiSecret)) { Api = { Secure = true } };
+                await using var s = file.OpenReadStream();
+                var result = await cloudinary.UploadAsync(new ImageUploadParams
+                {
+                    File = new FileDescription(file.FileName, s),
+                    Folder = "sterlinglams/products",
+                    PublicId = Guid.NewGuid().ToString("N"),
+                    UniqueFilename = false,
+                    Overwrite = false
+                });
+                if (result.StatusCode != System.Net.HttpStatusCode.OK || result.SecureUrl == null) return null;
+                return result.SecureUrl.ToString();
+            }
+
+            // Dev fallback: local disk (NOT persistent on Render).
+            var dir = Path.Combine(_env.WebRootPath, "uploads", "products");
+            Directory.CreateDirectory(dir);
+            var fileName = $"{Guid.NewGuid():N}{ext}";
+            await using var stream = System.IO.File.Create(Path.Combine(dir, fileName));
+            await file.CopyToAsync(stream);
+            return $"/uploads/products/{fileName}";
+        }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> AddImage(int id, IFormFile? imageFile, string? imageUrl, string? altText, bool isPrimary)
@@ -581,13 +621,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             string resolvedUrl;
             if (imageFile != null && imageFile.Length > 0)
             {
-                var ext = Path.GetExtension(imageFile.FileName).ToLowerInvariant();
-                var dir = Path.Combine(_env.WebRootPath, "uploads", "products");
-                Directory.CreateDirectory(dir);
-                var fileName = $"{Guid.NewGuid():N}{ext}";
-                await using var stream = System.IO.File.Create(Path.Combine(dir, fileName));
-                await imageFile.CopyToAsync(stream);
-                resolvedUrl = $"/uploads/products/{fileName}";
+                var saved = await SaveProductImageAsync(imageFile);
+                if (saved == null)
+                {
+                    TempData["Error"] = "Image upload failed. Please try again.";
+                    return RedirectToAction(nameof(Edit), new { id });
+                }
+                resolvedUrl = saved;
             }
             else if (!string.IsNullOrWhiteSpace(imageUrl))
             {
