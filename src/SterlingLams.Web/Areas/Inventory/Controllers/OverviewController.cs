@@ -90,6 +90,20 @@ public class OverviewController : InventoryAreaController
             Transactions = s.Tx
         }).ToList();
 
+        // Daily sales trend (last 30 days) — revenue + order count per day, for the line chart.
+        var trendRaw = await soldOrders
+            .GroupBy(o => o.CreatedAt.Date)
+            .Select(g => new { Date = g.Key, Revenue = g.Sum(o => o.Total), Orders = g.Count() })
+            .ToListAsync();
+        var trend = new List<DayPointRow>();
+        for (int i = 29; i >= 0; i--)
+        {
+            var date = today.AddDays(-i);
+            var row = trendRaw.FirstOrDefault(r => r.Date == date);
+            trend.Add(new DayPointRow { Label = date.ToString("MMM dd"), Revenue = row?.Revenue ?? 0, Orders = row?.Orders ?? 0 });
+        }
+        vm.SalesTrend = trend;
+
         // Recent stock movements.
         vm.RecentMovements = await _db.StockMovements
             .OrderByDescending(m => m.Id).Take(8)
@@ -121,7 +135,12 @@ public class InventoryOverviewViewModel
     public List<MovementRow> RecentMovements { get; set; } = new();
     public List<TopProductRow> TopProducts { get; set; } = new();
     public List<TopStaffRow> TopStaff { get; set; } = new();
+    public List<DayPointRow> SalesTrend { get; set; } = new();
+
+    // Stock-health split for the doughnut (derived from the counts above).
+    public int InStock => Math.Max(0, TotalSkus - OutOfStock - LowStock);
 }
+public class DayPointRow { public string Label { get; set; } = ""; public decimal Revenue { get; set; } public int Orders { get; set; } }
 public class TopProductRow { public string Name { get; set; } = ""; public int Units { get; set; } public decimal Revenue { get; set; } }
 public class TopStaffRow { public string Name { get; set; } = ""; public decimal Sales { get; set; } public int Transactions { get; set; } }
 public class BranchUnitsRow { public string Store { get; set; } = ""; public int Units { get; set; } }

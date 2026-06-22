@@ -1,0 +1,25 @@
+@model SterlingLams.Web.Models.ViewModels.ChartCard
+@*
+    Reusable chart card chrome (title + optional subtitle + canvas) for the admin/inventory
+    backends. The chart is drawn by the page's @@section Scripts with SLCharts.<type>('@Model.Id', …).
+    Shows an empty-state when Model.Empty is true so pages don't render a blank canvas.
+*@
+<div class="bg-white border border-neutral-100 rounded-sm @Model.WrapperClass">
+    <div class="px-5 py-3 border-b border-neutral-100 flex items-baseline justify-between">
+        <h2 class="text-sm font-medium text-neutral-800">@Model.Title</h2>
+        @if (!string.IsNullOrEmpty(Model.Subtitle))
+        {
+            <span class="text-[11px] text-neutral-400">@Model.Subtitle</span>
+        }
+    </div>
+    <div class="p-4">
+        @if (Model.Empty)
+        {
+            <p class="py-8 text-center text-sm text-neutral-400">@Model.EmptyText</p>
+        }
+        else
+        {
+            <canvas id="@Model.Id" height="@Model.Height"></canvas>
+        }
+    </div>
+</div>

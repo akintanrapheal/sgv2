@@ -1,6 +1,9 @@
+@using System.Text.Json
 @model SterlingLams.Web.Areas.Inventory.Controllers.InventoryOverviewViewModel
 @{
     ViewData["Title"] = "Inventory Overview";
+    string J(object o) => JsonSerializer.Serialize(o);
+    var hasTrend = Model.SalesTrend.Any(s => s.Revenue > 0);
 }
 
 <!-- KPI cards -->
@@ -22,6 +25,15 @@
         <p class="text-2xl font-semibold text-neutral-900 mt-1">@Model.UnitsOnHand.ToString("N0")</p>
         <p class="text-[11px] text-neutral-400 mt-1">@string.Join(" · ", Model.PerBranch.Select(b => $"{b.Store} {b.Units:N0}"))</p>
     </div>
+</div>
+
+<!-- Charts -->
+<div class="mb-6">
+    <partial name="_ChartCard" model='new ChartCard { Id = "ovSalesTrend", Title = "Sales trend", Subtitle = "last 30 days · revenue / day", Height = 70, Empty = !hasTrend, EmptyText = "No sales in the last 30 days." }' />
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <partial name="_ChartCard" model='new ChartCard { Id = "ovPerBranch", Title = "Units on hand by branch", Subtitle = "current", Height = 120, Empty = !Model.PerBranch.Any(), EmptyText = "No branches configured." }' />
+    <partial name="_ChartCard" model='new ChartCard { Id = "ovStockHealth", Title = "Stock health", Subtitle = "by SKU", Height = 120, Empty = Model.TotalSkus == 0, EmptyText = "No products yet." }' />
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -169,3 +181,31 @@
         <p class="px-5 py-8 text-center text-sm text-neutral-400">No stock movements yet.</p>
     }
 </div>
+
+@section Scripts {
+    <partial name="_ChartScripts" />
+    <script>
+        @if (hasTrend)
+        {
+            <text>
+            SLCharts.line('ovSalesTrend', @Html.Raw(J(Model.SalesTrend.Select(s => s.Label))),
+                [{ label: 'Revenue', data: @Html.Raw(J(Model.SalesTrend.Select(s => s.Revenue))), money: true }]);
+            </text>
+        }
+        @if (Model.PerBranch.Any())
+        {
+            <text>
+            SLCharts.bar('ovPerBranch', @Html.Raw(J(Model.PerBranch.Select(b => b.Store))),
+                @Html.Raw(J(Model.PerBranch.Select(b => b.Units))), { label: 'Units' });
+            </text>
+        }
+        @if (Model.TotalSkus > 0)
+        {
+            <text>
+            SLCharts.doughnut('ovStockHealth', ['In stock', 'Low stock', 'Out of stock'],
+                [@Model.InStock, @Model.LowStock, @Model.OutOfStock],
+                { colors: ['#10b981', '#f59e0b', '#ef4444'] });
+            </text>
+        }
+    </script>
+}
