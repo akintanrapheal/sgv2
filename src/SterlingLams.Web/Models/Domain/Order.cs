@@ -93,6 +93,11 @@ public class Order
     public bool IsPaid { get; set; }
     public DateTime? PaidAt { get; set; }
 
+    /// <summary>Client-generated id for a POS sale rung up OFFLINE, used to make the sync upload
+    /// idempotent (re-sending the same offline sale never creates a duplicate order). Null for
+    /// normal online sales.</summary>
+    public string? OfflineClientId { get; set; }
+
     public string? TrackingNumber { get; set; }
     public string? Notes { get; set; }
     public string? AdminNotes { get; set; }

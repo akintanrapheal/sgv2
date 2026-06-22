@@ -69,6 +69,12 @@
                 </svg>
                 Change register
             </button>
+            <button type="button" id="menu-sync-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999A5.5 5.5 0 105.5 15"/></svg>
+                Sync with cloud
+                <span id="sync-pending-count" class="hidden ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-semibold">0</span>
+            </button>
+            <p id="sync-status" class="px-4 pb-1 text-[10px] text-neutral-400"></p>
 
             <p class="px-4 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Sales</p>
             <button type="button" id="till-held-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
@@ -1121,10 +1127,21 @@
             });
             const data = await res.json();
             if (data.success) {
-                document.getElementById('till-done-info').innerHTML =
-                    `<span class="font-medium">${fmt(data.total)}</span> · ${data.orderNumber}` +
-                    (data.change > 0 ? `<br>Change due: <span class="font-medium text-emerald-600">${fmt(data.change)}</span>` : '');
-                document.getElementById('till-receipt').href = '/Pos/Receipt/' + data.orderId;
+                const receiptBtn = document.getElementById('till-receipt');
+                if (data.offline) {
+                    // Sale captured offline (pos-offline.js). No server receipt until it syncs.
+                    document.getElementById('till-done-info').innerHTML =
+                        `<span class="font-medium">${fmt(data.total)}</span> · Saved offline` +
+                        (data.change > 0 ? `<br>Change due: <span class="font-medium text-emerald-600">${fmt(data.change)}</span>` : '') +
+                        `<br><span class="text-xs text-amber-600">Syncs automatically when you're back online.</span>`;
+                    receiptBtn.classList.add('hidden');
+                } else {
+                    document.getElementById('till-done-info').innerHTML =
+                        `<span class="font-medium">${fmt(data.total)}</span> · ${data.orderNumber}` +
+                        (data.change > 0 ? `<br>Change due: <span class="font-medium text-emerald-600">${fmt(data.change)}</span>` : '');
+                    receiptBtn.href = '/Pos/Receipt/' + data.orderId;
+                    receiptBtn.classList.remove('hidden');
+                }
                 cart = []; tenderedEl.value = ''; setCustomer(null); clearSavedCart(); renderCart();
                 document.getElementById('till-done').classList.remove('hidden');
             } else showError(data.message || 'Could not complete the sale.');

@@ -943,6 +943,154 @@ public class PosController : Controller
         return Json(new { success = true, orderId = order.Id, orderNumber, total = order.Total, change = order.ChangeGiven });
     }
 
+    // ── Offline sale sync ─────────────────────────────────────────────────────
+    public class OfflineSale
+    {
+        public string ClientId { get; set; } = "";       // GUID generated on the device (idempotency key)
+        public string PaymentMethod { get; set; } = "Cash";
+        public decimal AmountTendered { get; set; }
+        public string? CustomerUserId { get; set; }
+        public DateTime? CreatedAt { get; set; }          // when the sale was rung up offline (client UTC)
+        public List<TillLine> Items { get; set; } = new();
+    }
+    public class SyncSalesRequest { public List<OfflineSale> Sales { get; set; } = new(); }
+
+    /// <summary>Ingests POS sales that were completed OFFLINE. Idempotent by OfflineClientId, so the
+    /// device can safely re-send. Stock is committed first-come-first-served under a row lock; if a
+    /// line can't be fully covered (sold elsewhere while offline) the deduction is clamped to zero
+    /// and the order is flagged for staff to reconcile (the locked "best-effort" policy).</summary>
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SyncSales([FromBody] SyncSalesRequest req)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { success = false, message = "This POS isn't set up. Pick a register." });
+        if (!await _access.CanWriteAsync(User, register.StoreId))
+            return Json(new { success = false, message = "You're not assigned to this branch's POS." });
+
+        var results = new List<object>();
+        if (req?.Sales == null || req.Sales.Count == 0) return Json(new { success = true, results });
+
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        foreach (var sale in req.Sales)
+        {
+            if (string.IsNullOrWhiteSpace(sale.ClientId))
+            { results.Add(new { clientId = sale.ClientId, success = false, message = "Missing client id." }); continue; }
+
+            // Idempotency: this offline sale was already synced — return its order, do nothing else.
+            var existing = await _db.Orders.Where(o => o.OfflineClientId == sale.ClientId)
+                .Select(o => new { o.Id, o.OrderNumber }).FirstOrDefaultAsync();
+            if (existing != null)
+            { results.Add(new { clientId = sale.ClientId, success = true, duplicate = true, orderId = existing.Id, orderNumber = existing.OrderNumber }); continue; }
+
+            if (sale.Items == null || sale.Items.Count == 0)
+            { results.Add(new { clientId = sale.ClientId, success = false, message = "Empty sale." }); continue; }
+
+            try { results.Add(await IngestOfflineSaleAsync(sale, register, userId)); }
+            catch (Exception ex)
+            {
+                _db.ChangeTracker.Clear();
+                results.Add(new { clientId = sale.ClientId, success = false, message = ex.Message });
+            }
+        }
+        return Json(new { success = true, results });
+    }
+
+    private async Task<object> IngestOfflineSaleAsync(OfflineSale sale, Register register, string userId)
+    {
+        var storeId = register.StoreId;
+        var soldAt = sale.CreatedAt ?? DateTime.UtcNow;
+        if (soldAt.Kind != DateTimeKind.Utc) soldAt = DateTime.SpecifyKind(soldAt, DateTimeKind.Utc);
+        var now = DateTime.UtcNow;
+        var session = await OpenSessionAsync(register.Id);
+        var customerId = await ResolveCustomerIdAsync(sale.CustomerUserId);
+
+        var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
+        var products = await _db.Products.Include(p => p.Variants)
+            .Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
+
+        var orderNumber = $"POS-{soldAt:yyMMdd}-{now:HHmmssfff}{Random.Shared.Next(100):D2}";
+        var shortfalls = new List<string>();
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        if (_db.Database.IsNpgsql())
+            foreach (var pid in productIds.OrderBy(id => id))
+                await _db.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT 1 FROM \"StoreInventories\" WHERE \"ProductId\" = {pid} AND \"StoreId\" = {storeId} FOR UPDATE");
+
+        var order = new Order
+        {
+            OrderNumber = orderNumber,
+            OfflineClientId = sale.ClientId,
+            Channel = OrderChannel.Pos,
+            FulfillmentType = FulfillmentType.StorePickup,
+            PickupStoreId = storeId,
+            RegisterId = register.Id,
+            TillSessionId = session?.Id,
+            UserId = userId,
+            CustomerUserId = customerId,
+            Status = OrderStatus.Delivered,
+            IsPaid = true,
+            PaidAt = soldAt,
+            PaymentProvider = sale.PaymentMethod,
+            CreatedAt = soldAt,
+            UpdatedAt = now
+        };
+
+        decimal subtotal = 0, totalDiscount = 0;
+        foreach (var line in sale.Items)
+        {
+            if (!products.TryGetValue(line.ProductId, out var prod)) { shortfalls.Add($"#{line.ProductId} (removed)"); continue; }
+            var qty = Math.Max(1, line.Quantity);
+            var variant = line.VariantId.HasValue ? prod.Variants.FirstOrDefault(v => v.Id == line.VariantId) : null;
+            var unitPrice = prod.EffectivePrice + (variant?.PriceAdjustment ?? 0);
+            var lineDiscount = Math.Max(0, Math.Min(line.DiscountAmount, unitPrice * qty));
+            subtotal += unitPrice * qty;
+            totalDiscount += lineDiscount;
+
+            order.Items.Add(new OrderItem
+            {
+                ProductId = prod.Id, ProductVariantId = variant?.Id,
+                ProductName = prod.Name, VariantName = variant?.Name, ProductSku = prod.Sku,
+                Quantity = qty, UnitPrice = unitPrice, DiscountAmount = lineDiscount,
+                DiscountReason = string.IsNullOrWhiteSpace(line.DiscountReason) ? null : line.DiscountReason.Trim(),
+                DiscountType = string.IsNullOrWhiteSpace(line.DiscountType) ? null : line.DiscountType.Trim(),
+                ItemNote = string.IsNullOrWhiteSpace(line.Note) ? null : line.Note.Trim()
+            });
+
+            // Best-effort stock: deduct what's available; clamp the rest and flag (don't go negative).
+            var available = await _stock.GetAvailableAsync(prod.Id, variant?.Id, storeId);
+            var deduct = Math.Min(qty, Math.Max(0, available));
+            if (deduct > 0)
+                await _stock.ApplyAsync(prod.Id, variant?.Id, storeId, -deduct, StockMovementType.Sale, orderNumber, userId: userId);
+            if (deduct < qty)
+                shortfalls.Add($"{prod.Name}{(variant != null ? " – " + variant.Name : "")} (short {qty - deduct})");
+        }
+
+        order.Subtotal = subtotal;
+        order.DiscountAmount = totalDiscount;
+        order.Total = subtotal - totalDiscount;
+        order.AmountTendered = sale.AmountTendered > 0 ? sale.AmountTendered : order.Total;
+        order.ChangeGiven = Math.Max(0, (order.AmountTendered ?? order.Total) - order.Total);
+        _db.Orders.Add(order);
+        await _db.SaveChangesAsync();
+
+        OrderNotes.AddSystem(_db, order.Id,
+            $"Recorded offline at {soldAt:yyyy-MM-dd HH:mm} (cashier's till), synced {now:yyyy-MM-dd HH:mm}.");
+        if (shortfalls.Count > 0)
+        {
+            var msg = "Oversold while offline — not enough stock for: " + string.Join(", ", shortfalls) + ". Reconcile manually.";
+            order.AdminNotes = msg;
+            OrderNotes.AddSystem(_db, order.Id, msg);
+        }
+        await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        await _loyalty.AccrueForOrderAsync(order.Id);
+        try { await _audit.LogAsync("Sale", "Order", order.Id.ToString(), $"Offline POS sale synced {orderNumber} — ₦{order.Total:N0} ({sale.PaymentMethod}) at {register.Name}"); } catch { }
+
+        return new { clientId = sale.ClientId, success = true, orderId = order.Id, orderNumber, total = order.Total, change = order.ChangeGiven, oversold = shortfalls.Count > 0 };
+    }
+
     [Authorize]
     public async Task<IActionResult> Receipt(int id)
     {

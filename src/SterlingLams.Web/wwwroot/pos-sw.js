@@ -6,7 +6,7 @@
  *
  * Bump CACHE when shell assets change so old caches are cleared on activate.
  */
-const CACHE = 'sgpos-shell-v2';
+const CACHE = 'sgpos-shell-v3';
 
 // Same-origin static assets that make up the shell. (Versionless URLs resolve to the current file;
 // the page references them with ?v=<hash>, but the bare path returns the same bytes.)

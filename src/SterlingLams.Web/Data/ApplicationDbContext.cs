@@ -278,6 +278,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
             e.HasIndex(o => o.CreatedAt);
             e.HasIndex(o => new { o.Channel, o.CreatedAt });
             e.HasIndex(o => o.PaymentReference).HasFilter("\"PaymentReference\" IS NOT NULL");
+            // Idempotency for offline POS sales: one order per client-generated id (re-sync is a no-op).
+            e.HasIndex(o => o.OfflineClientId).IsUnique().HasFilter("\"OfflineClientId\" IS NOT NULL");
             e.Property(o => o.Subtotal).HasPrecision(18, 2);
             e.Property(o => o.DeliveryFee).HasPrecision(18, 2);
             e.Property(o => o.Tax).HasPrecision(18, 2);
