@@ -64,9 +64,10 @@
     <meta name="robots" content="@seoRobots" />
     <link rel="canonical" href="@seoCanonical" />
 
-    <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="~/favicon.svg" />
-    @if (!string.IsNullOrEmpty(seoLogo)) { <link rel="apple-touch-icon" href="@Abs(seoLogo)" /> }
+    <!-- Favicon (Sterlin Glams logo) -->
+    <link rel="icon" type="image/png" sizes="32x32" href="~/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="~/favicon-16.png" />
+    <link rel="apple-touch-icon" href="~/apple-touch-icon.png" />
 
     <!-- Open Graph -->
     <meta property="og:site_name" content="@seoSiteName" />

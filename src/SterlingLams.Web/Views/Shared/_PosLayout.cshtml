@@ -6,10 +6,22 @@
     <meta name="robots" content="noindex, nofollow" />
     <title>@ViewData["Title"] · POS</title>
     <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
+
+    @* Installable, offline-capable POS app (PWA). *@
+    <link rel="manifest" href="~/pos.webmanifest" />
+    <meta name="theme-color" content="#ed028b" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="SG POS" />
+    <link rel="icon" type="image/png" sizes="32x32" href="~/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="~/favicon-16.png" />
+    <link rel="apple-touch-icon" href="~/apple-touch-icon.png" />
+
     <style>html,body{height:100%;} body{overscroll-behavior:none;}</style>
 </head>
 <body class="bg-neutral-100 text-neutral-800 antialiased h-full">
     @RenderBody()
+    <script src="~/js/pos-pwa.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>
