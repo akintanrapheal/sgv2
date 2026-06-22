@@ -21,6 +21,8 @@
 </head>
 <body class="bg-neutral-100 text-neutral-800 antialiased h-full">
     @RenderBody()
+    @* Offline data layer must load before the page's inline script so its fetch shim is active first. *@
+    <script src="~/js/pos-offline.js" asp-append-version="true"></script>
     <script src="~/js/pos-pwa.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>

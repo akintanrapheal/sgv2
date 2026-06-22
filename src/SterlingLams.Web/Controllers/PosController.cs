@@ -624,6 +624,74 @@ public class PosController : Controller
         return Json(new { success = true });
     }
 
+    // ── Offline snapshot ──────────────────────────────────────────────────────
+    // One bulk payload the PWA caches in IndexedDB so the till can search/scan/build a cart with no
+    // network. Shapes mirror Search/Categories/DiscountReasons/CustomerSearch exactly, so the
+    // client-side fetch shim can serve identical responses offline. Stock is the bound store's
+    // AVAILABLE quantity (on-hand − reserved), same as Search.
+    [Authorize, HttpGet]
+    public async Task<IActionResult> Snapshot()
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { ok = false, message = "No register bound to this POS." });
+        var storeId = register.StoreId;
+        var storeName = (await _db.Stores.Where(s => s.Id == storeId).Select(s => s.Name).FirstOrDefaultAsync());
+
+        var categories = await _db.Categories.Where(c => c.IsActive)
+            .OrderBy(c => c.SortOrder).ThenBy(c => c.Name)
+            .Select(c => new { id = c.Id, name = c.Name, imageUrl = c.ImageUrl })
+            .ToListAsync();
+
+        var discountReasons = await _db.PosDiscountReasons.Where(r => r.IsActive)
+            .Include(r => r.Presets.OrderBy(p => p.SortOrder)).OrderBy(r => r.SortOrder)
+            .Select(r => new
+            {
+                id = r.Id, name = r.Name,
+                presets = r.Presets.Select(p => new { id = p.Id, label = p.Label, type = p.Type, value = p.Value })
+            })
+            .ToListAsync();
+
+        var products = await _db.Products.Where(p => p.IsActive)
+            .OrderBy(p => p.Name)
+            .Select(p => new
+            {
+                id = p.Id,
+                name = p.Name,
+                sku = p.Sku,
+                barcode = p.Barcode,
+                categoryId = p.CategoryId,
+                price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price ? p.SalePrice.Value : p.Price,
+                image = p.Images.Where(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
+                        ?? p.Images.Select(i => i.Url).FirstOrDefault(),
+                stock = p.StoreInventories.Where(si => si.StoreId == storeId)
+                                          .Select(si => si.AvailableQuantity).FirstOrDefault(),
+                variants = p.ProductType == "variable"
+                    ? p.Variants.Where(v => v.IsActive)
+                        .Select(v => new { id = v.Id, name = v.Name, priceAdjustment = v.PriceAdjustment }).ToList()
+                    : null
+            })
+            .ToListAsync();
+
+        // Same population rule as CustomerSearch's empty-query list (POS buyers + anyone on an order).
+        var customers = await _db.Users
+            .Where(u => u.UserName!.StartsWith("pos-") || _db.Orders.Any(o => o.CustomerUserId == u.Id))
+            .OrderByDescending(u => u.CreatedAt)
+            .Select(u => new { id = u.Id, name = (u.FirstName + " " + u.LastName).Trim(), phone = u.PhoneNumber, email = u.Email })
+            .ToListAsync();
+
+        return Json(new
+        {
+            ok = true,
+            storeId,
+            storeName,
+            syncedAt = DateTime.UtcNow,
+            categories,
+            discountReasons,
+            products,
+            customers
+        });
+    }
+
     // ── Categories ────────────────────────────────────────────────────────────
     [Authorize, HttpGet]
     public async Task<IActionResult> Categories()

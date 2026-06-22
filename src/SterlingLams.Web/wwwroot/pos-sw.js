@@ -6,13 +6,14 @@
  *
  * Bump CACHE when shell assets change so old caches are cleared on activate.
  */
-const CACHE = 'sgpos-shell-v1';
+const CACHE = 'sgpos-shell-v2';
 
 // Same-origin static assets that make up the shell. (Versionless URLs resolve to the current file;
 // the page references them with ?v=<hash>, but the bare path returns the same bytes.)
 const PRECACHE = [
   '/css/app.css',
   '/js/pos-pwa.js',
+  '/js/pos-offline.js',
   '/js/jsbarcode.min.js',
   '/pos.webmanifest',
   '/icons/pos-192.png',
