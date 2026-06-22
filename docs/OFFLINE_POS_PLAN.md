@@ -1,6 +1,6 @@
 # Offline ePOS Plan
 
-**Status:** Proposed — decisions pending (see [Decisions to lock](#decisions-to-lock-before-any-code)). No code written yet.
+**Status:** Decisions locked (2026-06-22) — building Phase 0 + 1. See [Decisions](#decisions-locked).
 **Goal:** Turn the existing web POS into an installable app that keeps selling during internet / network outages, so a website or host hiccup never stops the till.
 
 ---
@@ -96,15 +96,22 @@ For a jeweller with low per-item counts and usually one till per branch, real-wo
 
 ---
 
-## Decisions to lock before any code
+## Decisions locked
 
-| # | Decision | Options | Chosen |
-|---|----------|---------|--------|
-| 1 | Till **device(s)** | Windows PC / Android tablet / iPad (iPad/Safari has the most PWA quirks) | _pending_ |
-| 2 | **Tills per branch** | One / several (drives oversell guard) | _pending_ |
-| 3 | **Offline oversell policy** | (a) best-effort + reconcile (recommended) / (b) hard-block last 1–2 offline | _pending_ |
-| 4 | **Offline user-switching** | Not needed (one cashier per device/shift) / required (pre-synced PIN hashes) | _pending_ |
-| 5 | **Starting phase** | Phase 0 + 1 (recommended) / other | _pending_ |
+Locked 2026-06-22:
+
+| # | Decision | Chosen |
+|---|----------|--------|
+| 1 | Till **device(s)** | **Windows PC + Android tablet** (no iOS) |
+| 2 | **Tills per branch** | **One till per branch** |
+| 3 | **Offline oversell policy** | **Best-effort + reconcile** (server clamps + flags on sync) |
+| 4 | **Offline user-switching** | **No** — one cashier per device/shift (no PIN hashes on device) |
+| 5 | **Starting phase** | **Phase 0 + 1** together |
+
+### What these choices simplify
+- **No iOS** → Chrome/Edge only: reliable service worker + Background Sync; we don't need the Safari foreground-only sync workaround (we'll still sync on reconnect as good practice).
+- **One till per branch** → offline oversell risk is minimal; the "last 1–2" hard guard becomes **optional** (default: warn only, don't block).
+- **One cashier per device/shift** → cached shift session only; **no cashier PIN hashes stored locally** (smaller attack surface). Switching users still requires being online.
 
 ---
 
