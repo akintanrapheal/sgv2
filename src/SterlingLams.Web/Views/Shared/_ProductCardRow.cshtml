@@ -24,7 +24,12 @@
                         <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="block">
                             <div class="aspect-square bg-neutral-100 mb-4 overflow-hidden relative">
                                 <img src="@p.PrimaryImageUrl" alt="@p.Name" loading="lazy"
-                                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                                     class="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 @(p.SecondaryImageUrl != null ? "group-hover:opacity-0" : "")" />
+                                @if (p.SecondaryImageUrl != null)
+                                {
+                                    <img src="@p.SecondaryImageUrl" alt="@p.Name" loading="lazy"
+                                         class="absolute inset-0 w-full h-full object-cover opacity-0 transition-all duration-700 group-hover:opacity-100 group-hover:scale-105" />
+                                }
                                 <partial name="_DiscountBadge" model="p.DiscountPercent" />
                                 @if (!p.IsAvailable)
                                 {

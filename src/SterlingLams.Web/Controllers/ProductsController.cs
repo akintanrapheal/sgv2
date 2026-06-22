@@ -79,8 +79,10 @@ public class ProductsController : Controller
                 Price = p.Price,
                 SalePrice = p.SalePrice,
                 Currency = p.Currency,
-                PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
-                    ?? "/images/placeholder.jpg",
+                PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
+                    .Select(i => i.Url).FirstOrDefault() ?? "/images/placeholder.jpg",
+                SecondaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
+                    .Select(i => i.Url).Skip(1).FirstOrDefault(),
                 IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0),
                 IsNewArrival = p.IsNewArrival,
                 HasVariants = p.Variants.Any(v => v.IsActive),
@@ -224,7 +226,10 @@ public class ProductsController : Controller
                 Slug = p.Slug,
                 Price = p.Price,
                 SalePrice = p.SalePrice,
-                PrimaryImageUrl = p.Images.FirstOrDefault()?.Url ?? "/images/placeholder.jpg",
+                PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
+                    .Select(i => i.Url).FirstOrDefault() ?? "/images/placeholder.jpg",
+                SecondaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
+                    .Select(i => i.Url).Skip(1).FirstOrDefault(),
                 IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0)
             }).ToList(),
             FrequentlyBoughtTogether = await _merch.FrequentlyBoughtTogetherAsync(product.Id, 4),

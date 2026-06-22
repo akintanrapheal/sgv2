@@ -6,6 +6,9 @@ public class ProductCardViewModel
     public string Name { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;
     public string PrimaryImageUrl { get; set; } = "/images/placeholder.jpg";
+    /// <summary>Second image revealed on card hover (Tiffany-style). Null when the product has only
+    /// one image — the card then shows no swap.</summary>
+    public string? SecondaryImageUrl { get; set; }
     public decimal Price { get; set; }
     public decimal? SalePrice { get; set; }
     public string Currency { get; set; } = "NGN";

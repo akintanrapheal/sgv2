@@ -385,14 +385,20 @@
 
             @if (Model.Images.Any())
             {
-                <div class="flex flex-wrap gap-3 mb-4">
+                <p class="text-xs text-neutral-400 mb-3">The <span class="text-neutral-600 font-medium">primary</span> image shows on cards &amp; the product page. The <span class="text-emerald-600 font-medium">hover</span> image is revealed when a shopper hovers a card (Tiffany-style swap).</p>
+                <div class="flex flex-wrap gap-3 mb-5">
                     @foreach (var img in Model.Images)
                     {
-                        <div class="relative group">
-                            <img src="@img.Url" alt="@img.AltText" class="w-20 h-20 object-cover rounded border border-neutral-200" />
+                        <div class="relative group w-24">
+                            <img src="@img.Url" alt="@img.AltText"
+                                 class="w-24 h-24 object-cover rounded border @(img.IsPrimary ? "border-neutral-900 ring-1 ring-neutral-900" : img.IsHover ? "border-emerald-500 ring-1 ring-emerald-500" : "border-neutral-200")" />
                             @if (img.IsPrimary)
                             {
                                 <span class="absolute bottom-1 left-1 text-[9px] bg-neutral-900 text-white px-1 rounded">Primary</span>
+                            }
+                            else if (img.IsHover)
+                            {
+                                <span class="absolute bottom-1 left-1 text-[9px] bg-emerald-600 text-white px-1 rounded">Hover</span>
                             }
                             <form asp-area="Admin" asp-controller="Products" asp-action="DeleteImage"
                                   asp-route-productId="@Model.Id" asp-route-imageId="@img.Id"
@@ -400,6 +406,21 @@
                                 @Html.AntiForgeryToken()
                                 <button type="submit" class="bg-red-500 text-white text-[10px] rounded w-5 h-5 flex items-center justify-center">×</button>
                             </form>
+                            <div class="mt-1.5 flex flex-col gap-1">
+                                @if (!img.IsPrimary)
+                                {
+                                    <form asp-area="Admin" asp-controller="Products" asp-action="SetPrimaryImage"
+                                          asp-route-productId="@Model.Id" asp-route-imageId="@img.Id" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="w-full text-[10px] py-1 rounded border border-neutral-200 text-neutral-600 hover:border-neutral-900 hover:text-neutral-900 transition-colors">Make primary</button>
+                                    </form>
+                                    <form asp-area="Admin" asp-controller="Products" asp-action="SetHoverImage"
+                                          asp-route-productId="@Model.Id" asp-route-imageId="@img.Id" method="post">
+                                        @Html.AntiForgeryToken()
+                                        <button type="submit" class="w-full text-[10px] py-1 rounded border @(img.IsHover ? "border-emerald-500 text-emerald-600 hover:border-emerald-600" : "border-neutral-200 text-neutral-600 hover:border-emerald-500 hover:text-emerald-600") transition-colors">@(img.IsHover ? "Hover ✓ (clear)" : "Set hover")</button>
+                                    </form>
+                                }
+                            </div>
                         </div>
                     }
                 </div>

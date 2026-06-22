@@ -39,9 +39,10 @@ public class HomeController : Controller
             Price = p.Price,
             SalePrice = p.SalePrice,
             Currency = p.Currency,
-            PrimaryImageUrl = p.Images.FirstOrDefault(i => i.IsPrimary)?.Url
-                ?? p.Images.FirstOrDefault()?.Url
-                ?? "/images/placeholder.jpg",
+            PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
+                .Select(i => i.Url).FirstOrDefault() ?? "/images/placeholder.jpg",
+            SecondaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
+                .Select(i => i.Url).Skip(1).FirstOrDefault(),
             IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0),
             HasVariants = p.Variants.Any(v => v.IsActive)
         }).ToList();

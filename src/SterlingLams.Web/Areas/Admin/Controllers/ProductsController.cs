@@ -626,6 +626,48 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return RedirectToAction(nameof(Edit), new { id });
         }
 
+        // Promote an already-uploaded image to primary (the one shown by default on cards & detail).
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> SetPrimaryImage(int productId, int imageId)
+        {
+            var images = await _db.ProductImages.Where(i => i.ProductId == productId).ToListAsync();
+            var target = images.FirstOrDefault(i => i.Id == imageId);
+            if (target != null)
+            {
+                foreach (var i in images) i.IsPrimary = false;
+                target.IsPrimary = true;
+                target.IsHover = false; // an image can't be both the primary and the hover swap
+                await _db.SaveChangesAsync();
+                await LogAsync("Update", "Product", productId.ToString(), "Set primary product image");
+                TempData["Success"] = "Primary image updated.";
+            }
+            return RedirectToAction(nameof(Edit), new { id = productId });
+        }
+
+        // Pick the image revealed on card hover (Tiffany-style). Clicking the current hover image
+        // again clears it. The primary image can't double as the hover image.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> SetHoverImage(int productId, int imageId)
+        {
+            var images = await _db.ProductImages.Where(i => i.ProductId == productId).ToListAsync();
+            var target = images.FirstOrDefault(i => i.Id == imageId);
+            if (target == null) return RedirectToAction(nameof(Edit), new { id = productId });
+            if (target.IsPrimary)
+            {
+                TempData["Error"] = "Pick a different image for hover — the primary can't also be the hover image.";
+                return RedirectToAction(nameof(Edit), new { id = productId });
+            }
+            var turningOn = !target.IsHover;
+            foreach (var i in images) i.IsHover = false;
+            target.IsHover = turningOn;
+            await _db.SaveChangesAsync();
+            await LogAsync("Update", "Product", productId.ToString(), turningOn ? "Set hover product image" : "Cleared hover product image");
+            TempData["Success"] = turningOn ? "Hover image set." : "Hover image cleared.";
+            return RedirectToAction(nameof(Edit), new { id = productId });
+        }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> DeleteImage(int productId, int imageId)
