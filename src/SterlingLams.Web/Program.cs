@@ -46,18 +46,23 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 // ─── Data Protection ──────────────────────────────────────────────────────────
-// Persist keys so antiforgery tokens, auth cookies and other protected payloads survive
-// app restarts/redeploys and are shared across instances. Without this, keys are ephemeral
-// and every restart invalidates tokens/cookies (causing antiforgery failures and logouts).
-// Path is configurable (DataProtection:KeysPath); defaults to App_Data/dp-keys under the
-// content root. A fixed application name keeps keys valid even if the deploy path changes.
+// Persist keys so antiforgery tokens, auth cookies and other protected payloads survive app
+// restarts/redeploys and are shared across instances. Keys live in the DATABASE: the host
+// (Render free tier) has an ephemeral filesystem that's wiped on every redeploy and cold start,
+// so file-based keys would rotate constantly and invalidate every issued token/cookie (HTTP 400
+// antiforgery failures on form posts, plus surprise logouts). A fixed application name keeps keys
+// valid across deploys. Optional file fallback for environments without a DB (DataProtection:KeysPath).
 var dpKeysPath = builder.Configuration["DataProtection:KeysPath"];
-if (string.IsNullOrWhiteSpace(dpKeysPath))
-    dpKeysPath = Path.Combine(builder.Environment.ContentRootPath, "App_Data", "dp-keys");
-Directory.CreateDirectory(dpKeysPath);
-builder.Services.AddDataProtection()
-    .SetApplicationName("SterlingLams")
-    .PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath));
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("SterlingLams");
+if (!string.IsNullOrWhiteSpace(dpKeysPath))
+{
+    Directory.CreateDirectory(dpKeysPath);
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath));
+}
+else
+{
+    dataProtection.PersistKeysToDbContext<ApplicationDbContext>();
+}
 
 // ─── Identity ───────────────────────────────────────────────────────────────
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
