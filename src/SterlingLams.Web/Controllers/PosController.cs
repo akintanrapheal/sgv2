@@ -666,7 +666,7 @@ public class PosController : Controller
             })
             .ToListAsync();
 
-        var products = await _db.Products.Where(p => p.IsActive)
+        var products = await _db.Products.Where(p => p.IsActive && !p.HiddenFromPos)
             .OrderBy(p => p.Name)
             .Select(p => new
             {
@@ -744,7 +744,7 @@ public class PosController : Controller
         var storeId = register.StoreId;
         q = (q ?? "").Trim();
 
-        var query = _db.Products.Where(p => p.IsActive);
+        var query = _db.Products.Where(p => p.IsActive && !p.HiddenFromPos);
         if (categoryId.HasValue)
             query = query.Where(p => p.CategoryId == categoryId.Value);
         if (q.Length > 0)
@@ -802,7 +802,7 @@ public class PosController : Controller
         };
         if (since.HasValue) since = DateTime.SpecifyKind(since.Value, DateTimeKind.Utc);
 
-        var products = await _db.Products.Where(p => p.IsActive)
+        var products = await _db.Products.Where(p => p.IsActive && !p.HiddenFromPos)
             .Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
                      || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
                      || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
@@ -874,6 +874,28 @@ public class PosController : Controller
         }).ToList();
 
         return Json(result);
+    }
+
+    public class PosVisibilityRequest { public int ProductId { get; set; } public bool Hidden { get; set; } }
+
+    // Staff "Mark unavailable" from the product popup — hides a product from the POS only (the
+    // storefront listing is unaffected). Reversible.
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetPosVisibility([FromBody] PosVisibilityRequest req)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { success = false, message = "This POS isn't set up. Pick a register." });
+        if (!await _access.CanWriteAsync(User, register.StoreId))
+            return Json(new { success = false, message = "You're not assigned to this branch's POS." });
+
+        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == req.ProductId);
+        if (product == null) return Json(new { success = false, message = "Product not found." });
+
+        product.HiddenFromPos = req.Hidden;
+        product.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        try { await _audit.LogAsync("Update", "Product", product.Id.ToString(), req.Hidden ? $"Marked '{product.Name}' unavailable on POS" : $"Marked '{product.Name}' available on POS"); } catch { }
+        return Json(new { success = true, hidden = product.HiddenFromPos });
     }
 
     public class TillLine

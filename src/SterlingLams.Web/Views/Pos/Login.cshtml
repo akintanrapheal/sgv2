@@ -18,19 +18,13 @@
         <div class="w-[120px]"></div>
     </header>
 
-    <!-- Brand hero -->
-    <div class="bg-white border-b border-neutral-100 py-4 text-center">
-        <div class="w-14 h-14 rounded-full bg-brand-500 text-white flex items-center justify-center mx-auto mb-2 shadow-lg">
-            <span class="font-cormorant text-2xl font-light tracking-wide">S</span>
-        </div>
-        <h1 class="font-cormorant text-2xl font-light tracking-[0.15em] uppercase text-neutral-900">Sterlin Glams</h1>
+    <!-- Brand hero (compact so the keypad + Sign In fit without scrolling) -->
+    <div class="bg-white border-b border-neutral-100 py-3 text-center">
+        <img src="~/images/sg-logo.png" alt="Sterlin Glams" class="h-12 mx-auto object-contain" />
         @if (register != null)
         {
-            <p class="text-sm text-neutral-500 mt-1">@register.Name &nbsp;·&nbsp; @register.Store?.Name</p>
+            <p class="text-xs text-neutral-500 mt-1">@register.Name &nbsp;·&nbsp; @register.Store?.Name</p>
         }
-        <!-- Big live clock -->
-        <p class="text-3xl font-light tabular-nums text-neutral-800 mt-2 tracking-widest" id="till-clock-big"></p>
-        <p class="text-sm text-neutral-400 mt-1" id="till-date"></p>
     </div>
 
     <div class="flex-1 flex overflow-hidden">

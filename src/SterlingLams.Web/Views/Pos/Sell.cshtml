@@ -20,9 +20,7 @@
             <span id="hamburger-dot" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full bg-brand-500"></span>
         </button>
         <!-- Logo -->
-        <div class="w-8 h-8 rounded-full bg-brand-500 flex items-center justify-center flex-shrink-0">
-            <span class="font-cormorant text-base font-light">S</span>
-        </div>
+        <img src="~/images/sg-logo.png" alt="Sterlin Glams" class="h-7 object-contain flex-shrink-0 bg-white rounded-md px-1.5 py-0.5" />
         <div class="flex-1 min-w-0">
             <p class="text-xs font-medium text-white leading-none">@Model.Store?.Name</p>
             <p class="text-[10px] text-neutral-400 leading-none mt-0.5">@Model.Name</p>
@@ -47,9 +45,7 @@
     <div id="till-menu" class="fixed inset-y-0 left-0 w-72 max-w-[85vw] bg-white z-50 shadow-2xl -translate-x-full transition-transform duration-200 flex flex-col">
         <div class="flex items-center justify-between px-4 py-3 bg-neutral-900 text-white flex-shrink-0">
             <div class="flex items-center gap-2 min-w-0">
-                <div class="w-7 h-7 rounded-full bg-brand-500 flex items-center justify-center flex-shrink-0">
-                    <span class="font-cormorant text-sm font-light">S</span>
-                </div>
+                <img src="~/images/sg-logo.png" alt="Sterlin Glams" class="h-6 object-contain flex-shrink-0 bg-white rounded-md px-1 py-0.5" />
                 <span class="text-sm font-medium truncate">@Model.Store?.Name</span>
             </div>
             <button type="button" id="menu-close-btn" class="text-neutral-400 hover:text-white transition-colors flex-shrink-0">
@@ -542,6 +538,30 @@
     <div id="stocklookup-detail" class="hidden flex-1 overflow-y-auto text-sm px-6 py-4"></div>
 </div>
 
+<!-- Product popup (long-press / right-click a product) -->
+<div id="till-product-popup" class="hidden fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div class="flex items-start justify-between gap-3 px-5 pt-5">
+            <h3 id="pp-name" class="text-lg font-semibold text-neutral-900 leading-snug"></h3>
+            <button type="button" id="pp-close" class="text-neutral-400 hover:text-neutral-700 transition-colors flex-shrink-0">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+            </button>
+        </div>
+        <div class="px-5 pt-2 pb-1 flex items-center gap-2 text-sm">
+            <span id="pp-price" class="font-semibold text-neutral-800"></span>
+            <span class="text-neutral-300">·</span>
+            <span id="pp-stock"></span>
+        </div>
+        <div class="px-5 py-3 flex gap-3">
+            <button type="button" id="pp-stockinfo" class="flex-1 border border-sky-300 text-sky-600 rounded-lg py-2.5 text-xs font-semibold uppercase tracking-wide hover:bg-sky-50 transition-colors">Stock info</button>
+            <button type="button" id="pp-toggle" class="flex-1 border border-rose-300 text-rose-600 rounded-lg py-2.5 text-xs font-semibold uppercase tracking-wide hover:bg-rose-50 transition-colors disabled:opacity-50">Mark unavailable</button>
+        </div>
+        <div class="px-5 pb-5 pt-2 border-t border-neutral-100">
+            <p id="pp-barcode" class="text-xs text-sky-500 font-mono"></p>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
 <script>
 (function () {
@@ -705,7 +725,7 @@
         }
         resultsEl.innerHTML = items.map(p => {
             const out = p.stock <= 0;
-            return `<button type="button" ${out ? 'disabled' : ''} class="till-prod text-left bg-white border border-neutral-200 rounded-xl overflow-hidden hover:border-brand-400 hover:shadow-md transition-all ${out ? 'opacity-40' : ''}" data-p='${encodeURIComponent(JSON.stringify(p)).replace(/'/g, '%27')}'>
+            return `<button type="button" class="till-prod text-left bg-white border border-neutral-200 rounded-xl overflow-hidden hover:border-brand-400 hover:shadow-md transition-all ${out ? 'opacity-40' : ''}" data-p='${encodeURIComponent(JSON.stringify(p)).replace(/'/g, '%27')}'>
                 <div class="aspect-square bg-neutral-50 relative">${p.image ? `<img src="${p.image}" class="w-full h-full object-cover">` : '<div class="w-full h-full flex items-center justify-center text-neutral-300"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></div>'}
                     ${out ? '<div class="absolute inset-0 bg-white/60 flex items-center justify-center"><span class="text-[10px] text-red-500 font-medium">Out of stock</span></div>' : ''}
                 </div>
@@ -717,8 +737,64 @@
                 </div>
             </button>`;
         }).join('');
-        resultsEl.querySelectorAll('.till-prod').forEach(b => b.addEventListener('click', () => add(JSON.parse(decodeURIComponent(b.dataset.p)))));
+        resultsEl.querySelectorAll('.till-prod').forEach(b => {
+            const prod = () => JSON.parse(decodeURIComponent(b.dataset.p));
+            let lpTimer = null, longPressed = false;
+            const startLP = () => { longPressed = false; lpTimer = setTimeout(() => { longPressed = true; openProductPopup(prod()); }, 500); };
+            const cancelLP = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
+            b.addEventListener('pointerdown', startLP);
+            ['pointerup', 'pointerleave', 'pointercancel', 'pointermove'].forEach(ev => b.addEventListener(ev, cancelLP));
+            b.addEventListener('contextmenu', e => { e.preventDefault(); cancelLP(); openProductPopup(prod()); }); // desktop right-click
+            b.addEventListener('click', () => {
+                if (longPressed) { longPressed = false; return; }  // long-press already opened the popup
+                const p = prod();
+                if ((p.stock || 0) <= 0) return;                   // out of stock: don't add
+                add(p);
+            });
+        });
     }
+
+    // ── Product popup (long-press / right-click a product card) ──────────────────
+    const pp = document.getElementById('till-product-popup');
+    const ppName = document.getElementById('pp-name');
+    const ppPrice = document.getElementById('pp-price');
+    const ppStock = document.getElementById('pp-stock');
+    const ppBarcode = document.getElementById('pp-barcode');
+    const ppStockBtn = document.getElementById('pp-stockinfo');
+    const ppToggle = document.getElementById('pp-toggle');
+    let ppCurrent = null;
+    function openProductPopup(p) {
+        ppCurrent = p;
+        ppName.textContent = p.name;
+        ppPrice.textContent = fmt(p.price);
+        const s = p.stock || 0;
+        ppStock.innerHTML = s > 0
+            ? `<span class="text-emerald-600 font-medium">${s} in stock</span>`
+            : '<span class="text-red-500 font-medium">Out of stock</span>';
+        ppBarcode.textContent = (p.barcode || p.sku) ? `${p.barcode || p.sku} (${p.name})` : '';
+        ppToggle.disabled = false;
+        pp.classList.remove('hidden');
+    }
+    function closeProductPopup() { pp.classList.add('hidden'); ppCurrent = null; }
+    document.getElementById('pp-close').addEventListener('click', closeProductPopup);
+    pp.addEventListener('click', e => { if (e.target === pp) closeProductPopup(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && !pp.classList.contains('hidden')) closeProductPopup(); });
+    ppStockBtn.addEventListener('click', () => { const p = ppCurrent; closeProductPopup(); if (window.SGStockLookup) window.SGStockLookup.open(p.sku || p.barcode || p.name); });
+    ppToggle.addEventListener('click', async () => {
+        if (!ppCurrent) return;
+        const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+        ppToggle.disabled = true;
+        try {
+            const res = await fetch('/Pos/SetPosVisibility', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                body: JSON.stringify({ productId: ppCurrent.id, hidden: true })
+            });
+            const data = await res.json();
+            if (data.success) { closeProductPopup(); runSearch(); }   // refresh — product now hidden from POS
+            else showError(data.message || 'Could not update.');
+        } catch { showError('Could not update.'); }
+        finally { ppToggle.disabled = false; }
+    });
 
     async function onScan(code) {
         if (!code) return;

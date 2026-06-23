@@ -42,6 +42,9 @@ public class Product
     public string ProductType { get; set; } = "simple";
 
     public bool IsActive { get; set; } = true;
+    /// <summary>Hidden from the POS/till only (staff "Mark unavailable") — still listed on the
+    /// storefront. Independent of <see cref="IsActive"/>.</summary>
+    public bool HiddenFromPos { get; set; }
     public bool IsFeatured { get; set; }
     public int LowStockThreshold { get; set; } = 3;
     public bool IsNewArrival { get; set; }
