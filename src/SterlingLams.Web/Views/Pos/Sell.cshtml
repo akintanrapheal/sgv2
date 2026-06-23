@@ -526,6 +526,15 @@
                 <option value="">All locations</option>
             </select>
         </div>
+        <div class="flex items-center gap-2">
+            <label for="stocklookup-period" class="text-[10px] text-neutral-400 font-medium uppercase tracking-wide">Quantity sold in</label>
+            <select id="stocklookup-period" class="text-sm border border-neutral-200 rounded-lg px-3 py-2.5 focus:outline-none focus:border-brand-500">
+                <option value="today">Today</option>
+                <option value="week">This week</option>
+                <option value="month">This month</option>
+                <option value="all">All dates</option>
+            </select>
+        </div>
     </div>
     <div id="stocklookup-results" class="flex-1 overflow-y-auto text-sm">
         <p class="text-center text-neutral-400 py-8 text-xs">Search for a product to see stock levels.</p>
@@ -1529,41 +1538,36 @@
     });
 }());
 
-// ── Stock lookup ─────────────────────────────────────────────────────────────
+// ── Stock lookup (EPOS-style grid) ───────────────────────────────────────────
 (function () {
     const fmt = n => '₦' + Number(n || 0).toLocaleString('en-NG', { maximumFractionDigits: 0 });
     const modal = document.getElementById('till-stocklookup');
     const input = document.getElementById('stocklookup-search');
-    const searchbar = document.getElementById('stocklookup-searchbar');
     const locationSelect = document.getElementById('stocklookup-location');
+    const periodSelect = document.getElementById('stocklookup-period');
     const results = document.getElementById('stocklookup-results');
-    const detail = document.getElementById('stocklookup-detail');
-    const titleEl = document.getElementById('stocklookup-title');
     const backBtn = document.getElementById('stocklookup-back');
     const DASH = '—';
-    let debounce, lastItems = [], currentDetail = null, locationsLoaded = false;
+    const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    let debounce, lastItems = [], locationsLoaded = false;
 
-    document.getElementById('menu-stocklookup-btn').addEventListener('click', () => {
+    function openModal(prefill) {
         modal.classList.remove('hidden');
+        if (backBtn) backBtn.classList.add('hidden');
         loadLocations();
-        showList();
+        if (prefill != null) input.value = prefill;
         setTimeout(() => input.focus(), 50);
-    });
+        if (input.value.trim()) search(); else emptyState();
+    }
+    document.getElementById('menu-stocklookup-btn').addEventListener('click', () => openModal(null));
     document.getElementById('stocklookup-close').addEventListener('click', () => modal.classList.add('hidden'));
+    // Exposed so the product popup's "Stock info" can open the lookup pre-filtered to a product.
+    window.SGStockLookup = { open: openModal };
 
-    input.addEventListener('input', () => {
-        clearTimeout(debounce);
-        debounce = setTimeout(search, 250);
-    });
+    input.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(search, 250); });
     input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(debounce); search(); } });
-
-    locationSelect.addEventListener('change', () => {
-        if (!detail.classList.contains('hidden') && currentDetail) {
-            openItemDetail(currentDetail.item, currentDetail.variant);
-        } else if (!results.classList.contains('hidden')) {
-            renderResults();
-        }
-    });
+    locationSelect.addEventListener('change', renderGrid);     // location filter is client-side
+    periodSelect.addEventListener('change', search);           // qty-sold depends on period -> refetch
 
     async function loadLocations() {
         if (locationsLoaded) return;
@@ -1571,150 +1575,79 @@
         try {
             const res = await fetch('/Pos/StockLookupStores');
             const stores = await res.json();
-            locationSelect.insertAdjacentHTML('beforeend', stores.map(s => `<option value="${s.name}">${s.name}</option>`).join(''));
+            locationSelect.insertAdjacentHTML('beforeend', stores.map(s => `<option value="${esc(s.name)}">${esc(s.name)}</option>`).join(''));
         } catch { locationsLoaded = false; }
     }
 
-    function showList() {
-        titleEl.textContent = 'Stock lookup';
-        backBtn.classList.add('hidden');
-        searchbar.classList.remove('hidden');
-        detail.classList.add('hidden');
-        results.classList.remove('hidden');
-        currentDetail = null;
-        if (lastItems.length) renderResults();
-    }
-
-    function showDetail(title, onBack, html) {
-        titleEl.textContent = title;
-        backBtn.classList.remove('hidden');
-        backBtn.onclick = onBack;
-        searchbar.classList.remove('hidden');
-        results.classList.add('hidden');
-        detail.classList.remove('hidden');
-        detail.innerHTML = html;
-    }
-
-    function renderDetailTable(title, item, variant) {
-        const barcode = (variant && variant.barcode) || item.barcode || DASH;
-        const category = item.category || DASH;
-        const price = fmt(item.price);
-        const headers = ['Name', 'Description', 'Colour', 'Size', 'Location', 'In stock', 'On hold', 'On order', 'Sale price', 'Brand', 'Category', 'Barcode', 'Order code', 'Qty sold'];
-        const rightAlign = new Set(['In stock', 'On hold', 'On order', 'Sale price', 'Qty sold']);
-        const loc = locationSelect.value;
-        let stores = item.stores || [];
-        if (loc) {
-            const match = stores.filter(s => s.name === loc);
-            stores = match.length ? match : [{ name: loc, available: null, reserved: null }];
-        }
-        if (!stores.length) stores = [{ name: DASH, available: null, reserved: null }];
-        const rows = stores.map(s => {
-            const cells = {
-                'Name': title,
-                'Description': DASH,
-                'Colour': DASH,
-                'Size': DASH,
-                'Location': s.name,
-                'In stock': s.available != null ? s.available : DASH,
-                'On hold': s.reserved != null ? s.reserved : DASH,
-                'On order': DASH,
-                'Sale price': price,
-                'Brand': DASH,
-                'Category': category,
-                'Barcode': barcode,
-                'Order code': DASH,
-                'Qty sold': DASH,
-            };
-            return `<tr>${headers.map(h => {
-                const v = cells[h];
-                let cls = 'px-3 py-2 text-neutral-700';
-                if (rightAlign.has(h)) cls += ' text-right';
-                if (h === 'In stock' && v !== DASH) cls += v > 0 ? ' font-medium text-emerald-600' : ' font-medium text-red-500';
-                if (h === 'Name' || h === 'Barcode') cls += ' font-medium';
-                return `<td class="${cls}">${v}</td>`;
-            }).join('')}</tr>`;
-        }).join('');
-        return `
-            <div class="overflow-x-auto">
-                <table class="w-full text-xs whitespace-nowrap">
-                    <thead>
-                        <tr class="text-left text-neutral-400 border-b border-neutral-100 uppercase tracking-wide text-[10px]">
-                            ${headers.map(h => `<th class="px-3 py-2 font-medium${rightAlign.has(h) ? ' text-right' : ''}">${h}</th>`).join('')}
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-neutral-50">${rows}</tbody>
-                </table>
-            </div>`;
-    }
-
-    function openItemDetail(p, variant) {
-        const title = variant ? `${p.name} — ${variant.name}` : p.name;
-        const back = (p.variants && p.variants.length) ? () => openVariantList(p) : showList;
-        currentDetail = { item: p, variant: variant };
-        showDetail(title, back, renderDetailTable(title, p, variant));
-    }
-
-    function openVariantList(p) {
-        currentDetail = null;
-        showDetail(p.name, showList, `
-            <div class="max-w-2xl mx-auto divide-y divide-neutral-100">
-                ${p.variants.map((v, i) => `
-                    <button type="button" data-i="${i}" class="sl-variant w-full flex items-center justify-between gap-2 px-4 py-3 text-left hover:bg-neutral-50 transition-colors">
-                        <div class="min-w-0">
-                            <p class="text-sm text-neutral-800 font-medium leading-snug">${v.name}</p>
-                            ${v.sku ? `<p class="text-[10px] text-neutral-400 font-mono leading-none mt-0.5">${v.sku}</p>` : ''}
-                        </div>
-                        <svg class="w-4 h-4 text-neutral-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
-                    </button>`).join('')}
-            </div>`);
-        detail.querySelectorAll('.sl-variant').forEach(b => b.addEventListener('click', () => openItemDetail(p, p.variants[+b.dataset.i])));
+    function emptyState(msg) {
+        results.innerHTML = `<p class="text-center text-neutral-400 py-10 text-xs">${msg || 'Search for a product to see stock levels.'}</p>`;
     }
 
     async function search() {
         const q = input.value.trim();
-        showList();
-        if (!q) { lastItems = []; results.innerHTML = '<p class="text-center text-neutral-400 py-8 text-xs">Search for a product to see stock levels.</p>'; return; }
-        results.innerHTML = '<p class="text-center text-neutral-400 py-8 text-xs">Searching…</p>';
+        if (!q) { lastItems = []; emptyState(); return; }
+        results.innerHTML = '<p class="text-center text-neutral-400 py-10 text-xs">Searching…</p>';
         try {
-            const res = await fetch('/Pos/StockLookup?q=' + encodeURIComponent(q));
+            const res = await fetch('/Pos/StockLookup?q=' + encodeURIComponent(q) + '&period=' + encodeURIComponent(periodSelect.value));
             lastItems = await res.json();
-            renderResults();
-        } catch { results.innerHTML = '<p class="text-center text-neutral-400 py-8 text-xs">Could not search.</p>'; }
+            renderGrid();
+        } catch { emptyState('Could not search.'); }
     }
 
-    function renderResults() {
-        if (!lastItems.length) { results.innerHTML = '<p class="text-center text-neutral-400 py-8 text-xs">No products found.</p>'; return; }
+    function renderGrid() {
+        if (!lastItems.length) { emptyState('No products found.'); return; }
         const loc = locationSelect.value;
-        results.innerHTML = `<div class="max-w-2xl mx-auto divide-y divide-neutral-100">${lastItems.map((p, i) => {
-            let stores = p.stores || [];
-            if (loc) {
-                const match = stores.filter(s => s.name === loc);
-                stores = match.length ? match : [{ name: loc, available: 0 }];
-            }
-            return `
-                <button type="button" data-i="${i}" class="sl-product w-full text-left px-4 py-3 hover:bg-neutral-50 transition-colors">
-                    <div class="flex justify-between items-start gap-2">
-                        <div class="min-w-0">
-                            ${p.sku ? `<p class="text-[10px] text-neutral-400 font-mono leading-none mb-0.5">${p.sku}</p>` : ''}
-                            <p class="text-sm text-neutral-800 font-medium leading-snug">${p.name}</p>
-                            ${p.variants && p.variants.length ? `<p class="text-[11px] text-neutral-400 mt-0.5">${p.variants.map(v=>v.name).join(', ')}</p>` : ''}
-                        </div>
-                        <span class="text-sm font-semibold text-neutral-700 flex-shrink-0">${fmt(p.price)}</span>
-                    </div>
-                    <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-                        ${stores.length ? stores.map(s => `
-                            <div class="text-xs">
-                                <span class="text-neutral-400">${s.name}:</span>
-                                <span class="font-medium ${s.available > 0 ? 'text-emerald-600' : 'text-red-500'}">${s.available}</span>
-                            </div>`).join('') : '<span class="text-xs text-neutral-400">No stock records</span>'}
-                    </div>
-                </button>`;
-        }).join('')}</div>`;
-        results.querySelectorAll('.sl-product').forEach(b => b.addEventListener('click', () => {
-            const p = lastItems[+b.dataset.i];
-            if (p.variants && p.variants.length) openVariantList(p);
-            else openItemDetail(p, null);
-        }));
+        const headers = ['Name', 'Description', 'Colour', 'Size', 'Location', 'In stock', 'On hold', 'On order', 'Sale price', 'Brand', 'Category', 'Barcode', 'Order code', 'Qty sold'];
+        const rightAlign = new Set(['In stock', 'On hold', 'On order', 'Sale price', 'Qty sold']);
+
+        // Flatten products into one row per (product, branch[, variant]) — already deduped server-side.
+        const flat = [];
+        lastItems.forEach(p => {
+            let rows = p.rows || [];
+            if (loc) rows = rows.filter(r => r.location === loc);
+            rows.forEach(r => flat.push({ p, r }));
+        });
+        if (!flat.length) { emptyState(loc ? 'No stock at this location.' : 'No stock records.'); return; }
+
+        const body = flat.map(({ p, r }) => {
+            const cells = {
+                'Name': esc(p.name),
+                'Description': esc(p.description) || DASH,
+                'Colour': esc(r.variant) || DASH,
+                'Size': DASH,
+                'Location': esc(r.location),
+                'In stock': r.inStock,
+                'On hold': r.onHold,
+                'On order': DASH,
+                'Sale price': fmt(p.price),
+                'Brand': DASH,
+                'Category': esc(p.category) || DASH,
+                'Barcode': esc(p.barcode) || DASH,
+                'Order code': esc(p.sku) || DASH,
+                'Qty sold': r.qtySold
+            };
+            return `<tr class="hover:bg-neutral-50">${headers.map(h => {
+                let cls = 'px-3 py-2.5 text-neutral-700 align-top';
+                if (rightAlign.has(h)) cls += ' text-right tabular-nums';
+                if (h === 'In stock') cls += (cells[h] > 0 ? ' font-semibold text-emerald-600' : ' font-semibold text-red-500');
+                if (h === 'Name') cls += ' font-medium text-neutral-900 whitespace-normal min-w-[180px]';
+                if (h === 'Description') cls += ' whitespace-normal text-neutral-400 min-w-[160px]';
+                if (h === 'Barcode' || h === 'Order code') cls += ' font-mono text-[11px]';
+                return `<td class="${cls}">${cells[h]}</td>`;
+            }).join('')}</tr>`;
+        }).join('');
+
+        results.innerHTML = `
+            <div class="overflow-x-auto">
+                <table class="w-full text-xs whitespace-nowrap">
+                    <thead class="sticky top-0 bg-neutral-50">
+                        <tr class="text-left text-neutral-400 border-b border-neutral-200 uppercase tracking-wide text-[10px]">
+                            ${headers.map(h => `<th class="px-3 py-2.5 font-semibold${rightAlign.has(h) ? ' text-right' : ''}">${h}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-neutral-50">${body}</tbody>
+                </table>
+            </div>`;
     }
 
     document.addEventListener('keydown', e => {

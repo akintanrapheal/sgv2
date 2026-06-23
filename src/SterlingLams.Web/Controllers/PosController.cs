@@ -784,11 +784,23 @@ public class PosController : Controller
     }
 
     // ── Stock lookup: search any product/variant and see stock across stores ──
+    // Returns ONE row per (branch) for simple products and per (branch, active variant) for variable
+    // products — never the raw per-inventory-row list (which duplicated branches). `period` drives the
+    // Qty-sold column (today / week / month / all).
     [Authorize, HttpGet]
-    public async Task<IActionResult> StockLookup(string? q)
+    public async Task<IActionResult> StockLookup(string? q, string? period)
     {
         q = (q ?? "").Trim();
         if (q.Length < 2) return Json(Array.Empty<object>());
+
+        DateTime? since = (period ?? "today").ToLowerInvariant() switch
+        {
+            "all" => null,
+            "week" => DateTime.UtcNow.Date.AddDays(-7),
+            "month" => DateTime.UtcNow.Date.AddDays(-30),
+            _ => DateTime.UtcNow.Date,
+        };
+        if (since.HasValue) since = DateTime.SpecifyKind(since.Value, DateTimeKind.Utc);
 
         var products = await _db.Products.Where(p => p.IsActive)
             .Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
@@ -802,17 +814,66 @@ public class PosController : Controller
                 name = p.Name,
                 sku = p.Sku,
                 barcode = p.Barcode,
-                price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price ? p.SalePrice.Value : p.Price,
+                description = p.ShortDescription,
                 category = p.Category.Name,
-                stores = p.StoreInventories.OrderBy(si => si.Store.Name)
-                    .Select(si => new { name = si.Store.Name, onHand = si.QuantityOnHand, reserved = si.QuantityReserved, available = si.AvailableQuantity }).ToList(),
-                variants = p.ProductType == "variable"
-                    ? p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name)
-                        .Select(v => new { id = v.Id, name = v.Name, sku = v.Sku, barcode = v.Barcode }).ToList()
-                    : null
+                price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price ? p.SalePrice.Value : p.Price,
+                inv = p.StoreInventories.Select(si => new { si.StoreId, store = si.Store.Name, si.ProductVariantId, si.QuantityOnHand, si.QuantityReserved }).ToList(),
+                variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).Select(v => new { id = v.Id, name = v.Name }).ToList()
             })
             .ToListAsync();
-        return Json(products);
+
+        // Units sold per (product, variant, branch) over the chosen period — POS sales only.
+        var ids = products.Select(p => p.id).ToList();
+        var soldQ = _db.OrderItems.Where(oi => ids.Contains(oi.ProductId)
+            && oi.Order.Channel == OrderChannel.Pos
+            && oi.Order.Status != OrderStatus.Cancelled && oi.Order.Status != OrderStatus.Refunded);
+        if (since.HasValue) soldQ = soldQ.Where(oi => oi.Order.CreatedAt >= since.Value);
+        var soldRows = await soldQ
+            .Select(oi => new { oi.ProductId, oi.ProductVariantId, oi.Order.PickupStoreId, oi.Quantity })
+            .ToListAsync();
+        int Sold(int pid, int? vid, int sid) => soldRows
+            .Where(s => s.ProductId == pid && s.PickupStoreId == sid && (vid == null || s.ProductVariantId == vid))
+            .Sum(s => s.Quantity);
+
+        var result = products.Select(p =>
+        {
+            var stores = p.inv.Select(i => new { i.StoreId, i.store }).Distinct().OrderBy(s => s.store).ToList();
+            var rows = new List<object>();
+            if (p.variants.Count > 0)
+            {
+                foreach (var s in stores)
+                    foreach (var v in p.variants)
+                    {
+                        var cells = p.inv.Where(i => i.StoreId == s.StoreId && i.ProductVariantId == v.id).ToList();
+                        rows.Add(new
+                        {
+                            location = s.store,
+                            variant = v.name,
+                            inStock = cells.Sum(c => c.QuantityOnHand),
+                            onHold = cells.Sum(c => c.QuantityReserved),
+                            qtySold = Sold(p.id, v.id, s.StoreId)
+                        });
+                    }
+            }
+            else
+            {
+                foreach (var s in stores)
+                {
+                    var cells = p.inv.Where(i => i.StoreId == s.StoreId).ToList();
+                    rows.Add(new
+                    {
+                        location = s.store,
+                        variant = (string?)null,
+                        inStock = cells.Sum(c => c.QuantityOnHand),
+                        onHold = cells.Sum(c => c.QuantityReserved),
+                        qtySold = Sold(p.id, null, s.StoreId)
+                    });
+                }
+            }
+            return new { p.id, p.name, p.sku, p.barcode, p.description, p.category, p.price, rows };
+        }).ToList();
+
+        return Json(result);
     }
 
     public class TillLine
