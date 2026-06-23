@@ -26,6 +26,7 @@ public class PosController : Controller
 
     private readonly SterlingLams.Web.Services.IAuditService _audit;
     private readonly SterlingLams.Web.Services.ISettingsService _settings;
+    private readonly SterlingLams.Web.Services.IEmailService _email;
 
     public PosController(ApplicationDbContext db, IStockService stock,
         SignInManager<ApplicationUser> signIn, IPasswordHasher<ApplicationUser> hasher,
@@ -33,7 +34,8 @@ public class PosController : Controller
         SterlingLams.Web.Services.IStoreAccessService access,
         SterlingLams.Web.Services.ILoyaltyService loyalty,
         SterlingLams.Web.Services.IAuditService audit,
-        SterlingLams.Web.Services.ISettingsService settings)
+        SterlingLams.Web.Services.ISettingsService settings,
+        SterlingLams.Web.Services.IEmailService email)
     {
         _db = db;
         _stock = stock;
@@ -44,6 +46,7 @@ public class PosController : Controller
         _loyalty = loyalty;
         _audit = audit;
         _settings = settings;
+        _email = email;
     }
 
     // POS card/receipt thumbnail: rewrite a Cloudinary upload URL to a small, cacheable variant so
@@ -146,6 +149,55 @@ public class PosController : Controller
         return Json(new { success = true, sessionId = session.Id });
     }
 
+    // ── Cash in / out (pay-in, pay-out, float top-up during a shift) ──────────
+    public class CashMovementRequest
+    {
+        public decimal Amount { get; set; }
+        public string Direction { get; set; } = "out"; // "in" | "out"
+        public string? Reason { get; set; }
+    }
+
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> CashInOut([FromBody] CashMovementRequest req)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { success = false, message = "This POS isn't set up. Pick a register." });
+        var session = await OpenSessionAsync(register.Id);
+        if (session == null) return Json(new { success = false, message = "Open the POS before recording cash." });
+
+        var amount = Math.Abs(req.Amount);
+        if (amount <= 0) return Json(new { success = false, message = "Enter an amount." });
+        var isIn = string.Equals(req.Direction, "in", StringComparison.OrdinalIgnoreCase);
+        var signed = isIn ? amount : -amount;
+
+        _db.CashMovements.Add(new CashMovement
+        {
+            TillSessionId = session.Id,
+            RegisterId = register.Id,
+            UserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "",
+            Amount = signed,
+            Reason = string.IsNullOrWhiteSpace(req.Reason) ? null : req.Reason.Trim(),
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync();
+        try { await _audit.LogAsync("CashMovement", "TillSession", session.Id.ToString(), $"Cash {(isIn ? "in" : "out")} ₦{amount:N0} at {register.Name}{(string.IsNullOrWhiteSpace(req.Reason) ? "" : $" — {req.Reason!.Trim()}")}"); } catch { }
+        return Json(new { success = true });
+    }
+
+    [Authorize, HttpGet]
+    public async Task<IActionResult> CashMovements()
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(Array.Empty<object>());
+        var session = await OpenSessionAsync(register.Id);
+        if (session == null) return Json(Array.Empty<object>());
+        var rows = await _db.CashMovements.Where(m => m.TillSessionId == session.Id)
+            .OrderByDescending(m => m.Id)
+            .Select(m => new { amount = m.Amount, reason = m.Reason, createdAt = m.CreatedAt })
+            .ToListAsync();
+        return Json(rows);
+    }
+
     public class ZreportVm
     {
         public TillSession Session { get; set; } = null!;
@@ -156,6 +208,8 @@ public class PosController : Controller
         public decimal TransferSales { get; set; }
         public decimal RefundsTotal { get; set; }
         public decimal CashRefunds { get; set; }
+        public decimal CashIn { get; set; }
+        public decimal CashOut { get; set; }
         public decimal ExpectedCash { get; set; }
     }
 
@@ -166,15 +220,39 @@ public class PosController : Controller
             .Include(s => s.Register).ThenInclude(r => r.Store)
             .FirstOrDefaultAsync(s => s.Id == id);
         if (session == null) return NotFound();
+        return View(await BuildZreportAsync(session));
+    }
 
-        var sales = await _db.Orders.Where(o => o.TillSessionId == id).ToListAsync();
+    // Mid-shift "X-report": the same cash/sales read for the CURRENT open session on this register,
+    // without closing it. Counted-cash / variance are hidden (nothing's been counted yet).
+    [Authorize]
+    public async Task<IActionResult> Xreport()
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return RedirectToAction(nameof(Index));
+        var session = await _db.TillSessions
+            .Include(s => s.Register).ThenInclude(r => r.Store)
+            .FirstOrDefaultAsync(s => s.RegisterId == register.Id && s.ClosedAt == null);
+        if (session == null) return RedirectToAction(nameof(Index));
+        ViewBag.Interim = true;
+        return View("Zreport", await BuildZreportAsync(session));
+    }
+
+    private async Task<ZreportVm> BuildZreportAsync(TillSession session)
+    {
+        var sales = await _db.Orders.Where(o => o.TillSessionId == session.Id).ToListAsync();
         decimal SumOf(string m) => sales.Where(o => o.PaymentProvider == m).Sum(o => o.Total);
         var cash = SumOf("Cash");
 
-        var refunds = await _db.Refunds.Where(r => r.TillSessionId == id).ToListAsync();
+        var refunds = await _db.Refunds.Where(r => r.TillSessionId == session.Id).ToListAsync();
         var cashRefunds = refunds.Where(r => r.RefundMethod == "Cash").Sum(r => r.Amount);
 
-        return View(new ZreportVm
+        // Cash drops/top-ups during the shift (pay-in positive, pay-out negative) move the drawer.
+        var cashMovements = await _db.CashMovements.Where(m => m.TillSessionId == session.Id).ToListAsync();
+        var cashIn = cashMovements.Where(m => m.Amount > 0).Sum(m => m.Amount);
+        var cashOut = cashMovements.Where(m => m.Amount < 0).Sum(m => -m.Amount);
+
+        return new ZreportVm
         {
             Session = session,
             SaleCount = sales.Count,
@@ -184,8 +262,10 @@ public class PosController : Controller
             TransferSales = SumOf("Transfer"),
             RefundsTotal = refunds.Sum(r => r.Amount),
             CashRefunds = cashRefunds,
-            ExpectedCash = session.OpeningFloat + cash - cashRefunds
-        });
+            CashIn = cashIn,
+            CashOut = cashOut,
+            ExpectedCash = session.OpeningFloat + cash + cashIn - cashOut - cashRefunds
+        };
     }
 
     // ── Refunds / returns ─────────────────────────────────────────────────────
@@ -1270,5 +1350,55 @@ public class PosController : Controller
             .FirstOrDefaultAsync(o => o.Id == id && o.Channel == OrderChannel.Pos);
         if (order == null) return NotFound();
         return View(order);
+    }
+
+    public class EmailReceiptRequest { public int OrderId { get; set; } public string? Email { get; set; } }
+
+    // Email a POS receipt to the buyer. Uses the typed address if given, else the attached
+    // customer's email. Branded HTML is built here and wrapped by the email service shell.
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> EmailReceipt([FromBody] EmailReceiptRequest req)
+    {
+        var order = await _db.Orders.Include(o => o.Items).Include(o => o.PickupStore).Include(o => o.Customer)
+            .FirstOrDefaultAsync(o => o.Id == req.OrderId && o.Channel == OrderChannel.Pos);
+        if (order == null) return Json(new { success = false, message = "Sale not found." });
+
+        var to = (req.Email ?? "").Trim();
+        if (to.Length == 0) to = order.Customer?.Email ?? "";
+        if (to.Length == 0) return Json(new { success = false, message = "No email on file — type one." });
+
+        // Persist a typed-in email onto a customer that doesn't have one, so future receipts/marketing reach them.
+        if (!string.IsNullOrWhiteSpace(req.Email) && order.Customer != null && string.IsNullOrWhiteSpace(order.Customer.Email))
+        {
+            var normalized = _userManager.NormalizeEmail(to);
+            var clash = await _db.Users.AnyAsync(u => u.Id != order.Customer.Id && u.NormalizedEmail == normalized);
+            if (!clash)
+            {
+                order.Customer.Email = to;
+                order.Customer.NormalizedEmail = normalized;
+                await _db.SaveChangesAsync();
+            }
+        }
+
+        var siteName = await _settings.GetAsync("general.site_name", "Sterlin Glams");
+        var footer = await _settings.GetAsync("pos.receipt_footer", "Thank you for shopping with us!");
+        string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+        var rows = string.Join("", order.Items.Select(i =>
+            $"<tr><td style=\"padding:4px 0;border-bottom:1px solid #f0efed;\">{i.Quantity}× {Enc(i.ProductName)}{(i.VariantName != null ? " (" + Enc(i.VariantName) + ")" : "")}</td>" +
+            $"<td align=\"right\" style=\"padding:4px 0;border-bottom:1px solid #f0efed;\">₦{i.LineTotal:N0}</td></tr>"));
+        var inner = $@"
+            <h2 style=""font-size:18px;margin:0 0 4px;"">Receipt {Enc(order.OrderNumber)}</h2>
+            <p style=""color:#78716c;margin:0 0 16px;font-size:13px;"">{Enc(order.PickupStore?.Name ?? siteName)} · {order.CreatedAt.ToLocalTime():dd MMM yyyy HH:mm} · {Enc(order.PaymentProvider)}</p>
+            <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""font-size:14px;"">{rows}
+                <tr><td style=""padding:10px 0 0;font-weight:700;"">TOTAL</td><td align=""right"" style=""padding:10px 0 0;font-weight:700;"">₦{order.Total:N0}</td></tr>
+            </table>
+            <p style=""color:#78716c;font-size:12px;margin:18px 0 0;white-space:pre-line;"">{Enc(footer)}</p>";
+
+        var sent = await _email.SendAsync(to, $"Your {siteName} receipt — {order.OrderNumber}", inner,
+            toName: order.Customer?.FullName);
+        if (!sent) return Json(new { success = false, message = "Couldn't send the email. Check the address and try again." });
+
+        try { await _audit.LogAsync("EmailReceipt", "Order", order.Id.ToString(), $"Emailed receipt {order.OrderNumber} to {to}"); } catch { }
+        return Json(new { success = true, email = to });
     }
 }

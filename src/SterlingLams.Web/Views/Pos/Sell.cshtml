@@ -58,6 +58,14 @@
                 <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 10-8 0v2h8z"/></svg>
                 Close session
             </button>
+            <button type="button" id="menu-cashinout-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Cash in / out
+            </button>
+            <button type="button" onclick="window.open('/Pos/Xreport','_blank')" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                X-report (read)
+            </button>
             <button type="button" id="menu-changeregister-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
                 <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
@@ -465,6 +473,30 @@
     </div>
 </div>
 
+<!-- ── Cash in / out modal ───────────────────────────────────────────────── -->
+<div id="till-cashinout" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl p-6 max-w-sm w-full">
+        <h3 class="text-lg font-medium text-neutral-900 mb-1">Cash in / out</h3>
+        <p class="text-sm text-neutral-500 mb-4">Record a drop or top-up so cash-up still balances.</p>
+        <div class="grid grid-cols-2 gap-2 mb-4">
+            <button type="button" data-dir="in" class="cashio-dir border rounded-lg py-2.5 text-sm font-medium border-brand-500 bg-brand-50 text-brand-600">Cash in</button>
+            <button type="button" data-dir="out" class="cashio-dir border rounded-lg py-2.5 text-sm font-medium border-neutral-200 text-neutral-500">Cash out</button>
+        </div>
+        <label class="block text-xs text-neutral-500 mb-1">Amount (₦)</label>
+        <input id="cashio-amount" type="number" min="0" step="any"
+               class="w-full border border-neutral-300 rounded-lg px-3 py-2.5 text-base mb-3 focus:outline-none focus:border-brand-500" />
+        <label class="block text-xs text-neutral-500 mb-1">Reason (optional)</label>
+        <input id="cashio-reason" type="text" placeholder="e.g. paid supplier, float top-up"
+               class="w-full border border-neutral-300 rounded-lg px-3 py-2.5 text-sm mb-5 focus:outline-none focus:border-brand-500" />
+        <div class="flex gap-2">
+            <button type="button" id="cashio-cancel"
+                    class="flex-1 border border-neutral-200 rounded-lg py-2.5 text-sm text-neutral-600 hover:border-neutral-400 transition-colors">Cancel</button>
+            <button type="button" id="cashio-confirm"
+                    class="flex-1 bg-neutral-900 text-white rounded-lg py-2.5 text-sm hover:bg-neutral-700 transition-colors">Record</button>
+        </div>
+    </div>
+</div>
+
 <!-- ── Held sales modal ──────────────────────────────────────────────────── -->
 <div id="till-held" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white rounded-xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden">
@@ -492,6 +524,8 @@
         <div class="flex gap-2">
             <a id="till-receipt" href="#" target="_blank"
                class="flex-1 border border-neutral-200 rounded-lg py-3 text-sm hover:border-neutral-400 transition-colors">Receipt</a>
+            <button id="till-email" type="button"
+                    class="hidden flex-1 border border-neutral-200 rounded-lg py-3 text-sm hover:border-neutral-400 transition-colors">Email</button>
             <button id="till-new" type="button"
                     class="flex-1 bg-neutral-900 text-white rounded-lg py-3 text-sm hover:bg-neutral-700 transition-colors">Next sale</button>
         </div>
@@ -1236,6 +1270,23 @@
             const data = await res.json();
             if (data.success) {
                 const receiptBtn = document.getElementById('till-receipt');
+                const emailBtn = document.getElementById('till-email');
+                // Email button only for synced sales (an offline sale has no server order yet).
+                if (data.offline || !data.orderId) { emailBtn.classList.add('hidden'); }
+                else {
+                    emailBtn.classList.remove('hidden');
+                    emailBtn.onclick = async () => {
+                        const to = prompt('Email the receipt to:', '');
+                        if (to === null) return; // cancelled
+                        const r = await fetch('/Pos/EmailReceipt', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                            body: JSON.stringify({ orderId: data.orderId, email: to })
+                        });
+                        const d = await r.json();
+                        showError(d.success ? ('Receipt emailed to ' + d.email) : (d.message || 'Could not email receipt.'), !d.success);
+                    };
+                }
                 if (data.offline) {
                     // Sale captured offline (pos-offline.js). Print a self-contained receipt now;
                     // the server receipt becomes available once it syncs.
@@ -1311,9 +1362,9 @@
         } catch { el.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">Could not load orders.</p>'; }
     }
 
-    function showError(msg) {
+    function showError(msg, isError = true) {
         const el = document.createElement('div');
-        el.className = 'fixed top-4 left-1/2 -translate-x-1/2 bg-red-600 text-white text-sm px-5 py-3 rounded-lg shadow-lg z-[100] transition-opacity';
+        el.className = 'fixed top-4 left-1/2 -translate-x-1/2 ' + (isError ? 'bg-red-600' : 'bg-emerald-600') + ' text-white text-sm px-5 py-3 rounded-lg shadow-lg z-[100] transition-opacity';
         el.textContent = msg;
         document.body.appendChild(el);
         setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 2500);
@@ -1496,6 +1547,43 @@
             document.body.appendChild(el);
             setTimeout(() => el.remove(), 3000);
         }
+    });
+}());
+
+// ── Cash in / out ───────────────────────────────────────────────────────────────
+(function () {
+    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+    const modal = document.getElementById('till-cashinout');
+    const amount = document.getElementById('cashio-amount');
+    const reason = document.getElementById('cashio-reason');
+    let dir = 'in';
+    function toast(msg, bad) {
+        const el = document.createElement('div');
+        el.className = 'fixed top-4 left-1/2 -translate-x-1/2 ' + (bad ? 'bg-red-600' : 'bg-emerald-600') + ' text-white text-sm px-5 py-3 rounded-lg shadow-lg z-[100]';
+        el.textContent = msg; document.body.appendChild(el); setTimeout(() => el.remove(), 3000);
+    }
+    function open() { dir = 'in'; setDir(); amount.value = ''; reason.value = ''; modal.classList.remove('hidden'); setTimeout(() => amount.focus(), 50); }
+    function setDir() {
+        document.querySelectorAll('.cashio-dir').forEach(b => {
+            const on = b.dataset.dir === dir;
+            b.className = 'cashio-dir border rounded-lg py-2.5 text-sm font-medium ' +
+                (on ? 'border-brand-500 bg-brand-50 text-brand-600' : 'border-neutral-200 text-neutral-500');
+        });
+    }
+    document.getElementById('menu-cashinout-btn').addEventListener('click', open);
+    document.getElementById('cashio-cancel').addEventListener('click', () => modal.classList.add('hidden'));
+    document.querySelectorAll('.cashio-dir').forEach(b => b.addEventListener('click', () => { dir = b.dataset.dir; setDir(); }));
+    document.getElementById('cashio-confirm').addEventListener('click', async () => {
+        const amt = parseFloat(amount.value) || 0;
+        if (amt <= 0) { toast('Enter an amount.', true); return; }
+        const res = await fetch('/Pos/CashInOut', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+            body: JSON.stringify({ amount: amt, direction: dir, reason: reason.value })
+        });
+        const data = await res.json();
+        if (data.success) { modal.classList.add('hidden'); toast('Cash ' + (dir === 'in' ? 'in' : 'out') + ' recorded.'); }
+        else toast(data.message || 'Could not record cash movement.', true);
     });
 }());
 

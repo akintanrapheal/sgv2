@@ -68,11 +68,30 @@
         <p class="c muted" style="font-size:11px;white-space:pre-line;">@receiptFooter</p>
         <svg id="barcode" style="display:block;margin:8px auto 0;max-width:100%;height:auto;"></svg>
     </div>
-    <div class="btns"><button onclick="window.print()">Print</button><a href="/Pos">Next sale</a></div>
+    <div class="btns"><button onclick="window.print()">Print</button><button id="email-btn" type="button">Email</button><a href="/Pos">Next sale</a></div>
+    @Html.AntiForgeryToken()
     <script src="/js/jsbarcode.min.js"></script>
     <script>
         try { JsBarcode("#barcode", "@Model.OrderNumber", { format: "CODE128", displayValue: true, width: 1, height: 34, margin: 0, fontSize: 10 }); }
         catch (e) { var el = document.getElementById('barcode'); if (el) el.outerHTML = '<p class="c muted" style="font-size:11px;">' + "@Model.OrderNumber" + '</p>'; }
+        (function () {
+            var btn = document.getElementById('email-btn');
+            var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            btn.addEventListener('click', async function () {
+                var to = prompt('Email the receipt to:', '@(Model.Customer?.Email ?? "")');
+                if (to === null) return;
+                btn.disabled = true; btn.textContent = '…';
+                try {
+                    var r = await fetch('/Pos/EmailReceipt', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                        body: JSON.stringify({ orderId: @Model.Id, email: to })
+                    });
+                    var d = await r.json();
+                    alert(d.success ? ('Receipt emailed to ' + d.email) : (d.message || 'Could not email receipt.'));
+                } finally { btn.disabled = false; btn.textContent = 'Email'; }
+            });
+        }());
     </script>
 </body>
 </html>

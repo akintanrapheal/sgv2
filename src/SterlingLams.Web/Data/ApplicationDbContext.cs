@@ -29,6 +29,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<StockReservation> StockReservations => Set<StockReservation>();
     public DbSet<Refund> Refunds => Set<Refund>();
     public DbSet<RefundItem> RefundItems => Set<RefundItem>();
+    public DbSet<CashMovement> CashMovements => Set<CashMovement>();
     public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
     public DbSet<StockTransferItem> StockTransferItems => Set<StockTransferItem>();
     public DbSet<StockAdjustment> StockAdjustments => Set<StockAdjustment>();
@@ -207,6 +208,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
             e.ToTable(t => t.HasCheckConstraint("CK_Refunds_Amount_NonNegative", "\"Amount\" >= 0"));
         });
         builder.Entity<RefundItem>(e => e.Property(i => i.UnitPrice).HasPrecision(18, 2));
+
+        // ─── CashMovement (pay-in / pay-out against a shift) ────────────────
+        builder.Entity<CashMovement>(e =>
+        {
+            e.HasIndex(m => m.TillSessionId);
+            e.Property(m => m.Amount).HasPrecision(18, 2);
+            e.HasOne(m => m.TillSession).WithMany().HasForeignKey(m => m.TillSessionId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
 
         // ─── StockTransfer ──────────────────────────────────────────────────
         builder.Entity<StockTransfer>(e =>
