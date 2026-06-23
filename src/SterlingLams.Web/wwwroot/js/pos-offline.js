@@ -86,23 +86,27 @@
     var items = sale.items || [];
     if (!items.length) return { success: false, message: 'Cart is empty.' };
 
-    var subtotal = 0, discount = 0;
+    var subtotal = 0, discount = 0, lines = [];
     items.forEach(function (it) {
       var prod = findProduct(it.productId);
       var unit = prod ? prod.price : 0;
+      var variantName = null;
       if (prod && it.variantId && prod.variants) {
         var v = prod.variants.find(function (x) { return x.id === it.variantId; });
-        if (v && v.priceAdjustment) unit += v.priceAdjustment;
+        if (v) { if (v.priceAdjustment) unit += v.priceAdjustment; variantName = v.name; }
       }
       var qty = Math.max(1, it.quantity || 1);
+      var lineDisc = Math.max(0, Math.min(it.discountAmount || 0, unit * qty));
       subtotal += unit * qty;
-      discount += Math.max(0, Math.min(it.discountAmount || 0, unit * qty));
+      discount += lineDisc;
+      lines.push({ name: prod ? prod.name : ('#' + it.productId), variant: variantName, qty: qty, lineTotal: unit * qty - lineDisc });
     });
     var total = subtotal - discount;
     var tendered = sale.amountTendered > 0 ? sale.amountTendered : total;
     var change = Math.max(0, tendered - total);
 
     var clientId = rid();
+    var number = 'OFFLINE-' + clientId.slice(-6).toUpperCase();
     queue.push({
       clientId: clientId,
       paymentMethod: sale.paymentMethod || 'Cash',
@@ -120,8 +124,26 @@
     });
     if (mem) idbPut(SNAP_KEY, mem);
 
+    var cust = sale.customerUserId && mem ? mem.customers.find(function (c) { return c.id === sale.customerUserId; }) : null;
+    var receipt = {
+      number: number, offline: true,
+      siteName: (mem && mem.siteName) || 'Sterlin Glams',
+      storeName: (mem && mem.storeName) || '',
+      registerName: (mem && mem.registerName) || '',
+      cashierName: (mem && mem.cashierName) || '',
+      // Offline receipt inlines the logo as a data URI, which only works for a same-origin image
+      // (cross-origin Cloudinary responses are opaque/unreadable). Fall back to the bundled logo.
+      logoUrl: (mem && mem.logoUrl && mem.logoUrl.charAt(0) === '/') ? mem.logoUrl : '/images/sg-logo.png',
+      header: (mem && mem.receiptHeader) || '',
+      footer: (mem && mem.receiptFooter) || 'Thank you for shopping with us!',
+      dateStr: new Date().toLocaleString([], { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
+      payment: sale.paymentMethod || 'Cash',
+      customer: cust ? (cust.name + (cust.phone ? ' · ' + cust.phone : '')) : null,
+      lines: lines, total: total, tendered: tendered, change: change
+    };
+
     updateSyncUi();
-    return { success: true, offline: true, orderNumber: 'OFFLINE-' + clientId.slice(-6).toUpperCase(), total: total, change: change };
+    return { success: true, offline: true, orderNumber: number, total: total, change: change, receipt: receipt };
   }
 
   // ── fetch shim ──────────────────────────────────────────────────────────────
@@ -156,9 +178,31 @@
         if (!data || data.ok === false) return false;
         // Re-apply pending offline deductions so the fresh snapshot still reflects un-synced sales.
         applyQueueToSnapshot(data);
-        mem = data; idbPut(SNAP_KEY, data); updateBanner(); return true;
+        mem = data; idbPut(SNAP_KEY, data); updateBanner(); warmImages(data); return true;
       })
       .catch(function () { return false; });
+  }
+
+  // Warm the image cache (via the service worker) so product cards + the receipt logo show offline.
+  // Throttled + once per page load (the SW cache persists across refreshes).
+  var warmed = false;
+  function warmImages(snap) {
+    if (warmed || !snap || !navigator.onLine) return;
+    warmed = true;
+    var urls = [];
+    if (snap.logoUrl) urls.push(snap.logoUrl);
+    (snap.products || []).forEach(function (p) { if (p.image) urls.push(p.image); });
+    urls = urls.filter(function (u, i) { return urls.indexOf(u) === i; });
+    // Warm via <img> (not fetch) — the POS CSP is connect-src 'self', which blocks cross-origin
+    // fetch() to Cloudinary, but img-src allows https images. The service worker caches them.
+    var idx = 0;
+    function next() {
+      if (idx >= urls.length) return;
+      var im = new Image();
+      im.onload = im.onerror = function () { next(); };
+      im.src = urls[idx++];
+    }
+    for (var i = 0; i < 6 && i < urls.length; i++) next(); // 6 in flight
   }
   function applyQueueToSnapshot(snap) {
     queue.forEach(function (s) { (s.items || []).forEach(function (it) {
@@ -252,6 +296,62 @@
     if (btn && !btn._wired) { btn._wired = true; btn.addEventListener('click', function () { sync(true); }); }
   }
 
+  // ── Offline receipt (self-contained: inlined logo + barcode so it prints with no network) ─────
+  function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function money(n) { return '₦' + Number(n || 0).toLocaleString(); }
+
+  function logoDataUrl(url) {
+    if (!url) return Promise.resolve('');
+    return realFetch(url).then(function (r) { return r.blob(); }).then(function (blob) {
+      return new Promise(function (res) { var fr = new FileReader(); fr.onload = function () { res(fr.result); }; fr.onerror = function () { res(''); }; fr.readAsDataURL(blob); });
+    }).catch(function () { return ''; });
+  }
+  function barcodeSvg(text) {
+    try {
+      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      window.JsBarcode(svg, text, { format: 'CODE128', displayValue: true, width: 2, height: 55, margin: 0, fontSize: 12 });
+      return new XMLSerializer().serializeToString(svg);
+    } catch (e) { return '<div style="font-size:11px">' + esc(text) + '</div>'; }
+  }
+
+  function printOfflineReceipt(r) {
+    if (!r) return;
+    logoDataUrl(r.logoUrl).then(function (logo) {
+      var bc = barcodeSvg(r.number);
+      var rows = (r.lines || []).map(function (l) {
+        return '<tr><td>' + l.qty + '× ' + esc(l.name) + (l.variant ? ' (' + esc(l.variant) + ')' : '') + '</td><td class="right">' + money(l.lineTotal) + '</td></tr>';
+      }).join('');
+      var html = '<!doctype html><html><head><meta charset="utf-8"><title>Receipt ' + esc(r.number) + '</title><style>' +
+        "body{font-family:'Courier New',monospace;color:#111;margin:0;padding:16px}.r{width:300px;margin:0 auto}" +
+        "h1{font-size:16px;text-align:center;margin:0 0 2px;letter-spacing:2px}.c{text-align:center}.muted{color:#555}" +
+        ".row{display:flex;justify-content:space-between;font-size:12px;margin:2px 0}hr{border:none;border-top:1px dashed #999;margin:10px 0}" +
+        "table{width:100%;border-collapse:collapse;font-size:12px}td{padding:2px 0}.right{text-align:right}.total{font-size:14px;font-weight:bold}" +
+        ".btns{width:300px;margin:16px auto 0;display:flex;gap:8px}.btns button{flex:1;padding:8px;font-size:12px;border:1px solid #ccc;background:#fff;cursor:pointer;border-radius:3px}" +
+        "@media print{.btns{display:none}body{padding:0}}</style></head><body><div class=\"r\">" +
+        (logo ? '<img src="' + logo + '" alt="" style="max-width:200px;max-height:80px;display:block;margin:0 auto 6px;object-fit:contain"/>' : '') +
+        '<h1>' + esc((r.siteName || '').toUpperCase()) + '</h1>' +
+        '<p class="c muted" style="font-size:12px;margin:0 0 6px">' + esc(r.storeName) + '</p>' +
+        (r.header ? '<p class="c muted" style="font-size:11px;margin:0 0 8px">' + esc(r.header) + '</p>' : '') +
+        '<p class="c" style="font-size:11px;color:#b45309;margin:0 0 6px">OFFLINE SALE — pending sync</p><hr/>' +
+        '<div class="row"><span>Receipt</span><span>' + esc(r.number) + '</span></div>' +
+        '<div class="row"><span>Date</span><span>' + esc(r.dateStr) + '</span></div>' +
+        '<div class="row"><span>Payment</span><span>' + esc(r.payment) + '</span></div>' +
+        (r.cashierName ? '<div class="row"><span>Served by</span><span>' + esc(r.cashierName) + '</span></div>' : '') +
+        (r.customer ? '<div class="row"><span>Customer</span><span>' + esc(r.customer) + '</span></div>' : '') +
+        '<hr/><table>' + rows + '</table><hr/>' +
+        '<div class="row total"><span>TOTAL</span><span>' + money(r.total) + '</span></div>' +
+        '<div class="row"><span>Tendered</span><span>' + money(r.tendered) + '</span></div>' +
+        '<div class="row"><span>Change</span><span>' + money(r.change) + '</span></div>' +
+        '<hr/><p class="c muted" style="font-size:11px;white-space:pre-line">' + esc(r.footer) + '</p>' +
+        '<div style="margin-top:8px">' + bc + '</div></div>' +
+        '<div class="btns"><button onclick="window.print()">Print</button><button onclick="window.close()">Close</button></div>' +
+        '<script>window.onload=function(){setTimeout(function(){window.print();},250);};<\/script></body></html>';
+      var w = window.open('', '_blank');
+      if (!w) { alert('Allow pop-ups to print the receipt.'); return; }
+      w.document.open(); w.document.write(html); w.document.close();
+    });
+  }
+
   // ── Init ──────────────────────────────────────────────────────────────────
   function init() {
     Promise.all([idbGet(SNAP_KEY), idbGet(QUEUE_KEY)]).then(function (vals) {
@@ -273,6 +373,7 @@
     queue: function () { return queue.slice(); },
     pending: function () { return queue.length; },
     sync: function () { return sync(true); },
+    printOfflineReceipt: printOfflineReceipt,
     lastSyncedText: syncedText,
     isOnline: function () { return navigator.onLine; }
   };

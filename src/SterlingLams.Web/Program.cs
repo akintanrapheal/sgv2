@@ -205,6 +205,15 @@ app.UseHttpsRedirection();
 // ─── Security headers ───────────────────────────────────────────────────────
 app.Use(async (context, next) =>
 {
+    // The POS service worker must NOT inherit the page CSP: a worker adopts the CSP of its own
+    // script, and connect-src 'self' would block it from fetching cross-origin product images
+    // (Cloudinary) to cache them for offline. Serve the SW script without a CSP.
+    if (context.Request.Path.Equals("/pos-sw.js", StringComparison.OrdinalIgnoreCase))
+    {
+        await next();
+        return;
+    }
+
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";

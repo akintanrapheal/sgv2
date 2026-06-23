@@ -6,6 +6,8 @@
     var siteName = await Settings.GetAsync("general.site_name", "Sterlin Glams");
     var receiptHeader = await Settings.GetAsync("pos.receipt_header", "");
     var receiptFooter = await Settings.GetAsync("pos.receipt_footer", "Thank you for shopping with us!");
+    var logoUrl = await Settings.GetAsync("general.logo_url", "");
+    if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = "/images/sg-logo.png";
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -29,6 +31,7 @@
 </head>
 <body onload="window.print()">
     <div class="r">
+        <img src="@logoUrl" alt="" style="max-width:200px;max-height:80px;display:block;margin:0 auto 6px;object-fit:contain;" onerror="this.style.display='none'" />
         <h1>@siteName.ToUpper()</h1>
         <p class="c muted" style="font-size:12px;margin:0 0 8px;">@(Model.PickupStore?.Name ?? "Store")</p>
         @if (!string.IsNullOrWhiteSpace(receiptHeader))
@@ -63,7 +66,13 @@
         }
         <hr />
         <p class="c muted" style="font-size:11px;white-space:pre-line;">@receiptFooter</p>
+        <svg id="barcode" style="display:block;width:100%;margin-top:8px;"></svg>
     </div>
     <div class="btns"><button onclick="window.print()">Print</button><a href="/Pos">Next sale</a></div>
+    <script src="/js/jsbarcode.min.js"></script>
+    <script>
+        try { JsBarcode("#barcode", "@Model.OrderNumber", { format: "CODE128", displayValue: true, width: 2, height: 55, margin: 0, fontSize: 12 }); }
+        catch (e) { var el = document.getElementById('barcode'); if (el) el.outerHTML = '<p class="c muted" style="font-size:11px;">' + "@Model.OrderNumber" + '</p>'; }
+    </script>
 </body>
 </html>

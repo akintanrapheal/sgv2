@@ -1129,16 +1129,20 @@
             if (data.success) {
                 const receiptBtn = document.getElementById('till-receipt');
                 if (data.offline) {
-                    // Sale captured offline (pos-offline.js). No server receipt until it syncs.
+                    // Sale captured offline (pos-offline.js). Print a self-contained receipt now;
+                    // the server receipt becomes available once it syncs.
                     document.getElementById('till-done-info').innerHTML =
                         `<span class="font-medium">${fmt(data.total)}</span> · Saved offline` +
                         (data.change > 0 ? `<br>Change due: <span class="font-medium text-emerald-600">${fmt(data.change)}</span>` : '') +
                         `<br><span class="text-xs text-amber-600">Syncs automatically when you're back online.</span>`;
-                    receiptBtn.classList.add('hidden');
+                    receiptBtn.classList.remove('hidden');
+                    receiptBtn.removeAttribute('href');
+                    receiptBtn.onclick = (e) => { e.preventDefault(); if (window.SGPOS) SGPOS.printOfflineReceipt(data.receipt); };
                 } else {
                     document.getElementById('till-done-info').innerHTML =
-                        `<span class="font-medium">${fmt(data.total)}</span> · ${data.orderNumber}` +
+                        `<span class="font-medium">${fmt(data.total)}</span> · ${data.orderNumber}`+
                         (data.change > 0 ? `<br>Change due: <span class="font-medium text-emerald-600">${fmt(data.change)}</span>` : '');
+                    receiptBtn.onclick = null;
                     receiptBtn.href = '/Pos/Receipt/' + data.orderId;
                     receiptBtn.classList.remove('hidden');
                 }

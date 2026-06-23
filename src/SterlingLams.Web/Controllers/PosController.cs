@@ -25,13 +25,15 @@ public class PosController : Controller
     private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
 
     private readonly SterlingLams.Web.Services.IAuditService _audit;
+    private readonly SterlingLams.Web.Services.ISettingsService _settings;
 
     public PosController(ApplicationDbContext db, IStockService stock,
         SignInManager<ApplicationUser> signIn, IPasswordHasher<ApplicationUser> hasher,
         UserManager<ApplicationUser> userManager,
         SterlingLams.Web.Services.IStoreAccessService access,
         SterlingLams.Web.Services.ILoyaltyService loyalty,
-        SterlingLams.Web.Services.IAuditService audit)
+        SterlingLams.Web.Services.IAuditService audit,
+        SterlingLams.Web.Services.ISettingsService settings)
     {
         _db = db;
         _stock = stock;
@@ -41,6 +43,19 @@ public class PosController : Controller
         _access = access;
         _loyalty = loyalty;
         _audit = audit;
+        _settings = settings;
+    }
+
+    // POS card/receipt thumbnail: rewrite a Cloudinary upload URL to a small, cacheable variant so
+    // offline image-caching stays light. Non-Cloudinary URLs are returned unchanged.
+    private static string? PosThumb(string? url)
+    {
+        if (string.IsNullOrEmpty(url)) return url;
+        const string marker = "/image/upload/";
+        var i = url.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return url;
+        var at = i + marker.Length;
+        return url[..at] + "f_auto,q_auto,w_240,h_240,c_fill/" + url[at..];
     }
 
     private async Task<Register?> BoundRegisterAsync()
@@ -679,15 +694,32 @@ public class PosController : Controller
             .Select(u => new { id = u.Id, name = (u.FirstName + " " + u.LastName).Trim(), phone = u.PhoneNumber, email = u.Email })
             .ToListAsync();
 
+        // Receipt branding (so an offline receipt matches the server-rendered one).
+        var siteName = await _settings.GetAsync("general.site_name", "Sterlin Glams");
+        var logoUrl = await _settings.GetAsync("general.logo_url", "");
+        if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = "/images/sg-logo.png";
+        var receiptHeader = await _settings.GetAsync("pos.receipt_header", "");
+        var receiptFooter = await _settings.GetAsync("pos.receipt_footer", "Thank you for shopping with us!");
+        var uid = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var cashierName = uid != null
+            ? await _db.Users.Where(u => u.Id == uid).Select(u => (u.FirstName + " " + u.LastName).Trim()).FirstOrDefaultAsync()
+            : null;
+
         return Json(new
         {
             ok = true,
             storeId,
             storeName,
+            registerName = register.Name,
+            cashierName,
+            siteName,
+            logoUrl,
+            receiptHeader,
+            receiptFooter,
             syncedAt = DateTime.UtcNow,
             categories,
             discountReasons,
-            products,
+            products = products.Select(p => new { p.id, p.name, p.sku, p.barcode, p.categoryId, p.price, image = PosThumb(p.image), p.stock, p.variants }),
             customers
         });
     }
@@ -739,7 +771,7 @@ public class PosController : Controller
                     : null
             })
             .ToListAsync();
-        return Json(products);
+        return Json(products.Select(p => new { p.id, p.name, p.sku, p.barcode, p.price, image = PosThumb(p.image), p.stock, p.variants }));
     }
 
     // ── Stock lookup: list of stores for the location filter ──────────────────
