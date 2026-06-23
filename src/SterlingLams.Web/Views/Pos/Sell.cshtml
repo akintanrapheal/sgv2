@@ -933,12 +933,21 @@
             variantTitle.textContent = p.name;
             variantList.innerHTML = p.variants.map((v, i) => {
                 const price = p.price + (v.priceAdjustment || 0);
-                return `<button type="button" class="variant-opt w-full flex justify-between items-center border border-neutral-200 rounded-lg px-4 py-3 hover:border-brand-500 hover:bg-brand-50 transition-colors text-left" data-idx="${i}">
-                    <span class="text-sm text-neutral-800">${v.name}</span>
+                const st = (v.stock != null) ? v.stock : 0;
+                const out = st <= 0;
+                const stockLabel = out
+                    ? '<span class="text-[11px] text-red-500 font-medium">Out of stock</span>'
+                    : `<span class="text-[11px] ${st <= 3 ? 'text-amber-600' : 'text-neutral-400'}">${st} in stock</span>`;
+                return `<button type="button" class="variant-opt w-full flex justify-between items-center border border-neutral-200 rounded-lg px-4 py-3 text-left ${out ? 'opacity-50 cursor-not-allowed' : 'hover:border-brand-500 hover:bg-brand-50 transition-colors'}" data-idx="${i}" ${out ? 'disabled' : ''}>
+                    <span class="flex flex-col gap-0.5">
+                        <span class="text-sm text-neutral-800">${v.name}</span>
+                        ${stockLabel}
+                    </span>
                     <span class="text-sm font-medium text-neutral-700">${fmt(price)}</span>
                 </button>`;
             }).join('');
             variantList.querySelectorAll('.variant-opt').forEach(b => b.addEventListener('click', () => {
+                if (b.disabled) return;
                 variantModal.classList.add('hidden');
                 resolveVariant = null;
                 resolve(p.variants[+b.dataset.idx]);
@@ -1065,17 +1074,19 @@
     });
 
     async function add(p) {
-        let variantId = null, variantName = null, unitPrice = p.price;
+        let variantId = null, variantName = null, unitPrice = p.price, lineStock = p.stock;
         if (p.variants && p.variants.length) {
             const v = await pickVariant(p);
             if (!v) return;
             variantId = v.id; variantName = v.name; unitPrice = p.price + (v.priceAdjustment || 0);
+            lineStock = (v.stock != null) ? v.stock : p.stock; // per-variant available
         }
+        if (lineStock <= 0) { showError('Out of stock.'); return; }
         const key = p.id + '-' + (variantId ?? '');
         const ex = cart.find(c => c.key === key);
-        if ((ex ? ex.qty : 0) + 1 > p.stock) { showError('Not enough stock.'); return; }
+        if ((ex ? ex.qty : 0) + 1 > lineStock) { showError('Not enough stock.'); return; }
         if (ex) ex.qty++;
-        else cart.push({ key, productId: p.id, variantId, sku: p.sku, name: p.name, variantName, unitPrice, qty: 1, stock: p.stock, note: null, discountAmount: 0, discountReason: null, discountType: null });
+        else cart.push({ key, productId: p.id, variantId, sku: p.sku, name: p.name, variantName, unitPrice, qty: 1, stock: lineStock, note: null, discountAmount: 0, discountReason: null, discountType: null });
         renderCart();
     }
 

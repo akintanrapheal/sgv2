@@ -61,6 +61,29 @@ public class PosController : Controller
         return url[..at] + "f_auto,q_auto,w_240,h_240,c_fill/" + url[at..];
     }
 
+    // Per-(product, variant) available stock at a store, for the POS grid + variant picker.
+    private sealed record InvRow(int ProductId, int? VariantId, int Avail);
+    private async Task<List<InvRow>> StoreInvAsync(int storeId, List<int> productIds) =>
+        (await _db.StoreInventories
+            .Where(si => si.StoreId == storeId && productIds.Contains(si.ProductId))
+            .Select(si => new { si.ProductId, si.ProductVariantId, Avail = si.QuantityOnHand - si.QuantityReserved })
+            .ToListAsync())
+        .Select(r => new InvRow(r.ProductId, r.ProductVariantId, r.Avail)).ToList();
+
+    // Product total = sum of every row (shared pool + each variant's own row), each clamped at 0.
+    private static int ProdAvail(List<InvRow> inv, int pid) =>
+        inv.Where(i => i.ProductId == pid).Sum(i => Math.Max(0, i.Avail));
+
+    // Variant available = its own row if it has one, else the shared product-pool row (the same
+    // fallback StockService uses to sell), so the picker number matches what checkout will allow.
+    private static int VarAvail(List<InvRow> inv, int pid, int vid)
+    {
+        var own = inv.FirstOrDefault(i => i.ProductId == pid && i.VariantId == vid);
+        if (own != null) return Math.Max(0, own.Avail);
+        var pool = inv.FirstOrDefault(i => i.ProductId == pid && i.VariantId == null);
+        return Math.Max(0, pool?.Avail ?? 0);
+    }
+
     private async Task<Register?> BoundRegisterAsync()
     {
         if (int.TryParse(Request.Cookies[RegisterCookie], out var id))
@@ -768,14 +791,13 @@ public class PosController : Controller
                 price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price ? p.SalePrice.Value : p.Price,
                 image = p.Images.Where(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
-                stock = p.StoreInventories.Where(si => si.StoreId == storeId)
-                                          .Select(si => si.AvailableQuantity).FirstOrDefault(),
                 variants = p.ProductType == "variable"
                     ? p.Variants.Where(v => v.IsActive)
                         .Select(v => new { id = v.Id, name = v.Name, priceAdjustment = v.PriceAdjustment }).ToList()
                     : null
             })
             .ToListAsync();
+        var snapInv = await StoreInvAsync(storeId, products.Select(p => p.id).ToList());
 
         // Same population rule as CustomerSearch's empty-query list (POS buyers + anyone on an order).
         var customers = await _db.Users
@@ -809,7 +831,12 @@ public class PosController : Controller
             syncedAt = DateTime.UtcNow,
             categories,
             discountReasons,
-            products = products.Select(p => new { p.id, p.name, p.sku, p.barcode, p.categoryId, p.price, image = PosThumb(p.image), p.stock, p.variants }),
+            products = products.Select(p => new
+            {
+                p.id, p.name, p.sku, p.barcode, p.categoryId, p.price, image = PosThumb(p.image),
+                stock = ProdAvail(snapInv, p.id),
+                variants = p.variants?.Select(v => new { v.id, v.name, v.priceAdjustment, stock = VarAvail(snapInv, p.id, v.id) })
+            }),
             customers
         });
     }
@@ -852,16 +879,21 @@ public class PosController : Controller
                 price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price ? p.SalePrice.Value : p.Price,
                 image = p.Images.Where(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
-                // Show AVAILABLE (on-hand − reserved) so the till number matches what can be sold.
-                stock = p.StoreInventories.Where(si => si.StoreId == storeId)
-                                          .Select(si => si.AvailableQuantity).FirstOrDefault(),
                 variants = p.ProductType == "variable"
                     ? p.Variants.Where(v => v.IsActive)
                         .Select(v => new { id = v.Id, name = v.Name, priceAdjustment = v.PriceAdjustment }).ToList()
                     : null
             })
             .ToListAsync();
-        return Json(products.Select(p => new { p.id, p.name, p.sku, p.barcode, p.price, image = PosThumb(p.image), p.stock, p.variants }));
+        // AVAILABLE (on-hand − reserved) per product and per variant, so the till + variant picker
+        // numbers match what checkout will actually allow.
+        var inv = await StoreInvAsync(storeId, products.Select(p => p.id).ToList());
+        return Json(products.Select(p => new
+        {
+            p.id, p.name, p.sku, p.barcode, p.price, image = PosThumb(p.image),
+            stock = ProdAvail(inv, p.id),
+            variants = p.variants?.Select(v => new { v.id, v.name, v.priceAdjustment, stock = VarAvail(inv, p.id, v.id) })
+        }));
     }
 
     // ── Stock lookup: list of stores for the location filter ──────────────────
