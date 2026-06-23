@@ -45,6 +45,9 @@ public class Product
     /// <summary>Hidden from the POS/till only (staff "Mark unavailable") — still listed on the
     /// storefront. Independent of <see cref="IsActive"/>.</summary>
     public bool HiddenFromPos { get; set; }
+    /// <summary>Marks the single hidden "Custom item" product the POS uses for one-off / un-barcoded
+    /// sales. Such lines carry a per-sale name and price and skip stock tracking. Lazily created.</summary>
+    public bool IsCustomItem { get; set; }
     public bool IsFeatured { get; set; }
     public int LowStockThreshold { get; set; } = 3;
     public bool IsNewArrival { get; set; }

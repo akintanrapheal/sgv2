@@ -139,6 +139,11 @@
                     <input id="till-search" type="text" autocomplete="off" placeholder="Search or scan barcode…"
                            class="w-full pl-9 pr-4 py-2 text-sm bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:border-brand-500 focus:bg-white transition-colors" />
                 </div>
+                <button type="button" id="quick-item-btn" title="Add a one-off / un-barcoded item"
+                        class="flex-shrink-0 flex items-center gap-1 px-3 py-2 text-xs font-medium text-brand-600 border border-brand-200 rounded-lg hover:bg-brand-50 transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"/></svg>
+                    Quick item
+                </button>
             </div>
 
             <!-- Category grid / product grid -->
@@ -471,6 +476,24 @@
                     class="flex-1 border border-neutral-200 rounded-lg py-2.5 text-sm text-neutral-600 hover:border-neutral-400 transition-colors">Cancel</button>
             <button type="button" id="cashup-confirm"
                     class="flex-1 bg-neutral-900 text-white rounded-lg py-2.5 text-sm hover:bg-neutral-700 transition-colors">Close session</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Quick item modal ──────────────────────────────────────────────────── -->
+<div id="till-quickitem" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl p-6 max-w-sm w-full">
+        <h3 class="text-lg font-medium text-neutral-900 mb-1">Quick item</h3>
+        <p class="text-sm text-neutral-500 mb-4">Sell a one-off or un-barcoded item. Stock isn't tracked.</p>
+        <label class="block text-xs text-neutral-500 mb-1">Description</label>
+        <input id="qi-name" type="text" placeholder="e.g. Gift wrap, repair"
+               class="w-full border border-neutral-300 rounded-lg px-3 py-2.5 text-sm mb-3 focus:outline-none focus:border-brand-500" />
+        <label class="block text-xs text-neutral-500 mb-1">Price (₦)</label>
+        <input id="qi-price" type="number" min="0" step="any"
+               class="w-full border border-neutral-300 rounded-lg px-3 py-2.5 text-base mb-5 focus:outline-none focus:border-brand-500" />
+        <div class="flex gap-2">
+            <button type="button" id="qi-cancel" class="flex-1 border border-neutral-200 rounded-lg py-2.5 text-sm text-neutral-600 hover:border-neutral-400 transition-colors">Cancel</button>
+            <button type="button" id="qi-add" class="flex-1 bg-neutral-900 text-white rounded-lg py-2.5 text-sm hover:bg-neutral-700 transition-colors">Add to cart</button>
         </div>
     </div>
 </div>
@@ -1292,6 +1315,27 @@
         updatePayState();
     });
 
+    // ── Quick item (one-off / un-barcoded) ─────────────────────────────────────
+    const qiModal = document.getElementById('till-quickitem');
+    const qiName = document.getElementById('qi-name');
+    const qiPrice = document.getElementById('qi-price');
+    document.getElementById('quick-item-btn').addEventListener('click', () => {
+        if (window.SGPOS && !SGPOS.isOnline()) { showError('Quick items need a connection.'); return; }
+        qiName.value = ''; qiPrice.value = ''; qiModal.classList.remove('hidden'); setTimeout(() => qiName.focus(), 50);
+    });
+    document.getElementById('qi-cancel').addEventListener('click', () => qiModal.classList.add('hidden'));
+    document.getElementById('qi-add').addEventListener('click', () => {
+        const name = qiName.value.trim();
+        const price = parseFloat(qiPrice.value);
+        if (!name) { showError('Enter a description.'); return; }
+        if (!(price >= 0)) { showError('Enter a price.'); return; }
+        cart.push({ key: 'custom-' + Date.now(), productId: 0, custom: true, variantId: null, sku: null,
+                    name, variantName: null, unitPrice: price, qty: 1, stock: 999999,
+                    note: null, discountAmount: 0, discountReason: null, discountType: null });
+        qiModal.classList.add('hidden');
+        renderCart();
+    });
+
     // ── Keyboard shortcuts ────────────────────────────────────────────────────
     document.addEventListener('keydown', e => {
         if (e.key === 'Enter' && !e.target.closest('input, button, [contenteditable]') && !payBtn.disabled) {
@@ -1340,7 +1384,7 @@
                 body: JSON.stringify({ paymentMethod: method, amountTendered: parseFloat(tenderedEl.value) || 0,
                     customerUserId: customer?.id || null,
                     payments: (method === 'Split' && splitPayments) ? splitPayments : null,
-                    items: cart.map(c => ({ productId: c.productId, variantId: c.variantId, quantity: c.qty, note: c.note || null, discountAmount: c.discountAmount || 0, discountReason: c.discountReason || null, discountType: c.discountType || null })) })
+                    items: cart.map(c => ({ productId: c.productId, variantId: c.variantId, quantity: c.qty, note: c.note || null, discountAmount: c.discountAmount || 0, discountReason: c.discountReason || null, discountType: c.discountType || null, custom: c.custom || false, name: c.custom ? c.name : null, unitPrice: c.custom ? c.unitPrice : null })) })
             });
             const data = await res.json();
             if (data.success) {

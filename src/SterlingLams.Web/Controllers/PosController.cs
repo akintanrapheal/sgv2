@@ -1053,6 +1053,27 @@ public class PosController : Controller
         public decimal DiscountAmount { get; set; }
         public string? DiscountReason { get; set; }
         public string? DiscountType { get; set; }
+        /// <summary>One-off / un-barcoded line: carries its own Name + UnitPrice and skips stock.</summary>
+        public bool Custom { get; set; }
+        public string? Name { get; set; }
+        public decimal? UnitPrice { get; set; }
+    }
+
+    // The single hidden product POS custom (one-off) lines hang off, created on first use.
+    private async Task<Product> GetCustomItemProductAsync()
+    {
+        var p = await _db.Products.FirstOrDefaultAsync(x => x.IsCustomItem);
+        if (p != null) return p;
+        var catId = await _db.Categories.OrderBy(c => c.Id).Select(c => c.Id).FirstAsync();
+        p = new Product
+        {
+            Name = "Custom item", Slug = "__pos-custom-item", ExternalCode = "POS-CUSTOM",
+            ProductType = "simple", Price = 0, IsActive = false, HiddenFromPos = true, IsCustomItem = true,
+            CategoryId = catId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        };
+        _db.Products.Add(p);
+        await _db.SaveChangesAsync();
+        return p;
     }
     public class PaymentPart { public string Method { get; set; } = "Cash"; public decimal Amount { get; set; } }
     public class TillCheckout
@@ -1116,6 +1137,14 @@ public class PosController : Controller
             return Json(new { success = false, message = "Add the customer's details before taking payment." });
 
         var storeId = register.StoreId;
+
+        // Resolve one-off "quick item" lines onto the hidden custom product (stock isn't tracked).
+        if (req.Items.Any(i => i.Custom))
+        {
+            var customProduct = await GetCustomItemProductAsync();
+            foreach (var i in req.Items.Where(i => i.Custom)) { i.ProductId = customProduct.Id; i.VariantId = null; }
+        }
+
         var productIds = req.Items.Select(i => i.ProductId).Distinct().ToList();
         var products = await _db.Products.Include(p => p.Variants)
             .Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
@@ -1124,6 +1153,7 @@ public class PosController : Controller
         {
             if (!products.TryGetValue(grp.Key.ProductId, out var prod))
                 return Json(new { success = false, message = "A product in the cart no longer exists." });
+            if (prod.IsCustomItem) continue; // one-off line — no stock to check
             var requested = grp.Sum(i => Math.Max(1, i.Quantity));
             // Sell against AVAILABLE (on-hand − reserved), not raw on-hand — otherwise the till can
             // sell units already held for a pending online order, which then can't be fulfilled.
@@ -1152,6 +1182,7 @@ public class PosController : Controller
         foreach (var grp in req.Items.GroupBy(i => new { i.ProductId, i.VariantId }))
         {
             var prod = products[grp.Key.ProductId];
+            if (prod.IsCustomItem) continue; // one-off line — no stock to check
             var requested = grp.Sum(i => Math.Max(1, i.Quantity));
             // Re-check against available under the row lock (closes the check-then-act window).
             if (requested > await _stock.GetAvailableAsync(grp.Key.ProductId, grp.Key.VariantId, storeId))
@@ -1182,8 +1213,11 @@ public class PosController : Controller
         {
             var prod = products[line.ProductId];
             var qty = Math.Max(1, line.Quantity);
-            var variant = line.VariantId.HasValue ? prod.Variants.FirstOrDefault(v => v.Id == line.VariantId) : null;
-            var unitPrice = prod.EffectivePrice + (variant?.PriceAdjustment ?? 0);
+            var isCustom = prod.IsCustomItem;
+            var variant = (!isCustom && line.VariantId.HasValue) ? prod.Variants.FirstOrDefault(v => v.Id == line.VariantId) : null;
+            // Custom (one-off) lines carry their own name + price; everything else uses the catalog.
+            var unitPrice = isCustom ? Math.Max(0, line.UnitPrice ?? 0) : prod.EffectivePrice + (variant?.PriceAdjustment ?? 0);
+            var lineName = isCustom ? (string.IsNullOrWhiteSpace(line.Name) ? "Custom item" : line.Name.Trim()) : prod.Name;
             var lineDiscount = Math.Max(0, Math.Min(line.DiscountAmount, unitPrice * qty));
             subtotal += unitPrice * qty;
             totalDiscount += lineDiscount;
@@ -1192,7 +1226,7 @@ public class PosController : Controller
             {
                 ProductId = prod.Id,
                 ProductVariantId = variant?.Id,
-                ProductName = prod.Name,
+                ProductName = lineName,
                 VariantName = variant?.Name,
                 ProductSku = prod.Sku,
                 Quantity = qty,
@@ -1202,7 +1236,8 @@ public class PosController : Controller
                 DiscountType = string.IsNullOrWhiteSpace(line.DiscountType) ? null : line.DiscountType.Trim(),
                 ItemNote = string.IsNullOrWhiteSpace(line.Note) ? null : line.Note.Trim()
             });
-            await _stock.ApplyAsync(prod.Id, variant?.Id, storeId, -qty, StockMovementType.Sale, orderNumber, userId: userId);
+            if (!isCustom)
+                await _stock.ApplyAsync(prod.Id, variant?.Id, storeId, -qty, StockMovementType.Sale, orderNumber, userId: userId);
         }
 
         order.Subtotal = subtotal;
