@@ -309,7 +309,8 @@
   function barcodeSvg(text) {
     try {
       var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      window.JsBarcode(svg, text, { format: 'CODE128', displayValue: true, width: 2, height: 55, margin: 0, fontSize: 12 });
+      window.JsBarcode(svg, text, { format: 'CODE128', displayValue: true, width: 1, height: 34, margin: 0, fontSize: 10 });
+      svg.setAttribute('style', 'display:block;margin:0 auto;max-width:100%;height:auto');
       return new XMLSerializer().serializeToString(svg);
     } catch (e) { return '<div style="font-size:11px">' + esc(text) + '</div>'; }
   }
