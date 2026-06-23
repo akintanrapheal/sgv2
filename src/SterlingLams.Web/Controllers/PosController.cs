@@ -240,8 +240,18 @@ public class PosController : Controller
 
     private async Task<ZreportVm> BuildZreportAsync(TillSession session)
     {
-        var sales = await _db.Orders.Where(o => o.TillSessionId == session.Id).ToListAsync();
-        decimal SumOf(string m) => sales.Where(o => o.PaymentProvider == m).Sum(o => o.Total);
+        var sales = await _db.Orders.Where(o => o.TillSessionId == session.Id)
+            .Select(o => new { o.Id, o.Total, o.PaymentProvider }).ToListAsync();
+        var saleIds = sales.Select(s => s.Id).ToList();
+        var payments = await _db.OrderPayments.Where(p => saleIds.Contains(p.OrderId))
+            .Select(p => new { p.OrderId, p.Method, p.Amount }).ToListAsync();
+        var withRows = payments.Select(p => p.OrderId).ToHashSet();
+
+        // Per-method total: split-aware via OrderPayment rows; legacy orders (no rows) fall back to
+        // PaymentProvider × Total.
+        decimal SumOf(string m) =>
+            payments.Where(p => p.Method == m).Sum(p => p.Amount)
+            + sales.Where(o => !withRows.Contains(o.Id) && o.PaymentProvider == m).Sum(o => o.Total);
         var cash = SumOf("Cash");
 
         var refunds = await _db.Refunds.Where(r => r.TillSessionId == session.Id).ToListAsync();
@@ -1044,14 +1054,49 @@ public class PosController : Controller
         public string? DiscountReason { get; set; }
         public string? DiscountType { get; set; }
     }
+    public class PaymentPart { public string Method { get; set; } = "Cash"; public decimal Amount { get; set; } }
     public class TillCheckout
     {
         public string PaymentMethod { get; set; } = "Cash";
         public decimal AmountTendered { get; set; }
         public string? CustomerUserId { get; set; }
         public List<TillLine> Items { get; set; } = new();
+        /// <summary>Optional split/mixed tenders. When present, each part's Amount is the money applied
+        /// to the sale via that method; the parts must cover the total. Single-method sales omit this.</summary>
+        public List<PaymentPart>? Payments { get; set; }
     }
     public class TillCashier { public string Id { get; set; } = ""; public string Name { get; set; } = ""; }
+
+    // Builds the per-tender rows for a POS order. Cash change is deducted from the cash row so the
+    // recorded cash equals what stays in the drawer (keeps cash-up accurate). Returns the rows plus
+    // the resolved PaymentProvider label, amount tendered and change.
+    private static (List<OrderPayment> rows, string provider, decimal tendered, decimal change)
+        BuildPayments(List<PaymentPart>? parts, string fallbackMethod, decimal fallbackTendered, decimal total)
+    {
+        var clean = (parts ?? new()).Where(p => p.Amount > 0 && !string.IsNullOrWhiteSpace(p.Method))
+            .Select(p => new PaymentPart { Method = p.Method.Trim(), Amount = p.Amount }).ToList();
+
+        if (clean.Count == 0)
+        {
+            // Legacy single-method path: one row for the whole total.
+            var tendered = fallbackTendered > 0 ? fallbackTendered : total;
+            var change = Math.Max(0, tendered - total);
+            return (new List<OrderPayment> { new() { Method = fallbackMethod, Amount = total } },
+                    fallbackMethod, tendered, change);
+        }
+
+        var paid = clean.Sum(p => p.Amount);
+        var chg = Math.Max(0, paid - total);
+        // Change comes out of cash: reduce the cash row so summed amounts == total.
+        if (chg > 0)
+        {
+            var cash = clean.FirstOrDefault(p => string.Equals(p.Method, "Cash", StringComparison.OrdinalIgnoreCase));
+            if (cash != null) cash.Amount = Math.Max(0, cash.Amount - chg);
+        }
+        var rows = clean.Where(p => p.Amount > 0).Select(p => new OrderPayment { Method = p.Method, Amount = p.Amount }).ToList();
+        var provider = rows.Count == 1 ? rows[0].Method : "Split";
+        return (rows, provider, paid, chg);
+    }
 
     [Authorize, HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Checkout([FromBody] TillCheckout req)
@@ -1163,12 +1208,23 @@ public class PosController : Controller
         order.Subtotal = subtotal;
         order.DiscountAmount = totalDiscount;
         order.Total = subtotal - totalDiscount;
-        order.AmountTendered = req.AmountTendered > 0 ? req.AmountTendered : order.Total;
-        order.ChangeGiven = Math.Max(0, (order.AmountTendered ?? order.Total) - order.Total);
+
+        // Resolve tenders (single or split). A split must cover the total — returning here rolls
+        // back the uncommitted stock deductions above (tx is disposed without a commit).
+        if (req.Payments != null && req.Payments.Any(p => p.Amount > 0)
+            && req.Payments.Where(p => p.Amount > 0).Sum(p => p.Amount) + 0.01m < order.Total)
+            return Json(new { success = false, message = "Payments don't cover the total." });
+
+        var (payRows, provider, tendered, change) = BuildPayments(req.Payments, req.PaymentMethod, req.AmountTendered, order.Total);
+        order.PaymentProvider = provider;
+        order.AmountTendered = tendered;
+        order.ChangeGiven = change;
 
         _db.Orders.Add(order);
         try
         {
+            await _db.SaveChangesAsync();
+            foreach (var pr in payRows) { pr.OrderId = order.Id; _db.OrderPayments.Add(pr); }
             await _db.SaveChangesAsync();
             await tx.CommitAsync();
         }
@@ -1325,6 +1381,9 @@ public class PosController : Controller
         _db.Orders.Add(order);
         await _db.SaveChangesAsync();
 
+        // Record the tender (offline sales are single-method) so the Z-report sums it like any other.
+        _db.OrderPayments.Add(new OrderPayment { OrderId = order.Id, Method = sale.PaymentMethod, Amount = order.Total });
+
         OrderNotes.AddSystem(_db, order.Id,
             $"Recorded offline at {soldAt:yyyy-MM-dd HH:mm} (cashier's till), synced {now:yyyy-MM-dd HH:mm}.");
         if (shortfalls.Count > 0)
@@ -1349,6 +1408,9 @@ public class PosController : Controller
             .Include(o => o.Customer).Include(o => o.User)
             .FirstOrDefaultAsync(o => o.Id == id && o.Channel == OrderChannel.Pos);
         if (order == null) return NotFound();
+        // Split-payment breakdown for the receipt (empty for single-tender sales).
+        ViewBag.Payments = await _db.OrderPayments.Where(p => p.OrderId == id)
+            .OrderBy(p => p.Id).Select(p => new KeyValuePair<string, decimal>(p.Method, p.Amount)).ToListAsync();
         return View(order);
     }
 

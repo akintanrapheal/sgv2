@@ -239,7 +239,9 @@
                             <button type="button" data-method="Cash" class="till-method flex-1 border-2 border-brand-500 bg-brand-50 text-brand-700 rounded-lg py-1.5 text-xs font-medium">Cash</button>
                             <button type="button" data-method="Card" class="till-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-1.5 text-xs font-medium hover:border-neutral-300">Card</button>
                             <button type="button" data-method="Transfer" class="till-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-1.5 text-xs font-medium hover:border-neutral-300">Transfer</button>
+                            <button type="button" data-method="Split" class="till-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-1.5 text-xs font-medium hover:border-neutral-300">Split</button>
                         </div>
+                        <p id="till-split-summary" class="hidden mt-1.5 text-[11px] text-neutral-500"></p>
                     </div>
 
                     <!-- Customer-required hint (shown when cart has items but no customer attached) -->
@@ -469,6 +471,30 @@
                     class="flex-1 border border-neutral-200 rounded-lg py-2.5 text-sm text-neutral-600 hover:border-neutral-400 transition-colors">Cancel</button>
             <button type="button" id="cashup-confirm"
                     class="flex-1 bg-neutral-900 text-white rounded-lg py-2.5 text-sm hover:bg-neutral-700 transition-colors">Close session</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Split payment modal ───────────────────────────────────────────────── -->
+<div id="till-split" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl p-6 max-w-sm w-full">
+        <h3 class="text-lg font-medium text-neutral-900 mb-1">Split payment</h3>
+        <div class="flex justify-between text-sm text-neutral-500 mb-4">
+            <span>Total <span id="split-total" class="font-medium text-neutral-800">₦0</span></span>
+            <span>Remaining <span id="split-remaining" class="font-medium text-amber-600">₦0</span></span>
+        </div>
+        <div class="space-y-2 mb-3">
+            <div class="flex items-center gap-2"><label class="w-20 text-sm text-neutral-600">Cash</label>
+                <input data-pm="Cash" type="number" min="0" step="any" class="split-amt flex-1 border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>
+            <div class="flex items-center gap-2"><label class="w-20 text-sm text-neutral-600">Card</label>
+                <input data-pm="Card" type="number" min="0" step="any" class="split-amt flex-1 border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>
+            <div class="flex items-center gap-2"><label class="w-20 text-sm text-neutral-600">Transfer</label>
+                <input data-pm="Transfer" type="number" min="0" step="any" class="split-amt flex-1 border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" /></div>
+        </div>
+        <p class="text-xs text-neutral-400 mb-4">Change (from cash): <span id="split-change" class="font-medium text-neutral-700">₦0</span></p>
+        <div class="flex gap-2">
+            <button type="button" id="split-cancel" class="flex-1 border border-neutral-200 rounded-lg py-2.5 text-sm text-neutral-600 hover:border-neutral-400 transition-colors">Cancel</button>
+            <button type="button" id="split-confirm" class="flex-1 bg-neutral-900 text-white rounded-lg py-2.5 text-sm hover:bg-neutral-700 transition-colors disabled:opacity-40" disabled>Confirm</button>
         </div>
     </div>
 </div>
@@ -909,7 +935,7 @@
     const changeEl = document.getElementById('till-change');
     const payBtn = document.getElementById('till-pay');
     const voidBtn = document.getElementById('till-void-btn');
-    let cart = [], method = 'Cash', customer = null;
+    let cart = [], method = 'Cash', customer = null, splitPayments = null;
 
     // ── Cart persistence ────────────────────────────────────────────────────────
     function saveCart() {
@@ -924,6 +950,9 @@
             x.classList.toggle('border', !on); x.classList.toggle('border-neutral-200', !on); x.classList.toggle('text-neutral-600', !on);
         });
         document.getElementById('till-cash-row').style.display = m === 'Cash' ? '' : 'none';
+        // Leaving Split clears any captured breakdown; the summary line only shows under Split.
+        const sum = document.getElementById('till-split-summary');
+        if (m !== 'Split') { splitPayments = null; if (sum) sum.classList.add('hidden'); }
     }
     function loadCart() {
         try {
@@ -1091,8 +1120,14 @@
     }
 
     // Pay is only enabled once there's a cart AND an attached customer (mandatory on POS).
+    function cartTotal() { return cart.reduce((s, c) => s + c.unitPrice * c.qty - (c.discountAmount || 0), 0); }
+    function splitOk() {
+        if (!splitPayments) return false;
+        const paid = splitPayments.reduce((s, p) => s + p.amount, 0);
+        return paid + 0.001 >= cartTotal();
+    }
     function updatePayState() {
-        payBtn.disabled = !cart.length || !customer;
+        payBtn.disabled = !cart.length || !customer || (method === 'Split' && !splitOk());
         const hint = document.getElementById('till-customer-hint');
         if (hint) hint.classList.toggle('hidden', !(cart.length && !customer));
     }
@@ -1103,7 +1138,7 @@
         c.qty += d; if (c.qty <= 0) cart.splice(i, 1); renderCart();
     }
 
-    voidBtn.addEventListener('click', () => { cart = []; tenderedEl.value = ''; setCustomer(null); renderCart(); });
+    voidBtn.addEventListener('click', () => { cart = []; tenderedEl.value = ''; setCustomer(null); selectMethod('Cash'); renderCart(); });
 
     // ── Hold / recall ─────────────────────────────────────────────────────────
     const holdBtn = document.getElementById('till-hold-btn');
@@ -1210,14 +1245,52 @@
 
     // ── Payment method ────────────────────────────────────────────────────────
     document.querySelectorAll('.till-method').forEach(b => b.addEventListener('click', () => {
-        selectMethod(b.dataset.method);
-        updateChange(); saveCart();
+        const m = b.dataset.method;
+        selectMethod(m);
+        updateChange(); saveCart(); updatePayState();
+        if (m === 'Split') { if (!cart.length) { showError('Add items first.'); return; } openSplit(); }
     }));
     tenderedEl.addEventListener('input', () => { updateChange(); saveCart(); });
     function updateChange() {
-        const t = cart.reduce((s, c) => s + c.unitPrice * c.qty - (c.discountAmount || 0), 0);
-        changeEl.textContent = fmt(Math.max(0, (parseFloat(tenderedEl.value) || 0) - t));
+        changeEl.textContent = fmt(Math.max(0, (parseFloat(tenderedEl.value) || 0) - cartTotal()));
     }
+
+    // ── Split payment modal ─────────────────────────────────────────────────────
+    const splitModal = document.getElementById('till-split');
+    const splitAmts = Array.from(document.querySelectorAll('.split-amt'));
+    const splitConfirm = document.getElementById('split-confirm');
+    function splitSum() { return splitAmts.reduce((s, el) => s + (parseFloat(el.value) || 0), 0); }
+    function renderSplit() {
+        const total = cartTotal(), paid = splitSum();
+        document.getElementById('split-total').textContent = fmt(total);
+        document.getElementById('split-remaining').textContent = fmt(Math.max(0, total - paid));
+        document.getElementById('split-change').textContent = fmt(Math.max(0, paid - total));
+        splitConfirm.disabled = paid + 0.001 < total;
+    }
+    function openSplit() {
+        // Pre-fill from an existing breakdown, else seed Cash with the full total.
+        splitAmts.forEach(el => { el.value = ''; });
+        if (splitPayments) splitPayments.forEach(p => { const el = splitAmts.find(e => e.dataset.pm === p.method); if (el) el.value = p.amount; });
+        else { const cashEl = splitAmts.find(e => e.dataset.pm === 'Cash'); if (cashEl) cashEl.value = cartTotal(); }
+        renderSplit();
+        splitModal.classList.remove('hidden');
+        setTimeout(() => splitAmts[0].focus(), 50);
+    }
+    splitAmts.forEach(el => el.addEventListener('input', renderSplit));
+    document.getElementById('split-cancel').addEventListener('click', () => {
+        splitModal.classList.add('hidden');
+        selectMethod('Cash'); updateChange(); saveCart(); updatePayState(); // revert if they back out
+    });
+    splitConfirm.addEventListener('click', () => {
+        const parts = splitAmts.map(el => ({ method: el.dataset.pm, amount: parseFloat(el.value) || 0 })).filter(p => p.amount > 0);
+        if (!parts.length) { showError('Enter at least one amount.'); return; }
+        splitPayments = parts;
+        const summary = document.getElementById('till-split-summary');
+        summary.textContent = parts.map(p => p.method + ' ' + fmt(p.amount)).join(' · ');
+        summary.classList.remove('hidden');
+        splitModal.classList.add('hidden');
+        updatePayState();
+    });
 
     // ── Keyboard shortcuts ────────────────────────────────────────────────────
     document.addEventListener('keydown', e => {
@@ -1258,6 +1331,7 @@
     // ── Checkout ──────────────────────────────────────────────────────────────
     payBtn.addEventListener('click', async () => {
         if (!cart.length) return;
+        if (method === 'Split' && window.SGPOS && !SGPOS.isOnline()) { showError('Split payment needs a connection.'); return; }
         payBtn.disabled = true; payBtn.querySelector('span').textContent = '…';
         try {
             const res = await fetch('/Pos/Checkout', {
@@ -1265,6 +1339,7 @@
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
                 body: JSON.stringify({ paymentMethod: method, amountTendered: parseFloat(tenderedEl.value) || 0,
                     customerUserId: customer?.id || null,
+                    payments: (method === 'Split' && splitPayments) ? splitPayments : null,
                     items: cart.map(c => ({ productId: c.productId, variantId: c.variantId, quantity: c.qty, note: c.note || null, discountAmount: c.discountAmount || 0, discountReason: c.discountReason || null, discountType: c.discountType || null })) })
             });
             const data = await res.json();
@@ -1305,14 +1380,14 @@
                     receiptBtn.href = '/Pos/Receipt/' + data.orderId;
                     receiptBtn.classList.remove('hidden');
                 }
-                cart = []; tenderedEl.value = ''; setCustomer(null); clearSavedCart(); renderCart();
+                cart = []; tenderedEl.value = ''; setCustomer(null); selectMethod('Cash'); clearSavedCart(); renderCart();
                 document.getElementById('till-done').classList.remove('hidden');
             } else showError(data.message || 'Could not complete the sale.');
         } finally { payBtn.querySelector('span').textContent = 'Pay'; updatePayState(); }
     });
 
     document.getElementById('till-new').addEventListener('click', () => {
-        cart = []; tenderedEl.value = ''; setCustomer(null);
+        cart = []; tenderedEl.value = ''; setCustomer(null); selectMethod('Cash');
         document.getElementById('till-done').classList.add('hidden');
         renderCart();
     });

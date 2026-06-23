@@ -46,8 +46,24 @@ public class TillController : InventoryAreaController
 
         var sales = await _db.Orders.Where(o => o.TillSessionId != null && ids.Contains(o.TillSessionId!.Value))
             .GroupBy(o => o.TillSessionId!.Value)
-            .Select(g => new { Id = g.Key, Total = g.Sum(x => x.Total), Count = g.Count(),
-                               Cash = g.Where(x => x.PaymentProvider == "Cash").Sum(x => x.Total) })
+            .Select(g => new { Id = g.Key, Total = g.Sum(x => x.Total), Count = g.Count() })
+            .ToListAsync();
+        // Cash taken per session: split-aware via OrderPayment rows, with a legacy fallback for
+        // orders that predate split payments (no rows). Mirrors the POS Z-report exactly.
+        var payCash = await _db.OrderPayments
+            .Where(p => p.Method == "Cash" && p.Order.TillSessionId != null && ids.Contains(p.Order.TillSessionId!.Value))
+            .GroupBy(p => p.Order.TillSessionId!.Value)
+            .Select(g => new { Id = g.Key, Cash = g.Sum(x => x.Amount) })
+            .ToListAsync();
+        var legacyCash = await _db.Orders
+            .Where(o => o.TillSessionId != null && ids.Contains(o.TillSessionId!.Value)
+                && o.PaymentProvider == "Cash" && !_db.OrderPayments.Any(p => p.OrderId == o.Id))
+            .GroupBy(o => o.TillSessionId!.Value)
+            .Select(g => new { Id = g.Key, Cash = g.Sum(x => x.Total) })
+            .ToListAsync();
+        var cashMoves = await _db.CashMovements.Where(m => ids.Contains(m.TillSessionId))
+            .GroupBy(m => m.TillSessionId)
+            .Select(g => new { Id = g.Key, Net = g.Sum(x => x.Amount) })
             .ToListAsync();
         var refunds = await _db.Refunds.Where(r => r.TillSessionId != null && ids.Contains(r.TillSessionId!.Value))
             .GroupBy(r => r.TillSessionId!.Value)
@@ -61,7 +77,10 @@ public class TillController : InventoryAreaController
             {
                 var sa = sales.FirstOrDefault(x => x.Id == s.Id);
                 var rf = refunds.FirstOrDefault(x => x.Id == s.Id);
-                var expected = s.OpeningFloat + (sa?.Cash ?? 0) - (rf?.CashRef ?? 0);
+                var cash = (payCash.FirstOrDefault(x => x.Id == s.Id)?.Cash ?? 0)
+                         + (legacyCash.FirstOrDefault(x => x.Id == s.Id)?.Cash ?? 0);
+                var moves = cashMoves.FirstOrDefault(x => x.Id == s.Id)?.Net ?? 0;
+                var expected = s.OpeningFloat + cash + moves - (rf?.CashRef ?? 0);
                 return new TillSessionRow
                 {
                     Session = s,

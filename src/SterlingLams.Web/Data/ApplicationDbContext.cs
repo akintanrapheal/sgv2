@@ -36,6 +36,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<StockAdjustmentLine> StockAdjustmentLines => Set<StockAdjustmentLine>();
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<OrderPayment> OrderPayments => Set<OrderPayment>();
     public DbSet<OrderNote> OrderNotes => Set<OrderNote>();
     public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
     public DbSet<Address> Addresses => Set<Address>();
@@ -215,6 +216,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
             e.HasIndex(m => m.TillSessionId);
             e.Property(m => m.Amount).HasPrecision(18, 2);
             e.HasOne(m => m.TillSession).WithMany().HasForeignKey(m => m.TillSessionId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ─── OrderPayment (split / mixed tenders on a POS sale) ─────────────
+        builder.Entity<OrderPayment>(e =>
+        {
+            e.HasIndex(p => p.OrderId);
+            e.Property(p => p.Amount).HasPrecision(18, 2);
+            e.HasOne(p => p.Order).WithMany().HasForeignKey(p => p.OrderId)
              .OnDelete(DeleteBehavior.Cascade);
         });
 
