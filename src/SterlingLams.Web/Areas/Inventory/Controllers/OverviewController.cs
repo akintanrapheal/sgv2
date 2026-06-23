@@ -10,20 +10,24 @@ public class OverviewController : InventoryAreaController
     private readonly ApplicationDbContext _db;
     public OverviewController(ApplicationDbContext db) => _db = db;
 
-    public async Task<IActionResult> Index()
+    public async Task<IActionResult> Index(int days = 30, int? storeId = null)
     {
         ViewData["Title"] = "Inventory Overview";
+        if (days != 7 && days != 30 && days != 90) days = 30;
         var today = DateTime.UtcNow.Date;
 
         var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        if (storeId.HasValue && stores.All(s => s.Id != storeId)) storeId = null; // ignore unknown branch
+        ViewBag.Days = days; ViewBag.StoreId = storeId; ViewBag.Stores = stores;
 
-        // Product-level stock totals (SQL-side sum over each product's inventory rows).
+        // Product-level stock totals (SQL-side sum over each product's inventory rows; scoped to a
+        // branch when one is selected).
         var prod = await _db.Products.Where(p => p.IsActive)
             .Select(p => new
             {
                 p.Name,
                 p.LowStockThreshold,
-                Total = p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0
+                Total = p.StoreInventories.Where(si => storeId == null || si.StoreId == storeId).Sum(si => (int?)si.QuantityOnHand) ?? 0
             })
             .ToListAsync();
 
@@ -51,15 +55,18 @@ public class OverviewController : InventoryAreaController
         }).ToList();
 
         // Till summary.
-        vm.OpenSessions = await _db.TillSessions.CountAsync(s => s.ClosedAt == null);
-        var posToday = _db.Orders.Where(o => o.Channel == OrderChannel.Pos && o.CreatedAt >= today);
+        vm.OpenSessions = await _db.TillSessions.CountAsync(s => s.ClosedAt == null
+            && (storeId == null || s.Register!.StoreId == storeId));
+        var posToday = _db.Orders.Where(o => o.Channel == OrderChannel.Pos && o.CreatedAt >= today
+            && (storeId == null || o.PickupStoreId == storeId));
         vm.TillSalesToday = await posToday.SumAsync(o => (decimal?)o.Total) ?? 0;
         vm.TillTxToday = await posToday.CountAsync();
 
-        // ── Sales insight: last 30 days, excluding cancelled/refunded. ──────────────────────
-        var since = today.AddDays(-30);
+        // ── Sales insight: selected window, excluding cancelled/refunded, scoped to branch. ──────
+        var since = today.AddDays(-(days - 1));
         var soldOrders = _db.Orders.Where(o => o.CreatedAt >= since
-            && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded);
+            && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded
+            && (storeId == null || o.PickupStoreId == storeId || o.FulfillingStoreId == storeId));
 
         // Top products by units sold.
         vm.TopProducts = await _db.OrderItems
@@ -96,7 +103,7 @@ public class OverviewController : InventoryAreaController
             .Select(g => new { Date = g.Key, Revenue = g.Sum(o => o.Total), Orders = g.Count() })
             .ToListAsync();
         var trend = new List<DayPointRow>();
-        for (int i = 29; i >= 0; i--)
+        for (int i = days - 1; i >= 0; i--)
         {
             var date = today.AddDays(-i);
             var row = trendRaw.FirstOrDefault(r => r.Date == date);
@@ -106,6 +113,7 @@ public class OverviewController : InventoryAreaController
 
         // Recent stock movements.
         vm.RecentMovements = await _db.StockMovements
+            .Where(m => storeId == null || m.StoreId == storeId)
             .OrderByDescending(m => m.Id).Take(8)
             .Select(m => new MovementRow
             {

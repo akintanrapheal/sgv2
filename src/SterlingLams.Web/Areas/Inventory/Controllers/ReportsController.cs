@@ -417,6 +417,69 @@ public class ReportsController : InventoryAreaController
         return View(rows);
     }
 
+    // ── Dead stock & aging: products with stock on hand that haven't sold in N days (capital
+    //    tied up). "Value" is at retail (qty × price), matching the Stock value report. ──────────
+    public async Task<IActionResult> DeadStock(int days = 90, int? categoryId = null)
+    {
+        ViewData["Title"] = "Dead stock";
+        if (days < 1) days = 90;
+        var cutoff = DateTime.SpecifyKind(DateTime.UtcNow.Date.AddDays(-days), DateTimeKind.Utc);
+
+        var pq = _db.Products.Where(p => p.IsActive);
+        if (categoryId.HasValue) pq = pq.Where(p => p.CategoryId == categoryId.Value);
+        var prods = await pq
+            .Select(p => new
+            {
+                p.Id, p.Name, p.Sku, Category = p.Category.Name, p.Price,
+                Units = p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0
+            })
+            .Where(x => x.Units > 0)   // only stock that's actually tying up capital
+            .ToListAsync();
+
+        var ids = prods.Select(p => p.Id).ToList();
+        var lastSold = (await _db.OrderItems
+                .Where(oi => ids.Contains(oi.ProductId)
+                          && oi.Order.Status != OrderStatus.Cancelled && oi.Order.Status != OrderStatus.Refunded)
+                .GroupBy(oi => oi.ProductId)
+                .Select(g => new { ProductId = g.Key, Last = g.Max(x => x.Order.CreatedAt) })
+                .ToListAsync())
+            .ToDictionary(x => x.ProductId, x => x.Last);
+
+        var today = DateTime.UtcNow.Date;
+        var rows = prods.Select(p =>
+            {
+                DateTime? last = lastSold.TryGetValue(p.Id, out var d) ? d : null;
+                return new DeadStockRow
+                {
+                    Name = p.Name, Sku = p.Sku, Category = p.Category,
+                    Units = p.Units, Value = p.Units * p.Price,
+                    LastSold = last,
+                    DaysSince = last.HasValue ? (int)(today - last.Value.Date).TotalDays : null
+                };
+            })
+            .Where(r => !r.LastSold.HasValue || r.LastSold.Value < cutoff)  // never sold, or not since cutoff
+            .OrderByDescending(r => r.Value)
+            .ToList();
+
+        ViewBag.Days = days; ViewBag.CategoryId = categoryId;
+        ViewBag.Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync();
+        return View(new DeadStockVm { Rows = rows, Days = days, TotalUnits = rows.Sum(r => r.Units), TotalValue = rows.Sum(r => r.Value) });
+    }
+
+    public async Task<IActionResult> DeadStockCsv(int days = 90, int? categoryId = null)
+    {
+        var vm = (DeadStockVm)((ViewResult)await DeadStock(days, categoryId)).Model!;
+        var sb = new StringBuilder();
+        sb.AppendLine("Product,SKU,Category,Units,Value,Last sold,Days since");
+        foreach (var r in vm.Rows)
+            sb.Append(Csv(r.Name)).Append(',').Append(Csv(r.Sku)).Append(',').Append(Csv(r.Category)).Append(',')
+              .Append(r.Units).Append(',').Append(r.Value).Append(',')
+              .Append(r.LastSold?.ToString("yyyy-MM-dd") ?? "never").Append(',')
+              .Append(r.DaysSince?.ToString() ?? "").AppendLine();
+        await LogAsync("Export", "Inventory", null, $"Exported dead-stock report ({vm.Rows.Count} product(s), {days}d)");
+        return CsvFile(sb, "dead_stock");
+    }
+
     // Orders that count as sales in a window: not cancelled or refunded.
     private IQueryable<Order> SoldOrders(DateTime f, DateTime t) =>
         _db.Orders.Where(o => o.CreatedAt >= f && o.CreatedAt < t.AddDays(1)
@@ -578,4 +641,21 @@ public class ExpiringRow
     public int Qty { get; set; }
     public DateTime Expiry { get; set; }
     public string Reference { get; set; } = "";
+}
+public class DeadStockRow
+{
+    public string Name { get; set; } = "";
+    public string? Sku { get; set; }
+    public string Category { get; set; } = "";
+    public int Units { get; set; }
+    public decimal Value { get; set; }
+    public DateTime? LastSold { get; set; }
+    public int? DaysSince { get; set; }
+}
+public class DeadStockVm
+{
+    public List<DeadStockRow> Rows { get; set; } = new();
+    public int Days { get; set; }
+    public int TotalUnits { get; set; }
+    public decimal TotalValue { get; set; }
 }

@@ -1,0 +1,83 @@
+@model SterlingLams.Web.Areas.Inventory.Controllers.DeadStockVm
+@using SterlingLams.Web.Models.Domain
+@{
+    ViewData["Title"] = "Dead stock";
+    var categories = ViewBag.Categories as List<Category> ?? new();
+    int? categoryId = ViewBag.CategoryId;
+    int days = ViewBag.Days ?? 90;
+    var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+    string Money(decimal v) => "₦" + v.ToString("N0");
+    var periods = new[] { 30, 60, 90, 180, 365 };
+}
+
+@await Html.PartialAsync("_ReportTabs", "DeadStock")
+
+<form method="get" class="flex flex-wrap items-end gap-2 mb-4">
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">No sale in</label>
+        <select name="days" class="@selectCls">
+            @foreach (var d in periods)
+            {
+                <option value="@d" selected="@(days == d)">@d days</option>
+            }
+        </select></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Category</label>
+        <select name="categoryId" class="@selectCls">
+            <option value="">All categories</option>
+            @foreach (var c in categories)
+            {
+                <option value="@c.Id" selected="@(categoryId == c.Id)">@c.Name</option>
+            }
+        </select></div>
+    <button type="submit" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700">Filter</button>
+    <a asp-action="DeadStockCsv" asp-all-route-data="@(new Dictionary<string,string>{ ["days"]=days.ToString(), ["categoryId"]=categoryId?.ToString() ?? "" })"
+       class="px-4 py-2 border border-neutral-200 text-neutral-700 text-xs rounded-sm hover:border-neutral-400">Export CSV</a>
+</form>
+
+<div class="grid grid-cols-3 gap-3 mb-5">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-[10px] text-neutral-400 uppercase tracking-widest">Dead items</p>
+        <p class="text-2xl font-light text-neutral-900 mt-1">@Model.Rows.Count</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-[10px] text-neutral-400 uppercase tracking-widest">Units tied up</p>
+        <p class="text-2xl font-light text-amber-700 mt-1">@Model.TotalUnits.ToString("N0")</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-[10px] text-neutral-400 uppercase tracking-widest">Capital tied up (at retail)</p>
+        <p class="text-2xl font-light text-neutral-900 mt-1">@Money(Model.TotalValue)</p>
+    </div>
+</div>
+
+<p class="text-xs text-neutral-400 mb-2">In stock but not sold in the last @days days (most capital first). Value is at retail price.</p>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[640px]">
+        <thead>
+            <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
+                <th class="text-left px-4 py-3 font-medium">Product</th>
+                <th class="text-left px-4 py-3 font-medium">Category</th>
+                <th class="text-right px-4 py-3 font-medium">Units</th>
+                <th class="text-right px-4 py-3 font-medium">Value</th>
+                <th class="text-right px-4 py-3 font-medium">Last sold</th>
+                <th class="text-right px-4 py-3 font-medium">Age</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (!Model.Rows.Any()) { <tr><td colspan="6" class="px-4 py-12 text-center text-neutral-400">No dead stock for this period 🎉</td></tr> }
+            @foreach (var r in Model.Rows)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-2.5">
+                        <span class="text-xs text-neutral-800">@r.Name</span>
+                        @if (!string.IsNullOrEmpty(r.Sku)) { <span class="text-[10px] text-neutral-400 font-mono"> · @r.Sku</span> }
+                    </td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-500">@r.Category</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-amber-700 font-medium">@r.Units</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-neutral-800">@Money(r.Value)</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-neutral-500">@(r.LastSold?.ToLocalTime().ToString("dd MMM yyyy") ?? "never")</td>
+                    <td class="px-4 py-2.5 text-right text-xs @(r.DaysSince == null ? "text-red-600 font-medium" : "text-neutral-500")">@(r.DaysSince == null ? "never sold" : r.DaysSince + "d")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

@@ -51,48 +51,79 @@ public class LowStockAlertService : BackgroundService
         }
 
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-        // Per-product total on-hand at/below the threshold (same rule as the Reorder report).
-        var low = await db.Products
-            .Where(p => p.IsActive)
-            .Select(p => new
+        // Per-(product, branch) on-hand (summed over variant rows), keeping anything that's negative
+        // (oversold), out of stock, or at/below its low-stock threshold.
+        var raw = await db.StoreInventories
+            .Where(si => si.Product.IsActive)
+            .GroupBy(si => new { si.StoreId, StoreName = si.Store.Name, si.ProductId, si.Product.Name, si.Product.Sku, si.Product.LowStockThreshold })
+            .Select(g => new
             {
-                p.Name,
-                p.Sku,
-                p.LowStockThreshold,
-                Total = p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0
+                g.Key.StoreName, g.Key.Name, g.Key.Sku, g.Key.LowStockThreshold,
+                OnHand = g.Sum(x => x.QuantityOnHand)
             })
-            .Where(x => x.Total <= (x.LowStockThreshold < 1 ? 1 : x.LowStockThreshold))
-            .OrderBy(x => x.Total)
-            .Take(100)
+            .Where(x => x.OnHand <= x.LowStockThreshold || x.OnHand <= 1)
             .ToListAsync(ct);
 
-        if (low.Count == 0) return; // nothing low → no email
+        // Classify (threshold floored at 1) and keep only real problems.
+        var items = raw.Select(x =>
+        {
+            var thr = x.LowStockThreshold < 1 ? 1 : x.LowStockThreshold;
+            var status = x.OnHand < 0 ? "Negative" : x.OnHand == 0 ? "Out" : x.OnHand <= thr ? "Low" : null;
+            return new { Branch = x.StoreName.Replace("Sterlin Glams ", ""), x.Name, x.Sku, x.OnHand, Threshold = thr, Status = status };
+        }).Where(x => x.Status != null).ToList();
+
+        if (items.Count == 0) return; // nothing to flag → no email
+
+        var negative = items.Count(x => x.Status == "Negative");
+        var outOf = items.Count(x => x.Status == "Out");
+        var lowCnt = items.Count(x => x.Status == "Low");
+        var branchCount = items.Select(x => x.Branch).Distinct().Count();
 
         string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
-        var rows = string.Join("", low.Select(x =>
-            $"<tr><td style=\"padding:6px 0;border-bottom:1px solid #f0efed;\">{Enc(x.Name)}</td>" +
-            $"<td style=\"padding:6px 0 6px 16px;border-bottom:1px solid #f0efed;color:#78716c;\">{Enc(x.Sku)}</td>" +
-            $"<td align=\"right\" style=\"padding:6px 0 6px 16px;border-bottom:1px solid #f0efed;\">{x.Total}</td>" +
-            $"<td align=\"right\" style=\"padding:6px 0 6px 16px;border-bottom:1px solid #f0efed;color:#78716c;\">{x.LowStockThreshold}</td></tr>"));
+        string Badge(string? st) => st switch
+        {
+            "Negative" => "<span style=\"color:#b91c1c;font-weight:600;\">Negative</span>",
+            "Out"      => "<span style=\"color:#dc2626;\">Out of stock</span>",
+            _           => "<span style=\"color:#b45309;\">Low</span>"
+        };
+
+        // Group by branch; within a branch order Negative → Out → Low, then by on-hand.
+        var rank = new Dictionary<string, int> { ["Negative"] = 0, ["Out"] = 1, ["Low"] = 2 };
+        var sections = string.Join("", items
+            .GroupBy(x => x.Branch).OrderBy(g => g.Key)
+            .Select(g =>
+            {
+                var rows = string.Join("", g.OrderBy(x => rank[x.Status!]).ThenBy(x => x.OnHand).Take(100).Select(x =>
+                    $"<tr><td style=\"padding:6px 0;border-bottom:1px solid #f0efed;\">{Enc(x.Name)}</td>" +
+                    $"<td style=\"padding:6px 0 6px 16px;border-bottom:1px solid #f0efed;color:#78716c;\">{Enc(x.Sku)}</td>" +
+                    $"<td align=\"right\" style=\"padding:6px 0 6px 16px;border-bottom:1px solid #f0efed;\">{x.OnHand}</td>" +
+                    $"<td align=\"right\" style=\"padding:6px 0 6px 16px;border-bottom:1px solid #f0efed;color:#78716c;\">{x.Threshold}</td>" +
+                    $"<td align=\"right\" style=\"padding:6px 0 6px 16px;border-bottom:1px solid #f0efed;\">{Badge(x.Status)}</td></tr>"));
+                return $@"<h3 style=""font-size:15px;margin:18px 0 6px;"">{Enc(g.Key)} <span style=""color:#78716c;font-weight:400;"">— {g.Count()} item(s)</span></h3>
+                    <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""font-size:14px;"">
+                        <tr><th align=""left"">Product</th><th align=""left"" style=""padding-left:16px;"">SKU</th>
+                            <th align=""right"" style=""padding-left:16px;"">On hand</th><th align=""right"" style=""padding-left:16px;"">Threshold</th>
+                            <th align=""right"" style=""padding-left:16px;"">Status</th></tr>{rows}</table>";
+            }));
+
         var body = $@"
-            <h2 style=""font-size:18px;margin:0 0 12px;"">Low stock — {low.Count} product(s)</h2>
-            <p>These products are at or below their low-stock threshold. Review them in the Inventory Reorder report.</p>
-            <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""margin:16px 0;font-size:14px;"">
-                <tr><th align=""left"">Product</th><th align=""left"" style=""padding-left:16px;"">SKU</th>
-                    <th align=""right"" style=""padding-left:16px;"">On hand</th><th align=""right"" style=""padding-left:16px;"">Threshold</th></tr>
-                {rows}
-            </table>";
+            <h2 style=""font-size:18px;margin:0 0 6px;"">Stock alert — {items.Count} item(s) across {branchCount} branch(es)</h2>
+            <p style=""color:#57534e;"">{negative} negative (oversold) · {outOf} out of stock · {lowCnt} low. Review in the Inventory Reorder report.</p>
+            {sections}";
 
         var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
-        var sent = await email.SendAsync(adminEmail, $"Low stock alert — {low.Count} product(s)", body, ct: ct);
+        var subject = negative > 0
+            ? $"Stock alert — {negative} oversold + {outOf + lowCnt} low/out"
+            : $"Stock alert — {outOf} out, {lowCnt} low";
+        var sent = await email.SendAsync(adminEmail, subject, body, ct: ct);
         if (sent)
         {
             _lastSentDate = today;
-            _logger.LogInformation("Low-stock digest sent to {Email} ({Count} product(s)).", adminEmail, low.Count);
+            _logger.LogInformation("Stock digest sent to {Email} ({Count} item(s), {Branches} branch(es)).", adminEmail, items.Count, branchCount);
         }
         else
         {
-            _logger.LogWarning("Low-stock digest NOT sent (email disabled/failed); {Count} product(s) low.", low.Count);
+            _logger.LogWarning("Stock digest NOT sent (email disabled/failed); {Count} item(s) flagged.", items.Count);
         }
     }
 }

@@ -1,10 +1,39 @@
 @using System.Text.Json
+@using SterlingLams.Web.Models.Domain
 @model SterlingLams.Web.Areas.Inventory.Controllers.InventoryOverviewViewModel
 @{
     ViewData["Title"] = "Inventory Overview";
     string J(object o) => JsonSerializer.Serialize(o);
     var hasTrend = Model.SalesTrend.Any(s => s.Revenue > 0);
+    var stores = ViewBag.Stores as List<Store> ?? new();
+    int? storeId = ViewBag.StoreId;
+    int days = ViewBag.Days ?? 30;
+    var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
 }
+
+<!-- Filters -->
+<form method="get" class="flex flex-wrap items-end gap-2 mb-5">
+    <div>
+        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Branch</label>
+        <select name="storeId" class="@selectCls" onchange="this.form.submit()">
+            <option value="">All branches</option>
+            @foreach (var s in stores)
+            {
+                <option value="@s.Id" selected="@(storeId == s.Id)">@s.Name.Replace("Sterlin Glams ", "")</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Sales window</label>
+        <select name="days" class="@selectCls" onchange="this.form.submit()">
+            @foreach (var d in new[] { 7, 30, 90 })
+            {
+                <option value="@d" selected="@(days == d)">Last @d days</option>
+            }
+        </select>
+    </div>
+    <noscript><button type="submit" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm">Apply</button></noscript>
+</form>
 
 <!-- KPI cards -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -29,7 +58,7 @@
 
 <!-- Charts -->
 <div class="mb-6">
-    <partial name="_ChartCard" model='new ChartCard { Id = "ovSalesTrend", Title = "Sales trend", Subtitle = "last 30 days · revenue / day", Height = 70, Empty = !hasTrend, EmptyText = "No sales in the last 30 days." }' />
+    <partial name="_ChartCard" model='new ChartCard { Id = "ovSalesTrend", Title = "Sales trend", Subtitle = $"last {days} days · revenue / day", Height = 70, Empty = !hasTrend, EmptyText = $"No sales in the last {days} days." }' />
 </div>
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
     <partial name="_ChartCard" model='new ChartCard { Id = "ovPerBranch", Title = "Units on hand by branch", Subtitle = "current", Height = 120, Empty = !Model.PerBranch.Any(), EmptyText = "No branches configured." }' />
@@ -102,12 +131,12 @@
     </div>
 </div>
 
-<!-- Top products & staff (last 30 days) -->
+<!-- Top products & staff -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
     <div class="bg-white border border-neutral-100 rounded-sm">
         <div class="px-5 py-3 border-b border-neutral-100 flex items-baseline justify-between">
             <h2 class="text-sm font-medium text-neutral-800">Top products</h2>
-            <span class="text-[11px] text-neutral-400">last 30 days · by units</span>
+            <span class="text-[11px] text-neutral-400">last @days days · by units</span>
         </div>
         @if (Model.TopProducts.Any())
         {
@@ -126,13 +155,13 @@
         }
         else
         {
-            <p class="px-5 py-8 text-center text-sm text-neutral-400">No sales in the last 30 days.</p>
+            <p class="px-5 py-8 text-center text-sm text-neutral-400">No sales in the last @days days.</p>
         }
     </div>
     <div class="bg-white border border-neutral-100 rounded-sm">
         <div class="px-5 py-3 border-b border-neutral-100 flex items-baseline justify-between">
             <h2 class="text-sm font-medium text-neutral-800">Top staff</h2>
-            <span class="text-[11px] text-neutral-400">last 30 days · POS sales</span>
+            <span class="text-[11px] text-neutral-400">last @days days · POS sales</span>
         </div>
         @if (Model.TopStaff.Any())
         {
@@ -151,7 +180,7 @@
         }
         else
         {
-            <p class="px-5 py-8 text-center text-sm text-neutral-400">No POS sales in the last 30 days.</p>
+            <p class="px-5 py-8 text-center text-sm text-neutral-400">No POS sales in the last @days days.</p>
         }
     </div>
 </div>
