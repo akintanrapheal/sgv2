@@ -282,6 +282,30 @@
 
                 // Panels start closed — user opens what they need
                 </script>
+                <script>
+                // Keep your place: the variant/image section buttons save via a server redirect that
+                // reloads this page at the top. Remember the scroll position on submit and restore it
+                // on the reload so you don't have to scroll back down. (Validation-error reloads of the
+                // main form keep your place too. Fresh-only, so a stale position is never reapplied.)
+                (function () {
+                    var KEY = 'pedit-scroll-@Model.Id';
+                    document.addEventListener('submit', function () {
+                        try { sessionStorage.setItem(KEY, JSON.stringify({ y: window.scrollY, t: Date.now() })); } catch (e) {}
+                    }, true);
+                    try {
+                        var raw = sessionStorage.getItem(KEY);
+                        if (raw) {
+                            sessionStorage.removeItem(KEY);
+                            var s = JSON.parse(raw);
+                            if (s && s.y > 0 && (Date.now() - s.t) < 10000) {
+                                var restore = function () { window.scrollTo(0, s.y); };
+                                restore();                                // best-effort before paint
+                                window.addEventListener('load', restore); // again once images/layout settle
+                            }
+                        }
+                    } catch (e) {}
+                }());
+                </script>
                 }
 
                 <!-- Existing variants table -->
