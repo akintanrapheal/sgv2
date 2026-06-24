@@ -163,22 +163,27 @@
                     {
                         @* Variant product: counts are per chosen option, so wait for a selection. *@
                         <p id="stock-prompt" class="text-sm text-neutral-400">Select an option above to see stock at each branch.</p>
-                        <div id="store-stock-list" class="space-y-2 hidden"></div>
+                        <div id="store-stock-list" class="space-y-2.5 hidden"></div>
                     }
                     else
                     {
-                        <div class="space-y-2">
+                        <div class="space-y-2.5">
                             @foreach (var store in Model.StoreStock)
                             {
-                                <div class="flex items-center justify-between py-2.5 border-b border-neutral-100">
-                                    <span class="text-sm text-neutral-700">@store.StoreName.Replace("Sterlin Glams ", "")</span>
-                                    @if (store.IsAvailable)
+                                var qty = store.Quantity;
+                                var low = qty > 0 && qty <= lowStockThreshold;
+                                <div class="flex items-center justify-between rounded-lg border border-neutral-100 px-4 py-3 transition-colors hover:border-neutral-200">
+                                    <span class="flex items-center gap-2.5 min-w-0">
+                                        <span class="w-2 h-2 rounded-full flex-shrink-0 @(qty == 0 ? "bg-neutral-300" : low ? "bg-amber-500" : "bg-emerald-500")"></span>
+                                        <span class="text-sm text-neutral-700 truncate">@store.StoreName.Replace("Sterlin Glams ", "")</span>
+                                    </span>
+                                    @if (qty > 0)
                                     {
-                                        <span class="text-sm text-neutral-800"><strong>@store.Quantity</strong> in stock@(store.Quantity <= lowStockThreshold ? " · low" : "")</span>
+                                        <span class="text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap @(low ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700")">@qty in stock</span>
                                     }
                                     else
                                     {
-                                        <span class="text-xs text-neutral-400 tracking-wider">Out of stock</span>
+                                        <span class="text-xs px-2.5 py-1 rounded-full bg-neutral-100 text-neutral-400 whitespace-nowrap">Out of stock</span>
                                     }
                                 </div>
                             }
@@ -652,11 +657,13 @@
     function renderVariantStock(stores) {
         if (!stockList) return;
         stockList.innerHTML = (stores || []).map(s => {
+            const dot = s.qty === 0 ? 'bg-neutral-300' : (s.low ? 'bg-amber-500' : 'bg-emerald-500');
             const right = s.qty > 0
-                ? '<span class="text-sm text-neutral-800"><strong>' + s.qty + '</strong> in stock' + (s.low ? ' · low' : '') + '</span>'
-                : '<span class="text-xs text-neutral-400 tracking-wider">Out of stock</span>';
-            return '<div class="flex items-center justify-between py-2.5 border-b border-neutral-100">'
-                 + '<span class="text-sm text-neutral-700">' + escHtml(s.name) + '</span>' + right + '</div>';
+                ? '<span class="text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap ' + (s.low ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700') + '">' + s.qty + ' in stock</span>'
+                : '<span class="text-xs px-2.5 py-1 rounded-full bg-neutral-100 text-neutral-400 whitespace-nowrap">Out of stock</span>';
+            return '<div class="flex items-center justify-between rounded-lg border border-neutral-100 px-4 py-3 transition-colors hover:border-neutral-200">'
+                 + '<span class="flex items-center gap-2.5 min-w-0"><span class="w-2 h-2 rounded-full flex-shrink-0 ' + dot + '"></span>'
+                 + '<span class="text-sm text-neutral-700 truncate">' + escHtml(s.name) + '</span></span>' + right + '</div>';
         }).join('');
         stockList.classList.remove('hidden');
         stockPrompt?.classList.add('hidden');
