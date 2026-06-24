@@ -3,7 +3,26 @@
 Tab-by-tab review of the Inventory System (`/Inventory` area) with advanced-feature suggestions.
 Grounded in the current code (controllers/views/models). Status legend: ✅ built · ◐ partial · ➕ proposed.
 
-_Last reviewed: 2026-06-23._
+_Last reviewed: 2026-06-23. Progress updated: 2026-06-24._
+
+---
+
+## Status — shipped / deferred (2026-06-24)
+
+**✅ Shipped this cycle**
+- **Dead-stock & aging report** — `/Inventory/Reports/DeadStock` (no sale in 30/60/90/180/365 days,
+  category filter, units + capital tied up at retail, CSV).
+- **Overview date-range + branch filter** — window (7/30/90) + branch scope across KPIs, sales,
+  trend chart, per-branch and recent movements.
+- **Stock-alert digest** — `LowStockAlertService` now groups per (product, branch) and splits
+  **Negative (oversold) / Out of stock / Low** into per-branch email sections (settings-gated).
+- **Variant-level stock in the POS picker** — the variant chooser shows per-variant available
+  stock, disables sold-out options, caps qty per variant (schema/service for variant stock already
+  existed; this surfaced it). See [POS_ROADMAP.md](POS_ROADMAP.md).
+
+**⏸ Deferred by owner decision**
+- **Cost & margin (COGS)** and **Purchasing (Supplier / PO / GRN)** — explicitly out of scope for
+  now. Valuation stays at retail. These remain the highest-value *big bets* if revisited.
 
 ---
 
@@ -23,7 +42,7 @@ highest-value work is.
 ### Overview ✅
 KPIs (SKUs, out/low stock, units on hand, POS today), charts (sales trend, units-by-branch, stock
 health), top products/staff, recent movements, alerts.
-- ➕ Date-range + branch filter.
+- ✅ Date-range + branch filter (shipped).
 - ➕ Retail KPIs: **stock turnover, days-of-cover, sell-through, GMROI, dead-stock value**.
 
 ### Point of Sale — Sessions / Registers / Discount reasons / POS settings ✅
@@ -81,13 +100,13 @@ Cashiers + PINs + store assignment, branches, audit log.
    **sales velocity** → suggested/auto-draft POs and **inter-branch rebalancing suggestions**.
 
 ### ⚡ Quick wins
-- **Per-item movement timeline** on the product page (receipts/sales/transfers/counts/adjustments).
-- **Dead-stock & aging report** (no sales in N days, value tied up).
-- **Reorder point + reorder qty** fields per product (even before full purchasing).
-- **Stock-alert digest** — extend existing `LowStockAlertService` + `BackInStockNotifier`: daily
-  email/WhatsApp digest, negative-stock alerts, per-product/branch thresholds.
-- **Bulk product/price import** (CSV) + **bulk label printing** by receipt/PO.
-- **Overview date-range + branch filters**.
+- ✅ **Dead-stock & aging report** (no sales in N days, value tied up) — **shipped**.
+- ✅ **Stock-alert digest** — extended `LowStockAlertService` to a per-branch low/out/negative
+  email digest — **shipped**.
+- ✅ **Overview date-range + branch filters** — **shipped**.
+- ➕ **Per-item movement timeline** on the product page (receipts/sales/transfers/counts/adjustments).
+- ➕ **Reorder point + reorder qty** fields per product (even before full purchasing).
+- ➕ **Bulk product/price import** (CSV) + **bulk label printing** by receipt/PO.
 
 ### 🛠 Medium
 - **Cycle counting (ABC)** + variance approval + count freeze.
