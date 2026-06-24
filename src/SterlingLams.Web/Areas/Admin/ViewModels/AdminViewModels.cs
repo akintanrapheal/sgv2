@@ -20,6 +20,24 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public List<TopProductRow> TopProducts { get; set; } = new();
         public List<StatusSliceRow> OrdersByStatus { get; set; } = new();
         public int ChartDays { get; set; } = 30;
+
+        // ── Period-over-period comparisons + AOV + channel split ──
+        public decimal RevenueYesterday { get; set; }
+        public decimal RevenueLastMonthMtd { get; set; }   // last month, same elapsed span (MTD)
+        public int OrdersYesterday { get; set; }
+        public decimal AovThisMonth { get; set; }
+        public decimal AovLastMonthMtd { get; set; }
+        public decimal RevenueOnlineMonth { get; set; }
+        public decimal RevenuePosMonth { get; set; }
+
+        public int? RevenueTodayDeltaPct => DeltaPct(RevenueToday, RevenueYesterday);
+        public int? RevenueMonthDeltaPct => DeltaPct(RevenueThisMonth, RevenueLastMonthMtd);
+        public int? OrdersTodayDeltaPct  => DeltaPct(OrdersToday, OrdersYesterday);
+        public int? AovDeltaPct          => DeltaPct(AovThisMonth, AovLastMonthMtd);
+
+        /// <summary>% change vs the prior period. Null when there's no prior baseline to compare against.</summary>
+        private static int? DeltaPct(decimal cur, decimal prev)
+            => prev <= 0 ? (cur > 0 ? 100 : (int?)null) : (int)System.Math.Round((cur - prev) / prev * 100);
     }
 
     public class StatusSliceRow
@@ -65,6 +83,10 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public List<AdminOrderRow> Orders { get; set; } = new();
         public string StatusFilter { get; set; } = "";
         public string SearchQuery { get; set; } = "";
+        public string ChannelFilter { get; set; } = "";   // "" | Online | Pos
+        public string PaidFilter { get; set; } = "";       // "" | paid | unpaid
+        public string DateFrom { get; set; } = "";
+        public string DateTo { get; set; } = "";
         public int CurrentPage { get; set; } = 1;
         public int TotalPages { get; set; } = 1;
         public Dictionary<string, int> StatusCounts { get; set; } = new();

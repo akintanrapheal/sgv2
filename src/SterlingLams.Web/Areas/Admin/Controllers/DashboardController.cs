@@ -26,8 +26,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             ViewData["Title"] = "Dashboard";
             if (days != 7 && days != 30 && days != 90) days = 30;
 
-            var today = DateTime.UtcNow.Date;
+            var now = DateTime.UtcNow;
+            var today = now.Date;
+            var yesterday = today.AddDays(-1);
             var monthStart = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            // Last month to the SAME elapsed point, so month-to-date compares like-for-like.
+            var elapsed = now - monthStart;
+            var lmStart = monthStart.AddMonths(-1);
+            var lmEnd = lmStart + elapsed;
 
             var vm = new DashboardViewModel
             {
@@ -35,12 +41,23 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     .Where(o => o.CreatedAt >= today && o.IsPaid)
                     .SumAsync(o => (decimal?)o.Total) ?? 0,
 
+                RevenueYesterday = await _db.Orders
+                    .Where(o => o.CreatedAt >= yesterday && o.CreatedAt < today && o.IsPaid)
+                    .SumAsync(o => (decimal?)o.Total) ?? 0,
+
                 RevenueThisMonth = await _db.Orders
                     .Where(o => o.CreatedAt >= monthStart && o.IsPaid)
                     .SumAsync(o => (decimal?)o.Total) ?? 0,
 
+                RevenueLastMonthMtd = await _db.Orders
+                    .Where(o => o.CreatedAt >= lmStart && o.CreatedAt < lmEnd && o.IsPaid)
+                    .SumAsync(o => (decimal?)o.Total) ?? 0,
+
                 OrdersToday = await _db.Orders
                     .CountAsync(o => o.CreatedAt >= today),
+
+                OrdersYesterday = await _db.Orders
+                    .CountAsync(o => o.CreatedAt >= yesterday && o.CreatedAt < today),
 
                 OrdersPending = await _db.Orders
                     .CountAsync(o => o.Status == OrderStatus.Pending || o.Status == OrderStatus.Processing),
@@ -49,8 +66,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
                 TotalCustomers = await _db.Users.CountAsync(),
 
+                // Use each product's own threshold (floored at 1), consistent with the rest of the system.
                 LowStockAlerts = await _db.StoreInventories
-                    .CountAsync(si => si.QuantityOnHand > 0 && si.QuantityOnHand < 3),
+                    .CountAsync(si => si.QuantityOnHand > 0
+                        && si.QuantityOnHand < (si.Product.LowStockThreshold < 1 ? 1 : si.Product.LowStockThreshold)),
 
                 RecentOrders = await _db.Orders
                     .Include(o => o.User)
@@ -70,7 +89,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 LowStockItems = await _db.StoreInventories
                     .Include(si => si.Product)
                     .Include(si => si.Store)
-                    .Where(si => si.QuantityOnHand > 0 && si.QuantityOnHand < 3)
+                    .Where(si => si.QuantityOnHand > 0
+                        && si.QuantityOnHand < (si.Product.LowStockThreshold < 1 ? 1 : si.Product.LowStockThreshold))
                     .OrderBy(si => si.QuantityOnHand)
                     .Take(8)
                     .Select(si => new LowStockRow
@@ -81,6 +101,21 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     })
                     .ToListAsync()
             };
+
+            // Average order value (paid orders), this month vs last month-to-date.
+            var paidThisMonth = await _db.Orders.CountAsync(o => o.IsPaid && o.CreatedAt >= monthStart);
+            var paidLmMtd = await _db.Orders.CountAsync(o => o.IsPaid && o.CreatedAt >= lmStart && o.CreatedAt < lmEnd);
+            vm.AovThisMonth = paidThisMonth > 0 ? vm.RevenueThisMonth / paidThisMonth : 0;
+            vm.AovLastMonthMtd = paidLmMtd > 0 ? vm.RevenueLastMonthMtd / paidLmMtd : 0;
+
+            // Channel split (online vs in-store POS) for this month's paid revenue.
+            var byChannel = await _db.Orders
+                .Where(o => o.IsPaid && o.CreatedAt >= monthStart)
+                .GroupBy(o => o.Channel)
+                .Select(g => new { g.Key, Total = g.Sum(o => o.Total) })
+                .ToListAsync();
+            vm.RevenueOnlineMonth = byChannel.FirstOrDefault(c => c.Key == OrderChannel.Online)?.Total ?? 0;
+            vm.RevenuePosMonth = byChannel.FirstOrDefault(c => c.Key == OrderChannel.Pos)?.Total ?? 0;
 
             // Revenue chart for selected day range
             var chartStart = today.AddDays(-(days - 1));

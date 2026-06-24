@@ -37,7 +37,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             _email = email;
         }
 
-        public async Task<IActionResult> Index(string status = "", string q = "", int page = 1)
+        public async Task<IActionResult> Index(string status = "", string q = "", string channel = "",
+            string paid = "", string? from = null, string? to = null, int page = 1)
         {
             ViewData["Title"] = "Orders";
 
@@ -48,12 +49,24 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<OrderStatus>(status, out var statusEnum))
                 query = query.Where(o => o.Status == statusEnum);
 
+            if (!string.IsNullOrWhiteSpace(channel) && Enum.TryParse<OrderChannel>(channel, out var channelEnum))
+                query = query.Where(o => o.Channel == channelEnum);
+
+            if (paid == "paid") query = query.Where(o => o.IsPaid);
+            else if (paid == "unpaid") query = query.Where(o => !o.IsPaid);
+
+            if (DateTime.TryParse(from, out var fromDate))
+                query = query.Where(o => o.CreatedAt >= fromDate.Date);
+            if (DateTime.TryParse(to, out var toDate))
+                query = query.Where(o => o.CreatedAt < toDate.Date.AddDays(1));
+
             if (!string.IsNullOrWhiteSpace(q))
                 query = query.Where(o =>
                     o.OrderNumber.Contains(q) ||
                     o.User.FirstName.Contains(q) ||
                     o.User.LastName.Contains(q) ||
-                    o.User.Email!.Contains(q));
+                    o.User.Email!.Contains(q) ||
+                    o.User.PhoneNumber!.Contains(q));
 
             var total = await query.CountAsync();
             var orders = await query
@@ -88,6 +101,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 Orders = orders,
                 StatusFilter = status,
                 SearchQuery = q,
+                ChannelFilter = channel,
+                PaidFilter = paid,
+                DateFrom = from ?? "",
+                DateTo = to ?? "",
                 CurrentPage = page,
                 TotalPages = (int)Math.Ceiling(total / (double)PageSize),
                 StatusCounts = statusCounts
@@ -281,6 +298,62 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 OrderNotes.AddSystem(_db, order.Id, "Ready-for-pickup email with QR pass sent to the customer.");
                 await _db.SaveChangesAsync();
             }
+        }
+
+        // Re-send a customer email for an order: an order summary, or (for store-pickup orders) the
+        // QR pickup pass. Useful when the original bounced or the customer lost it.
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> ResendEmail(int id, string type = "summary")
+        {
+            var order = await _db.Orders
+                .Include(o => o.Items).Include(o => o.PickupStore).Include(o => o.User).Include(o => o.Customer)
+                .FirstOrDefaultAsync(o => o.Id == id);
+            if (order == null) return NotFound();
+
+            var to = order.User?.Email ?? order.Customer?.Email;
+            if (string.IsNullOrWhiteSpace(to))
+            {
+                TempData["Error"] = "This order has no customer email on file.";
+                return RedirectToAction(nameof(Detail), new { id });
+            }
+
+            if (type == "pickup")
+            {
+                if (order.FulfillmentType != FulfillmentType.StorePickup)
+                    TempData["Error"] = "A pickup pass only applies to store-pickup orders.";
+                else
+                {
+                    await SendPickupReadyEmailAsync(order.Id); // re-sends and re-stamps; logs its own note
+                    await LogAsync("EmailResend", "Order", order.Id.ToString(), $"Re-sent pickup pass for {order.OrderNumber} to {to}");
+                    TempData["Success"] = $"Pickup pass re-sent to {to}.";
+                }
+                return RedirectToAction(nameof(Detail), new { id });
+            }
+
+            // Default: an order summary / confirmation.
+            string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+            var firstName = order.User?.FirstName ?? order.Customer?.FirstName ?? "there";
+            var rows = string.Join("", order.Items.Select(i =>
+                $"<tr><td style=\"padding:4px 0;color:#374151\">{Enc(i.ProductName)}{(i.VariantName != null ? " (" + Enc(i.VariantName) + ")" : "")} &times; {i.Quantity}</td>"
+                + $"<td style=\"padding:4px 0;text-align:right;color:#111\">₦{i.LineTotal:N0}</td></tr>"));
+            var body =
+                $"<p>Hi {Enc(firstName)},</p>"
+                + $"<p>Here's a summary of your order <strong>{Enc(order.OrderNumber)}</strong> (status: {Enc(order.Status.ToString())}).</p>"
+                + $"<table style=\"width:100%;border-collapse:collapse;margin-top:12px;font-size:14px\">{rows}"
+                + $"<tr><td style=\"padding-top:8px;border-top:1px solid #eee;font-weight:700\">Total</td><td style=\"padding-top:8px;border-top:1px solid #eee;text-align:right;font-weight:700\">₦{order.Total:N0}</td></tr></table>"
+                + "<p style=\"color:#6b7280;font-size:13px;margin-top:16px\">Thank you for shopping with Sterlin Glams.</p>";
+
+            var sent = await _email.SendAsync(to!, $"Your order {order.OrderNumber}", body,
+                order.User?.FullName ?? order.Customer?.FullName);
+            if (sent)
+            {
+                OrderNotes.AddSystem(_db, order.Id, $"Order summary email re-sent to {to}.");
+                await _db.SaveChangesAsync();
+                await LogAsync("EmailResend", "Order", order.Id.ToString(), $"Re-sent order summary for {order.OrderNumber} to {to}");
+                TempData["Success"] = $"Order summary re-sent to {to}.";
+            }
+            else TempData["Error"] = "Could not send the email. Check email settings.";
+            return RedirectToAction(nameof(Detail), new { id });
         }
 
         // ── Order notes (WooCommerce-style timeline) ──────────────────────────
@@ -552,19 +625,32 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return RedirectToAction(nameof(Index));
         }
 
-        public async Task<IActionResult> ExportCsv(string status = "", string q = "")
+        public async Task<IActionResult> ExportCsv(string status = "", string q = "",
+            string channel = "", string paid = "", string? from = null, string? to = null)
         {
             var query = _db.Orders.Include(o => o.User).AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<OrderStatus>(status, out var statusEnum))
                 query = query.Where(o => o.Status == statusEnum);
 
+            if (!string.IsNullOrWhiteSpace(channel) && Enum.TryParse<OrderChannel>(channel, out var channelEnum))
+                query = query.Where(o => o.Channel == channelEnum);
+
+            if (paid == "paid") query = query.Where(o => o.IsPaid);
+            else if (paid == "unpaid") query = query.Where(o => !o.IsPaid);
+
+            if (DateTime.TryParse(from, out var fromDate))
+                query = query.Where(o => o.CreatedAt >= fromDate.Date);
+            if (DateTime.TryParse(to, out var toDate))
+                query = query.Where(o => o.CreatedAt < toDate.Date.AddDays(1));
+
             if (!string.IsNullOrWhiteSpace(q))
                 query = query.Where(o =>
                     o.OrderNumber.Contains(q) ||
                     o.User.FirstName.Contains(q) ||
                     o.User.LastName.Contains(q) ||
-                    o.User.Email!.Contains(q));
+                    o.User.Email!.Contains(q) ||
+                    o.User.PhoneNumber!.Contains(q));
 
             var orders = await query
                 .OrderByDescending(o => o.CreatedAt)

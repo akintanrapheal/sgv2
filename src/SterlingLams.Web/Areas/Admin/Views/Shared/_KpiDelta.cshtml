@@ -1,0 +1,7 @@
+@model int?
+@*  ▲/▼ % badge for a KPI card. Null model = no prior baseline → render nothing.  *@
+@if (Model.HasValue)
+{
+    var up = Model.Value >= 0;
+    <span class="text-xs font-medium align-middle @(up ? "text-emerald-600" : "text-red-500")">@(up ? "▲" : "▼") @Math.Abs(Model.Value)%</span>
+}

@@ -5,23 +5,52 @@
 }
 
 <!-- Toolbar -->
-<div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
-    <form method="get" class="flex gap-2 flex-1">
+@{
+    var selCls = "border border-neutral-200 rounded-sm px-2 py-2 text-xs bg-white focus:outline-none focus:border-neutral-400";
+    bool anyFilter = !string.IsNullOrEmpty(Model.ChannelFilter) || !string.IsNullOrEmpty(Model.PaidFilter)
+                     || !string.IsNullOrEmpty(Model.DateFrom) || !string.IsNullOrEmpty(Model.DateTo)
+                     || !string.IsNullOrEmpty(Model.SearchQuery);
+}
+<form method="get" class="space-y-3 mb-6">
+    <input type="hidden" name="status" value="@Model.StatusFilter" />
+    <div class="flex flex-col sm:flex-row sm:items-center gap-3">
         <input type="text" name="q" value="@Model.SearchQuery"
-               placeholder="Search order #, name or email…"
+               placeholder="Search order #, name, email or phone…"
                class="flex-1 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
-        <input type="hidden" name="status" value="@Model.StatusFilter" />
         <button type="submit"
                 class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
             Search
         </button>
-    </form>
-    <a asp-area="Admin" asp-controller="Orders" asp-action="ExportCsv"
-       asp-route-status="@Model.StatusFilter" asp-route-q="@Model.SearchQuery"
-       class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:border-neutral-500 transition-colors whitespace-nowrap">
-        ↓ Export CSV
-    </a>
-</div>
+        <a asp-area="Admin" asp-controller="Orders" asp-action="ExportCsv"
+           asp-route-status="@Model.StatusFilter" asp-route-q="@Model.SearchQuery" asp-route-channel="@Model.ChannelFilter"
+           asp-route-paid="@Model.PaidFilter" asp-route-from="@Model.DateFrom" asp-route-to="@Model.DateTo"
+           class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:border-neutral-500 transition-colors whitespace-nowrap">
+            ↓ Export CSV
+        </a>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+        <select name="channel" onchange="this.form.submit()" class="@selCls">
+            <option value="">All channels</option>
+            <option value="Online" selected="@(Model.ChannelFilter == "Online")">Online</option>
+            <option value="Pos" selected="@(Model.ChannelFilter == "Pos")">In-store (POS)</option>
+        </select>
+        <select name="paid" onchange="this.form.submit()" class="@selCls">
+            <option value="">Any payment</option>
+            <option value="paid" selected="@(Model.PaidFilter == "paid")">Paid</option>
+            <option value="unpaid" selected="@(Model.PaidFilter == "unpaid")">Unpaid</option>
+        </select>
+        <label class="text-xs text-neutral-400">From
+            <input type="date" name="from" value="@Model.DateFrom" onchange="this.form.submit()" class="@selCls ml-1" /></label>
+        <label class="text-xs text-neutral-400">To
+            <input type="date" name="to" value="@Model.DateTo" onchange="this.form.submit()" class="@selCls ml-1" /></label>
+        <noscript><button type="submit" class="@selCls">Apply</button></noscript>
+        @if (anyFilter)
+        {
+            <a asp-area="Admin" asp-controller="Orders" asp-action="Index" asp-route-status="@Model.StatusFilter"
+               class="text-xs text-neutral-500 underline hover:text-neutral-800">Clear filters</a>
+        }
+    </div>
+</form>
 
 <!-- Status tabs with counts -->
 <div class="flex gap-1 mb-4 flex-wrap">
@@ -31,7 +60,8 @@
         var isActive = Model.StatusFilter == s;
         var count = Model.StatusCounts.TryGetValue(s, out var c) ? c : 0;
         <a asp-area="Admin" asp-controller="Orders" asp-action="Index"
-           asp-route-status="@s" asp-route-q="@Model.SearchQuery"
+           asp-route-status="@s" asp-route-q="@Model.SearchQuery" asp-route-channel="@Model.ChannelFilter"
+           asp-route-paid="@Model.PaidFilter" asp-route-from="@Model.DateFrom" asp-route-to="@Model.DateTo"
            class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-sm transition-colors @(isActive ? "bg-neutral-900 text-white" : "bg-white text-neutral-600 border border-neutral-200 hover:border-neutral-400")">
             @label
             @if (count > 0)
@@ -137,6 +167,8 @@
         {
             <a asp-area="Admin" asp-controller="Orders" asp-action="Index"
                asp-route-page="@p" asp-route-status="@Model.StatusFilter" asp-route-q="@Model.SearchQuery"
+               asp-route-channel="@Model.ChannelFilter" asp-route-paid="@Model.PaidFilter"
+               asp-route-from="@Model.DateFrom" asp-route-to="@Model.DateTo"
                class="px-3 py-1.5 text-xs rounded-sm border transition-colors @(p == Model.CurrentPage ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")">
                 @p
             </a>
