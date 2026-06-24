@@ -264,6 +264,26 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
 
         // Selected attribute value IDs for variant generation (posted from form)
         public List<int> SelectedAttributeValueIds { get; set; } = new();
+
+        /// <summary>At-a-glance stock + sales for the right-hand sidebar (null for a new product).</summary>
+        public ProductEditSidebar? Sidebar { get; set; }
+    }
+
+    public class ProductEditSidebar
+    {
+        public int TotalOnHand { get; set; }
+        public int TotalReserved { get; set; }
+        public int LowStockThreshold { get; set; } = 3;
+        public List<ProductBranchStock> Branches { get; set; } = new();
+        public int UnitsSold90 { get; set; }
+        public decimal Revenue90 { get; set; }
+        public DateTime? LastSold { get; set; }
+    }
+    public class ProductBranchStock
+    {
+        public string Store { get; set; } = "";
+        public int OnHand { get; set; }
+        public int Reserved { get; set; }
     }
 
     public class AdminVariantViewModel

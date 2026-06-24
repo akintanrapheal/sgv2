@@ -22,7 +22,8 @@
     }
 </div>
 
-<div class="max-w-2xl">
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-6 max-w-6xl">
+    <div class="xl:col-span-2 min-w-0">
     <form asp-area="Admin" asp-controller="Products" asp-action="Save" method="post" class="space-y-5">
         @Html.AntiForgeryToken()
         <input type="hidden" asp-for="Id" />
@@ -544,4 +545,56 @@
             });
         }());
     </script>
+    </div><!-- /left column -->
+
+    @if (Model.Sidebar != null)
+    {
+        var sb = Model.Sidebar;
+        <aside class="space-y-4 xl:sticky xl:top-6 self-start">
+            <!-- Stock summary -->
+            <div class="bg-white rounded-sm border border-neutral-100 p-5">
+                <h3 class="text-sm font-medium mb-3">Stock</h3>
+                <div class="flex items-baseline justify-between">
+                    <span class="text-xs text-neutral-400">On hand · all branches</span>
+                    <span class="text-2xl font-light @(sb.TotalOnHand == 0 ? "text-red-600" : "text-neutral-900")">@sb.TotalOnHand</span>
+                </div>
+                @if (sb.TotalReserved > 0)
+                {
+                    <p class="text-[11px] text-neutral-400 mt-0.5">@sb.TotalReserved reserved (held for online orders)</p>
+                }
+                <div class="border-t border-neutral-100 mt-3 pt-3 space-y-1.5">
+                    @if (!sb.Branches.Any())
+                    {
+                        <p class="text-xs text-neutral-400">No stock records yet.</p>
+                    }
+                    @foreach (var b in sb.Branches)
+                    {
+                        var thr = sb.LowStockThreshold < 1 ? 1 : sb.LowStockThreshold;
+                        var low = b.OnHand > 0 && b.OnHand < thr;
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-neutral-500">@b.Store.Replace("Sterlin Glams ", "")</span>
+                            <span class="font-medium @(b.OnHand == 0 ? "text-red-500" : low ? "text-amber-600" : "text-neutral-800")">
+                                @b.OnHand@(b.OnHand == 0 ? " · out" : low ? " · low" : "")
+                            </span>
+                        </div>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(Model.Sku))
+                {
+                    <a asp-area="Inventory" asp-controller="Stock" asp-action="Index" asp-route-q="@Model.Sku"
+                       class="mt-3 inline-block text-[11px] text-neutral-400 hover:text-neutral-700 hover:underline">Manage stock →</a>
+                }
+            </div>
+
+            <!-- Sales snapshot -->
+            <div class="bg-white rounded-sm border border-neutral-100 p-5">
+                <h3 class="text-sm font-medium mb-3">Sales <span class="text-xs text-neutral-400 font-normal">· last 90 days</span></h3>
+                <div class="space-y-2">
+                    <div class="flex justify-between text-xs"><span class="text-neutral-400">Units sold</span><span class="font-medium">@sb.UnitsSold90</span></div>
+                    <div class="flex justify-between text-xs"><span class="text-neutral-400">Revenue</span><span class="font-medium text-emerald-700">₦@sb.Revenue90.ToString("N0")</span></div>
+                    <div class="flex justify-between text-xs"><span class="text-neutral-400">Last sold</span><span class="text-neutral-600">@(sb.LastSold?.ToLocalTime().ToString("dd MMM yyyy") ?? "never")</span></div>
+                </div>
+            </div>
+        </aside>
+    }
 </div>

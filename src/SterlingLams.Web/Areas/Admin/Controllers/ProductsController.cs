@@ -196,6 +196,36 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 }).ToList()
             };
 
+            // Sidebar: stock per branch + a 90-day sales snapshot (existing products only).
+            var branches = await _db.StoreInventories
+                .Where(si => si.ProductId == id)
+                .GroupBy(si => si.Store.Name)
+                .Select(g => new ProductBranchStock
+                {
+                    Store = g.Key,
+                    OnHand = g.Sum(x => x.QuantityOnHand),
+                    Reserved = g.Sum(x => x.QuantityReserved)
+                })
+                .OrderBy(b => b.Store)
+                .ToListAsync();
+
+            var since90 = DateTime.UtcNow.Date.AddDays(-90);
+            var soldItems = _db.OrderItems.Where(oi => oi.ProductId == id && oi.Order.IsPaid && oi.Order.CreatedAt >= since90);
+            vm.Sidebar = new ProductEditSidebar
+            {
+                LowStockThreshold = product.LowStockThreshold,
+                Branches = branches,
+                TotalOnHand = branches.Sum(b => b.OnHand),
+                TotalReserved = branches.Sum(b => b.Reserved),
+                UnitsSold90 = await soldItems.SumAsync(oi => (int?)oi.Quantity) ?? 0,
+                Revenue90 = await soldItems.SumAsync(oi => (decimal?)(oi.Quantity * oi.UnitPrice - oi.DiscountAmount)) ?? 0,
+                LastSold = await _db.OrderItems
+                    .Where(oi => oi.ProductId == id && oi.Order.IsPaid)
+                    .OrderByDescending(oi => oi.Order.CreatedAt)
+                    .Select(oi => (DateTime?)oi.Order.CreatedAt)
+                    .FirstOrDefaultAsync()
+            };
+
             return View(vm);
         }
 
