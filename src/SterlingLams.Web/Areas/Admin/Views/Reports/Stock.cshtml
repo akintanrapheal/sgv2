@@ -1,0 +1,54 @@
+@using System.Text.Json
+@model SterlingLams.Web.Areas.Admin.Controllers.ReportsController.StockVm
+@{
+    ViewData["Title"] = "Stock Report";
+    string J(object o) => JsonSerializer.Serialize(o);
+}
+
+@await Html.PartialAsync("_ReportTabs", "Stock")
+
+<div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Total stock value</p><p class="text-xl font-light text-neutral-900 mt-1">₦@Model.TotalValue.ToString("N0")</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Units on hand</p><p class="text-xl font-light text-neutral-900 mt-1">@Model.TotalUnits.ToString("N0")</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Out of stock</p><p class="text-xl font-light text-amber-600 mt-1">@Model.OutOfStock <span class="text-xs text-neutral-400">lines</span></p>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+    <partial name="_ChartCard" model='new ChartCard { Id = "stockByBranch", Title = "Stock value by branch", Subtitle = "₦ on hand", Height = 160, Empty = !Model.ByBranch.Any(), EmptyText = "No stock recorded." }' />
+
+    <div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
+        <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Low stock</div>
+        <table class="w-full text-sm">
+            <tbody class="divide-y divide-neutral-100">
+                @if (!Model.LowStock.Any()) { <tr><td class="px-4 py-8 text-center text-neutral-400 text-sm">Nothing low on stock 🎉</td></tr> }
+                @foreach (var r in Model.LowStock)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5 text-neutral-700">@r.Product</td>
+                        <td class="px-4 py-2.5 text-neutral-500">@r.Store</td>
+                        <td class="px-4 py-2.5 text-right"><span class="text-amber-600 font-medium">@r.Qty</span> <span class="text-neutral-300 text-xs">/ @r.Threshold</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ChartScripts" />
+    <script>
+        @if (Model.ByBranch.Any())
+        {
+            <text>
+            SLCharts.bar('stockByBranch', @Html.Raw(J(Model.ByBranch.Select(b => b.Label))),
+                @Html.Raw(J(Model.ByBranch.Select(b => b.Total))), { money: true, label: 'Stock value' });
+            </text>
+        }
+    </script>
+}

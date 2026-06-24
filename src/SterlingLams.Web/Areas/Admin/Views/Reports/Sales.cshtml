@@ -1,0 +1,99 @@
+@using System.Text.Json
+@model SterlingLams.Web.Areas.Admin.Controllers.ReportsController.SalesVm
+@{
+    ViewData["Title"] = "Sales Report";
+    string J(object o) => JsonSerializer.Serialize(o);
+    var days = Model.ByDay.OrderBy(d => d.Day).ToList();
+}
+
+@await Html.PartialAsync("_ReportTabs", "Sales")
+
+<form method="get" class="flex flex-wrap items-end gap-3 mb-6">
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">From</label>
+        <input type="date" name="from" value="@Model.From.ToString("yyyy-MM-dd")" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+    </div>
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">To</label>
+        <input type="date" name="to" value="@Model.To.ToString("yyyy-MM-dd")" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+    </div>
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">Branch</label>
+        <select name="storeId" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm">
+            <option value="">All branches</option>
+            @foreach (var s in Model.Stores)
+            {
+                <option value="@s.Id" selected="@(Model.StoreId == s.Id)">@s.Name</option>
+            }
+        </select>
+    </div>
+    <button class="px-4 py-1.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Apply</button>
+</form>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Gross sales</p><p class="text-xl font-light text-neutral-900 mt-1">₦@Model.Gross.ToString("N0")</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Refunds</p><p class="text-xl font-light text-red-600 mt-1">₦@Model.Refunds.ToString("N0")</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Net</p><p class="text-xl font-light text-neutral-900 mt-1">₦@Model.Net.ToString("N0")</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Transactions</p><p class="text-xl font-light text-neutral-900 mt-1">@Model.Count <span class="text-xs text-neutral-400">· avg ₦@Model.Avg.ToString("N0")</span></p>
+    </div>
+</div>
+
+<div class="mb-6">
+    <partial name="_ChartCard" model='new ChartCard { Id = "salesByDay", Title = "Daily sales", Subtitle = "revenue / day in range", Height = 70, Empty = !days.Any(), EmptyText = "No sales in range." }' />
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+    <partial name="_ChartCard" model='new ChartCard { Id = "salesByPayment", Title = "By payment method", Subtitle = "share of revenue", Height = 150, Empty = !Model.ByPayment.Any(), EmptyText = "No sales in range." }' />
+    <partial name="_ChartCard" model='new ChartCard { Id = "salesByBranch", Title = "By branch", Subtitle = "revenue", Height = 150, Empty = !Model.ByBranch.Any(), EmptyText = "No sales in range." }' />
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
+    <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Daily breakdown</div>
+    <table class="w-full text-sm">
+        <tbody class="divide-y divide-neutral-100">
+            @if (!Model.ByDay.Any()) { <tr><td class="px-4 py-8 text-center text-neutral-400">No sales in range.</td></tr> }
+            @foreach (var d in Model.ByDay)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-2.5 text-neutral-700">@d.Day.ToString("ddd, dd MMM yyyy")</td>
+                    <td class="px-4 py-2.5 text-neutral-500 text-right">@d.Count sale(s)</td>
+                    <td class="px-4 py-2.5 text-neutral-800 text-right">₦@d.Total.ToString("N0")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@section Scripts {
+    <partial name="_ChartScripts" />
+    <script>
+        @if (days.Any())
+        {
+            <text>
+            SLCharts.line('salesByDay', @Html.Raw(J(days.Select(d => d.Day.ToString("MMM dd")))),
+                [{ label: 'Revenue', data: @Html.Raw(J(days.Select(d => d.Total))), money: true }]);
+            </text>
+        }
+        @if (Model.ByPayment.Any())
+        {
+            <text>
+            SLCharts.doughnut('salesByPayment', @Html.Raw(J(Model.ByPayment.Select(p => p.Label))),
+                @Html.Raw(J(Model.ByPayment.Select(p => p.Amount))), { money: true });
+            </text>
+        }
+        @if (Model.ByBranch.Any())
+        {
+            <text>
+            SLCharts.bar('salesByBranch', @Html.Raw(J(Model.ByBranch.Select(b => b.Label))),
+                @Html.Raw(J(Model.ByBranch.Select(b => b.Total))), { money: true, label: 'Revenue' });
+            </text>
+        }
+    </script>
+}

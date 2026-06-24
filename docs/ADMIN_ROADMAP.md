@@ -39,9 +39,9 @@ backlog — quick wins, mediums, and all three big bets — has now shipped.
   storefront) + a dashboard tile with open counts.
 
 **✅ Shipped — big bets**
-- **Reports consolidation** — retired the thin Admin reports duplicate; Admin → Reports (and old
-  /Sales /Products /Stock deep links) redirect to the one analytics home, **Inventory → Reports**
-  (the comprehensive suite). Safe: no default staff role had the Admin "Reports" section.
+- **Reports consolidation** — _reverted by owner preference._ Admin keeps its **own** Reports
+  (Sales / Best Sellers / Stock) and the Inventory System keeps its full suite; both areas have
+  reports. (The earlier consolidation that redirected Admin → Reports into Inventory was undone.)
 - **Global search** — top-bar box → `/Admin/Search`, grouped results (orders / customers / products);
   permission-aware (each group only shown if the user can access that section).
 - **Staff 2FA** — authenticator-app (TOTP) two-factor: login challenge (code or recovery code,
@@ -76,7 +76,8 @@ bulk update, notes, refund, tracking, resend email, packing slip + invoice, CSV.
 Settings** ✅ — full CRUD; RBAC with store-level scoping; audit; email customizer; DB-driven settings.
 - ➕ Bulk price/category edit surfaced; SEO fields.
 
-**Reports** → now redirects to the Inventory analytics home (consolidated).
+**Reports** ✅ — Admin's own Sales / Best Sellers / Stock reports (the Inventory System also has its
+full suite).
 
 **Search** ✅ — global, permission-aware.
 
