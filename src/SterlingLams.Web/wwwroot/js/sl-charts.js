@@ -20,6 +20,9 @@
     Chart.defaults.font.family = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
     Chart.defaults.font.size = 10;
     Chart.defaults.color = '#737373';
+    // No entrance/update animation on backend charts — they render in their final state immediately.
+    Chart.defaults.animation = false;
+    Chart.defaults.animations = false;
 
     function naira(v) { return '₦' + Number(v).toLocaleString(); }
     function compact(v) { return Number(v).toLocaleString(); }
