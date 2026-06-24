@@ -32,6 +32,11 @@ public class ProductsController : Controller
         // graphs here caused a cartesian JOIN blow-up and over-fetch on the busiest page.
         var query = _db.Products.Where(p => p.IsActive);
 
+        // Admin toggle: hide products that are out of stock everywhere (simple or all-variants-out).
+        var hideOos = await _settings.GetBoolAsync("storefront.hide_out_of_stock", false);
+        if (hideOos)
+            query = query.Where(p => p.StoreInventories.Any(si => si.QuantityOnHand > 0));
+
         if (!string.IsNullOrWhiteSpace(filters.Search))
         {
             var term = filters.Search.Trim();
@@ -99,14 +104,17 @@ public class ProductsController : Controller
         foreach (var c in products) c.IsInWishlist = wishlistProductIds.Contains(c.Id);
 
         // Category navigation with live product counts (sidebar on desktop, top nav on mobile).
+        // Counts respect the hide-out-of-stock toggle so they match what the listing shows.
         filters.Categories = await _db.Categories
-            .Where(c => c.IsActive && c.Products.Any(p => p.IsActive))
+            .Where(c => c.IsActive && c.Products.Any(p => p.IsActive
+                && (!hideOos || p.StoreInventories.Any(si => si.QuantityOnHand > 0))))
             .OrderBy(c => c.Name)
             .Select(c => new CategoryFilterOption
             {
                 Name = c.Name,
                 Slug = c.Slug,
-                Count = c.Products.Count(p => p.IsActive)
+                Count = c.Products.Count(p => p.IsActive
+                    && (!hideOos || p.StoreInventories.Any(si => si.QuantityOnHand > 0)))
             })
             .ToListAsync();
 
@@ -136,6 +144,12 @@ public class ProductsController : Controller
             .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive);
 
         if (product == null) return NotFound();
+
+        // Admin toggle: a product that's out of stock everywhere is hidden from the storefront
+        // entirely — a direct link returns Not Found (matches it being absent from listings).
+        var hideOos = await _settings.GetBoolAsync("storefront.hide_out_of_stock", false);
+        if (hideOos && !product.StoreInventories.Any(si => si.QuantityOnHand > 0))
+            return NotFound();
 
         // Track for the "Recently viewed" merchandising row (cookie-based; works for guests).
         SterlingLams.Web.Infrastructure.RecentlyViewed.Record(Request, Response, product.Id);
@@ -200,7 +214,9 @@ public class ProductsController : Controller
                     StoreSlug = g.Key.Slug,
                     Quantity = g.Sum(si => Math.Max(0, si.QuantityOnHand - si.QuantityReserved))
                 }).ToList(),
-            Variants = product.Variants.Where(v => v.IsActive).Select(v => new ProductVariantOptionViewModel
+            // When hiding out-of-stock, only surface variant options (size/colour) that have stock;
+            // the sold-out ones drop out of both the dropdowns and the variant data.
+            Variants = product.Variants.Where(v => v.IsActive && (!hideOos || VariantAvailable(v.Id) > 0)).Select(v => new ProductVariantOptionViewModel
             {
                 Id = v.Id,
                 Name = v.Name,
