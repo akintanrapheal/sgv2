@@ -4,8 +4,9 @@
 }
 
 <!-- Toolbar -->
-<div class="flex items-center gap-3 mb-6">
-    <form method="get" class="flex gap-2 flex-1">
+@{ var selCls = "border border-neutral-200 rounded-sm px-2 py-2 text-xs bg-white focus:outline-none focus:border-neutral-400"; }
+<form method="get" class="space-y-3 mb-6">
+    <div class="flex items-center gap-3">
         <input type="text" name="q" value="@Model.SearchQuery"
                placeholder="Search name or email…"
                class="flex-1 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
@@ -13,13 +14,28 @@
                 class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
             Search
         </button>
-    </form>
-    <a asp-area="Admin" asp-controller="Customers" asp-action="ExportCsv"
-       asp-route-q="@Model.SearchQuery"
-       class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:border-neutral-500 transition-colors whitespace-nowrap">
-        ↓ Export CSV
-    </a>
-</div>
+        <a asp-area="Admin" asp-controller="Customers" asp-action="ExportCsv"
+           asp-route-q="@Model.SearchQuery"
+           class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:border-neutral-500 transition-colors whitespace-nowrap">
+            ↓ Export CSV
+        </a>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+        <select name="segment" onchange="this.form.submit()" class="@selCls">
+            <option value="">All segments</option>
+            <option value="vip" selected="@(Model.SegmentFilter == "vip")">VIP (₦500k+)</option>
+            <option value="repeat" selected="@(Model.SegmentFilter == "repeat")">Repeat (2+ orders)</option>
+            <option value="lapsed" selected="@(Model.SegmentFilter == "lapsed")">Lapsed (90d+)</option>
+            <option value="new" selected="@(Model.SegmentFilter == "new")">New (≤1 order)</option>
+        </select>
+        <input type="text" name="tag" value="@Model.TagFilter" placeholder="Filter by tag…" class="@selCls" />
+        <button type="submit" class="@selCls">Filter</button>
+        @if (!string.IsNullOrEmpty(Model.SegmentFilter) || !string.IsNullOrEmpty(Model.TagFilter) || !string.IsNullOrEmpty(Model.SearchQuery))
+        {
+            <a asp-area="Admin" asp-controller="Customers" asp-action="Index" class="text-xs text-neutral-500 underline hover:text-neutral-800">Clear</a>
+        }
+    </div>
+</form>
 
 <!-- Table -->
 <div class="bg-white rounded-sm border border-neutral-100 overflow-hidden">
@@ -33,12 +49,13 @@
                 <th class="text-right px-6 py-3 text-xs text-neutral-400 font-medium">Total Spend</th>
                 <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Joined</th>
                 <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Last Order</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Segments</th>
             </tr>
         </thead>
         <tbody class="divide-y divide-neutral-50">
             @if (!Model.Customers.Any())
             {
-                <tr><td colspan="7" class="px-6 py-12 text-center text-neutral-400 text-sm">No customers found.</td></tr>
+                <tr><td colspan="8" class="px-6 py-12 text-center text-neutral-400 text-sm">No customers found.</td></tr>
             }
             @foreach (var c in Model.Customers)
             {
@@ -53,6 +70,18 @@
                     <td class="px-6 py-3 text-xs text-right font-medium text-emerald-700">₦@c.TotalSpend.ToString("N0")</td>
                     <td class="px-6 py-3 text-xs text-neutral-400">@c.JoinedAt.ToString("dd MMM yy")</td>
                     <td class="px-6 py-3 text-xs text-neutral-400">@(c.LastOrderAt.HasValue ? c.LastOrderAt.Value.ToString("dd MMM yy") : "—")</td>
+                    <td class="px-6 py-3">
+                        <div class="flex flex-wrap gap-1">
+                            @if (c.IsVip) { <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">VIP</span> }
+                            @if (c.IsRepeat) { <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">Repeat</span> }
+                            @if (c.IsLapsed) { <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Lapsed</span> }
+                            else if (c.IsNew) { <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-100 text-neutral-500">New</span> }
+                            @foreach (var t in c.TagList)
+                            {
+                                <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-100 text-neutral-600">@t</span>
+                            }
+                        </div>
+                    </td>
                 </tr>
             }
         </tbody>
@@ -66,7 +95,7 @@
         @for (int p = 1; p <= Model.TotalPages; p++)
         {
             <a asp-area="Admin" asp-controller="Customers" asp-action="Index"
-               asp-route-page="@p" asp-route-q="@Model.SearchQuery"
+               asp-route-page="@p" asp-route-q="@Model.SearchQuery" asp-route-segment="@Model.SegmentFilter" asp-route-tag="@Model.TagFilter"
                class="px-3 py-1.5 text-xs rounded-sm border transition-colors @(p == Model.CurrentPage ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")">
                 @p
             </a>

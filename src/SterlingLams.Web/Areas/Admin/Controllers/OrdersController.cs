@@ -46,7 +46,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .Include(o => o.User)
                 .AsQueryable();
 
-            if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<OrderStatus>(status, out var statusEnum))
+            // "Needs action" = paid orders still waiting on staff (not a real OrderStatus).
+            var actionable = new[] { OrderStatus.Pending, OrderStatus.Confirmed, OrderStatus.Processing, OrderStatus.AwaitingTransfer };
+            if (status == "NeedsAction")
+                query = query.Where(o => o.IsPaid && actionable.Contains(o.Status));
+            else if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<OrderStatus>(status, out var statusEnum))
                 query = query.Where(o => o.Status == statusEnum);
 
             if (!string.IsNullOrWhiteSpace(channel) && Enum.TryParse<OrderChannel>(channel, out var channelEnum))
@@ -95,6 +99,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .ToListAsync();
             var statusCounts = allStatuses.ToDictionary(s => s, s => counts.FirstOrDefault(c => c.Status == s)?.Count ?? 0);
             statusCounts[""] = await _db.Orders.CountAsync(); // "All" tab
+            statusCounts["NeedsAction"] = await _db.Orders.CountAsync(o => o.IsPaid && actionable.Contains(o.Status));
 
             var vm = new AdminOrderListViewModel
             {
@@ -172,6 +177,22 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             };
 
             return View(vm);
+        }
+
+        // Print-friendly packing slip (items + ship-to, no prices) and invoice (prices + totals).
+        // Both share one standalone print view, toggled by ViewBag.Mode.
+        public async Task<IActionResult> PackingSlip(int id) => await PrintDoc(id, "packing");
+        public async Task<IActionResult> Invoice(int id) => await PrintDoc(id, "invoice");
+
+        private async Task<IActionResult> PrintDoc(int id, string mode)
+        {
+            var order = await _db.Orders
+                .Include(o => o.Items).Include(o => o.PickupStore).Include(o => o.DeliveryAddress)
+                .Include(o => o.User).Include(o => o.Customer)
+                .FirstOrDefaultAsync(o => o.Id == id);
+            if (order == null) return NotFound();
+            ViewBag.Mode = mode;
+            return View("PrintDoc", order);
         }
 
         [HttpPost]

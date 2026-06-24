@@ -26,6 +26,10 @@ public interface ILoyaltyService
     /// <summary>Reverses loyalty on a fully-refunded order: claws back the points earned and returns
     /// the points redeemed. Once per order (idempotent via Order.LoyaltyReversedAt).</summary>
     Task ReverseForOrderAsync(int orderId);
+
+    /// <summary>Manually credits (+) or debits (−) a customer's points with a reason, from Admin.
+    /// Balance is never taken below zero. Returns the new balance.</summary>
+    Task<int> AdjustAsync(string userId, int points, string reason);
 }
 
 public class LoyaltyService : ILoyaltyService
@@ -48,6 +52,32 @@ public class LoyaltyService : ILoyaltyService
         if (string.IsNullOrEmpty(userId)) return 0;
         return await _db.LoyaltyAccounts.Where(a => a.UserId == userId)
             .Select(a => (int?)a.PointsBalance).FirstOrDefaultAsync() ?? 0;
+    }
+
+    public async Task<int> AdjustAsync(string userId, int points, string reason)
+    {
+        if (string.IsNullOrEmpty(userId) || points == 0) return await GetBalanceAsync(userId);
+        var now = DateTime.UtcNow;
+        var account = await _db.LoyaltyAccounts.FirstOrDefaultAsync(a => a.UserId == userId);
+        if (account is null)
+        {
+            account = new LoyaltyAccount { UserId = userId, CreatedAt = now, UpdatedAt = now };
+            _db.LoyaltyAccounts.Add(account);
+        }
+        // Never let a manual debit push the balance negative; clamp to what's available.
+        if (points < 0) points = -Math.Min(-points, account.PointsBalance);
+        if (points == 0) return account.PointsBalance;
+
+        account.PointsBalance += points;
+        account.UpdatedAt = now;
+        account.Entries.Add(new PointsLedgerEntry
+        {
+            Points = points,
+            Reason = string.IsNullOrWhiteSpace(reason) ? "Manual adjustment" : reason.Trim(),
+            CreatedAt = now
+        });
+        await _db.SaveChangesAsync();
+        return account.PointsBalance;
     }
 
     public async Task<bool> RedemptionEnabledAsync() =>

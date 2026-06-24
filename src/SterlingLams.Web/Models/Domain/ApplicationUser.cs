@@ -18,6 +18,9 @@ public class ApplicationUser : IdentityUser
     /// but never attaches an order to a real registered account it doesn't own.</summary>
     public bool IsGuest { get; set; }
 
+    /// <summary>Free-text admin tags (comma-separated), e.g. "vip, wholesale". For CRM filtering only.</summary>
+    public string? Tags { get; set; }
+
     public string FullName => $"{FirstName} {LastName}".Trim();
 
     public ICollection<Order> Orders { get; set; } = new List<Order>();

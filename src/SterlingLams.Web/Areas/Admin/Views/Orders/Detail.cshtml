@@ -6,7 +6,13 @@
 <div class="flex items-center justify-between mb-6">
     <a asp-area="Admin" asp-controller="Orders" asp-action="Index"
        class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors">← Back to Orders</a>
-    <span class="text-xs text-neutral-400">@Model.Order.CreatedAt.ToString("dddd, dd MMMM yyyy HH:mm")</span>
+    <div class="flex items-center gap-2">
+        <a asp-area="Admin" asp-controller="Orders" asp-action="Invoice" asp-route-id="@Model.Order.Id" target="_blank"
+           class="px-3 py-1.5 text-xs border border-neutral-200 rounded-sm hover:border-neutral-400 transition-colors">🖨 Invoice</a>
+        <a asp-area="Admin" asp-controller="Orders" asp-action="PackingSlip" asp-route-id="@Model.Order.Id" target="_blank"
+           class="px-3 py-1.5 text-xs border border-neutral-200 rounded-sm hover:border-neutral-400 transition-colors">🖨 Packing slip</a>
+        <span class="text-xs text-neutral-400 ml-2">@Model.Order.CreatedAt.ToString("dddd, dd MMMM yyyy HH:mm")</span>
+    </div>
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">

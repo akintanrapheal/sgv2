@@ -1,0 +1,149 @@
+@model SterlingLams.Web.Models.Domain.Order
+@using SterlingLams.Web.Services
+@inject ISettingsService Settings
+@{
+    Layout = null;
+    var mode = (string)(ViewBag.Mode ?? "invoice");
+    var isInvoice = mode == "invoice";
+    var title = isInvoice ? "Invoice" : "Packing Slip";
+    var siteName = await Settings.GetAsync("general.site_name", "Sterlin Glams");
+    var logoUrl = await Settings.GetAsync("general.logo_url", "");
+    if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = "/images/sg-logo.png";
+    var addr = Model.DeliveryAddress;
+    var cust = Model.User ?? Model.Customer;
+    string Money(decimal v) => "₦" + v.ToString("N0");
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@title @Model.OrderNumber</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; color:#111; margin:0; padding:32px; font-size:13px; }
+        .sheet { max-width:720px; margin:0 auto; }
+        .top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; }
+        h1 { font-size:22px; margin:0; letter-spacing:1px; }
+        h2 { font-size:16px; margin:0 0 2px; }
+        .muted { color:#666; }
+        .cols { display:flex; gap:32px; margin-bottom:20px; }
+        .cols > div { flex:1; }
+        .lbl { text-transform:uppercase; font-size:10px; letter-spacing:1px; color:#999; margin:0 0 4px; }
+        table { width:100%; border-collapse:collapse; margin-top:8px; }
+        th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:1px; color:#999; border-bottom:1px solid #ddd; padding:6px 4px; }
+        td { padding:8px 4px; border-bottom:1px solid #f0f0f0; }
+        .right { text-align:right; } .center { text-align:center; }
+        .totals { width:260px; margin-left:auto; margin-top:12px; }
+        .totals td { border:none; padding:3px 4px; }
+        .grand { font-size:16px; font-weight:700; border-top:2px solid #111; }
+        .badge { display:inline-block; padding:2px 8px; border-radius:3px; font-size:11px; font-weight:600; }
+        .paid { background:#dcfce7; color:#166534; } .unpaid { background:#fee2e2; color:#991b1b; }
+        .qtybox { display:inline-block; min-width:28px; text-align:center; border:1px solid #111; border-radius:3px; padding:2px 6px; font-weight:700; }
+        .btns { max-width:720px; margin:24px auto 0; display:flex; gap:8px; }
+        .btns button, .btns a { padding:8px 16px; font-size:13px; border:1px solid #ccc; background:#fff; cursor:pointer; text-decoration:none; color:#111; border-radius:4px; }
+        @@media print { .btns { display:none; } body { padding:0; } }
+    </style>
+</head>
+<body onload="window.print()">
+    <div class="sheet">
+        <div class="top">
+            <div>
+                <img src="@logoUrl" alt="" style="max-height:48px;margin-bottom:6px;display:block;" onerror="this.style.display='none'" />
+                <h2>@siteName</h2>
+            </div>
+            <div style="text-align:right;">
+                <h1>@title</h1>
+                <p class="muted" style="margin:4px 0 0;">@Model.OrderNumber</p>
+                <p class="muted" style="margin:2px 0 0;">@Model.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</p>
+                @if (isInvoice)
+                {
+                    <p style="margin:6px 0 0;"><span class="badge @(Model.IsPaid ? "paid" : "unpaid")">@(Model.IsPaid ? "PAID" : "UNPAID")</span></p>
+                }
+            </div>
+        </div>
+
+        <div class="cols">
+            <div>
+                <p class="lbl">@(isInvoice ? "Bill to" : "Ship to")</p>
+                @if (addr != null)
+                {
+                    <p style="margin:0;font-weight:600;">@addr.FullName</p>
+                    <p class="muted" style="margin:2px 0 0;">@addr.Line1@(string.IsNullOrEmpty(addr.Line2) ? "" : ", " + addr.Line2)</p>
+                    <p class="muted" style="margin:0;">@addr.City, @addr.State</p>
+                    <p class="muted" style="margin:2px 0 0;">@addr.Phone</p>
+                }
+                else
+                {
+                    <p style="margin:0;font-weight:600;">@(cust?.FullName ?? "Walk-in customer")</p>
+                    @if (cust != null)
+                    {
+                        <p class="muted" style="margin:2px 0 0;">@cust.Email</p>
+                        <p class="muted" style="margin:0;">@cust.PhoneNumber</p>
+                    }
+                }
+            </div>
+            <div>
+                <p class="lbl">Fulfilment</p>
+                <p style="margin:0;">@(Model.FulfillmentType == SterlingLams.Web.Models.Domain.FulfillmentType.StorePickup ? "Store pickup" : "Delivery")</p>
+                @if (Model.PickupStore != null)
+                {
+                    <p class="muted" style="margin:2px 0 0;">@Model.PickupStore.Name</p>
+                    <p class="muted" style="margin:0;">@($"{Model.PickupStore.Address}, {Model.PickupStore.City}".Trim(' ', ','))</p>
+                }
+                <p class="muted" style="margin:6px 0 0;">Status: @Model.Status</p>
+            </div>
+        </div>
+
+        @if (isInvoice)
+        {
+            <table>
+                <thead><tr><th>Item</th><th class="center">Qty</th><th class="right">Unit</th><th class="right">Line total</th></tr></thead>
+                <tbody>
+                @foreach (var i in Model.Items)
+                {
+                    <tr>
+                        <td>@i.ProductName@(i.VariantName != null ? $" ({i.VariantName})" : "")<br /><span class="muted" style="font-size:11px;">@i.ProductSku</span></td>
+                        <td class="center">@i.Quantity</td>
+                        <td class="right">@Money(i.UnitPrice)</td>
+                        <td class="right">@Money(i.LineTotal)</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+            <table class="totals">
+                <tr><td class="muted">Subtotal</td><td class="right">@Money(Model.Subtotal)</td></tr>
+                @if (Model.DiscountAmount > 0)
+                {
+                    <tr><td class="muted">Discount</td><td class="right">−@Money(Model.DiscountAmount)</td></tr>
+                }
+                @if (Model.DeliveryFee > 0)
+                {
+                    <tr><td class="muted">Delivery</td><td class="right">@Money(Model.DeliveryFee)</td></tr>
+                }
+                <tr class="grand"><td>Total</td><td class="right">@Money(Model.Total)</td></tr>
+            </table>
+        }
+        else
+        {
+            <table>
+                <thead><tr><th class="center" style="width:60px;">Qty</th><th>Item</th><th class="right">SKU</th></tr></thead>
+                <tbody>
+                @foreach (var i in Model.Items)
+                {
+                    <tr>
+                        <td class="center"><span class="qtybox">@i.Quantity</span></td>
+                        <td>@i.ProductName@(i.VariantName != null ? $" ({i.VariantName})" : "")</td>
+                        <td class="right muted">@i.ProductSku</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+            <p class="muted" style="margin-top:24px;">Packed by ____________________  ·  Checked by ____________________</p>
+        }
+    </div>
+    <div class="btns">
+        <button onclick="window.print()">Print</button>
+        <a href="javascript:window.close()">Close</a>
+    </div>
+</body>
+</html>

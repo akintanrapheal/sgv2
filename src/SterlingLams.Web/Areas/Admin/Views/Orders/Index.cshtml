@@ -1,7 +1,7 @@
 @model SterlingLams.Web.Areas.Admin.ViewModels.AdminOrderListViewModel
 @{
     ViewData["Title"] = "Orders";
-    var statuses = new[] { "", "Pending", "Confirmed", "Processing", "ReadyForPickup", "Collected", "Shipped", "Delivered", "Cancelled" };
+    var statuses = new[] { "", "NeedsAction", "Pending", "Confirmed", "Processing", "ReadyForPickup", "Collected", "Shipped", "Delivered", "Cancelled" };
 }
 
 <!-- Toolbar -->
@@ -56,7 +56,7 @@
 <div class="flex gap-1 mb-4 flex-wrap">
     @foreach (var s in statuses)
     {
-        var label = string.IsNullOrEmpty(s) ? "All" : s;
+        var label = string.IsNullOrEmpty(s) ? "All" : s == "NeedsAction" ? "⚠ Needs action" : s;
         var isActive = Model.StatusFilter == s;
         var count = Model.StatusCounts.TryGetValue(s, out var c) ? c : 0;
         <a asp-area="Admin" asp-controller="Orders" asp-action="Index"

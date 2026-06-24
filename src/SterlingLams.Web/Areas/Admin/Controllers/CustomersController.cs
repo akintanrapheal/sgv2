@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Areas.Admin.ViewModels;
 using SterlingLams.Web.Data;
+using SterlingLams.Web.Services;
 
 namespace SterlingLams.Web.Areas.Admin.Controllers
 {
@@ -14,14 +15,16 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         protected override string Section => "Customers";
 
         private readonly ApplicationDbContext _db;
+        private readonly ILoyaltyService _loyalty;
         private const int PageSize = 30;
 
-        public CustomersController(ApplicationDbContext db)
+        public CustomersController(ApplicationDbContext db, ILoyaltyService loyalty)
         {
             _db = db;
+            _loyalty = loyalty;
         }
 
-        public async Task<IActionResult> Index(string q = "", int page = 1)
+        public async Task<IActionResult> Index(string q = "", string segment = "", string tag = "", int page = 1)
         {
             ViewData["Title"] = "Customers";
 
@@ -31,6 +34,20 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 query = query.Where(u =>
                     EF.Functions.ILike(u.FirstName + " " + u.LastName, $"%{q}%") ||
                     EF.Functions.ILike(u.Email!, $"%{q}%"));
+
+            if (!string.IsNullOrWhiteSpace(tag))
+                query = query.Where(u => u.Tags != null && EF.Functions.ILike(u.Tags, $"%{tag}%"));
+
+            // Segment filters mirror the derived badges on AdminCustomerRow.
+            var lapsedCutoff = DateTime.UtcNow.AddDays(-CustomerSegments.LapsedDays);
+            query = segment switch
+            {
+                "vip" => query.Where(u => (u.Orders.Where(o => o.IsPaid).Sum(o => (decimal?)o.Total) ?? 0) >= CustomerSegments.VipSpend),
+                "repeat" => query.Where(u => u.Orders.Count >= 2),
+                "lapsed" => query.Where(u => u.Orders.Any() && u.Orders.Max(o => o.CreatedAt) < lapsedCutoff),
+                "new" => query.Where(u => u.Orders.Count <= 1),
+                _ => query
+            };
 
             var total = await query.CountAsync();
 
@@ -47,7 +64,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     OrderCount = u.Orders.Count,
                     TotalSpend = u.Orders.Where(o => o.IsPaid).Sum(o => (decimal?)o.Total) ?? 0,
                     JoinedAt = u.CreatedAt,
-                    LastOrderAt = u.Orders.Any() ? u.Orders.Max(o => (DateTime?)o.CreatedAt) : null
+                    LastOrderAt = u.Orders.Any() ? u.Orders.Max(o => (DateTime?)o.CreatedAt) : null,
+                    Tags = u.Tags
                 })
                 .ToListAsync();
 
@@ -55,6 +73,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             {
                 Customers = customers,
                 SearchQuery = q,
+                SegmentFilter = segment,
+                TagFilter = tag,
                 CurrentPage = page,
                 TotalPages = (int)Math.Ceiling(total / (double)PageSize)
             };
@@ -94,10 +114,48 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 TotalSpend = await _db.Orders
                     .Where(o => o.UserId == id && o.IsPaid)
                     .SumAsync(o => (decimal?)o.Total) ?? 0,
-                RecentOrders = orders
+                RecentOrders = orders,
+                Tags = user.Tags,
+                LoyaltyBalance = await _loyalty.GetBalanceAsync(id),
+                LoyaltyEntries = await _db.PointsLedgerEntries
+                    .Where(p => p.Account.UserId == id)
+                    .OrderByDescending(p => p.Id).Take(15).ToListAsync()
             };
 
             return View(vm);
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> AdjustLoyalty(string id, int points, string? reason)
+        {
+            var user = await _db.Users.FindAsync(id);
+            if (user == null) return NotFound();
+            if (points == 0)
+            {
+                TempData["Error"] = "Enter a non-zero number of points.";
+                return RedirectToAction(nameof(Detail), new { id });
+            }
+            var balance = await _loyalty.AdjustAsync(id, points, reason ?? "Manual adjustment");
+            await LogAsync("LoyaltyAdjust", "Customer", id,
+                $"Adjusted {user.FullName}'s points by {(points > 0 ? "+" : "")}{points} — new balance {balance}{(string.IsNullOrWhiteSpace(reason) ? "" : $" ({reason!.Trim()})")}");
+            TempData["Success"] = $"Points adjusted. New balance: {balance}.";
+            return RedirectToAction(nameof(Detail), new { id });
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> SaveTags(string id, string? tags)
+        {
+            var user = await _db.Users.FindAsync(id);
+            if (user == null) return NotFound();
+            // Normalise: trim, drop blanks, de-dupe (case-insensitive), comma-join.
+            var cleaned = string.Join(", ", (tags ?? "")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+            user.Tags = cleaned.Length == 0 ? null : cleaned;
+            await _db.SaveChangesAsync();
+            await LogAsync("Update", "Customer", id, $"Updated tags for {user.FullName}: {user.Tags ?? "(none)"}");
+            TempData["Success"] = "Tags saved.";
+            return RedirectToAction(nameof(Detail), new { id });
         }
 
         public async Task<IActionResult> ExportCsv(string q = "")

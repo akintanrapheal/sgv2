@@ -117,6 +117,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             vm.RevenueOnlineMonth = byChannel.FirstOrDefault(c => c.Key == OrderChannel.Online)?.Total ?? 0;
             vm.RevenuePosMonth = byChannel.FirstOrDefault(c => c.Key == OrderChannel.Pos)?.Total ?? 0;
 
+            // Marketing signals collected by the storefront (surfaced under Admin → Marketing).
+            vm.AbandonedCartsOpen = await _db.AbandonedCarts.CountAsync(c => c.RecoveredAt == null);
+            vm.BackInStockOpen = await _db.BackInStockRequests.CountAsync(r => r.NotifiedAt == null);
+
             // Revenue chart for selected day range
             var chartStart = today.AddDays(-(days - 1));
             var revenueByDay = await _db.Orders

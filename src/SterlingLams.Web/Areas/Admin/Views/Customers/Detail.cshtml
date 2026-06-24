@@ -44,6 +44,51 @@
                 }
             </div>
         </div>
+
+        <!-- Tags -->
+        <div class="bg-white rounded-sm border border-neutral-100 px-6 py-5">
+            <h2 class="text-sm font-medium mb-3">Tags</h2>
+            <form asp-area="Admin" asp-controller="Customers" asp-action="SaveTags" asp-route-id="@Model.Id" method="post" class="flex gap-2">
+                <input type="text" name="tags" value="@Model.Tags" placeholder="e.g. vip, wholesale"
+                       class="flex-1 border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-neutral-400" />
+                <button type="submit" class="px-3 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">Save</button>
+            </form>
+            <p class="text-[10px] text-neutral-400 mt-2">Comma-separated. Used for filtering on the customer list.</p>
+        </div>
+
+        <!-- Loyalty -->
+        <div class="bg-white rounded-sm border border-neutral-100 px-6 py-5">
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-sm font-medium">Loyalty points</h2>
+                <span class="text-lg font-light text-emerald-700">@Model.LoyaltyBalance</span>
+            </div>
+            <form asp-area="Admin" asp-controller="Customers" asp-action="AdjustLoyalty" asp-route-id="@Model.Id" method="post" class="space-y-2 mb-3">
+                <div class="flex gap-2">
+                    <input type="number" name="points" placeholder="± points" step="1"
+                           class="w-24 border border-neutral-200 rounded-sm px-2 py-2 text-xs focus:outline-none focus:border-neutral-400" />
+                    <input type="text" name="reason" placeholder="Reason (e.g. goodwill)"
+                           class="flex-1 border border-neutral-200 rounded-sm px-2 py-2 text-xs focus:outline-none focus:border-neutral-400" />
+                    <button type="submit" class="px-3 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">Apply</button>
+                </div>
+                <p class="text-[10px] text-neutral-400">Use a negative number to deduct. Balance never goes below zero.</p>
+            </form>
+            @if (Model.LoyaltyEntries.Any())
+            {
+                <div class="border-t border-neutral-100 pt-2 space-y-1.5 max-h-48 overflow-y-auto">
+                    @foreach (var e in Model.LoyaltyEntries)
+                    {
+                        <div class="flex justify-between items-baseline text-[11px]">
+                            <span class="text-neutral-500 truncate pr-2">@e.Reason<span class="text-neutral-300"> · @e.CreatedAt.ToLocalTime().ToString("dd MMM")</span></span>
+                            <span class="font-medium @(e.Points >= 0 ? "text-emerald-600" : "text-red-500")">@(e.Points >= 0 ? "+" : "")@e.Points</span>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="text-[11px] text-neutral-400 border-t border-neutral-100 pt-2">No points activity yet.</p>
+            }
+        </div>
     </div>
 
     <!-- Orders -->

@@ -39,6 +39,14 @@
     }
 </div>
 
+<!-- Marketing signals -->
+<a href="@Url.Action("Index","Marketing",new{area="Admin"})"
+   class="flex flex-wrap items-center gap-x-8 gap-y-2 bg-white rounded-sm border border-neutral-100 px-6 py-4 mb-8 hover:border-neutral-300 transition-colors">
+    <span class="text-sm text-neutral-700">🛒 Abandoned carts <span class="font-medium text-amber-600">@Model.AbandonedCartsOpen</span></span>
+    <span class="text-sm text-neutral-700">🔔 Back-in-stock requests <span class="font-medium text-amber-600">@Model.BackInStockOpen</span></span>
+    <span class="text-xs text-neutral-400 ml-auto hover:underline">View marketing →</span>
+</a>
+
 <!-- Revenue Chart -->
 <div class="bg-white rounded-sm border border-neutral-100 mb-6 px-6 py-4">
     <div class="flex items-center justify-between mb-4">

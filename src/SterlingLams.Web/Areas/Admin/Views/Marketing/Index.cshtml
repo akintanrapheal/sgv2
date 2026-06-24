@@ -1,0 +1,114 @@
+@model SterlingLams.Web.Areas.Admin.ViewModels.MarketingViewModel
+@{
+    ViewData["Title"] = "Marketing";
+    string TabCls(string t) => t == Model.Tab
+        ? "bg-neutral-900 text-white"
+        : "bg-white text-neutral-600 border border-neutral-200 hover:border-neutral-400";
+}
+
+<!-- Tabs -->
+<div class="flex gap-1 mb-6">
+    <a asp-area="Admin" asp-controller="Marketing" asp-action="Index" asp-route-tab="carts"
+       class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-sm transition-colors @TabCls("carts")">
+        Abandoned carts
+        @if (Model.AbandonedCount > 0)
+        {
+            <span class="text-[10px] px-1.5 py-0.5 rounded-full @(Model.Tab == "carts" ? "bg-white/20" : "bg-neutral-100 text-neutral-500")">@Model.AbandonedCount</span>
+        }
+    </a>
+    <a asp-area="Admin" asp-controller="Marketing" asp-action="Index" asp-route-tab="backinstock"
+       class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-sm transition-colors @TabCls("backinstock")">
+        Back-in-stock requests
+        @if (Model.BackInStockCount > 0)
+        {
+            <span class="text-[10px] px-1.5 py-0.5 rounded-full @(Model.Tab == "backinstock" ? "bg-white/20" : "bg-neutral-100 text-neutral-500")">@Model.BackInStockCount</span>
+        }
+    </a>
+</div>
+
+<div class="bg-white rounded-sm border border-neutral-100 overflow-hidden">
+@if (Model.Tab == "backinstock")
+{
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="border-b border-neutral-100 bg-neutral-50">
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Email</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Product</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Requested</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Status</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (!Model.BackInStock.Any())
+            {
+                <tr><td colspan="4" class="px-6 py-12 text-center text-neutral-400 text-sm">No back-in-stock requests.</td></tr>
+            }
+            @foreach (var r in Model.BackInStock)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-6 py-3 text-xs text-neutral-700">@r.Email</td>
+                    <td class="px-6 py-3 text-xs">
+                        <a asp-area="Admin" asp-controller="Products" asp-action="Edit" asp-route-id="@r.ProductId"
+                           class="text-neutral-700 hover:underline">@r.ProductName</a>
+                    </td>
+                    <td class="px-6 py-3 text-xs text-neutral-400">@r.CreatedAt.ToLocalTime().ToString("dd MMM yy")</td>
+                    <td class="px-6 py-3">
+                        @if (r.NotifiedAt.HasValue)
+                        {
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Notified @r.NotifiedAt.Value.ToLocalTime().ToString("dd MMM")</span>
+                        }
+                        else
+                        {
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Waiting</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else
+{
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="border-b border-neutral-100 bg-neutral-50">
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Email</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Items</th>
+                <th class="text-right px-6 py-3 text-xs text-neutral-400 font-medium">Value</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Abandoned</th>
+                <th class="text-left px-6 py-3 text-xs text-neutral-400 font-medium">Status</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (!Model.Carts.Any())
+            {
+                <tr><td colspan="5" class="px-6 py-12 text-center text-neutral-400 text-sm">No abandoned carts.</td></tr>
+            }
+            @foreach (var c in Model.Carts)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-6 py-3 text-xs text-neutral-700">@c.Email</td>
+                    <td class="px-6 py-3 text-xs text-neutral-500">@(string.IsNullOrEmpty(c.Items) ? $"{c.ItemCount} item(s)" : c.Items)</td>
+                    <td class="px-6 py-3 text-xs text-right font-medium">₦@c.Subtotal.ToString("N0")</td>
+                    <td class="px-6 py-3 text-xs text-neutral-400">@c.CreatedAt.ToLocalTime().ToString("dd MMM yy")</td>
+                    <td class="px-6 py-3">
+                        @if (c.RecoveredAt.HasValue)
+                        {
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Recovered</span>
+                        }
+                        else if (c.EmailedAt.HasValue)
+                        {
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">Reminder sent</span>
+                        }
+                        else
+                        {
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500">Open</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+</div>
+<p class="text-xs text-neutral-400 mt-3">Showing up to 200 most recent. Abandoned-cart reminders and back-in-stock alerts are sent automatically by the background services.</p>

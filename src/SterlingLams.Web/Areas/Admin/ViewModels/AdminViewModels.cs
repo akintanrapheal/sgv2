@@ -29,6 +29,8 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public decimal AovLastMonthMtd { get; set; }
         public decimal RevenueOnlineMonth { get; set; }
         public decimal RevenuePosMonth { get; set; }
+        public int AbandonedCartsOpen { get; set; }
+        public int BackInStockOpen { get; set; }
 
         public int? RevenueTodayDeltaPct => DeltaPct(RevenueToday, RevenueYesterday);
         public int? RevenueMonthDeltaPct => DeltaPct(RevenueThisMonth, RevenueLastMonthMtd);
@@ -133,6 +135,36 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public int CustomerTotalOrders { get; set; }
         public decimal CustomerTotalRevenue { get; set; }
         public decimal CustomerAvgOrderValue { get; set; }
+    }
+
+    // ─── Marketing (abandoned carts + back-in-stock) ────────────────────────
+    public class MarketingViewModel
+    {
+        public string Tab { get; set; } = "carts";   // carts | backinstock
+        public int AbandonedCount { get; set; }
+        public int BackInStockCount { get; set; }
+        public List<AbandonedCartRow> Carts { get; set; } = new();
+        public List<BackInStockRow> BackInStock { get; set; } = new();
+    }
+
+    public class AbandonedCartRow
+    {
+        public string Email { get; set; } = "";
+        public int ItemCount { get; set; }
+        public decimal Subtotal { get; set; }
+        public string Items { get; set; } = "";
+        public DateTime CreatedAt { get; set; }
+        public DateTime? EmailedAt { get; set; }
+        public DateTime? RecoveredAt { get; set; }
+    }
+
+    public class BackInStockRow
+    {
+        public string Email { get; set; } = "";
+        public string ProductName { get; set; } = "";
+        public int ProductId { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? NotifiedAt { get; set; }
     }
 
     // ─── Email Customizer ───────────────────────────────────────────────────
@@ -279,8 +311,17 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
     {
         public List<AdminCustomerRow> Customers { get; set; } = new();
         public string SearchQuery { get; set; } = "";
+        public string SegmentFilter { get; set; } = "";  // "" | vip | repeat | lapsed | new
+        public string TagFilter { get; set; } = "";
         public int CurrentPage { get; set; } = 1;
         public int TotalPages { get; set; } = 1;
+    }
+
+    /// <summary>₦ spend at/above which a customer is a VIP, and days since last order to count as lapsed.</summary>
+    public static class CustomerSegments
+    {
+        public const decimal VipSpend = 500_000m;
+        public const int LapsedDays = 90;
     }
 
     public class AdminCustomerRow
@@ -293,6 +334,16 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public decimal TotalSpend { get; set; }
         public DateTime JoinedAt { get; set; }
         public DateTime? LastOrderAt { get; set; }
+        public string? Tags { get; set; }
+
+        // Derived segment badges (a customer can carry several).
+        public bool IsVip => TotalSpend >= CustomerSegments.VipSpend;
+        public bool IsRepeat => OrderCount >= 2;
+        public bool IsLapsed => LastOrderAt.HasValue
+            && LastOrderAt.Value < DateTime.UtcNow.AddDays(-CustomerSegments.LapsedDays);
+        public bool IsNew => OrderCount <= 1;
+        public IEnumerable<string> TagList =>
+            (Tags ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     public class AdminCustomerDetailViewModel
@@ -305,6 +356,11 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public int OrderCount { get; set; }
         public decimal TotalSpend { get; set; }
         public List<RecentOrderRow> RecentOrders { get; set; } = new();
+
+        // Loyalty + tags
+        public int LoyaltyBalance { get; set; }
+        public List<PointsLedgerEntry> LoyaltyEntries { get; set; } = new();
+        public string? Tags { get; set; }
     }
 
     // ─── Users ────────────────────────────────────────────────────────────
