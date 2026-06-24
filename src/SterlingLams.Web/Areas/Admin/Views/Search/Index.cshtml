@@ -1,0 +1,90 @@
+@model SterlingLams.Web.Areas.Admin.ViewModels.AdminSearchViewModel
+@{
+    ViewData["Title"] = "Search";
+    string Money(decimal v) => "₦" + v.ToString("N0");
+}
+
+<form method="get" asp-area="Admin" asp-controller="Search" asp-action="Index" class="mb-6">
+    <input type="text" name="q" value="@Model.Query" autofocus
+           placeholder="Search orders, customers, products…"
+           class="w-full border border-neutral-200 rounded-sm px-4 py-2.5 text-sm focus:outline-none focus:border-neutral-400" />
+</form>
+
+@if (Model.Query.Length < 2)
+{
+    <p class="text-sm text-neutral-400">Type at least 2 characters to search.</p>
+}
+else
+{
+    <p class="text-xs text-neutral-400 mb-4">@Model.TotalResults result(s) for “@Model.Query”</p>
+
+    @if (Model.CanOrders)
+    {
+        <section class="mb-6">
+            <h2 class="text-xs uppercase tracking-widest text-neutral-400 mb-2">Orders</h2>
+            <div class="bg-white rounded-sm border border-neutral-100 divide-y divide-neutral-50">
+                @if (!Model.Orders.Any())
+                {
+                    <p class="px-4 py-3 text-xs text-neutral-400">No matching orders.</p>
+                }
+                @foreach (var o in Model.Orders)
+                {
+                    <a asp-area="Admin" asp-controller="Orders" asp-action="Detail" asp-route-id="@o.Id"
+                       class="flex items-center justify-between px-4 py-3 hover:bg-neutral-50 transition-colors">
+                        <span class="text-xs">
+                            <span class="font-mono text-neutral-700">@o.OrderNumber</span>
+                            <span class="text-neutral-400"> · @o.CustomerName</span>
+                        </span>
+                        <span class="text-xs text-neutral-500">@Money(o.Total) · @o.Status · @o.CreatedAt.ToString("dd MMM yy")</span>
+                    </a>
+                }
+            </div>
+        </section>
+    }
+
+    @if (Model.CanCustomers)
+    {
+        <section class="mb-6">
+            <h2 class="text-xs uppercase tracking-widest text-neutral-400 mb-2">Customers</h2>
+            <div class="bg-white rounded-sm border border-neutral-100 divide-y divide-neutral-50">
+                @if (!Model.Customers.Any())
+                {
+                    <p class="px-4 py-3 text-xs text-neutral-400">No matching customers.</p>
+                }
+                @foreach (var c in Model.Customers)
+                {
+                    <a asp-area="Admin" asp-controller="Customers" asp-action="Detail" asp-route-id="@c.Id"
+                       class="flex items-center justify-between px-4 py-3 hover:bg-neutral-50 transition-colors">
+                        <span class="text-xs font-medium text-neutral-700">@c.FullName</span>
+                        <span class="text-xs text-neutral-500">@c.Email@(string.IsNullOrEmpty(c.Phone) ? "" : " · " + c.Phone)</span>
+                    </a>
+                }
+            </div>
+        </section>
+    }
+
+    @if (Model.CanProducts)
+    {
+        <section class="mb-6">
+            <h2 class="text-xs uppercase tracking-widest text-neutral-400 mb-2">Products</h2>
+            <div class="bg-white rounded-sm border border-neutral-100 divide-y divide-neutral-50">
+                @if (!Model.Products.Any())
+                {
+                    <p class="px-4 py-3 text-xs text-neutral-400">No matching products.</p>
+                }
+                @foreach (var p in Model.Products)
+                {
+                    <a asp-area="Admin" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id"
+                       class="flex items-center justify-between px-4 py-3 hover:bg-neutral-50 transition-colors">
+                        <span class="text-xs">
+                            <span class="font-medium text-neutral-700">@p.Name</span>
+                            @if (!string.IsNullOrEmpty(p.Sku)) { <span class="text-neutral-400 font-mono"> · @p.Sku</span> }
+                            @if (!p.IsActive) { <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-100 text-neutral-500 ml-1">inactive</span> }
+                        </span>
+                        <span class="text-xs text-neutral-500">@Money(p.Price)</span>
+                    </a>
+                }
+            </div>
+        </section>
+    }
+}

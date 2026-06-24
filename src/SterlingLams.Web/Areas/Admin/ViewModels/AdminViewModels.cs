@@ -137,6 +137,43 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public decimal CustomerAvgOrderValue { get; set; }
     }
 
+    // ─── Global search ──────────────────────────────────────────────────────
+    public class AdminSearchViewModel
+    {
+        public string Query { get; set; } = "";
+        public bool CanOrders { get; set; }
+        public bool CanCustomers { get; set; }
+        public bool CanProducts { get; set; }
+        public List<SearchOrderRow> Orders { get; set; } = new();
+        public List<SearchCustomerRow> Customers { get; set; } = new();
+        public List<SearchProductRow> Products { get; set; } = new();
+        public int TotalResults => Orders.Count + Customers.Count + Products.Count;
+    }
+    public class SearchOrderRow
+    {
+        public int Id { get; set; }
+        public string OrderNumber { get; set; } = "";
+        public string CustomerName { get; set; } = "";
+        public decimal Total { get; set; }
+        public string Status { get; set; } = "";
+        public DateTime CreatedAt { get; set; }
+    }
+    public class SearchCustomerRow
+    {
+        public string Id { get; set; } = "";
+        public string FullName { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string? Phone { get; set; }
+    }
+    public class SearchProductRow
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string? Sku { get; set; }
+        public decimal Price { get; set; }
+        public bool IsActive { get; set; }
+    }
+
     // ─── Marketing (abandoned carts + back-in-stock) ────────────────────────
     public class MarketingViewModel
     {
