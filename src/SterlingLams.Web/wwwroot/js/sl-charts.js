@@ -73,6 +73,7 @@
                     };
                 }) },
                 options: {
+                    animation: false, animations: false,
                     responsive: true, maintainAspectRatio: true, interaction: { mode: 'index', intersect: false },
                     plugins: { legend: { display: series.length > 1, labels: { boxWidth: 10, font: { size: 11 } } }, tooltip: moneyTooltip(anyMoney) },
                     scales: { x: catAxis(), y: Object.assign({ beginAtZero: true }, valueAxis(anyMoney)) }
@@ -89,6 +90,7 @@
                     backgroundColor: withAlpha(palette[0], 0.85), borderRadius: 3, maxBarThickness: 48
                 }] },
                 options: {
+                    animation: false, animations: false,
                     responsive: true, maintainAspectRatio: true,
                     plugins: { legend: { display: false }, tooltip: moneyTooltip(opts.money) },
                     scales: { x: catAxis(), y: Object.assign({ beginAtZero: true }, valueAxis(opts.money)) }
@@ -111,6 +113,7 @@
                     borderRadius: 3, maxBarThickness: 26
                 }] },
                 options: {
+                    animation: false, animations: false,
                     indexAxis: 'y', responsive: true, maintainAspectRatio: false,
                     plugins: { legend: { display: false }, tooltip: moneyTooltip(opts.money) },
                     scales: { x: Object.assign({ beginAtZero: true }, valueAxis(opts.money)), y: catAxis() }
@@ -125,6 +128,7 @@
                 type: 'doughnut',
                 data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderWidth: 0, hoverOffset: 4 }] },
                 options: {
+                    animation: false, animations: false,
                     // Chart.js defaults doughnuts to a 1:1 box (tall). Flatten it so the card matches
                     // the bar/line cards beside it; callers can override via opts.aspectRatio.
                     responsive: true, maintainAspectRatio: true, aspectRatio: opts.aspectRatio || 2.4, cutout: '62%',
