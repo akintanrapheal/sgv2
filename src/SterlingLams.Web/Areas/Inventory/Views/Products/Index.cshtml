@@ -290,6 +290,32 @@
     </div>
 </div>
 
+<!-- Track Stock drawer -->
+<div id="trackstock-drawer" class="fixed inset-y-0 right-0 w-[480px] max-w-[96vw] bg-white shadow-2xl z-50 translate-x-full transition-transform duration-200 flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
+        <h3 class="text-base font-semibold text-neutral-800">Track Stock <span id="ts-name" class="font-normal text-neutral-400"></span></h3>
+        <div class="flex items-center gap-1 text-neutral-400">
+            <button type="button" id="ts-prev" title="Previous" class="px-2 py-1 hover:text-neutral-700 disabled:opacity-30">‹</button>
+            <button type="button" id="ts-next" title="Next" class="px-2 py-1 hover:text-neutral-700 disabled:opacity-30">›</button>
+            <button type="button" class="drawer-close px-2 py-1 hover:text-neutral-700 text-lg leading-none">&times;</button>
+        </div>
+    </div>
+    <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <input type="hidden" id="ts-id" />
+        <label class="flex items-center justify-between bg-neutral-50 rounded-md px-3 py-2.5">
+            <span class="text-sm font-medium text-neutral-700">Track stock</span>
+            <input type="checkbox" id="ts-track" class="w-5 h-5 accent-blue-600" />
+        </label>
+        <div><label class="block text-[11px] text-neutral-400 mb-1">Reason (all locations)</label>
+            <select id="ts-reason" class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white"></select></div>
+        <div id="ts-locations" class="space-y-3"></div>
+    </div>
+    <div class="flex items-center gap-2 px-5 py-4 border-t border-neutral-100">
+        <button type="button" class="drawer-close flex-1 border border-neutral-200 rounded-md py-2 text-sm text-neutral-600 hover:border-neutral-400">Cancel</button>
+        <button type="button" id="ts-save" class="flex-1 bg-blue-600 text-white rounded-md py-2 text-sm hover:bg-blue-700">Save</button>
+    </div>
+</div>
+
 <!-- Quick Add modal -->
 <div id="quick-add" class="hidden fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
     <div class="bg-white rounded-lg w-full max-w-sm p-6">
@@ -370,8 +396,9 @@
     var overlay = document.getElementById('drawer-overlay');
     var filters = document.getElementById('filters-drawer'), columns = document.getElementById('columns-drawer');
     var editDrawer = document.getElementById('edit-drawer');
+    var tsDrawer = document.getElementById('trackstock-drawer');
     function openDrawer(d) { overlay.classList.remove('hidden'); d.classList.remove('translate-x-full'); }
-    function closeDrawers() { overlay.classList.add('hidden'); filters.classList.add('translate-x-full'); columns.classList.add('translate-x-full'); editDrawer.classList.add('translate-x-full'); }
+    function closeDrawers() { overlay.classList.add('hidden'); filters.classList.add('translate-x-full'); columns.classList.add('translate-x-full'); editDrawer.classList.add('translate-x-full'); tsDrawer.classList.add('translate-x-full'); }
     document.getElementById('filter-btn').addEventListener('click', function () { closeDrawers(); openDrawer(filters); });
     document.getElementById('columns-btn').addEventListener('click', function () { closeDrawers(); openDrawer(columns); });
     overlay.addEventListener('click', closeDrawers);
@@ -401,7 +428,7 @@
             menu.innerHTML =
                   link(base + 'Edit/' + id, '✎ Advanced Edit')
                 + '<button type="button" data-edit-id="' + id + '" class="w-full text-left px-3 py-2 hover:bg-neutral-50">✏ Edit</button>'
-                + post('ToggleTrackStock', (tracks ? '☑ Track Stock' : '☐ Track Stock'))
+                + '<button type="button" data-track-id="' + id + '" class="w-full text-left px-3 py-2 hover:bg-neutral-50">📦 Track Stock</button>'
                 + post('Duplicate', '⧉ Duplicate')
                 + post('SetArchived', (isArch ? '↩ Restore' : '🗄 Archive'), '<input type="hidden" name="archived" value="' + (isArch ? 'false' : 'true') + '"/>')
                 + '<div class="border-t border-neutral-100 my-1"></div>'
@@ -423,8 +450,10 @@
     function el(id) { return document.getElementById(id); }
 
     menu.addEventListener('click', function (e) {
-        var b = e.target.closest('[data-edit-id]');
-        if (b) { e.preventDefault(); closeMenu(); openEdit(b.getAttribute('data-edit-id')); }
+        var eb = e.target.closest('[data-edit-id]');
+        if (eb) { e.preventDefault(); closeMenu(); openEdit(eb.getAttribute('data-edit-id')); return; }
+        var tb = e.target.closest('[data-track-id]');
+        if (tb) { e.preventDefault(); closeMenu(); openTrackStock(tb.getAttribute('data-track-id')); }
     });
 
     function openEdit(id) {
@@ -517,6 +546,86 @@
             })
             .catch(function () { alert('Upload failed.'); el('edit-drop-text').textContent = 'Drag & drop an image, or browse'; });
     }
+
+    // ── Track Stock drawer ──────────────────────────────────────────────────────
+    var tsIdx = -1;
+    function stepper(field, value) {
+        return '<div class="inline-flex items-center border border-neutral-200 rounded-md overflow-hidden">'
+            + '<button type="button" data-step="-1" class="px-2 py-1 text-neutral-500 hover:bg-neutral-100">−</button>'
+            + '<input type="number" data-f="' + field + '" value="' + (value == null ? '' : value) + '" class="w-16 text-center text-sm py-1 focus:outline-none" />'
+            + '<button type="button" data-step="1" class="px-2 py-1 text-neutral-500 hover:bg-neutral-100">+</button></div>';
+    }
+    function openTrackStock(id) {
+        tsIdx = rowIds.indexOf(String(id));
+        el('ts-prev').disabled = tsIdx <= 0;
+        el('ts-next').disabled = tsIdx === -1 || tsIdx >= rowIds.length - 1;
+        fetch(base + 'TrackStockData?id=' + encodeURIComponent(id), { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d || !d.found) { alert('Could not load product.'); return; }
+                el('ts-id').value = d.id;
+                el('ts-name').textContent = '— ' + d.name;
+                el('ts-track').checked = !!d.trackStock;
+                el('ts-reason').innerHTML = (d.reasons || []).map(function (r) { return '<option value="' + r + '">' + r + '</option>'; }).join('');
+                el('ts-locations').innerHTML = (d.locations || []).map(function (l) {
+                    return '<div class="border border-neutral-200 rounded-md p-3" data-store="' + l.storeId + '">'
+                        + '<div class="text-sm font-medium text-neutral-700 mb-2">' + l.name + '</div>'
+                        + '<div class="grid grid-cols-2 gap-3">'
+                        + '<div><div class="text-[11px] text-neutral-400 mb-1">Current stock</div>' + stepper('onHand', l.onHand) + '</div>'
+                        + '<div><div class="text-[11px] text-neutral-400 mb-1">On order</div>' + stepper('onOrder', l.onOrder) + '</div>'
+                        + '<div><div class="text-[11px] text-neutral-400 mb-1">Min (reorder at)</div>' + stepper('min', l.min) + '</div>'
+                        + '<div><div class="text-[11px] text-neutral-400 mb-1">Max (target)</div>' + stepper('max', l.max) + '</div>'
+                        + '</div>'
+                        + '<label class="flex items-center gap-2 mt-3 text-sm text-neutral-600"><input type="checkbox" data-f="alerts" class="w-4 h-4 accent-blue-600"' + (l.alerts ? ' checked' : '') + ' /> Stock alerts</label>'
+                        + '</div>';
+                }).join('');
+                closeDrawers(); openDrawer(tsDrawer);
+            })
+            .catch(function () { alert('Could not load product.'); });
+    }
+    el('ts-prev').addEventListener('click', function () { if (tsIdx > 0) openTrackStock(rowIds[tsIdx - 1]); });
+    el('ts-next').addEventListener('click', function () { if (tsIdx > -1 && tsIdx < rowIds.length - 1) openTrackStock(rowIds[tsIdx + 1]); });
+
+    el('ts-locations').addEventListener('click', function (e) {
+        var b = e.target.closest('[data-step]');
+        if (!b) return;
+        var input = b.parentElement.querySelector('input[data-f]');
+        var cur = parseInt(input.value, 10); if (isNaN(cur)) cur = 0;
+        input.value = Math.max(0, cur + parseInt(b.getAttribute('data-step'), 10));
+    });
+
+    el('ts-save').addEventListener('click', function () {
+        var id = el('ts-id').value;
+        var locations = Array.prototype.map.call(el('ts-locations').children, function (card) {
+            function v(f) { var i = card.querySelector('[data-f="' + f + '"]'); return i ? i.value : ''; }
+            function num(f) { var x = parseInt(v(f), 10); return isNaN(x) ? null : x; }
+            return {
+                storeId: parseInt(card.getAttribute('data-store'), 10),
+                onHand: num('onHand') || 0,
+                onOrder: num('onOrder') || 0,
+                min: num('min'),
+                max: num('max'),
+                alerts: card.querySelector('[data-f="alerts"]').checked
+            };
+        });
+        var payload = { id: parseInt(id, 10), trackStock: el('ts-track').checked, reason: el('ts-reason').value, locations: locations };
+        var btn = el('ts-save'); btn.disabled = true; btn.textContent = 'Saving…';
+        fetch(base + 'SaveTrackStock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+            body: JSON.stringify(payload)
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                btn.disabled = false; btn.textContent = 'Save';
+                if (!d || !d.ok) { alert((d && d.error) || 'Save failed.'); return; }
+                var tr = rowFor(id), tc = cell(tr, 'trackstock');
+                if (tc) tc.textContent = d.trackStock ? '✓' : '—';
+                var kb = document.querySelector('.kebab[data-id="' + id + '"]'); if (kb) kb.dataset.track = d.trackStock ? 'true' : 'false';
+                closeDrawers();
+            })
+            .catch(function () { btn.disabled = false; btn.textContent = 'Save'; alert('Save failed.'); });
+    });
 
     // ── Quick Add modal ─────────────────────────────────────────────────────────
     var qa = document.getElementById('quick-add');

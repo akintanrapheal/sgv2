@@ -12,12 +12,17 @@ public class ProductsController : InventoryAreaController
     private readonly ApplicationDbContext _db;
     private readonly IWebHostEnvironment _env;
     private readonly IConfiguration _config;
+    private readonly SterlingLams.Web.Services.IStockService _stock;
+    private readonly SterlingLams.Web.Services.IStoreAccessService _access;
     private const int PageSize = 30;
-    public ProductsController(ApplicationDbContext db, IWebHostEnvironment env, IConfiguration config)
+    public ProductsController(ApplicationDbContext db, IWebHostEnvironment env, IConfiguration config,
+        SterlingLams.Web.Services.IStockService stock, SterlingLams.Web.Services.IStoreAccessService access)
     {
         _db = db;
         _env = env;
         _config = config;
+        _stock = stock;
+        _access = access;
     }
 
     // List — search matches name, SKU OR barcode (so a scanner finds the product). The "Current" tab
@@ -512,6 +517,146 @@ public class ProductsController : InventoryAreaController
         await _db.SaveChangesAsync();
         await LogAsync("Update", "Product", id.ToString(), $"Added image to '{p.Name}'");
         return Json(new { ok = true, url });
+    }
+
+    // ── Track Stock slide-in modal (per-location stock editor) ──────────────────
+
+    // Per-location stock levels for the Track Stock modal (product-pool rows).
+    [HttpGet]
+    public async Task<IActionResult> TrackStockData(int id)
+    {
+        var p = await _db.Products.FindAsync(id);
+        if (p == null) return Json(new { found = false });
+        var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        var inv = await _db.StoreInventories
+            .Where(si => si.ProductId == id && si.ProductVariantId == null)
+            .ToDictionaryAsync(si => si.StoreId);
+        var locations = stores.Select(s =>
+        {
+            inv.TryGetValue(s.Id, out var r);
+            return new
+            {
+                storeId = s.Id,
+                name = s.Name,
+                onHand = r?.QuantityOnHand ?? 0,
+                min = r?.MinStock,
+                max = r?.MaxStock,
+                onOrder = r?.OnOrder ?? 0,
+                alerts = r?.StockAlerts ?? true
+            };
+        }).ToList();
+        return Json(new
+        {
+            found = true,
+            id = p.Id,
+            name = p.Name,
+            trackStock = p.TrackStock,
+            defaultMin = p.LowStockThreshold,
+            reasons = SterlingLams.Web.Models.Domain.AdjustmentReasons.All,
+            locations
+        });
+    }
+
+    public class TrackStockLoc
+    {
+        public int StoreId { get; set; }
+        public int OnHand { get; set; }
+        public int? Min { get; set; }
+        public int? Max { get; set; }
+        public int OnOrder { get; set; }
+        public bool Alerts { get; set; }
+    }
+    public class TrackStockSaveRequest
+    {
+        public int Id { get; set; }
+        public bool TrackStock { get; set; }
+        public string? Reason { get; set; }
+        public List<TrackStockLoc> Locations { get; set; } = new();
+    }
+
+    // Save the Track Stock modal: on-hand changes go through the ledger (one BSA header per
+    // branch, like the Stock grid); Min/Max/On-order/Alerts are persisted on the location row.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveTrackStock([FromBody] TrackStockSaveRequest req)
+    {
+        if (req == null) return Json(new { ok = false, error = "No data." });
+        var p = await _db.Products.FindAsync(req.Id);
+        if (p == null) return Json(new { ok = false, error = "Product not found." });
+
+        var reason = string.IsNullOrWhiteSpace(req.Reason) ? "Correction" : req.Reason.Trim();
+        var type = SterlingLams.Web.Models.Domain.AdjustmentReasons.MovementType(reason);
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var validStoreIds = (await _db.Stores.Where(s => s.IsActive).Select(s => s.Id).ToListAsync()).ToHashSet();
+        var locs = req.Locations.Where(l => validStoreIds.Contains(l.StoreId)).ToList();
+
+        // Writes are branch-scoped: only allow edits to the user's assigned branch(es).
+        var writable = await _access.WritableStoreIdsAsync(User);
+        if (locs.Any(l => !writable.Contains(l.StoreId)))
+            return Json(new { ok = false, error = "You can only edit stock for your assigned branch(es)." });
+
+        p.TrackStock = req.TrackStock;
+        p.UpdatedAt = DateTime.UtcNow;
+
+        var applied = 0;
+        await using var tx = await _db.Database.BeginTransactionAsync();
+
+        if (_db.Database.IsNpgsql())
+            foreach (var sid in locs.Select(l => l.StoreId).Distinct().OrderBy(x => x))
+                await _db.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT 1 FROM \"StoreInventories\" WHERE \"ProductId\" = {req.Id} AND \"StoreId\" = {sid} FOR UPDATE");
+
+        var seq = await NextAdjustmentSeqAsync();
+        foreach (var l in locs)
+        {
+            var current = await _stock.GetStockAsync(req.Id, null, l.StoreId, fallback: false);
+            var delta = l.OnHand - current;
+            if (delta != 0)
+            {
+                var adjNo = $"BSA{seq++:D5}";
+                var balance = await _stock.ApplyAsync(req.Id, null, l.StoreId, delta, type, adjNo, note: reason, userId: userId);
+                _db.StockAdjustments.Add(new StockAdjustment
+                {
+                    AdjustmentNumber = adjNo, StoreId = l.StoreId, Reason = reason, Source = "Form",
+                    CreatedByUserId = userId, CreatedAt = DateTime.UtcNow,
+                    Lines = { new StockAdjustmentLine { ProductId = req.Id, ProductName = p.Name, QtyDelta = delta, BalanceAfter = balance } }
+                });
+                applied++;
+            }
+
+            // Persist the reorder fields on the (pool) location row, creating it if needed.
+            var row = await _db.StoreInventories
+                .FirstOrDefaultAsync(si => si.ProductId == req.Id && si.StoreId == l.StoreId && si.ProductVariantId == null);
+            if (row == null)
+            {
+                row = new StoreInventory { ProductId = req.Id, StoreId = l.StoreId };
+                _db.StoreInventories.Add(row);
+            }
+            row.MinStock = l.Min;
+            row.MaxStock = l.Max;
+            row.OnOrder = Math.Max(0, l.OnOrder);
+            row.StockAlerts = l.Alerts;
+            row.UpdatedAt = DateTime.UtcNow;
+        }
+
+        try
+        {
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return Json(new { ok = false, error = "Stock changed while saving — refresh and try again." });
+        }
+
+        await LogAsync("Update", "Product", req.Id.ToString(), $"Track Stock update for '{p.Name}' ({applied} stock change(s))");
+        return Json(new { ok = true, applied, trackStock = p.TrackStock });
+    }
+
+    private async Task<int> NextAdjustmentSeqAsync()
+    {
+        var last = await _db.StockAdjustments.OrderByDescending(a => a.Id)
+            .Select(a => a.AdjustmentNumber).FirstOrDefaultAsync();
+        return last != null && last.StartsWith("BSA") && int.TryParse(last[3..], out var n) ? n + 1 : 1;
     }
 
     private async Task LoadCategories(int? selected)
