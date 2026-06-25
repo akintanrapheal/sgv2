@@ -10,15 +10,24 @@ namespace SterlingLams.Web.Areas.Inventory.Controllers;
 public class ProductsController : InventoryAreaController
 {
     private readonly ApplicationDbContext _db;
+    private readonly SterlingLams.Web.Services.ISettingsService _settings;
     private const int PageSize = 30;
-    public ProductsController(ApplicationDbContext db) => _db = db;
+    public ProductsController(ApplicationDbContext db, SterlingLams.Web.Services.ISettingsService settings)
+    {
+        _db = db;
+        _settings = settings;
+    }
 
-    // List — search matches name, SKU OR barcode (so a scanner finds the product).
+    // List — search matches name, SKU OR barcode (so a scanner finds the product). The "Current" tab
+    // shows live products; "Archived" shows retired ones.
     public async Task<IActionResult> Index(string q = "", int page = 1, int? categoryId = null,
-        string status = "all", string stock = "all", string sort = "name_asc")
+        string status = "all", string stock = "all", string sort = "name_asc",
+        bool archived = false, int pageSize = 30)
     {
         ViewData["Title"] = "Products";
-        var query = _db.Products.Include(p => p.Category).Include(p => p.Images).Where(p => p.IsActive == true || p.IsActive == false);
+        if (pageSize != 30 && pageSize != 50 && pageSize != 100) pageSize = 30;
+        var query = _db.Products.Include(p => p.Category).Include(p => p.Images)
+            .Where(p => p.IsArchived == archived);
 
         if (!string.IsNullOrWhiteSpace(q))
             query = query.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
@@ -54,7 +63,7 @@ public class ProductsController : InventoryAreaController
 
         var total = await query.CountAsync();
         var products = await query
-            .Skip((page - 1) * PageSize).Take(PageSize)
+            .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(p => new InvProductRow
             {
                 Id = p.Id,
@@ -65,6 +74,8 @@ public class ProductsController : InventoryAreaController
                 CategoryName = p.Category != null ? p.Category.Name : "—",
                 ImageUrl = p.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault(),
                 IsActive = p.IsActive,
+                TrackStock = p.TrackStock,
+                ButtonColour = p.PosButtonColour,
                 TotalStock = p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0,
                 Variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name)
                     .Select(v => new InvVariantRow
@@ -77,15 +88,25 @@ public class ProductsController : InventoryAreaController
             })
             .ToListAsync();
 
+        // Prices are tax-inclusive; split out ex-TAX using the configured rate (0 ⇒ both equal).
+        var taxRate = await _settings.GetDecimalAsync("inventory.tax_rate", 0m);
+        foreach (var r in products)
+            r.PriceExTax = taxRate > 0 ? Math.Round(r.Price / (1 + taxRate / 100m), 2) : r.Price;
+
         await LoadCategories(categoryId);
         ViewBag.Query = q;
         ViewBag.Page = page;
-        ViewBag.TotalPages = (int)Math.Ceiling(total / (double)PageSize);
+        ViewBag.PageSize = pageSize;
+        ViewBag.TotalPages = (int)Math.Ceiling(total / (double)pageSize);
         ViewBag.Total = total;
+        ViewBag.FirstRow = total == 0 ? 0 : (page - 1) * pageSize + 1;
+        ViewBag.LastRow = Math.Min(page * pageSize, total);
         ViewBag.CategoryId = categoryId;
         ViewBag.Status = status;
         ViewBag.Stock = stock;
         ViewBag.Sort = sort;
+        ViewBag.Archived = archived;
+        ViewBag.TaxRate = taxRate;
         return View(products);
     }
 
@@ -166,6 +187,130 @@ public class ProductsController : InventoryAreaController
 
         TempData["Success"] = $"'{product.Name}' saved.";
         return RedirectToAction(nameof(Index));
+    }
+
+    // Quick Add — create a minimal product (name + category + price) from the list modal.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> QuickAdd(string name, int? categoryId, decimal price, string? sku)
+    {
+        if (string.IsNullOrWhiteSpace(name) || categoryId == null)
+        {
+            TempData["Error"] = "Name and category are required.";
+            return RedirectToAction(nameof(Index));
+        }
+        var product = new Product
+        {
+            Name = name.Trim(),
+            Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim(),
+            Price = price,
+            CategoryId = categoryId.Value,
+            IsActive = true, TrackStock = true, Currency = "NGN", ProductType = "simple",
+            ExternalCode = "", LowStockThreshold = 3,
+            Slug = await UniqueSlugAsync(Slugify(name)),
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        };
+        _db.Products.Add(product);
+        await _db.SaveChangesAsync();
+        await EnsureInventoryRecordsAsync(product.Id);
+        await LogAsync("Create", "Product", product.Id.ToString(), $"Quick-added product '{product.Name}'");
+        TempData["Success"] = $"'{product.Name}' added.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // Archive / restore — moves a product between the Current and Archived tabs.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetArchived(int id, bool archived)
+    {
+        var p = await _db.Products.FindAsync(id);
+        if (p == null) return NotFound();
+        p.IsArchived = archived;
+        p.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        await LogAsync("Update", "Product", id.ToString(), (archived ? "Archived" : "Restored") + $" product '{p.Name}'");
+        TempData["Success"] = archived ? $"'{p.Name}' archived." : $"'{p.Name}' restored.";
+        return RedirectToAction(nameof(Index), new { archived = !archived });
+    }
+
+    // Toggle stock tracking for a product.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ToggleTrackStock(int id)
+    {
+        var p = await _db.Products.FindAsync(id);
+        if (p == null) return NotFound();
+        p.TrackStock = !p.TrackStock;
+        p.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        await LogAsync("Update", "Product", id.ToString(), $"Set Track Stock = {p.TrackStock} for '{p.Name}'");
+        TempData["Success"] = $"Stock tracking {(p.TrackStock ? "on" : "off")} for '{p.Name}'.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // Duplicate a product (copy core fields; inactive + not archived; fresh slug).
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Duplicate(int id)
+    {
+        var src = await _db.Products.FindAsync(id);
+        if (src == null) return NotFound();
+        var copy = new Product
+        {
+            Name = src.Name + " (copy)", Sku = null, Barcode = null,
+            Price = src.Price, SalePrice = src.SalePrice, CategoryId = src.CategoryId,
+            Description = src.Description, ShortDescription = src.ShortDescription,
+            Material = src.Material, Metal = src.Metal, GemstoneType = src.GemstoneType,
+            Carat = src.Carat, Weight = src.Weight, ProductType = "simple",
+            Currency = src.Currency, ExternalCode = "", LowStockThreshold = src.LowStockThreshold,
+            TrackStock = src.TrackStock, PosButtonColour = src.PosButtonColour,
+            IsActive = false, IsArchived = false,
+            Slug = await UniqueSlugAsync(Slugify(src.Name) + "-copy"),
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+        };
+        _db.Products.Add(copy);
+        await _db.SaveChangesAsync();
+        await EnsureInventoryRecordsAsync(copy.Id);
+        await LogAsync("Create", "Product", copy.Id.ToString(), $"Duplicated product '{src.Name}'");
+        TempData["Success"] = $"Duplicated as '{copy.Name}' (inactive — edit & activate when ready).";
+        return RedirectToAction(nameof(Edit), new { id = copy.Id });
+    }
+
+    // Delete — blocked if the product has order/stock history (deactivate/archive instead).
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> Delete(int id)
+    {
+        var p = await _db.Products.FindAsync(id);
+        if (p == null) return NotFound();
+        var hasHistory = await _db.OrderItems.AnyAsync(oi => oi.ProductId == id)
+                       || await _db.StockMovements.AnyAsync(m => m.ProductId == id);
+        if (hasHistory)
+        {
+            TempData["Error"] = $"'{p.Name}' has order or stock history and can't be deleted — archive it instead.";
+            return RedirectToAction(nameof(Index));
+        }
+        var name = p.Name;
+        _db.StoreInventories.RemoveRange(_db.StoreInventories.Where(si => si.ProductId == id));
+        _db.ProductVariants.RemoveRange(_db.ProductVariants.Where(v => v.ProductId == id));
+        _db.Products.Remove(p);
+        await _db.SaveChangesAsync();
+        await LogAsync("Delete", "Product", id.ToString(), $"Deleted product '{name}'");
+        TempData["Success"] = $"'{name}' deleted.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // CSV export of the current view (respects search / category / tab).
+    public async Task<IActionResult> Export(string q = "", int? categoryId = null, bool archived = false)
+    {
+        var query = _db.Products.Include(p => p.Category).Where(p => p.IsArchived == archived);
+        if (!string.IsNullOrWhiteSpace(q))
+            query = query.Where(p => EF.Functions.ILike(p.Name, $"%{q}%") || EF.Functions.ILike(p.Sku ?? "", $"%{q}%") || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%"));
+        if (categoryId.HasValue) query = query.Where(p => p.CategoryId == categoryId.Value);
+        var rows = await query.OrderBy(p => p.Name)
+            .Select(p => new { p.Name, p.Sku, p.Barcode, Category = p.Category != null ? p.Category.Name : "", p.Price, p.IsActive, p.TrackStock })
+            .ToListAsync();
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Name,SKU,Barcode,Category,Price,Active,TrackStock");
+        foreach (var r in rows)
+            sb.AppendLine($"\"{r.Name}\",\"{r.Sku}\",\"{r.Barcode}\",\"{r.Category}\",{r.Price},{r.IsActive},{r.TrackStock}");
+        var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        return File(bytes, "text/csv", $"products_{DateTime.UtcNow:yyyyMMdd}.csv");
     }
 
     // Printable barcode label sheet for the selected products. Products with per-variant
@@ -293,9 +438,12 @@ public class InvProductRow
     public string? Sku { get; set; }
     public string? Barcode { get; set; }
     public decimal Price { get; set; }
+    public decimal PriceExTax { get; set; }
     public string CategoryName { get; set; } = "";
     public string? ImageUrl { get; set; }
     public bool IsActive { get; set; }
+    public bool TrackStock { get; set; }
+    public string? ButtonColour { get; set; }
     public int TotalStock { get; set; }
     public List<InvVariantRow> Variants { get; set; } = new();
 }

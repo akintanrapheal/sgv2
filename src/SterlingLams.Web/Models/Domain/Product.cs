@@ -42,6 +42,14 @@ public class Product
     public string ProductType { get; set; } = "simple";
 
     public bool IsActive { get; set; } = true;
+    /// <summary>Archived = retired from the working product list (Inventory "Archived" tab). Distinct
+    /// from IsActive (storefront visibility); an archived product is hidden from the Current list.</summary>
+    public bool IsArchived { get; set; }
+    /// <summary>Whether stock is tracked for this product (Inventory "Track Stock"). Untracked items
+    /// (services, made-to-order) skip stock checks/levels.</summary>
+    public bool TrackStock { get; set; } = true;
+    /// <summary>Optional POS tile/button colour for this product (Inventory "Button colour").</summary>
+    public string? PosButtonColour { get; set; }
     /// <summary>Hidden from the POS/till only (staff "Mark unavailable") — still listed on the
     /// storefront. Independent of <see cref="IsActive"/>.</summary>
     public bool HiddenFromPos { get; set; }
