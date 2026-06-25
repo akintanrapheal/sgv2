@@ -111,7 +111,8 @@
             <!-- Mobile category nav (the sidebar is hidden on phones/tablets) -->
             @if (Model.Filters.Categories.Any())
             {
-                <details class="lg:hidden mb-6 border border-neutral-200 rounded-sm group" open="@(!string.IsNullOrEmpty(Model.Filters.Category))">
+                @* Collapsed by default on mobile — taps to open (never auto-expands, even within a category). *@
+                <details class="lg:hidden mb-6 border border-neutral-200 rounded-sm group">
                     <summary class="cursor-pointer list-none px-4 py-3 flex items-center justify-between">
                         <span class="text-xs tracking-[0.2em] uppercase text-neutral-500">
                             Category@(string.IsNullOrEmpty(Model.Filters.Category) ? "" : ": " + (Model.Filters.Categories.FirstOrDefault(c => c.Slug == Model.Filters.Category)?.Name ?? ""))
