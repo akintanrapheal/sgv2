@@ -10,19 +10,17 @@ namespace SterlingLams.Web.Areas.Inventory.Controllers;
 public class ProductsController : InventoryAreaController
 {
     private readonly ApplicationDbContext _db;
-    private readonly SterlingLams.Web.Services.ISettingsService _settings;
     private const int PageSize = 30;
-    public ProductsController(ApplicationDbContext db, SterlingLams.Web.Services.ISettingsService settings)
+    public ProductsController(ApplicationDbContext db)
     {
         _db = db;
-        _settings = settings;
     }
 
     // List — search matches name, SKU OR barcode (so a scanner finds the product). The "Current" tab
     // shows live products; "Archived" shows retired ones.
     public async Task<IActionResult> Index(string q = "", int page = 1, int? categoryId = null,
         string status = "all", string stock = "all", string sort = "name_asc",
-        bool archived = false, int pageSize = 30)
+        bool archived = false, int pageSize = 30, string variant = "all", string buttonColour = "")
     {
         ViewData["Title"] = "Products";
         if (pageSize != 30 && pageSize != 50 && pageSize != 100) pageSize = 30;
@@ -44,6 +42,14 @@ public class ProductsController : InventoryAreaController
         if (stock == "out") query = query.Where(p => (p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0) == 0);
         else if (stock == "low") query = query.Where(p => (p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0) <= Math.Max(1, p.LowStockThreshold));
         else if (stock == "in") query = query.Where(p => (p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0) > 0);
+
+        if (variant == "variable") query = query.Where(p => p.ProductType == "variable");
+        else if (variant == "simple") query = query.Where(p => p.ProductType != "variable");
+
+        if (!string.IsNullOrWhiteSpace(buttonColour))
+            query = buttonColour == "none"
+                ? query.Where(p => p.PosButtonColour == null || p.PosButtonColour == "")
+                : query.Where(p => p.PosButtonColour == buttonColour);
 
         query = sort switch
         {
@@ -76,6 +82,7 @@ public class ProductsController : InventoryAreaController
                 IsActive = p.IsActive,
                 TrackStock = p.TrackStock,
                 ButtonColour = p.PosButtonColour,
+                Description = p.ShortDescription ?? p.Description,
                 TotalStock = p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0,
                 Variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name)
                     .Select(v => new InvVariantRow
@@ -87,11 +94,6 @@ public class ProductsController : InventoryAreaController
                     }).ToList()
             })
             .ToListAsync();
-
-        // Prices are tax-inclusive; split out ex-TAX using the configured rate (0 ⇒ both equal).
-        var taxRate = await _settings.GetDecimalAsync("inventory.tax_rate", 0m);
-        foreach (var r in products)
-            r.PriceExTax = taxRate > 0 ? Math.Round(r.Price / (1 + taxRate / 100m), 2) : r.Price;
 
         await LoadCategories(categoryId);
         ViewBag.Query = q;
@@ -106,7 +108,11 @@ public class ProductsController : InventoryAreaController
         ViewBag.Stock = stock;
         ViewBag.Sort = sort;
         ViewBag.Archived = archived;
-        ViewBag.TaxRate = taxRate;
+        ViewBag.Variant = variant;
+        ViewBag.ButtonColour = buttonColour;
+        ViewBag.ButtonColours = await _db.Products
+            .Where(p => p.PosButtonColour != null && p.PosButtonColour != "")
+            .Select(p => p.PosButtonColour!).Distinct().OrderBy(c => c).ToListAsync();
         return View(products);
     }
 
@@ -438,12 +444,12 @@ public class InvProductRow
     public string? Sku { get; set; }
     public string? Barcode { get; set; }
     public decimal Price { get; set; }
-    public decimal PriceExTax { get; set; }
     public string CategoryName { get; set; } = "";
     public string? ImageUrl { get; set; }
     public bool IsActive { get; set; }
     public bool TrackStock { get; set; }
     public string? ButtonColour { get; set; }
+    public string? Description { get; set; }
     public int TotalStock { get; set; }
     public List<InvVariantRow> Variants { get; set; } = new();
 }

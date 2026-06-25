@@ -90,7 +90,6 @@ public static class SettingsSeedData
         // ── Inventory ─────────────────────────────────────────────────────────
         new() { Key = "inventory.show_low_stock_nudge", Group = "Inventory", Label = "Show \"Low stock\" Nudge", Type = "boolean", Value = "true", Description = "Show a 'Low stock — order soon' nudge on product pages when an item is at/below the threshold.", SortOrder = 2 },
         new() { Key = "storefront.hide_out_of_stock", Group = "Inventory", Label = "Hide out-of-stock items on storefront", Type = "boolean", Value = "false", Description = "When on, products with no stock anywhere are hidden from the shop and category pages (a direct link returns Not Found). For variant products, only the in-stock options (size/colour) are shown and sold-out ones are hidden; the product is hidden only when every option is out.", SortOrder = 3 },
-        new() { Key = "inventory.tax_rate", Group = "Inventory", Label = "Sales Tax / VAT rate (%)", Type = "number", Value = "0", Description = "Tax rate used to split prices into ex-TAX and inc-TAX on the product list. Prices are treated as tax-inclusive; ex-TAX = price ÷ (1 + rate). Leave 0 if you don't charge separate tax.", SortOrder = 4 },
 
         // ── Orders ────────────────────────────────────────────────────────────
         new() { Key = "order.number_prefix",               Group = "Orders", Label = "Online Order Number Prefix",     Type = "text",   Value = "SL-", Description = "Prefix for online order numbers (e.g. SL- → SL-20260617…). POS orders use POS-.", SortOrder = 1 },

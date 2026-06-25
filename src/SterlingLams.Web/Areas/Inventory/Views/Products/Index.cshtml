@@ -14,11 +14,15 @@
     string stock = ViewBag.Stock ?? "all";
     string sort = ViewBag.Sort ?? "name_asc";
     bool archived = ViewBag.Archived ?? false;
+    string variant = ViewBag.Variant ?? "all";
+    string buttonColour = ViewBag.ButtonColour ?? "";
     var cats = ViewBag.Categories as List<SelectListItem> ?? new();
+    var colours = ViewBag.ButtonColours as List<string> ?? new();
     string Money(decimal v) => "₦" + v.ToString("N2");
     var baseRoute = new Dictionary<string, string?> {
-        ["q"] = q, ["categoryId"] = categoryId?.ToString(), ["status"] = status,
-        ["stock"] = stock, ["pageSize"] = pageSize.ToString(), ["archived"] = archived.ToString().ToLower()
+        ["q"] = q, ["categoryId"] = categoryId?.ToString(), ["status"] = status, ["stock"] = stock,
+        ["pageSize"] = pageSize.ToString(), ["archived"] = archived.ToString().ToLower(),
+        ["variant"] = variant, ["buttonColour"] = buttonColour
     };
     Dictionary<string, string?> R(params (string k, string? v)[] over) {
         var d = new Dictionary<string, string?>(baseRoute);
@@ -27,6 +31,7 @@
     }
     string NextSort(string col) => sort == col + "_asc" ? col + "_desc" : col + "_asc";
     string SortIcon(string col) => sort == col + "_asc" ? "▲" : sort == col + "_desc" ? "▼" : "⇅";
+    string Trunc(string? s, int n) => string.IsNullOrEmpty(s) ? "" : (s.Length > n ? s.Substring(0, n) + "…" : s);
 }
 
 @Html.AntiForgeryToken()
@@ -92,32 +97,6 @@
         </div>
     </div>
 
-    <!-- Filter panel (toggled) -->
-    <form method="get" id="filter-panel" class="hidden flex-wrap items-end gap-3 px-4 py-3 bg-neutral-50 border-b border-neutral-100">
-        <input type="hidden" name="archived" value="@archived.ToString().ToLower()" />
-        <input type="hidden" name="q" value="@q" />
-        <div><label class="block text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Category</label>
-            <select name="categoryId" class="border border-neutral-200 rounded-md px-2 py-1.5 text-sm bg-white">
-                <option value="">All categories</option>
-                @foreach (var c in cats) { <option value="@c.Value" selected="@(categoryId?.ToString() == c.Value)">@c.Text</option> }
-            </select></div>
-        <div><label class="block text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Status</label>
-            <select name="status" class="border border-neutral-200 rounded-md px-2 py-1.5 text-sm bg-white">
-                <option value="all" selected="@(status=="all")">All</option>
-                <option value="active" selected="@(status=="active")">Active</option>
-                <option value="hidden" selected="@(status=="hidden")">Hidden</option>
-            </select></div>
-        <div><label class="block text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Stock</label>
-            <select name="stock" class="border border-neutral-200 rounded-md px-2 py-1.5 text-sm bg-white">
-                <option value="all" selected="@(stock=="all")">All</option>
-                <option value="in" selected="@(stock=="in")">In stock</option>
-                <option value="low" selected="@(stock=="low")">Low</option>
-                <option value="out" selected="@(stock=="out")">Out of stock</option>
-            </select></div>
-        <button type="submit" class="px-4 py-1.5 bg-neutral-900 text-white text-xs rounded-md hover:bg-neutral-700">Apply</button>
-        <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-route-archived="@archived.ToString().ToLower()" class="text-xs text-neutral-500 underline">Clear</a>
-    </form>
-
     <!-- Table -->
     <div class="overflow-x-auto">
         <table id="prod-table" class="w-full text-sm min-w-[820px]">
@@ -126,31 +105,45 @@
                     <th data-col="name" draggable="true" class="prod-th text-left font-semibold px-4 py-3 select-none">
                         <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="@R(("sort", NextSort("name")),("page","1"))" class="hover:text-neutral-900">Name <span class="text-neutral-300">@SortIcon("name")</span></a>
                     </th>
+                    <th data-col="sku" draggable="true" class="prod-th text-left font-semibold px-4 py-3 select-none">SKU</th>
                     <th data-col="category" draggable="true" class="prod-th text-left font-semibold px-4 py-3 select-none">
                         <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="@R(("sort", NextSort("category")),("page","1"))" class="hover:text-neutral-900">Category <span class="text-neutral-300">@SortIcon("category")</span></a>
                     </th>
-                    <th data-col="exTax" draggable="true" class="prod-th text-right font-semibold px-4 py-3 select-none">Sale price<br /><span class="font-normal text-neutral-400 text-[10px]">(excTAX)</span></th>
-                    <th data-col="incTax" draggable="true" class="prod-th text-right font-semibold px-4 py-3 select-none">Sale price<br /><span class="font-normal text-neutral-400 text-[10px]">(incTAX)</span></th>
+                    <th data-col="price" draggable="true" class="prod-th text-right font-semibold px-4 py-3 select-none">
+                        <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="@R(("sort", NextSort("price")),("page","1"))" class="hover:text-neutral-900">Sale price <span class="text-neutral-300">@SortIcon("price")</span></a>
+                    </th>
                     <th data-col="colour" draggable="true" class="prod-th text-left font-semibold px-4 py-3 select-none">Button<br />colour</th>
+                    <th data-col="barcode" draggable="true" class="prod-th text-left font-semibold px-4 py-3 select-none">Barcode</th>
+                    <th data-col="description" draggable="true" class="prod-th text-left font-semibold px-4 py-3 select-none">Description</th>
+                    <th data-col="trackstock" draggable="true" class="prod-th text-center font-semibold px-4 py-3 select-none">Stock Tracked</th>
+                    <th data-col="image" draggable="true" class="prod-th text-center font-semibold px-4 py-3 select-none">Image</th>
+                    <th data-col="sellweb" draggable="true" class="prod-th text-center font-semibold px-4 py-3 select-none">Sell on Web</th>
                     <th data-col="actions" class="px-4 py-3 w-12"></th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-neutral-100">
                 @if (!Model.Any())
                 {
-                    <tr><td colspan="6" class="px-4 py-16 text-center text-neutral-400">@(archived ? "No archived products." : "No products found.")</td></tr>
+                    <tr><td colspan="11" class="px-4 py-16 text-center text-neutral-400">@(archived ? "No archived products." : "No products found.")</td></tr>
                 }
                 @foreach (var p in Model)
                 {
                     <tr class="hover:bg-neutral-50">
                         <td data-col="name" class="px-4 py-3 text-neutral-800">@(string.IsNullOrWhiteSpace(p.Sku) ? p.Name : $"{p.Sku} ({p.Name})")</td>
+                        <td data-col="sku" class="px-4 py-3 text-neutral-600">@(p.Sku ?? "—")</td>
                         <td data-col="category" class="px-4 py-3 text-neutral-600">@p.CategoryName</td>
-                        <td data-col="exTax" class="px-4 py-3 text-right text-neutral-700">@Money(p.PriceExTax)</td>
-                        <td data-col="incTax" class="px-4 py-3 text-right text-neutral-800">@Money(p.Price)</td>
+                        <td data-col="price" class="px-4 py-3 text-right text-neutral-800">@Money(p.Price)</td>
                         <td data-col="colour" class="px-4 py-3 text-neutral-500">
                             @if (string.IsNullOrWhiteSpace(p.ButtonColour)) { <span>None</span> }
                             else { <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full inline-block border border-neutral-200" style="background:@p.ButtonColour"></span>@p.ButtonColour</span> }
                         </td>
+                        <td data-col="barcode" class="px-4 py-3 text-neutral-500 font-mono text-xs">@(p.Barcode ?? "—")</td>
+                        <td data-col="description" class="px-4 py-3 text-neutral-500">@Trunc(p.Description, 60)</td>
+                        <td data-col="trackstock" class="px-4 py-3 text-center">@(p.TrackStock ? "✓" : "—")</td>
+                        <td data-col="image" class="px-4 py-3 text-center">
+                            @if (!string.IsNullOrEmpty(p.ImageUrl)) { <img src="@p.ImageUrl" class="w-8 h-8 object-cover rounded inline-block" alt="" /> } else { <span class="text-neutral-300">—</span> }
+                        </td>
+                        <td data-col="sellweb" class="px-4 py-3 text-center">@(p.IsActive ? "✓" : "—")</td>
                         <td data-col="actions" class="px-2 py-3 text-right">
                             <button type="button" class="kebab text-neutral-400 hover:text-neutral-700 px-2"
                                     data-id="@p.Id" data-archived="@archived.ToString().ToLower()" data-track="@p.TrackStock.ToString().ToLower()">
@@ -178,6 +171,71 @@
             <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="@R(("page",(pg+1).ToString()))" class="px-2 py-1 rounded @(pg>=totalPages ? "text-neutral-300 pointer-events-none" : "hover:bg-neutral-100")">›</a>
             <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="@R(("page",totalPages.ToString()))" class="px-2 py-1 rounded @(pg>=totalPages ? "text-neutral-300 pointer-events-none" : "hover:bg-neutral-100")">»</a>
         </div>
+    </div>
+</div>
+
+<!-- Drawer overlay -->
+<div id="drawer-overlay" class="hidden fixed inset-0 bg-black/30 z-40"></div>
+
+<!-- Filters drawer -->
+<form method="get" id="filters-drawer" class="fixed inset-y-0 right-0 w-80 max-w-[90vw] bg-white shadow-2xl z-50 translate-x-full transition-transform duration-200 flex flex-col">
+    <input type="hidden" name="archived" value="@archived.ToString().ToLower()" />
+    <input type="hidden" name="q" value="@q" />
+    <input type="hidden" name="pageSize" value="@pageSize" />
+    <div class="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
+        <h3 class="text-base font-semibold text-neutral-800 flex items-center gap-2">
+            <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 4h18M6 12h12M10 20h4"/></svg> Filters</h3>
+        <button type="button" class="drawer-close text-neutral-400 hover:text-neutral-700">&times;</button>
+    </div>
+    <div class="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div><label class="block text-[11px] text-neutral-400 mb-1">Category</label>
+            <select name="categoryId" class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white">
+                <option value="">All Categories</option>
+                @foreach (var c in cats) { <option value="@c.Value" selected="@(categoryId?.ToString() == c.Value)">@c.Text</option> }
+            </select></div>
+        <div><label class="block text-[11px] text-neutral-400 mb-1">Button colour</label>
+            <select name="buttonColour" class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white">
+                <option value="">All Button colours</option>
+                <option value="none" selected="@(buttonColour=="none")">None</option>
+                @foreach (var c in colours) { <option value="@c" selected="@(buttonColour==c)">@c</option> }
+            </select></div>
+        <div><label class="block text-[11px] text-neutral-400 mb-1">Variant</label>
+            <select name="variant" class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white">
+                <option value="all" selected="@(variant=="all")">All Variants</option>
+                <option value="simple" selected="@(variant=="simple")">Simple products</option>
+                <option value="variable" selected="@(variant=="variable")">Variable products</option>
+            </select></div>
+        <div><label class="block text-[11px] text-neutral-400 mb-1">Status</label>
+            <select name="status" class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white">
+                <option value="all" selected="@(status=="all")">All</option>
+                <option value="active" selected="@(status=="active")">Active (sell on web)</option>
+                <option value="hidden" selected="@(status=="hidden")">Hidden</option>
+            </select></div>
+        <div><label class="block text-[11px] text-neutral-400 mb-1">Stock</label>
+            <select name="stock" class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white">
+                <option value="all" selected="@(stock=="all")">All</option>
+                <option value="in" selected="@(stock=="in")">In stock</option>
+                <option value="low" selected="@(stock=="low")">Low</option>
+                <option value="out" selected="@(stock=="out")">Out of stock</option>
+            </select></div>
+    </div>
+    <div class="flex items-center gap-2 px-5 py-4 border-t border-neutral-100">
+        <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-route-archived="@archived.ToString().ToLower()"
+           class="flex-1 text-center border border-neutral-200 rounded-md py-2 text-sm text-neutral-600 hover:border-neutral-400">Reset</a>
+        <button type="submit" class="flex-1 bg-blue-600 text-white rounded-md py-2 text-sm hover:bg-blue-700">Apply</button>
+    </div>
+</form>
+
+<!-- Columns drawer -->
+<div id="columns-drawer" class="fixed inset-y-0 right-0 w-80 max-w-[90vw] bg-white shadow-2xl z-50 translate-x-full transition-transform duration-200 flex flex-col">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-neutral-100">
+        <h3 class="text-base font-semibold text-neutral-800 flex items-center gap-2">
+            <svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 6v12M10 6v12M4 18h16"/></svg> Columns</h3>
+        <button type="button" class="drawer-close text-neutral-400 hover:text-neutral-700">&times;</button>
+    </div>
+    <div class="flex-1 overflow-y-auto px-5 py-3 space-y-1" id="columns-list"></div>
+    <div class="px-5 py-4 border-t border-neutral-100">
+        <button type="button" id="reset-columns" class="w-full border border-neutral-200 rounded-md py-2 text-sm text-blue-700 hover:bg-blue-50">Reset Columns</button>
     </div>
 </div>
 
@@ -212,8 +270,66 @@
 (function () {
     var token = document.querySelector('input[name="__RequestVerificationToken"]') ? document.querySelector('input[name="__RequestVerificationToken"]').value : '';
     var base = '/Inventory/Products/';
+    var table = document.getElementById('prod-table');
 
-    // Row kebab menu — one shared, fixed-positioned menu built per row.
+    // ── Column registry (key → label, default visible) ──────────────────────────
+    var COLS = [
+        { k: 'name', t: 'Name', def: true }, { k: 'sku', t: 'SKU', def: false },
+        { k: 'category', t: 'Category', def: true },
+        { k: 'price', t: 'Sale price', def: true },
+        { k: 'colour', t: 'Button colour', def: true }, { k: 'barcode', t: 'Barcode', def: false },
+        { k: 'description', t: 'Description', def: false }, { k: 'trackstock', t: 'Stock Tracked', def: false },
+        { k: 'image', t: 'Image', def: false }, { k: 'sellweb', t: 'Sell on Web', def: false }
+    ];
+    var VKEY = 'invprod-colvis';
+    function defaultVisible() { return COLS.filter(function (c) { return c.def; }).map(function (c) { return c.k; }); }
+    function getVisible() { try { var s = JSON.parse(localStorage.getItem(VKEY) || 'null'); return s && s.length ? s : defaultVisible(); } catch (e) { return defaultVisible(); } }
+    function setColVisible(key, show) {
+        table.querySelectorAll('[data-col="' + key + '"]').forEach(function (cell) { cell.style.display = show ? '' : 'none'; });
+        if (show && table.classList.contains('table-fixed')) {
+            var th = table.querySelector('th[data-col="' + key + '"]');
+            if (th && (!th.style.width || th.style.width === '0px')) th.style.width = '140px';
+        }
+    }
+    function applyVisible(vis) { COLS.forEach(function (c) { setColVisible(c.k, vis.indexOf(c.k) !== -1); }); }
+    applyVisible(getVisible());
+
+    // Build the Columns drawer list.
+    var list = document.getElementById('columns-list');
+    var vis = getVisible();
+    list.innerHTML = COLS.map(function (c) {
+        return '<label class="flex items-center gap-2.5 px-1 py-2 text-sm text-neutral-700 cursor-pointer">'
+            + '<input type="checkbox" class="col-toggle accent-blue-600" data-col="' + c.k + '"' + (vis.indexOf(c.k) !== -1 ? ' checked' : '') + '/>' + c.t + '</label>';
+    }).join('');
+    list.querySelectorAll('.col-toggle').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+            var v = getVisible(); var key = cb.dataset.col;
+            if (cb.checked) { if (v.indexOf(key) === -1) v.push(key); } else { v = v.filter(function (x) { return x !== key; }); }
+            try { localStorage.setItem(VKEY, JSON.stringify(v)); } catch (e) {}
+            setColVisible(key, cb.checked);
+        });
+    });
+    document.getElementById('reset-columns').addEventListener('click', function () {
+        try { localStorage.removeItem(VKEY); } catch (e) {}
+        var d = defaultVisible(); applyVisible(d);
+        list.querySelectorAll('.col-toggle').forEach(function (cb) { cb.checked = d.indexOf(cb.dataset.col) !== -1; });
+    });
+
+    // ── Drawers (Filters + Columns) ─────────────────────────────────────────────
+    var overlay = document.getElementById('drawer-overlay');
+    var filters = document.getElementById('filters-drawer'), columns = document.getElementById('columns-drawer');
+    function openDrawer(d) { overlay.classList.remove('hidden'); d.classList.remove('translate-x-full'); }
+    function closeDrawers() { overlay.classList.add('hidden'); filters.classList.add('translate-x-full'); columns.classList.add('translate-x-full'); }
+    document.getElementById('filter-btn').addEventListener('click', function () { closeDrawers(); openDrawer(filters); });
+    document.getElementById('columns-btn').addEventListener('click', function () { closeDrawers(); openDrawer(columns); });
+    overlay.addEventListener('click', closeDrawers);
+    document.querySelectorAll('.drawer-close').forEach(function (b) { b.addEventListener('click', closeDrawers); });
+
+    document.getElementById('image-import-btn').addEventListener('click', function () {
+        alert('Image Import is coming next — bulk-match product photos by SKU/barcode.');
+    });
+
+    // ── Row kebab menu ──────────────────────────────────────────────────────────
     var menu = document.createElement('div');
     menu.className = 'hidden fixed z-[60] bg-white border border-neutral-200 rounded-md shadow-lg py-1 text-sm w-44';
     document.body.appendChild(menu);
@@ -247,30 +363,18 @@
     document.addEventListener('click', closeMenu);
     window.addEventListener('scroll', closeMenu, true);
 
-    // Quick Add modal
+    // ── Quick Add modal ─────────────────────────────────────────────────────────
     var qa = document.getElementById('quick-add');
     document.getElementById('quick-add-btn').addEventListener('click', function () { qa.classList.remove('hidden'); });
     document.getElementById('quick-cancel').addEventListener('click', function () { qa.classList.add('hidden'); });
     qa.addEventListener('click', function (e) { if (e.target === qa) qa.classList.add('hidden'); });
 
-    // Toolbar toggles
-    document.getElementById('filter-btn').addEventListener('click', function () {
-        var fp = document.getElementById('filter-panel'); fp.classList.toggle('hidden'); fp.classList.toggle('flex');
-    });
-    document.getElementById('image-import-btn').addEventListener('click', function () {
-        alert('Image Import is coming next — bulk-match product photos by SKU/barcode.');
-    });
-    document.getElementById('columns-btn').addEventListener('click', function () {
-        alert('Tip: drag a column header left or right to reorder columns. Your order is saved on this device.');
-    });
-
-    // Items per page
+    // ── Items per page ──────────────────────────────────────────────────────────
     document.getElementById('page-size').addEventListener('change', function () {
         var u = new URL(window.location.href); u.searchParams.set('pageSize', this.value); u.searchParams.set('page', '1'); window.location.href = u.toString();
     });
 
-    // Drag-to-reorder columns (persisted per device)
-    var table = document.getElementById('prod-table');
+    // ── Drag-to-reorder columns (persisted per device) ──────────────────────────
     var KEY = 'invprod-colorder';
     function allRows() { return [table.tHead.rows[0]].concat(Array.prototype.slice.call(table.tBodies[0].rows)); }
     function currentOrder() { return Array.prototype.map.call(table.tHead.rows[0].cells, function (c) { return c.dataset.col; }); }
@@ -283,8 +387,7 @@
             if (map['actions']) row.appendChild(map['actions']);
         });
     }
-    try { var saved = JSON.parse(localStorage.getItem(KEY) || 'null'); if (saved) applyOrder(saved); } catch (e) {}
-
+    try { var savedOrder = JSON.parse(localStorage.getItem(KEY) || 'null'); if (savedOrder) applyOrder(savedOrder); } catch (e) {}
     var dragCol = null;
     table.querySelectorAll('th.prod-th[draggable="true"]').forEach(function (th) {
         th.style.cursor = 'grab';
@@ -303,6 +406,51 @@
             try { localStorage.setItem(KEY, JSON.stringify(order)); } catch (e2) {}
             dragCol = null;
         });
+    });
+
+    // ── Excel-style column resize (drag the right border; widths persisted) ──────
+    var WKEY = 'invprod-colwidths';
+    var headThs = Array.prototype.slice.call(table.tHead.rows[0].cells);
+    // Capture natural widths under auto layout, then lock to fixed layout so widths stick.
+    var saved = {}; try { saved = JSON.parse(localStorage.getItem(WKEY) || '{}') || {}; } catch (e) {}
+    var measured = {};
+    headThs.forEach(function (th) { if (th.offsetWidth > 0) measured[th.dataset.col] = th.offsetWidth; });
+    table.classList.add('table-fixed');
+    headThs.forEach(function (th) {
+        var k = th.dataset.col;
+        if (k === 'actions') return;                  // let the last column flex to fill width
+        var w = saved[k] || measured[k] || 140;
+        th.style.width = w + 'px';
+    });
+    function saveWidths() {
+        var o = {};
+        headThs.forEach(function (th) { if (th.style.width && th.dataset.col !== 'actions') o[th.dataset.col] = parseInt(th.style.width, 10); });
+        try { localStorage.setItem(WKEY, JSON.stringify(o)); } catch (e) {}
+    }
+    headThs.forEach(function (th) {
+        if (th.dataset.col === 'actions') return;
+        th.style.position = 'relative';
+        var grip = document.createElement('div');
+        grip.style.cssText = 'position:absolute;top:0;right:0;width:7px;height:100%;cursor:col-resize;z-index:5;';
+        grip.addEventListener('dragstart', function (e) { e.preventDefault(); e.stopPropagation(); });
+        grip.addEventListener('click', function (e) { e.stopPropagation(); });
+        grip.addEventListener('mousedown', function (e) {
+            e.preventDefault(); e.stopPropagation();
+            var startX = e.pageX, startW = th.offsetWidth;
+            th.draggable = false;                      // suspend reorder-drag while resizing
+            document.body.style.cursor = 'col-resize';
+            function mv(ev) { th.style.width = Math.max(56, startW + (ev.pageX - startX)) + 'px'; }
+            function up() {
+                document.removeEventListener('mousemove', mv);
+                document.removeEventListener('mouseup', up);
+                document.body.style.cursor = '';
+                th.draggable = true;
+                saveWidths();
+            }
+            document.addEventListener('mousemove', mv);
+            document.addEventListener('mouseup', up);
+        });
+        th.appendChild(grip);
     });
 }());
 </script>
