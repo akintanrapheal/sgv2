@@ -3,13 +3,43 @@
     var isNew = Model.Id == 0;
     ViewData["Title"] = isNew ? "New Product" : "Edit Product";
     var categories = ViewBag.Categories as List<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem> ?? new();
+    int? prevId = ViewBag.PrevId;
+    int? nextId = ViewBag.NextId;
+    var palette = new[] { "Red:#ef4444","Orange:#f97316","Amber:#f59e0b","Green:#22c55e","Teal:#14b8a6","Blue:#3b82f6","Indigo:#6366f1","Purple:#a855f7","Pink:#ec4899","Grey:#9ca3af","Black:#111827" };
 }
 
-<div class="flex items-center gap-3 mb-6">
-    <a asp-area="Inventory" asp-controller="Products" asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← Products</a>
-    <span class="text-neutral-200">/</span>
-    <h1 class="text-lg font-medium text-neutral-800">@(isNew ? "New product" : Model.Name)</h1>
+<div class="flex items-center justify-between gap-3 mb-6 flex-wrap">
+    <div class="flex items-center gap-3">
+        <a asp-area="Inventory" asp-controller="Products" asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← Products</a>
+        <span class="text-neutral-200">/</span>
+        <h1 class="text-lg font-medium text-neutral-800">@(isNew ? "New product" : Model.Name)</h1>
+    </div>
+    @if (!isNew)
+    {
+        <div class="flex items-center gap-2">
+            <a asp-area="Inventory" asp-controller="Products" asp-action="Edit" asp-route-id="@prevId"
+               class="px-2 py-1.5 border border-neutral-200 rounded-sm text-neutral-500 hover:border-neutral-400 @(prevId == null ? "opacity-30 pointer-events-none" : "")" title="Previous">‹</a>
+            <a asp-area="Inventory" asp-controller="Products" asp-action="Edit" asp-route-id="@nextId"
+               class="px-2 py-1.5 border border-neutral-200 rounded-sm text-neutral-500 hover:border-neutral-400 @(nextId == null ? "opacity-30 pointer-events-none" : "")" title="Next">›</a>
+            <a asp-area="Inventory" asp-controller="Products" asp-action="Labels" asp-route-ids="@Model.Id" target="_blank"
+               class="px-3 py-1.5 border border-neutral-200 rounded-sm text-xs text-neutral-700 hover:border-neutral-400">Print Labels</a>
+            <form asp-area="Inventory" asp-controller="Products" asp-action="Duplicate" method="post" class="inline">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Id" />
+                <button type="submit" class="px-3 py-1.5 border border-neutral-200 rounded-sm text-xs text-neutral-700 hover:border-neutral-400">Duplicate Product</button>
+            </form>
+        </div>
+    }
 </div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="max-w-xl mb-4 px-4 py-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm rounded-sm">@TempData["Success"]</div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="max-w-xl mb-4 px-4 py-2.5 bg-red-50 border border-red-200 text-red-700 text-sm rounded-sm">@TempData["Error"]</div>
+}
 
 <form asp-area="Inventory" asp-controller="Products" asp-action="Save" method="post" class="max-w-xl bg-white border border-neutral-100 rounded-sm p-6 space-y-4">
     @Html.AntiForgeryToken()
@@ -43,15 +73,32 @@
         </div>
     </div>
 
-    <div>
-        <label class="block text-xs text-neutral-500 mb-1">Category</label>
-        <select name="categoryId" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white">
-            <option value="">— None —</option>
-            @foreach (var c in categories)
-            {
-                <option value="@c.Value" selected="@c.Selected">@c.Text</option>
-            }
-        </select>
+    <div class="grid grid-cols-2 gap-4">
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">Category</label>
+            <select name="categoryId" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white">
+                <option value="">— None —</option>
+                @foreach (var c in categories)
+                {
+                    <option value="@c.Value" selected="@c.Selected">@c.Text</option>
+                }
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">Button Colour</label>
+            <select name="buttonColour" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white">
+                <option value="">None</option>
+                @foreach (var nc in palette)
+                {
+                    var parts = nc.Split(':');
+                    <option value="@parts[1]" selected="@(Model.PosButtonColour == parts[1])">@parts[0]</option>
+                }
+                @if (!string.IsNullOrEmpty(Model.PosButtonColour) && !palette.Any(p => p.Split(':')[1] == Model.PosButtonColour))
+                {
+                    <option value="@Model.PosButtonColour" selected="selected">@Model.PosButtonColour</option>
+                }
+            </select>
+        </div>
     </div>
 
     <div>
@@ -60,7 +107,7 @@
     </div>
 
     <label class="flex items-center gap-2 text-sm text-neutral-700">
-        <input type="checkbox" name="isActive" value="true" checked="@Model.IsActive" /> Active (visible & sellable)
+        <input type="checkbox" name="isActive" value="true" checked="@Model.IsActive" /> Active (visible &amp; sellable)
     </label>
 
     <div class="flex items-center gap-3 pt-2">
@@ -71,22 +118,52 @@
 
 @if (Model.Variants.Any())
 {
-    <form asp-area="Inventory" asp-controller="Products" asp-action="SaveVariants" method="post" class="max-w-xl bg-white border border-neutral-100 rounded-sm p-6 mt-6">
-        @Html.AntiForgeryToken()
-        <input type="hidden" name="productId" value="@Model.Id" />
-        <h2 class="text-sm font-medium text-neutral-800 mb-1">Variant barcodes</h2>
-        <p class="text-xs text-neutral-400 mb-4">Give each variant its own barcode (scan or type). Scanning a variant barcode anywhere finds this product.</p>
-        <div class="space-y-2">
-            @foreach (var v in Model.Variants)
-            {
-                <div class="flex items-center gap-3">
-                    <input type="hidden" name="variantId" value="@v.Id" />
-                    <span class="flex-1 text-xs text-neutral-700 truncate">@v.Name</span>
-                    <input name="barcode" value="@v.Barcode" autocomplete="off" placeholder="Scan / type…"
-                           class="w-44 border border-neutral-200 rounded-sm px-3 py-1.5 text-xs font-mono focus:outline-none focus:border-emerald-400" />
-                </div>
-            }
+    <div class="max-w-3xl bg-white border border-neutral-100 rounded-sm p-6 mt-6">
+        <h2 class="text-sm font-medium text-neutral-800 mb-1">Product Matrix</h2>
+        <p class="text-xs text-neutral-400 mb-4">Each variant of this product. Give each its own barcode (scanning it finds this product), or remove a variant.</p>
+
+        <form id="save-variants" asp-area="Inventory" asp-controller="Products" asp-action="SaveVariants" method="post">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="productId" value="@Model.Id" />
+        </form>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-neutral-50 text-xs text-neutral-400 border-b border-neutral-100">
+                        <th class="text-left px-3 py-2 font-medium">Name</th>
+                        <th class="text-left px-3 py-2 font-medium">SKU</th>
+                        <th class="text-right px-3 py-2 font-medium">Price adj.</th>
+                        <th class="text-left px-3 py-2 font-medium">Barcode</th>
+                        <th class="px-2 py-2 w-10"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-neutral-50">
+                    @foreach (var v in Model.Variants)
+                    {
+                        <tr>
+                            <td class="px-3 py-2 text-neutral-700 text-xs">@v.Name</td>
+                            <td class="px-3 py-2 text-neutral-500 text-xs font-mono">@(v.Sku ?? "—")</td>
+                            <td class="px-3 py-2 text-right text-neutral-500 text-xs">@(v.PriceAdjustment.HasValue ? "₦" + v.PriceAdjustment.Value.ToString("N2") : "—")</td>
+                            <td class="px-3 py-2">
+                                <input type="hidden" name="variantId" value="@v.Id" form="save-variants" />
+                                <input name="barcode" value="@v.Barcode" autocomplete="off" placeholder="Scan / type…" form="save-variants"
+                                       class="w-44 border border-neutral-200 rounded-sm px-3 py-1.5 text-xs font-mono focus:outline-none focus:border-emerald-400" />
+                            </td>
+                            <td class="px-2 py-2 text-right">
+                                <form asp-area="Inventory" asp-controller="Products" asp-action="DeleteVariant" method="post" class="inline"
+                                      onsubmit="return confirm('Delete variant \'@v.Name\'?');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@v.Id" />
+                                    <input type="hidden" name="productId" value="@Model.Id" />
+                                    <button type="submit" class="text-red-400 hover:text-red-600 px-1.5 py-0.5 border border-red-200 rounded-sm text-xs" title="Delete variant">✕</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
         </div>
-        <button type="submit" class="mt-4 px-5 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Save variant barcodes</button>
-    </form>
+        <button type="submit" form="save-variants" class="mt-4 px-5 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Save variant barcodes</button>
+    </div>
 }

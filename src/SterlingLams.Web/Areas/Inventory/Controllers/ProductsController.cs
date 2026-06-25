@@ -133,7 +133,34 @@ public class ProductsController : InventoryAreaController
         if (product == null) return NotFound();
         ViewData["Title"] = "Edit Product";
         await LoadCategories(product.CategoryId);
+        // Prev/Next product nav (by name order, within the current/Active list) for the header arrows.
+        ViewBag.PrevId = await _db.Products.Where(p => !p.IsArchived && p.Name.CompareTo(product.Name) < 0)
+            .OrderByDescending(p => p.Name).Select(p => (int?)p.Id).FirstOrDefaultAsync();
+        ViewBag.NextId = await _db.Products.Where(p => !p.IsArchived && p.Name.CompareTo(product.Name) > 0)
+            .OrderBy(p => p.Name).Select(p => (int?)p.Id).FirstOrDefaultAsync();
         return View(product);
+    }
+
+    // Delete a single variant (X in the Product Matrix). Blocked if it carries order/stock history.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteVariant(int id, int productId)
+    {
+        var v = await _db.ProductVariants.FirstOrDefaultAsync(x => x.Id == id && x.ProductId == productId);
+        if (v == null) return NotFound();
+        var hasHistory = await _db.OrderItems.AnyAsync(oi => oi.ProductVariantId == id)
+                       || await _db.StockMovements.AnyAsync(m => m.ProductVariantId == id);
+        if (hasHistory)
+        {
+            TempData["Error"] = $"Variant '{v.Name}' has order or stock history and can't be deleted.";
+            return RedirectToAction(nameof(Edit), new { id = productId });
+        }
+        var name = v.Name;
+        _db.StoreInventories.RemoveRange(_db.StoreInventories.Where(si => si.ProductVariantId == id));
+        _db.ProductVariants.Remove(v);
+        await _db.SaveChangesAsync();
+        await LogAsync("Delete", "Product", productId.ToString(), $"Deleted variant '{name}'");
+        TempData["Success"] = $"Variant '{name}' deleted.";
+        return RedirectToAction(nameof(Edit), new { id = productId });
     }
 
     // Save per-variant barcodes (parallel arrays from the variants table).
@@ -163,7 +190,7 @@ public class ProductsController : InventoryAreaController
 
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Save(int id, string name, string? sku, string? barcode, decimal price,
-        int? categoryId, int lowStockThreshold, bool isActive, string? description)
+        int? categoryId, int lowStockThreshold, bool isActive, string? description, string? buttonColour)
     {
         if (string.IsNullOrWhiteSpace(name) || categoryId == null)
         {
@@ -182,6 +209,7 @@ public class ProductsController : InventoryAreaController
         product.CategoryId = categoryId.Value;
         product.LowStockThreshold = lowStockThreshold;
         product.IsActive = isActive;
+        product.PosButtonColour = string.IsNullOrWhiteSpace(buttonColour) ? null : buttonColour.Trim();
         product.Description = SterlingLams.Web.Services.ProductHtml.Sanitize(description);
         product.UpdatedAt = DateTime.UtcNow;
 
