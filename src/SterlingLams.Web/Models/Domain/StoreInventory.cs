@@ -23,5 +23,16 @@ public class StoreInventory
 
     public int AvailableQuantity => Math.Max(0, QuantityOnHand - QuantityReserved);
 
+    /// <summary>Reorder point for this location — at/below this, the item is "low" and (if alerts are on)
+    /// flagged for reordering. NULL = fall back to the product-level <see cref="Product.LowStockThreshold"/>.</summary>
+    public int? MinStock { get; set; }
+    /// <summary>Target stock level for this location — used to suggest reorder quantity (Max − OnHand).
+    /// NULL = no target set.</summary>
+    public int? MaxStock { get; set; }
+    /// <summary>Units currently on a purchase order / expected in, for this location.</summary>
+    public int OnOrder { get; set; }
+    /// <summary>Whether low-stock alerts are enabled for this location.</summary>
+    public bool StockAlerts { get; set; } = true;
+
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
