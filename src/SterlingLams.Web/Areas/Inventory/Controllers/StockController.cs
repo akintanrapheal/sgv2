@@ -23,74 +23,83 @@ public class StockController : InventoryAreaController
         _access = access;
     }
 
-    public async Task<IActionResult> Index(string q = "", int page = 1, int? categoryId = null)
+    // Stock Management — EPOS-style single-location grid: Sale price, Stock, On order, Min, Max for
+    // the selected branch. Variant products show read-only roll-up + editable per-variant rows.
+    public async Task<IActionResult> Index(string q = "", int page = 1, int? categoryId = null, int? storeId = null)
     {
-        ViewData["Title"] = "Stock";
+        ViewData["Title"] = "Stock Management";
 
         var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        if (stores.Count == 0)
+            return View(new StockManagementVm { Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync() });
 
-        var pq = _db.Products.Include(p => p.Category).Include(p => p.Images)
-            .Include(p => p.Variants.Where(v => v.IsActive))
+        // Default to the user's first writable branch, else the first active branch.
+        var writable = await _access.WritableStoreIdsAsync(User);
+        var selStore = storeId ?? stores.FirstOrDefault(s => writable.Contains(s.Id))?.Id ?? stores[0].Id;
+        if (stores.All(s => s.Id != selStore)) selStore = stores[0].Id;
+
+        var pq = _db.Products.Include(p => p.Category).Include(p => p.Variants.Where(v => v.IsActive))
             .Where(p => p.IsActive).AsQueryable();
         if (!string.IsNullOrWhiteSpace(q))
             pq = pq.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
                             || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
                             || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
                             || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")));
-
         if (categoryId.HasValue)
             pq = pq.Where(p => p.CategoryId == categoryId.Value);
 
-        var all = await pq.OrderBy(p => p.Name).ToListAsync();
-        var ids = all.Select(p => p.Id).ToList();
-        var inv = ids.Count > 0
-            ? await _db.StoreInventories.Where(si => ids.Contains(si.ProductId)).ToListAsync()
+        var total = await pq.CountAsync();
+        var prods = await pq.OrderBy(p => p.Name).Skip((page - 1) * PageSize).Take(PageSize).ToListAsync();
+        var pids = prods.Select(p => p.Id).ToList();
+        var inv = pids.Count > 0
+            ? await _db.StoreInventories.Where(si => pids.Contains(si.ProductId) && si.StoreId == selStore).ToListAsync()
             : new List<StoreInventory>();
 
-        var rows = all.Select(p => new ProductInventoryRow
+        var rows = prods.Select(p =>
         {
-            ProductId = p.Id,
-            ProductName = p.Name,
-            Sku = p.Sku,
-            CategoryName = p.Category?.Name ?? "—",
-            ImageUrl = p.Images.OrderBy(i => i.SortOrder).FirstOrDefault()?.Url,
-            LowStockThreshold = p.LowStockThreshold,
-            // Product row = the pool (unallocated) row. Variant products track per-variant rows below.
-            StockByStore = stores.ToDictionary(
-                s => s.Id,
-                s => inv.FirstOrDefault(si => si.ProductId == p.Id && si.StoreId == s.Id && si.ProductVariantId == null)?.QuantityOnHand ?? -1),
-            Variants = p.Variants.OrderBy(v => v.Name).Select(v => new VariantInventoryRow
+            var pool = inv.FirstOrDefault(si => si.ProductId == p.Id && si.ProductVariantId == null);
+            return new StockMgmtRow
             {
-                VariantId = v.Id,
-                Name = v.Name,
-                Sku = v.Sku,
-                StockByStore = stores.ToDictionary(
-                    s => s.Id,
-                    s => inv.FirstOrDefault(si => si.ProductId == p.Id && si.StoreId == s.Id && si.ProductVariantId == v.Id)?.QuantityOnHand ?? -1)
-            }).ToList()
+                ProductId = p.Id,
+                Name = p.Name,
+                Sku = p.Sku,
+                Category = p.Category?.Name ?? "—",
+                Price = p.Price,
+                OnHand = pool?.QuantityOnHand ?? 0,
+                OnOrder = pool?.OnOrder ?? 0,
+                Min = pool?.MinStock,
+                Max = pool?.MaxStock,
+                Variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).Select(v =>
+                {
+                    var vr = inv.FirstOrDefault(si => si.ProductId == p.Id && si.ProductVariantId == v.Id);
+                    return new StockMgmtVariantRow
+                    {
+                        VariantId = v.Id, Name = v.Name, Sku = v.Sku,
+                        OnHand = vr?.QuantityOnHand ?? 0, OnOrder = vr?.OnOrder ?? 0,
+                        Min = vr?.MinStock, Max = vr?.MaxStock
+                    };
+                }).ToList()
+            };
         }).ToList();
 
-        var total = rows.Count;
-        var pageRows = rows.Skip((page - 1) * PageSize).Take(PageSize).ToList();
-
-        return View(new AdminInventoryViewModel
+        return View(new StockManagementVm
         {
             Stores = stores,
-            Products = pageRows,
-            SearchQuery = q,
-            CategoryFilter = categoryId?.ToString() ?? "",
-            StockFilter = "",
-            AvailableCategories = await _db.Categories.OrderBy(c => c.Name).ToListAsync(),
-            CurrentPage = page,
+            SelectedStoreId = selStore,
+            Rows = rows,
+            Query = q,
+            CategoryFilter = categoryId,
+            Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync(),
+            Page = page,
             TotalPages = (int)Math.Ceiling(total / (double)PageSize),
-            TotalCount = total,
+            Total = total
         });
     }
 
     // Exact barcode/SKU lookup for the scan box — returns the row data needed to insert/highlight
     // a product inline without reloading the page (so unsaved edits in the grid aren't lost).
     [HttpGet]
-    public async Task<IActionResult> ScanLookup(string code)
+    public async Task<IActionResult> ScanLookup(string code, int? storeId = null)
     {
         code = (code ?? "").Trim();
         if (code.Length == 0) return Json(new { found = false });
@@ -98,15 +107,15 @@ public class StockController : InventoryAreaController
         var p = await _db.Products
             .Where(x => x.Barcode == code || x.Sku == code
                      || x.Variants.Any(v => v.Barcode == code || v.Sku == code))
-            .Select(x => new { x.Id, x.Name, x.Sku, x.IsActive, HasVariants = x.Variants.Any(v => v.IsActive) })
+            .Select(x => new { x.Id, x.Name, x.Sku, x.Price, Category = x.Category != null ? x.Category.Name : "—",
+                               x.IsActive, HasVariants = x.Variants.Any(v => v.IsActive) })
             .FirstOrDefaultAsync();
         if (p == null || !p.IsActive) return Json(new { found = false });
 
-        var storeIds = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).Select(s => s.Id).ToListAsync();
-        // Pool row per store (the scan inserts a product-level row; variant rows excluded to avoid
-        // duplicate StoreId keys).
-        var inv = await _db.StoreInventories.Where(si => si.ProductId == p.Id && si.ProductVariantId == null)
-            .ToDictionaryAsync(si => si.StoreId, si => si.QuantityOnHand);
+        // Single-location row values for the Stock Management grid.
+        var sid = storeId ?? (await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).Select(s => s.Id).FirstOrDefaultAsync());
+        var pool = await _db.StoreInventories
+            .FirstOrDefaultAsync(si => si.ProductId == p.Id && si.StoreId == sid && si.ProductVariantId == null);
 
         return Json(new
         {
@@ -114,8 +123,13 @@ public class StockController : InventoryAreaController
             productId = p.Id,
             productName = p.Name,
             sku = p.Sku,
+            category = p.Category,
+            priceText = "₦" + p.Price.ToString("N2"),
             hasVariants = p.HasVariants,
-            stock = storeIds.ToDictionary(id => id, id => inv.TryGetValue(id, out var q) ? q : 0)
+            onHand = pool?.QuantityOnHand ?? 0,
+            onOrder = pool?.OnOrder ?? 0,
+            min = pool?.MinStock,
+            max = pool?.MaxStock
         });
     }
 
@@ -125,6 +139,11 @@ public class StockController : InventoryAreaController
         public int? VariantId { get; set; }   // null = product-level pool
         public int StoreId { get; set; }
         public int Quantity { get; set; }
+        // Reorder fields (Stock Management grid). Null Min/Max clears the value; null OnOrder leaves it.
+        public int? Min { get; set; }
+        public int? Max { get; set; }
+        public int? OnOrder { get; set; }
+        public bool HasReorder { get; set; }   // true when this edit carries Min/Max/OnOrder to persist
     }
     public class BulkStockRequest
     {
@@ -216,20 +235,38 @@ public class StockController : InventoryAreaController
                 // the typed target — not measured against the shared pool via fallback.
                 var current = await _stock.GetStockAsync(e.ProductId, e.VariantId, e.StoreId, fallback: false);
                 var delta = e.Quantity - current;
-                if (delta == 0) continue;
-
-                var balance = await _stock.ApplyAsync(e.ProductId, e.VariantId, e.StoreId, delta, type,
-                    header.AdjustmentNumber, note: reason, userId: userId, materializeVariant: e.VariantId.HasValue);
-                header.Lines.Add(new StockAdjustmentLine
+                if (delta != 0)
                 {
-                    ProductId = e.ProductId,
-                    ProductVariantId = e.VariantId,
-                    ProductName = pnames.GetValueOrDefault(e.ProductId, ""),
-                    VariantName = e.VariantId.HasValue ? vnames.GetValueOrDefault(e.VariantId.Value) : null,
-                    QtyDelta = delta,
-                    BalanceAfter = balance
-                });
-                applied++;
+                    var balance = await _stock.ApplyAsync(e.ProductId, e.VariantId, e.StoreId, delta, type,
+                        header.AdjustmentNumber, note: reason, userId: userId, materializeVariant: e.VariantId.HasValue);
+                    header.Lines.Add(new StockAdjustmentLine
+                    {
+                        ProductId = e.ProductId,
+                        ProductVariantId = e.VariantId,
+                        ProductName = pnames.GetValueOrDefault(e.ProductId, ""),
+                        VariantName = e.VariantId.HasValue ? vnames.GetValueOrDefault(e.VariantId.Value) : null,
+                        QtyDelta = delta,
+                        BalanceAfter = balance
+                    });
+                    applied++;
+                }
+
+                // Stock Management grid also persists Min/Max/On-order on the (pool or variant) row.
+                if (e.HasReorder)
+                {
+                    var row = await _db.StoreInventories.FirstOrDefaultAsync(si =>
+                        si.ProductId == e.ProductId && si.StoreId == e.StoreId && si.ProductVariantId == e.VariantId);
+                    if (row == null)
+                    {
+                        row = new StoreInventory { ProductId = e.ProductId, StoreId = e.StoreId, ProductVariantId = e.VariantId };
+                        _db.StoreInventories.Add(row);
+                    }
+                    row.MinStock = e.Min;
+                    row.MaxStock = e.Max;
+                    if (e.OnOrder.HasValue) row.OnOrder = Math.Max(0, e.OnOrder.Value);
+                    row.UpdatedAt = DateTime.UtcNow;
+                    if (delta == 0) applied++;   // count reorder-only changes
+                }
             }
 
             if (header.Lines.Count > 0) _db.StockAdjustments.Add(header);
@@ -298,4 +335,45 @@ public class StockController : InventoryAreaController
         var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
         return File(bytes, "text/csv", $"stock_{DateTime.UtcNow:yyyyMMdd_HHmm}.csv");
     }
+}
+
+// ── Stock Management (single-location) view models ──────────────────────────────
+public class StockManagementVm
+{
+    public List<Store> Stores { get; set; } = new();
+    public int SelectedStoreId { get; set; }
+    public List<StockMgmtRow> Rows { get; set; } = new();
+    public string Query { get; set; } = "";
+    public int? CategoryFilter { get; set; }
+    public List<Category> Categories { get; set; } = new();
+    public int Page { get; set; } = 1;
+    public int TotalPages { get; set; } = 1;
+    public int Total { get; set; }
+}
+
+public class StockMgmtRow
+{
+    public int ProductId { get; set; }
+    public string Name { get; set; } = "";
+    public string? Sku { get; set; }
+    public string Category { get; set; } = "";
+    public decimal Price { get; set; }
+    public int OnHand { get; set; }
+    public int OnOrder { get; set; }
+    public int? Min { get; set; }
+    public int? Max { get; set; }
+    public List<StockMgmtVariantRow> Variants { get; set; } = new();
+    public bool HasVariants => Variants.Count > 0;
+    public int VariantStockSum => Variants.Sum(v => v.OnHand);
+}
+
+public class StockMgmtVariantRow
+{
+    public int VariantId { get; set; }
+    public string Name { get; set; } = "";
+    public string? Sku { get; set; }
+    public int OnHand { get; set; }
+    public int OnOrder { get; set; }
+    public int? Min { get; set; }
+    public int? Max { get; set; }
 }

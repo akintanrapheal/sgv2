@@ -1,102 +1,120 @@
-@model SterlingLams.Web.Areas.Admin.ViewModels.AdminInventoryViewModel
+@model SterlingLams.Web.Areas.Inventory.Controllers.StockManagementVm
 @{
-    ViewData["Title"] = "Stock";
-    Dictionary<string, string> rd(int pg) => new() { ["q"] = Model.SearchQuery ?? "", ["categoryId"] = Model.CategoryFilter ?? "", ["page"] = pg.ToString() };
+    ViewData["Title"] = "Stock Management";
+    string Money(decimal v) => "₦" + v.ToString("N2");
+    var selName = Model.Stores.FirstOrDefault(s => s.Id == Model.SelectedStoreId)?.Name ?? "";
+    Dictionary<string, string> rd(int pg) => new() {
+        ["q"] = Model.Query ?? "", ["categoryId"] = Model.CategoryFilter?.ToString() ?? "",
+        ["storeId"] = Model.SelectedStoreId.ToString(), ["page"] = pg.ToString()
+    };
     var baseCls = "px-3 py-1.5 text-xs rounded-sm border border-neutral-200 text-neutral-600 hover:border-neutral-400 transition-colors";
-    var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+    var inputCls = "sm-cell w-20 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-emerald-400 bg-white";
 }
 @Html.AntiForgeryToken()
 
-<div class="flex items-center justify-between mb-4 gap-3 flex-wrap">
-    <form asp-area="Inventory" asp-controller="Stock" asp-action="Index" method="get" class="flex gap-2 flex-wrap">
-        <input id="stock-scan" type="text" name="q" value="@Model.SearchQuery" autofocus autocomplete="off" placeholder="Scan barcode or search…"
-               class="w-72 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
-        <select name="categoryId" onchange="this.form.submit()" class="@selectCls">
-            <option value="">All categories</option>
-            @foreach (var c in Model.AvailableCategories)
-            {
-                <option value="@c.Id" selected="@(Model.CategoryFilter == c.Id.ToString())">@c.Name</option>
-            }
-        </select>
-        <button type="submit" class="px-4 py-2 text-sm border border-neutral-200 rounded-sm hover:border-neutral-400">Search</button>
-    </form>
+<div class="flex items-start justify-between mb-4 gap-3 flex-wrap">
+    <div>
+        <h1 class="text-xl font-semibold text-neutral-900">Stock Management</h1>
+        <p class="text-sm text-neutral-500 mt-0.5">Set stock, on-order, min and max levels for <span class="font-medium text-neutral-700">@selName.Replace("Sterlin Glams ", "")</span>.</p>
+    </div>
     <div class="flex gap-2 items-center">
-        <a asp-area="Inventory" asp-controller="Stock" asp-action="ExportCsv" asp-route-q="@Model.SearchQuery" asp-route-categoryId="@Model.CategoryFilter"
-           class="px-4 py-2 border border-neutral-200 text-neutral-700 text-xs rounded-sm hover:border-neutral-400 transition-colors">Export CSV</a>
+        <a asp-area="Inventory" asp-controller="Stock" asp-action="ExportCsv" asp-route-q="@Model.Query" asp-route-categoryId="@Model.CategoryFilter"
+           class="px-4 py-2 border border-neutral-200 text-neutral-700 text-xs rounded-sm hover:border-neutral-400 transition-colors">Export</a>
         <select id="adjust-reason" title="Reason for the stock change" class="border border-neutral-200 rounded-sm px-2 py-2 text-xs bg-white">
-            <option value="Stock count">Stock count</option>
-            <option value="Received">Received</option>
-            <option value="Damage">Damage</option>
-            <option value="Loss / theft">Loss / theft</option>
-            <option value="Correction">Correction</option>
-            <option value="Other">Other</option>
+            @foreach (var r in SterlingLams.Web.Models.Domain.AdjustmentReasons.All) { <option value="@r">@r</option> }
         </select>
         <button type="button" id="save-all-stock"
                 class="px-4 py-2 bg-emerald-600 text-white text-xs rounded-sm hover:bg-emerald-700 transition-colors">
-            Save all changes<span id="stock-change-count"></span>
+            Adjust Stock<span id="stock-change-count"></span>
         </button>
     </div>
 </div>
 
-@if (!Model.Products.Any())
+<div class="flex items-center gap-2 mb-4 flex-wrap">
+    <form id="loc-form" asp-area="Inventory" asp-controller="Stock" asp-action="Index" method="get" class="flex gap-2 flex-wrap items-center">
+        <input type="hidden" name="q" value="@Model.Query" />
+        <input type="hidden" name="categoryId" value="@Model.CategoryFilter" />
+        <label class="text-xs text-neutral-400">Location</label>
+        <select name="storeId" onchange="this.form.submit()" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400">
+            @foreach (var s in Model.Stores)
+            {
+                <option value="@s.Id" selected="@(s.Id == Model.SelectedStoreId)">@s.Name</option>
+            }
+        </select>
+    </form>
+    <form asp-area="Inventory" asp-controller="Stock" asp-action="Index" method="get" class="flex gap-2 flex-wrap items-center ml-auto">
+        <input type="hidden" name="storeId" value="@Model.SelectedStoreId" />
+        <input id="stock-scan" type="text" name="q" value="@Model.Query" autocomplete="off" placeholder="Scan barcode or search…"
+               class="w-64 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+        <select name="categoryId" onchange="this.form.submit()" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400">
+            <option value="">All categories</option>
+            @foreach (var c in Model.Categories)
+            {
+                <option value="@c.Id" selected="@(Model.CategoryFilter == c.Id)">@c.Name</option>
+            }
+        </select>
+        <button type="submit" class="px-4 py-2 text-sm border border-neutral-200 rounded-sm hover:border-neutral-400">Search</button>
+    </form>
+</div>
+
+@if (!Model.Rows.Any())
 {
     <div class="bg-white border border-neutral-100 rounded-sm p-16 text-center text-sm text-neutral-400">No products found.</div>
 }
 else
 {
     <div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
-        <table class="w-full text-sm min-w-[640px]">
+        <table class="w-full text-sm min-w-[820px]">
             <thead>
-                <tr class="bg-neutral-50 border-b border-neutral-100">
-                    <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Product</th>
-                    <th class="text-center px-4 py-3 text-xs text-neutral-400 font-medium">Total</th>
-                    @foreach (var s in Model.Stores)
-                    {
-                        <th class="text-center px-3 py-3 text-xs text-neutral-400 font-medium whitespace-nowrap">@s.Name.Replace("Sterlin Glams ", "")</th>
-                    }
+                <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400 font-medium">
+                    <th class="text-left px-4 py-3">Name</th>
+                    <th class="text-left px-4 py-3">Category</th>
+                    <th class="text-right px-4 py-3">Sale price</th>
+                    <th class="text-center px-3 py-3">Stock</th>
+                    <th class="text-center px-3 py-3">On order</th>
+                    <th class="text-center px-3 py-3">Min</th>
+                    <th class="text-center px-3 py-3">Max</th>
+                    <th class="px-2 py-3 w-10"></th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-neutral-50">
-                @foreach (var row in Model.Products)
+                @foreach (var row in Model.Rows)
                 {
-                    var total = row.TotalStock;
                     <tr class="hover:bg-neutral-50 @(row.HasVariants ? "product-row cursor-pointer" : "")" data-row-pid="@row.ProductId">
-                        <td class="px-4 py-3">
+                        <td class="px-4 py-2.5">
                             <div class="flex items-start gap-1.5">
                                 @if (row.HasVariants)
                                 {
-                                    <svg class="variant-chevron w-3 h-3 text-neutral-400 mt-0.5 transition-transform flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                                    <svg class="variant-chevron w-3 h-3 text-neutral-400 mt-1 transition-transform flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
                                 }
                                 <div>
-                                    <p class="text-xs font-medium text-neutral-800 leading-snug">@row.ProductName</p>
-                                    @if (!string.IsNullOrEmpty(row.Sku)) { <p class="text-[10px] text-neutral-400 font-mono mt-0.5">@row.Sku</p> }
-                                    @if (row.HasVariants) { <p class="text-[10px] text-emerald-600 mt-0.5">@row.Variants.Count variant(s) — click to set stock per variant</p> }
+                                    <p class="text-xs font-medium text-neutral-800 leading-snug">@(string.IsNullOrWhiteSpace(row.Sku) ? row.Name : $"{row.Sku} ({row.Name})")</p>
+                                    @if (row.HasVariants) { <p class="text-[10px] text-emerald-600 mt-0.5">@row.Variants.Count variant(s) — click to set per variant</p> }
                                 </div>
                             </div>
                         </td>
-                        <td class="px-4 py-3 text-center">
-                            <span class="text-sm font-medium @(total == 0 ? "text-red-600" : "text-neutral-800")">@total</span>
-                        </td>
-                        @foreach (var s in Model.Stores)
+                        <td class="px-4 py-2.5 text-neutral-600 text-xs">@row.Category</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-700 text-xs">@Money(row.Price)</td>
+                        @if (row.HasVariants)
                         {
-                            @if (row.HasVariants)
-                            {
-                                @* Variant products: product figure is read-only — it just rolls up the variants. *@
-                                var vsum = row.Variants.Sum(v => v.StockByStore.TryGetValue(s.Id, out var vv) && vv > 0 ? vv : 0);
-                                <td class="px-3 py-3 text-center text-xs @(vsum == 0 ? "text-red-500" : "text-neutral-500")" title="Sum of variants — set per variant below">@vsum</td>
-                            }
-                            else
-                            {
-                                var qty = row.StockByStore.TryGetValue(s.Id, out var q2) ? q2 : -1;
-                                <td class="px-3 py-2 text-center">
-                                    <input type="number" min="0"
-                                           placeholder="@(qty == -1 ? "—" : "")"
-                                           value="@(qty == -1 ? "" : qty.ToString())"
-                                           data-pid="@row.ProductId" data-vid="" data-sid="@s.Id" data-orig="@(qty == -1 ? "" : qty.ToString())"
-                                           class="stock-cell w-16 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-emerald-400 bg-white @(qty == 0 ? "text-red-600 border-red-200" : "")" />
-                                </td>
-                            }
+                            <td class="px-3 py-2.5 text-center text-xs @(row.VariantStockSum == 0 ? "text-red-500" : "text-neutral-500")" title="Sum of variants">@row.VariantStockSum</td>
+                            <td class="px-3 py-2.5 text-center text-xs text-neutral-300">—</td>
+                            <td class="px-3 py-2.5 text-center text-xs text-neutral-300">—</td>
+                            <td class="px-3 py-2.5 text-center text-xs text-neutral-300">—</td>
                         }
+                        else
+                        {
+                            <td class="px-3 py-2 text-center"><input type="number" min="0" value="@row.OnHand" data-pid="@row.ProductId" data-vid="" data-sid="@Model.SelectedStoreId" data-field="stock" data-orig="@row.OnHand" class="@inputCls @(row.OnHand == 0 ? "text-red-600 border-red-200" : "")" /></td>
+                            <td class="px-3 py-2 text-center"><input type="number" min="0" value="@row.OnOrder" data-pid="@row.ProductId" data-vid="" data-sid="@Model.SelectedStoreId" data-field="onorder" data-orig="@row.OnOrder" class="@inputCls" /></td>
+                            <td class="px-3 py-2 text-center"><input type="number" min="0" value="@(row.Min?.ToString() ?? "")" placeholder="—" data-pid="@row.ProductId" data-vid="" data-sid="@Model.SelectedStoreId" data-field="min" data-orig="@(row.Min?.ToString() ?? "")" class="@inputCls" /></td>
+                            <td class="px-3 py-2 text-center"><input type="number" min="0" value="@(row.Max?.ToString() ?? "")" placeholder="—" data-pid="@row.ProductId" data-vid="" data-sid="@Model.SelectedStoreId" data-field="max" data-orig="@(row.Max?.ToString() ?? "")" class="@inputCls" /></td>
+                        }
+                        <td class="px-2 py-2.5 text-right">
+                            <a asp-area="Inventory" asp-controller="Products" asp-action="Edit" asp-route-id="@row.ProductId" title="Advanced Edit"
+                               class="text-neutral-400 hover:text-neutral-700 inline-block px-1" onclick="event.stopPropagation()">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 2a2 2 0 110 4 2 2 0 010-4zm0 6a2 2 0 110 4 2 2 0 010-4z"/></svg>
+                            </a>
+                        </td>
                     </tr>
                     @foreach (var v in row.Variants)
                     {
@@ -105,18 +123,13 @@ else
                                 <p class="text-[11px] text-neutral-600 leading-snug">↳ @v.Name</p>
                                 @if (!string.IsNullOrEmpty(v.Sku)) { <p class="text-[10px] text-neutral-400 font-mono">@v.Sku</p> }
                             </td>
-                            <td class="px-4 py-1.5 text-center text-[11px] text-neutral-400">@v.StockByStore.Values.Where(q => q >= 0).Sum()</td>
-                            @foreach (var s in Model.Stores)
-                            {
-                                var vq = v.StockByStore.TryGetValue(s.Id, out var q3) ? q3 : -1;
-                                <td class="px-3 py-1.5 text-center">
-                                    <input type="number" min="0"
-                                           placeholder="@(vq == -1 ? "—" : "")"
-                                           value="@(vq == -1 ? "" : vq.ToString())"
-                                           data-pid="@row.ProductId" data-vid="@v.VariantId" data-sid="@s.Id" data-orig="@(vq == -1 ? "" : vq.ToString())"
-                                           class="stock-cell w-16 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-emerald-400 bg-white @(vq == 0 ? "text-red-600 border-red-200" : "")" />
-                                </td>
-                            }
+                            <td></td>
+                            <td></td>
+                            <td class="px-3 py-1.5 text-center"><input type="number" min="0" value="@v.OnHand" data-pid="@row.ProductId" data-vid="@v.VariantId" data-sid="@Model.SelectedStoreId" data-field="stock" data-orig="@v.OnHand" class="@inputCls @(v.OnHand == 0 ? "text-red-600 border-red-200" : "")" /></td>
+                            <td class="px-3 py-1.5 text-center"><input type="number" min="0" value="@v.OnOrder" data-pid="@row.ProductId" data-vid="@v.VariantId" data-sid="@Model.SelectedStoreId" data-field="onorder" data-orig="@v.OnOrder" class="@inputCls" /></td>
+                            <td class="px-3 py-1.5 text-center"><input type="number" min="0" value="@(v.Min?.ToString() ?? "")" placeholder="—" data-pid="@row.ProductId" data-vid="@v.VariantId" data-sid="@Model.SelectedStoreId" data-field="min" data-orig="@(v.Min?.ToString() ?? "")" class="@inputCls" /></td>
+                            <td class="px-3 py-1.5 text-center"><input type="number" min="0" value="@(v.Max?.ToString() ?? "")" placeholder="—" data-pid="@row.ProductId" data-vid="@v.VariantId" data-sid="@Model.SelectedStoreId" data-field="max" data-orig="@(v.Max?.ToString() ?? "")" class="@inputCls" /></td>
+                            <td></td>
                         </tr>
                     }
                 }
@@ -126,10 +139,10 @@ else
 
     @if (Model.TotalPages > 1)
     {
-        var cur = Model.CurrentPage; var last = Model.TotalPages;
+        var cur = Model.Page; var last = Model.TotalPages;
         var start = Math.Max(1, cur - 2); var end = Math.Min(last, cur + 2);
         <div class="flex items-center justify-center gap-1.5 mt-4 flex-wrap">
-            <span class="text-[11px] text-neutral-400 mr-1">Page @cur of @last</span>
+            <span class="text-[11px] text-neutral-400 mr-1">Page @cur of @last (@Model.Total.ToString("N0") items)</span>
             @if (cur > 1)
             {
                 <a asp-area="Inventory" asp-controller="Stock" asp-action="Index" asp-all-route-data="rd(1)" class="@baseCls">« First</a>
@@ -147,110 +160,130 @@ else
             }
         </div>
     }
+}
 
-    <script>
-    (function () {
-        const btn = document.getElementById('save-all-stock');
-        const countEl = document.getElementById('stock-change-count');
-        const token = document.querySelector('input[name="__RequestVerificationToken"]');
-        const changed = () => [...document.querySelectorAll('input.stock-cell')]
-            .filter(i => i.value !== '' && i.value !== i.getAttribute('data-orig'));
-        const refresh = () => { const n = changed().length; countEl.textContent = n ? ' (' + n + ')' : ''; };
-        document.addEventListener('input', e => { if (e.target.classList && e.target.classList.contains('stock-cell')) refresh(); });
-        refresh();
+<script>
+(function () {
+    var selStore = @Model.SelectedStoreId;
+    var btn = document.getElementById('save-all-stock');
+    var countEl = document.getElementById('stock-change-count');
+    var token = document.querySelector('input[name="__RequestVerificationToken"]');
+    if (!btn) return;
 
-        // Expand/collapse a variant product's per-variant rows when its product row is clicked.
-        document.querySelectorAll('tr.product-row').forEach(prow => {
-            prow.addEventListener('click', (e) => {
-                if (e.target.closest('input, a, button')) return;
-                const pid = prow.getAttribute('data-row-pid');
-                prow.querySelector('.variant-chevron')?.classList.toggle('rotate-90');
-                document.querySelectorAll(`tr[data-row-pid="${pid}"][data-row-vid]`).forEach(vr => vr.classList.toggle('hidden'));
-            });
+    function cells() { return Array.prototype.slice.call(document.querySelectorAll('input.sm-cell')); }
+    function isChanged(i) { return i.value !== i.getAttribute('data-orig'); }
+    // A "line" = one (pid,vid,sid) with up to 4 fields. Collect lines that have any changed field.
+    function lineKey(i) { return i.dataset.pid + '|' + (i.dataset.vid || '') + '|' + i.dataset.sid; }
+    function changedLines() {
+        var map = {};
+        cells().forEach(function (i) {
+            var k = lineKey(i);
+            (map[k] = map[k] || []).push(i);
         });
+        return Object.keys(map).map(function (k) { return map[k]; }).filter(function (group) {
+            return group.some(isChanged);
+        });
+    }
+    function refresh() { var n = changedLines().length; countEl.textContent = n ? ' (' + n + ')' : ''; }
+    document.addEventListener('input', function (e) { if (e.target.classList && e.target.classList.contains('sm-cell')) refresh(); });
+    refresh();
 
-        btn.addEventListener('click', async () => {
-            const edits = changed().map(i => ({
-                productId: +i.dataset.pid,
-                variantId: i.dataset.vid ? +i.dataset.vid : null,
-                storeId: +i.dataset.sid,
-                quantity: +i.value
-            }));
-            if (!edits.length) { alert('No changes to save.'); return; }
-            btn.disabled = true; btn.textContent = 'Saving…';
-            try {
-                const res = await fetch('/Inventory/Stock/SetAll', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token ? token.value : '' },
-                    body: JSON.stringify({ reason: document.getElementById('adjust-reason').value, edits: edits })
-                });
-                const data = await res.json();
+    // Expand/collapse a variant product's per-variant rows.
+    document.querySelectorAll('tr.product-row').forEach(function (prow) {
+        prow.addEventListener('click', function (e) {
+            if (e.target.closest('input, a, button')) return;
+            var pid = prow.getAttribute('data-row-pid');
+            var ch = prow.querySelector('.variant-chevron'); if (ch) ch.classList.toggle('rotate-90');
+            document.querySelectorAll('tr[data-row-pid="' + pid + '"][data-row-vid]').forEach(function (vr) { vr.classList.toggle('hidden'); });
+        });
+    });
+
+    btn.addEventListener('click', function () {
+        var edits = changedLines().map(function (group) {
+            function field(f) { return group.filter(function (i) { return i.dataset.field === f; })[0]; }
+            function numOrNull(i) { if (!i || i.value === '') return null; var x = parseInt(i.value, 10); return isNaN(x) ? null : x; }
+            var stockI = field('stock');
+            return {
+                productId: parseInt(group[0].dataset.pid, 10),
+                variantId: group[0].dataset.vid ? parseInt(group[0].dataset.vid, 10) : null,
+                storeId: parseInt(group[0].dataset.sid, 10),
+                quantity: numOrNull(stockI) || 0,
+                onOrder: numOrNull(field('onorder')),
+                min: numOrNull(field('min')),
+                max: numOrNull(field('max')),
+                hasReorder: true
+            };
+        });
+        if (!edits.length) { alert('No changes to save.'); return; }
+        btn.disabled = true; btn.textContent = 'Saving…';
+        fetch('/Inventory/Stock/SetAll', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token ? token.value : '' },
+            body: JSON.stringify({ reason: document.getElementById('adjust-reason').value, edits: edits })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
                 if (data.success) { location.reload(); }
-                else { alert('Save failed.'); btn.disabled = false; btn.textContent = 'Save all changes'; }
-            } catch { alert('Save failed. Please try again.'); btn.disabled = false; btn.textContent = 'Save all changes'; }
-        });
+                else { alert(data.message || 'Save failed.'); btn.disabled = false; btn.textContent = 'Adjust Stock'; }
+            })
+            .catch(function () { alert('Save failed. Please try again.'); btn.disabled = false; btn.textContent = 'Adjust Stock'; });
+    });
 
-        // ── Scan box ────────────────────────────────────────────────────────────
-        // Exact barcode/SKU match → jump to / insert the row inline (no reload, so
-        // unsaved edits above survive). Anything else falls back to the normal search.
-        const storeIds = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Stores.Select(s => s.Id)));
-        const scanBox = document.getElementById('stock-scan');
-        const tbody = document.querySelector('table tbody');
-        const esc = s => String(s).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
+    // ── Scan box ────────────────────────────────────────────────────────────
+    // Exact barcode/SKU match → highlight the row inline (no reload, so unsaved edits survive).
+    // Off-page match or no match → normal search submit.
+    var scanBox = document.getElementById('stock-scan');
+    var tbody = document.querySelector('table tbody');
+    var esc = function (s) { return String(s).replace(/[&<>]/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]); }); };
 
-        function buildRow(data) {
-            const total = storeIds.reduce((s, id) => s + (data.stock[id] ?? 0), 0);
-            const tr = document.createElement('tr');
-            tr.className = 'hover:bg-neutral-50';
-            tr.setAttribute('data-row-pid', data.productId);
-            let cells = `<td class="px-4 py-3">
-                <p class="text-xs font-medium text-neutral-800 leading-snug">${esc(data.productName)}</p>
-                ${data.sku ? `<p class="text-[10px] text-neutral-400 font-mono mt-0.5">${esc(data.sku)}</p>` : ''}
-            </td>
-            <td class="px-4 py-3 text-center"><span class="text-sm font-medium ${total === 0 ? 'text-red-600' : 'text-neutral-800'}">${total}</span></td>`;
-            storeIds.forEach(id => {
-                const qty = data.stock[id] ?? 0;
-                cells += `<td class="px-3 py-2 text-center"><input type="number" min="0" value="${qty}"
-                    data-pid="${data.productId}" data-sid="${id}" data-orig="${qty}"
-                    class="stock-cell w-16 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-emerald-400 bg-white ${qty === 0 ? 'text-red-600 border-red-200' : ''}" /></td>`;
-            });
-            tr.innerHTML = cells;
-            return tr;
+    function buildRow(d) {
+        var tr = document.createElement('tr');
+        tr.className = 'hover:bg-neutral-50'; tr.setAttribute('data-row-pid', d.productId);
+        var cls = '@inputCls';
+        function inp(field, val) {
+            return '<td class="px-3 py-2 text-center"><input type="number" min="0" value="' + (val == null ? '' : val) + '" placeholder="—"'
+                + ' data-pid="' + d.productId + '" data-vid="" data-sid="' + selStore + '" data-field="' + field + '" data-orig="' + (val == null ? '' : val) + '"'
+                + ' class="' + cls + (field === 'stock' && val === 0 ? ' text-red-600 border-red-200' : '') + '" /></td>';
         }
+        tr.innerHTML = '<td class="px-4 py-2.5"><p class="text-xs font-medium text-neutral-800">' + esc(d.productName) + (d.sku ? ' <span class="text-neutral-400 font-mono">(' + esc(d.sku) + ')</span>' : '') + '</p></td>'
+            + '<td class="px-4 py-2.5 text-neutral-600 text-xs">' + esc(d.category || '—') + '</td>'
+            + '<td class="px-4 py-2.5 text-right text-neutral-700 text-xs">' + esc(d.priceText || '') + '</td>'
+            + inp('stock', d.onHand) + inp('onorder', d.onOrder) + inp('min', d.min) + inp('max', d.max)
+            + '<td class="px-2 py-2.5 text-right"><a href="/Inventory/Products/Edit/' + d.productId + '" title="Advanced Edit" class="text-neutral-400 hover:text-neutral-700 inline-block px-1"><svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 2a2 2 0 110 4 2 2 0 010-4zm0 6a2 2 0 110 4 2 2 0 010-4z"/></svg></a></td>';
+        return tr;
+    }
 
-        scanBox.addEventListener('keydown', async (e) => {
+    if (scanBox) {
+        scanBox.addEventListener('keydown', function (e) {
             if (e.key !== 'Enter') return;
-            // Always swallow Enter on this box: an empty submit would reload the page
-            // and silently discard unsaved grid edits.
-            e.preventDefault();
-            const code = scanBox.value.trim();
+            e.preventDefault();               // swallow Enter so an empty submit can't reload + drop edits
+            var code = scanBox.value.trim();
             if (!code) return;
             if (!tbody) { scanBox.closest('form').submit(); return; }
-            const res = await fetch('/Inventory/Stock/ScanLookup?code=' + encodeURIComponent(code));
-            const data = await res.json();
-            if (!data.found) { scanBox.closest('form').submit(); return; }
-            let row = tbody.querySelector(`tr[data-row-pid="${data.productId}"]`);
-            // Variant product not on this page → reload so its read-only roll-up + variant rows render.
-            if (!row && data.hasVariants) { scanBox.closest('form').submit(); return; }
-            scanBox.value = '';
-            if (!row) {
-                const placeholder = tbody.querySelector('td[colspan]');
-                if (placeholder) placeholder.closest('tr').remove();
-                row = buildRow(data);
-                tbody.prepend(row);
-            }
-            if (data.hasVariants) {
-                row.querySelector('.variant-chevron')?.classList.add('rotate-90');
-                document.querySelectorAll(`tr[data-row-pid="${data.productId}"][data-row-vid]`).forEach(vr => vr.classList.remove('hidden'));
-            }
-            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            row.classList.add('bg-emerald-50');
-            setTimeout(() => row.classList.remove('bg-emerald-50'), 1500);
-            const focusTarget = data.hasVariants
-                ? document.querySelector(`tr[data-row-pid="${data.productId}"][data-row-vid] .stock-cell`)
-                : row.querySelector('.stock-cell');
-            focusTarget?.focus();
+            fetch('/Inventory/Stock/ScanLookup?storeId=' + selStore + '&code=' + encodeURIComponent(code))
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d.found) { scanBox.closest('form').submit(); return; }
+                    var row = tbody.querySelector('tr[data-row-pid="' + d.productId + '"]');
+                    if (!row && d.hasVariants) { scanBox.closest('form').submit(); return; } // need variant rows → reload
+                    scanBox.value = '';
+                    if (!row) {
+                        var ph = tbody.querySelector('td[colspan]'); if (ph) ph.closest('tr').remove();
+                        row = buildRow(d); tbody.prepend(row);
+                    }
+                    if (d.hasVariants) {
+                        var ch = row.querySelector('.variant-chevron'); if (ch) ch.classList.add('rotate-90');
+                        document.querySelectorAll('tr[data-row-pid="' + d.productId + '"][data-row-vid]').forEach(function (vr) { vr.classList.remove('hidden'); });
+                    }
+                    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    row.classList.add('bg-emerald-50');
+                    setTimeout(function () { row.classList.remove('bg-emerald-50'); }, 1500);
+                    var focusTarget = d.hasVariants
+                        ? document.querySelector('tr[data-row-pid="' + d.productId + '"][data-row-vid] .sm-cell')
+                        : row.querySelector('.sm-cell');
+                    if (focusTarget) focusTarget.focus();
+                });
         });
-    })();
-    </script>
-}
+    }
+})();
+</script>
