@@ -57,6 +57,14 @@
                     </svg>
                     Roles &amp; Permissions
                 </a>
+                var seoActive = currentController == "Seo";
+                <a asp-area="Admin" asp-controller="Seo" asp-action="Index"
+                   class="flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm transition-colors @(seoActive ? "bg-neutral-800 text-white" : "text-neutral-400 hover:text-white hover:bg-neutral-800")">
+                    <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 8h10M7 12h6m-6 8l-4-4V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2H9l-2 2z"/>
+                    </svg>
+                    SEO Descriptions
+                </a>
             }
         </nav>
 

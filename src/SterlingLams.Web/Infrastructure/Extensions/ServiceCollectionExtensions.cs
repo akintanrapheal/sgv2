@@ -14,6 +14,7 @@ public static class ServiceCollectionExtensions
         services.AddMemoryCache();
         services.AddScoped<IStockService, StockService>();
         services.AddScoped<IOrderNumberService, OrderNumberService>();
+        services.AddScoped<SeoDescriptionGenerator>();
         services.AddScoped<IOrderFulfilmentService, OrderFulfilmentService>();
         services.AddScoped<ITransferWorkflowService, TransferWorkflowService>();
 

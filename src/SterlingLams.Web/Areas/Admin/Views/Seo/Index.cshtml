@@ -1,0 +1,82 @@
+@{
+    ViewData["Title"] = "SEO Descriptions";
+    Layout = "_AdminLayout";
+    var cats = ViewBag.Categories as List<SterlingLams.Web.Areas.Admin.Controllers.SeoController.CatRow> ?? new();
+}
+@Html.AntiForgeryToken()
+
+<div class="mb-6">
+    <h1 class="text-2xl font-light text-neutral-900">SEO Descriptions</h1>
+    <p class="text-sm text-neutral-500 mt-1">Generate unique, search-friendly rich-text descriptions (with the Sterlin Glams care section) for a whole category. Preview first, then apply.</p>
+</div>
+
+<div class="bg-white border border-neutral-200 rounded-sm p-5 max-w-3xl">
+    <div class="flex flex-wrap items-end gap-3">
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">Category</label>
+            <select id="cat" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white min-w-[260px]">
+                <option value="">Choose a category…</option>
+                @foreach (var c in cats) { <option value="@c.Id">@c.Name (@c.Count)</option> }
+            </select>
+        </div>
+        <button type="button" id="preview-btn" class="px-4 py-2 border border-neutral-300 text-neutral-700 text-sm rounded-sm hover:border-neutral-500">Preview</button>
+        <label class="flex items-center gap-2 text-sm text-neutral-600 ml-2">
+            <input type="checkbox" id="overwrite" checked /> Overwrite existing descriptions
+        </label>
+        <button type="button" id="apply-btn" class="px-5 py-2 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 disabled:opacity-40" disabled>Apply to category</button>
+    </div>
+    <p id="status" class="text-sm mt-3 text-neutral-500"></p>
+</div>
+
+<div id="samples" class="mt-6 space-y-5 max-w-3xl"></div>
+
+@section Scripts {
+<script>
+(function () {
+    var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+    var cat = document.getElementById('cat'), status = document.getElementById('status');
+    var applyBtn = document.getElementById('apply-btn'), previewBtn = document.getElementById('preview-btn');
+    var samples = document.getElementById('samples');
+
+    function setStatus(t, cls) { status.textContent = t; status.className = 'text-sm mt-3 ' + (cls || 'text-neutral-500'); }
+
+    previewBtn.addEventListener('click', function () {
+        var id = cat.value; if (!id) { setStatus('Pick a category first.', 'text-amber-600'); return; }
+        setStatus('Generating preview…'); samples.innerHTML = ''; applyBtn.disabled = true;
+        fetch('/Admin/Seo/Preview?categoryId=' + id)
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d.ok) { setStatus(d.error || 'Failed.', 'text-red-600'); return; }
+                setStatus('Showing ' + d.samples.length + ' sample(s) of ' + d.total + ' product(s) in ' + d.category + '. Review, then Apply.');
+                samples.innerHTML = d.samples.map(function (s) {
+                    return '<div class="bg-white border border-neutral-200 rounded-sm p-5">'
+                        + '<div class="text-[11px] uppercase tracking-wide text-neutral-400 mb-2">Preview — ' + s.name + '</div>'
+                        + '<div class="prose prose-sm max-w-none text-neutral-700 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-0.5">' + s.html + '</div></div>';
+                }).join('');
+                applyBtn.disabled = false;
+            })
+            .catch(function () { setStatus('Failed to load preview.', 'text-red-600'); });
+    });
+
+    applyBtn.addEventListener('click', function () {
+        var id = cat.value; if (!id) return;
+        var name = cat.options[cat.selectedIndex].text;
+        if (!confirm('Generate and SAVE descriptions for all products in "' + name + '"?\nThis overwrites their current descriptions.')) return;
+        applyBtn.disabled = true; setStatus('Applying…');
+        var body = new FormData();
+        body.append('categoryId', id);
+        body.append('overwrite', document.getElementById('overwrite').checked);
+        body.append('__RequestVerificationToken', token);
+        fetch('/Admin/Seo/Apply', { method: 'POST', body: body })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (!d.ok) { setStatus(d.error || 'Failed.', 'text-red-600'); applyBtn.disabled = false; return; }
+                setStatus('✓ Updated ' + d.count + ' product(s) in ' + d.category + '.', 'text-emerald-600');
+            })
+            .catch(function () { setStatus('Apply failed.', 'text-red-600'); applyBtn.disabled = false; });
+    });
+
+    cat.addEventListener('change', function () { samples.innerHTML = ''; applyBtn.disabled = true; setStatus(''); });
+})();
+</script>
+}
