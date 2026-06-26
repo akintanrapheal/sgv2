@@ -452,14 +452,34 @@
     dots.forEach(function (d) { d.addEventListener('click', function () { show(+d.dataset.index); restart(); }); });
     restart();
 }());
-// Featured products carousel — arrow buttons scroll the snap track.
+// Featured products carousel — auto-slides one card at a time, loops, pauses on hover.
 (function () {
     var track = document.getElementById('feat-track');
     if (!track) return;
-    function step() { return Math.max(track.clientWidth * 0.9, 240); }
+    function page() { return Math.max(track.clientWidth * 0.9, 240); }
+    function card() { var c = track.firstElementChild; return c ? c.getBoundingClientRect().width + 24 : page(); }
+    function atEnd() { return track.scrollLeft + track.clientWidth >= track.scrollWidth - 8; }
+
     var next = document.getElementById('feat-next'), prev = document.getElementById('feat-prev');
-    if (next) next.addEventListener('click', function () { track.scrollBy({ left: step(), behavior: 'smooth' }); });
-    if (prev) prev.addEventListener('click', function () { track.scrollBy({ left: -step(), behavior: 'smooth' }); });
+    if (next) next.addEventListener('click', function () { track.scrollBy({ left: page(), behavior: 'smooth' }); restart(); });
+    if (prev) prev.addEventListener('click', function () { track.scrollBy({ left: -page(), behavior: 'smooth' }); restart(); });
+
+    var timer;
+    function advance() {
+        if (atEnd()) track.scrollTo({ left: 0, behavior: 'smooth' });
+        else track.scrollBy({ left: card(), behavior: 'smooth' });
+    }
+    function start() { if (track.scrollWidth > track.clientWidth + 8) timer = setInterval(advance, 3000); }
+    function stop() { clearInterval(timer); }
+    function restart() { stop(); start(); }
+
+    // Pause while the visitor is interacting, resume after.
+    track.addEventListener('mouseenter', stop);
+    track.addEventListener('mouseleave', start);
+    track.addEventListener('touchstart', stop, { passive: true });
+    track.addEventListener('touchend', function () { setTimeout(start, 4000); }, { passive: true });
+    document.addEventListener('visibilitychange', function () { if (document.hidden) stop(); else start(); });
+    start();
 }());
 </script>
 }
