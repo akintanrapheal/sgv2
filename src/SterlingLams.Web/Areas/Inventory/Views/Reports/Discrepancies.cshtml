@@ -1,0 +1,113 @@
+@model List<SterlingLams.Web.Areas.Inventory.Controllers.StockDiscrepancyRow>
+@{
+    ViewData["Title"] = "Stock Discrepancies";
+    var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
+    int days = ViewBag.Days ?? 7; int? storeId = ViewBag.StoreId; string reason = ViewBag.Reason ?? "";
+    int page = ViewBag.Page ?? 1; int totalPages = ViewBag.TotalPages ?? 1; int total = ViewBag.Total ?? 0;
+    int totalDisc = ViewBag.TotalDisc ?? 0; decimal totalValue = ViewBag.TotalValue ?? 0m;
+    string Money(decimal v) => "₦" + v.ToString("N2");
+    Dictionary<string, string> rd(int pg) => new() { ["days"] = days.ToString(), ["storeId"] = storeId?.ToString() ?? "", ["reason"] = reason, ["page"] = pg.ToString() };
+}
+
+<div class="flex items-start justify-between gap-3 mb-5 flex-wrap">
+    <h1 class="text-2xl font-semibold text-neutral-900">Stock Discrepancies</h1>
+    <div class="flex items-center gap-2">
+        <a asp-area="Inventory" asp-controller="Reports" asp-action="Discrepancies" asp-all-route-data="@(new Dictionary<string,string>(rd(1)){ ["format"]="csv" })" class="px-4 py-2 border border-neutral-200 text-neutral-700 text-xs rounded-md hover:border-neutral-400">Export CSV</a>
+        <button type="button" onclick="window.print()" class="px-4 py-2 border border-neutral-200 text-neutral-700 text-xs rounded-md hover:border-neutral-400">Print</button>
+    </div>
+</div>
+
+<form asp-area="Inventory" asp-controller="Reports" asp-action="Discrepancies" method="get" class="bg-white border border-neutral-200 rounded-md p-4 mb-4 flex flex-wrap items-end gap-4">
+    <div>
+        <label class="block text-[11px] text-neutral-400 mb-1">Show data from</label>
+        <select name="days" class="border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white">
+            @foreach (var d in new[] { (7, "Last 7 days"), (30, "Last 30 days"), (90, "Last 90 days") })
+            {
+                <option value="@d.Item1" selected="@(days == d.Item1)">@d.Item2</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label class="block text-[11px] text-neutral-400 mb-1">Filter by location</label>
+        <select name="storeId" class="border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white">
+            <option value="">All locations</option>
+            @foreach (var s in stores) { <option value="@s.Id" selected="@(storeId == s.Id)">@s.Name</option> }
+        </select>
+    </div>
+    <div>
+        <label class="block text-[11px] text-neutral-400 mb-1">Filter by reason</label>
+        <select name="reason" class="border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white">
+            <option value="">All reasons</option>
+            <option value="Short received" selected="@(reason == "Short received")">Short received</option>
+            <option value="Over received" selected="@(reason == "Over received")">Over received</option>
+        </select>
+    </div>
+    <button type="submit" class="px-5 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">Apply</button>
+</form>
+
+<div class="bg-white border border-neutral-200 rounded-md overflow-x-auto">
+    <table class="w-full text-sm min-w-[980px]">
+        <thead class="bg-neutral-50 text-neutral-500 text-xs">
+            <tr>
+                <th class="text-left font-semibold px-3 py-3">Trans Ref.</th>
+                <th class="text-left font-semibold px-3 py-3">From</th>
+                <th class="text-left font-semibold px-3 py-3">To</th>
+                <th class="text-left font-semibold px-3 py-3">Date Sent</th>
+                <th class="text-left font-semibold px-3 py-3">Date Received</th>
+                <th class="text-left font-semibold px-3 py-3">Product</th>
+                <th class="text-left font-semibold px-3 py-3">Barcode</th>
+                <th class="text-center font-semibold px-3 py-3">Sent</th>
+                <th class="text-center font-semibold px-3 py-3">Received</th>
+                <th class="text-center font-semibold px-3 py-3">Discrepancy</th>
+                <th class="text-right font-semibold px-3 py-3">Discrepancy Value</th>
+                <th class="text-left font-semibold px-3 py-3">Reason</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-100">
+            @if (!Model.Any())
+            {
+                <tr><td colspan="12" class="px-4 py-16 text-center text-neutral-400">No transfer discrepancies in this range.</td></tr>
+            }
+            @foreach (var r in Model)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-3 py-2.5 text-neutral-700 font-medium">@(string.IsNullOrEmpty(r.TransRef) ? "—" : r.TransRef)</td>
+                    <td class="px-3 py-2.5 text-neutral-500 text-xs">@r.From</td>
+                    <td class="px-3 py-2.5 text-neutral-500 text-xs">@r.To</td>
+                    <td class="px-3 py-2.5 text-neutral-500 text-xs">@(r.Sent?.ToString("dd/MM/yy HH:mm") ?? "—")</td>
+                    <td class="px-3 py-2.5 text-neutral-500 text-xs">@(r.Received?.ToString("dd/MM/yy HH:mm") ?? "—")</td>
+                    <td class="px-3 py-2.5 text-neutral-800">@r.Product</td>
+                    <td class="px-3 py-2.5 text-neutral-500 font-mono text-xs">@(r.Barcode ?? "—")</td>
+                    <td class="px-3 py-2.5 text-center text-neutral-600">@r.SentQty</td>
+                    <td class="px-3 py-2.5 text-center text-neutral-600">@r.ReceivedQty</td>
+                    <td class="px-3 py-2.5 text-center font-medium @(r.Discrepancy < 0 ? "text-red-600" : "text-amber-600")">@(r.Discrepancy > 0 ? "+" : "")@r.Discrepancy</td>
+                    <td class="px-3 py-2.5 text-right @(r.DiscrepancyValue < 0 ? "text-red-600" : "text-neutral-700")">@Money(r.DiscrepancyValue)</td>
+                    <td class="px-3 py-2.5 text-neutral-500 text-xs">@r.ReasonLabel</td>
+                </tr>
+            }
+        </tbody>
+        @if (Model.Any())
+        {
+            <tfoot>
+                <tr class="bg-blue-500 text-white font-medium">
+                    <td class="px-3 py-2.5" colspan="9">Total</td>
+                    <td class="px-3 py-2.5 text-center">@totalDisc</td>
+                    <td class="px-3 py-2.5 text-right">@Money(totalValue)</td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        }
+    </table>
+    @if (totalPages > 1)
+    {
+        <div class="flex items-center justify-end gap-4 px-4 py-3 border-t border-neutral-100 text-sm text-neutral-500">
+            <span>Page @(page) of @totalPages (@total.ToString("N0"))</span>
+            <div class="flex items-center gap-1">
+                <a asp-area="Inventory" asp-controller="Reports" asp-action="Discrepancies" asp-all-route-data="rd(1)" class="px-2 py-1 rounded @(page<=1 ? "text-neutral-300 pointer-events-none" : "hover:bg-neutral-100")">«</a>
+                <a asp-area="Inventory" asp-controller="Reports" asp-action="Discrepancies" asp-all-route-data="rd(page-1)" class="px-2 py-1 rounded @(page<=1 ? "text-neutral-300 pointer-events-none" : "hover:bg-neutral-100")">‹</a>
+                <a asp-area="Inventory" asp-controller="Reports" asp-action="Discrepancies" asp-all-route-data="rd(page+1)" class="px-2 py-1 rounded @(page>=totalPages ? "text-neutral-300 pointer-events-none" : "hover:bg-neutral-100")">›</a>
+                <a asp-area="Inventory" asp-controller="Reports" asp-action="Discrepancies" asp-all-route-data="rd(totalPages)" class="px-2 py-1 rounded @(page>=totalPages ? "text-neutral-300 pointer-events-none" : "hover:bg-neutral-100")">»</a>
+            </div>
+        </div>
+    }
+</div>

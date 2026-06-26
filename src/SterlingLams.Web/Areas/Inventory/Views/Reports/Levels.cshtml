@@ -1,0 +1,120 @@
+@model List<SterlingLams.Web.Areas.Inventory.Controllers.StockLevelRow>
+@{
+    ViewData["Title"] = "Stock Levels";
+    var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
+    var cats = ViewBag.Categories as List<SterlingLams.Web.Models.Domain.Category> ?? new();
+    int? storeId = ViewBag.StoreId; int? categoryId = ViewBag.CategoryId; string q = ViewBag.Q ?? "";
+    int page = ViewBag.Page ?? 1; int totalPages = ViewBag.TotalPages ?? 1; int total = ViewBag.Total ?? 0;
+    string Money(decimal v) => "₦" + v.ToString("N2");
+    Dictionary<string, string> rd(int pg) => new() { ["storeId"] = storeId?.ToString() ?? "", ["categoryId"] = categoryId?.ToString() ?? "", ["q"] = q, ["page"] = pg.ToString() };
+}
+
+<div class="flex items-start justify-between gap-3 mb-5 flex-wrap">
+    <h1 class="text-2xl font-semibold text-neutral-900">Stock Levels</h1>
+    <div class="flex items-center gap-2">
+        <a asp-area="Inventory" asp-controller="Reports" asp-action="Levels" asp-all-route-data="@(new Dictionary<string,string>(rd(1)){ ["format"]="csv" })" class="px-4 py-2 border border-neutral-200 text-neutral-700 text-xs rounded-md hover:border-neutral-400">Export CSV</a>
+        <button type="button" onclick="window.print()" class="px-4 py-2 border border-neutral-200 text-neutral-700 text-xs rounded-md hover:border-neutral-400">Print</button>
+    </div>
+</div>
+
+<form asp-area="Inventory" asp-controller="Reports" asp-action="Levels" method="get" class="bg-white border border-neutral-200 rounded-md p-4 mb-4 flex flex-wrap items-end gap-4">
+    <div>
+        <label class="block text-[11px] text-neutral-400 mb-1">Filter by location</label>
+        <select name="storeId" class="border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white">
+            <option value="">All locations</option>
+            @foreach (var s in stores) { <option value="@s.Id" selected="@(storeId == s.Id)">@s.Name</option> }
+        </select>
+    </div>
+    <div>
+        <label class="block text-[11px] text-neutral-400 mb-1">Filter by category</label>
+        <select name="categoryId" class="border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white">
+            <option value="">All categories</option>
+            @foreach (var c in cats) { <option value="@c.Id" selected="@(categoryId == c.Id)">@c.Name</option> }
+        </select>
+    </div>
+    <div class="flex-1 min-w-[200px]">
+        <label class="block text-[11px] text-neutral-400 mb-1">Filter by product or barcode</label>
+        <input name="q" value="@q" class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm" />
+    </div>
+    <button type="submit" class="px-5 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">Search</button>
+</form>
+
+<div class="bg-white border border-neutral-200 rounded-md overflow-x-auto">
+    <table class="w-full text-sm min-w-[820px]">
+        <thead class="bg-neutral-50 text-neutral-500 text-xs">
+            <tr>
+                <th class="text-left font-semibold px-4 py-3">Name</th>
+                <th class="text-left font-semibold px-4 py-3">Barcode</th>
+                <th class="text-left font-semibold px-4 py-3">Category</th>
+                <th class="text-center font-semibold px-4 py-3">Current Stock</th>
+                <th class="text-center font-semibold px-4 py-3">Total Stock</th>
+                <th class="text-center font-semibold px-4 py-3">On Order</th>
+                <th class="text-right font-semibold px-4 py-3">Sale Price</th>
+                <th class="text-right font-semibold px-4 py-3">Total Sale Value</th>
+                <th class="px-3 py-3"></th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-100">
+            @if (!Model.Any())
+            {
+                <tr><td colspan="9" class="px-4 py-16 text-center text-neutral-400">No products found.</td></tr>
+            }
+            @foreach (var r in Model)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-2.5 text-neutral-800">@r.Name</td>
+                    <td class="px-4 py-2.5 text-neutral-500 font-mono text-xs">@(r.Barcode ?? "—")</td>
+                    <td class="px-4 py-2.5 text-neutral-500 text-xs">@r.Category</td>
+                    <td class="px-4 py-2.5 text-center text-neutral-700">@(r.CurrentStock < 0 ? "—" : r.CurrentStock.ToString())</td>
+                    <td class="px-4 py-2.5 text-center font-medium @(r.TotalStock == 0 ? "text-red-500" : "text-neutral-800")">@r.TotalStock</td>
+                    <td class="px-4 py-2.5 text-center text-neutral-500">@r.OnOrder</td>
+                    <td class="px-4 py-2.5 text-right text-neutral-600">@Money(r.Price)</td>
+                    <td class="px-4 py-2.5 text-right text-neutral-700">@Money(r.TotalSaleValue)</td>
+                    <td class="px-3 py-2.5 text-right">
+                        <button type="button" class="view-loc px-3 py-1.5 border border-blue-300 text-blue-700 text-xs rounded-md hover:bg-blue-50" data-id="@r.ProductId" data-name="@r.Name">View Locations</button>
+                    </td>
+                </tr>
+                <tr class="hidden bg-neutral-50/60" data-break="@r.ProductId"><td colspan="9" class="px-6 py-3"><div class="text-xs text-neutral-400">Loading…</div></td></tr>
+            }
+        </tbody>
+    </table>
+    @if (totalPages > 1)
+    {
+        <div class="flex items-center justify-end gap-4 px-4 py-3 border-t border-neutral-100 text-sm text-neutral-500">
+            <span>Page @(page) of @totalPages (@total.ToString("N0"))</span>
+            <div class="flex items-center gap-1">
+                <a asp-area="Inventory" asp-controller="Reports" asp-action="Levels" asp-all-route-data="rd(1)" class="px-2 py-1 rounded @(page<=1 ? "text-neutral-300 pointer-events-none" : "hover:bg-neutral-100")">«</a>
+                <a asp-area="Inventory" asp-controller="Reports" asp-action="Levels" asp-all-route-data="rd(page-1)" class="px-2 py-1 rounded @(page<=1 ? "text-neutral-300 pointer-events-none" : "hover:bg-neutral-100")">‹</a>
+                <a asp-area="Inventory" asp-controller="Reports" asp-action="Levels" asp-all-route-data="rd(page+1)" class="px-2 py-1 rounded @(page>=totalPages ? "text-neutral-300 pointer-events-none" : "hover:bg-neutral-100")">›</a>
+                <a asp-area="Inventory" asp-controller="Reports" asp-action="Levels" asp-all-route-data="rd(totalPages)" class="px-2 py-1 rounded @(page>=totalPages ? "text-neutral-300 pointer-events-none" : "hover:bg-neutral-100")">»</a>
+            </div>
+        </div>
+    }
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    function money(v) { return '₦' + (+v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+    document.querySelectorAll('.view-loc').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var id = btn.dataset.id;
+            var row = document.querySelector('tr[data-break="' + id + '"]');
+            if (!row.classList.contains('hidden')) { row.classList.add('hidden'); return; }
+            row.classList.remove('hidden');
+            var cell = row.querySelector('td');
+            fetch('/Inventory/Reports/LevelBreakdown?id=' + id).then(function (r) { return r.json(); }).then(function (list) {
+                if (!list.length) { cell.innerHTML = '<div class="text-xs text-neutral-400">No location records.</div>'; return; }
+                var rows = list.map(function (l) {
+                    return '<tr class="border-t border-neutral-100"><td class="py-1.5 text-neutral-700">' + l.location + '</td>'
+                        + '<td class="py-1.5 text-center">' + l.stock + '</td><td class="py-1.5 text-center">' + l.onOrder + '</td>'
+                        + '<td class="py-1.5 text-right">' + money(l.price) + '</td><td class="py-1.5 text-right">' + money(l.value) + '</td></tr>';
+                }).join('');
+                cell.innerHTML = '<div class="text-xs font-medium text-neutral-600 mb-1">Stock location breakdown — ' + (btn.dataset.name || '') + '</div>'
+                    + '<table class="w-full text-xs"><thead><tr class="text-neutral-400"><th class="text-left py-1">Location</th><th class="text-center py-1">Stock</th><th class="text-center py-1">On order</th><th class="text-right py-1">Sale price</th><th class="text-right py-1">Total value</th></tr></thead><tbody>' + rows + '</tbody></table>';
+            });
+        });
+    });
+})();
+</script>
+}

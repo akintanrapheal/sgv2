@@ -542,6 +542,164 @@ public class ReportsController : InventoryAreaController
         return take.HasValue ? await q.Take(take.Value).ToListAsync() : await q.ToListAsync();
     }
 
+    // ── Stock Levels: per-product stock across branches (units & sale value; no cost/tax) ──────
+    public async Task<IActionResult> Levels(int? storeId, int? categoryId, string q = "", int page = 1, string? format = null)
+    {
+        const int Size = 25;
+        ViewData["Title"] = "Stock Levels";
+        var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        ViewBag.Stores = stores;
+        ViewBag.Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync();
+        ViewBag.StoreId = storeId; ViewBag.CategoryId = categoryId; ViewBag.Q = q;
+
+        var pq = _db.Products.Where(p => p.IsActive);
+        if (categoryId.HasValue) pq = pq.Where(p => p.CategoryId == categoryId.Value);
+        if (!string.IsNullOrWhiteSpace(q))
+            pq = pq.Where(p => EF.Functions.ILike(p.Name, $"%{q}%") || EF.Functions.ILike(p.Sku ?? "", $"%{q}%") || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%"));
+
+        var proj = pq.Select(p => new StockLevelRow
+        {
+            ProductId = p.Id, Name = p.Name, Barcode = p.Barcode,
+            Category = p.Category != null ? p.Category.Name : "—",
+            Price = p.Price,
+            TotalStock = p.StoreInventories.Where(si => si.ProductVariantId == null).Sum(si => (int?)si.QuantityOnHand) ?? 0,
+            OnOrder = p.StoreInventories.Where(si => si.ProductVariantId == null).Sum(si => (int?)si.OnOrder) ?? 0,
+            CurrentStock = storeId == null ? -1 : (p.StoreInventories.Where(si => si.StoreId == storeId && si.ProductVariantId == null).Select(si => (int?)si.QuantityOnHand).FirstOrDefault() ?? 0)
+        });
+
+        if (format == "csv")
+        {
+            var all = await proj.OrderBy(r => r.Name).ToListAsync();
+            var sb = new StringBuilder();
+            sb.AppendLine("Product,Barcode,Category,Current Stock,Total Stock,On Order,Sale Price,Total Sale Value");
+            foreach (var r in all)
+                sb.Append(Csv(r.Name)).Append(',').Append(Csv(r.Barcode)).Append(',').Append(Csv(r.Category)).Append(',')
+                  .Append(r.CurrentStock < 0 ? "" : r.CurrentStock.ToString()).Append(',').Append(r.TotalStock).Append(',')
+                  .Append(r.OnOrder).Append(',').Append(r.Price).Append(',').Append(r.TotalSaleValue).AppendLine();
+            await LogAsync("Export", "Inventory", null, "Exported stock levels");
+            return CsvFile(sb, "stock_levels");
+        }
+
+        var total = await proj.CountAsync();
+        ViewBag.Page = page; ViewBag.TotalPages = (int)Math.Ceiling(total / (double)Size); ViewBag.Total = total;
+        return View(await proj.OrderBy(r => r.Name).Skip((page - 1) * Size).Take(Size).ToListAsync());
+    }
+
+    // Per-branch breakdown for one product (the "View Locations" expander).
+    [HttpGet]
+    public async Task<IActionResult> LevelBreakdown(int id)
+    {
+        var price = await _db.Products.Where(p => p.Id == id).Select(p => p.Price).FirstOrDefaultAsync();
+        var rows = await _db.StoreInventories.Include(si => si.Store)
+            .Where(si => si.ProductId == id && si.ProductVariantId == null && si.Store.IsActive)
+            .OrderBy(si => si.Store.Name)
+            .Select(si => new { location = si.Store.Name, stock = si.QuantityOnHand, onOrder = si.OnOrder, price, value = si.QuantityOnHand * price })
+            .ToListAsync();
+        return Json(rows);
+    }
+
+    // ── Stock Warnings: per-location rows at/below their min (no brand/supplier) ─────────────────
+    public async Task<IActionResult> Warnings(int? storeId, int page = 1, string? format = null)
+    {
+        const int Size = 25;
+        ViewData["Title"] = "Stock Warnings";
+        ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        ViewBag.StoreId = storeId;
+
+        var q = _db.StoreInventories.Include(si => si.Product).ThenInclude(p => p.Category).Include(si => si.Store)
+            .Where(si => si.Product.IsActive && si.ProductVariantId == null && si.Store.IsActive
+                      && (si.MinStock ?? si.Product.LowStockThreshold) > 0
+                      && si.QuantityOnHand <= (si.MinStock ?? si.Product.LowStockThreshold));
+        if (storeId.HasValue) q = q.Where(si => si.StoreId == storeId.Value);
+
+        var proj = q.Select(si => new StockWarningRow
+        {
+            Product = si.Product.Name, Barcode = si.Product.Barcode,
+            Category = si.Product.Category != null ? si.Product.Category.Name : "—",
+            Location = si.Store.Name,
+            Current = si.QuantityOnHand,
+            Min = si.MinStock ?? si.Product.LowStockThreshold,
+            Max = si.MaxStock, OnOrder = si.OnOrder
+        }).OrderBy(r => r.Product).ThenBy(r => r.Location);
+
+        if (format == "csv")
+        {
+            var all = await proj.ToListAsync();
+            var sb = new StringBuilder();
+            sb.AppendLine("Product,Location,Barcode,Category,Current Stock,Min Stock,Max Stock,On Order,Reorder");
+            foreach (var r in all)
+                sb.Append(Csv(r.Product)).Append(',').Append(Csv(r.Location)).Append(',').Append(Csv(r.Barcode)).Append(',')
+                  .Append(Csv(r.Category)).Append(',').Append(r.Current).Append(',').Append(r.Min).Append(',')
+                  .Append(r.Max?.ToString() ?? "").Append(',').Append(r.OnOrder).Append(',').Append(r.Reorder).AppendLine();
+            await LogAsync("Export", "Inventory", null, "Exported stock warnings");
+            return CsvFile(sb, "stock_warnings");
+        }
+
+        var total = await proj.CountAsync();
+        ViewBag.Page = page; ViewBag.TotalPages = (int)Math.Ceiling(total / (double)Size); ViewBag.Total = total;
+        return View(await proj.Skip((page - 1) * Size).Take(Size).ToListAsync());
+    }
+
+    // ── Stock Discrepancies: transfer received-vs-sent differences (no cost) ─────────────────────
+    public async Task<IActionResult> Discrepancies(int days = 7, int? storeId = null, string? reason = null, int page = 1, string? format = null)
+    {
+        const int Size = 25;
+        ViewData["Title"] = "Stock Discrepancies";
+        ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        ViewBag.Days = days; ViewBag.StoreId = storeId; ViewBag.Reason = reason;
+
+        var fromD = DateTime.UtcNow.Date.AddDays(-days + 1);
+        var baseQ = _db.StockTransferItems
+            .Include(i => i.StockTransfer).ThenInclude(t => t.FromStore)
+            .Include(i => i.StockTransfer).ThenInclude(t => t.ToStore)
+            .Where(i => i.StockTransfer.ReceivedAt != null && i.StockTransfer.ReceivedAt >= fromD
+                     && (i.ReceivedQty ?? 0) != (i.DispatchedQty ?? 0));
+        if (storeId.HasValue) baseQ = baseQ.Where(i => i.StockTransfer.ToStoreId == storeId.Value || i.StockTransfer.FromStoreId == storeId.Value);
+
+        var items = await baseQ.OrderByDescending(i => i.StockTransfer.ReceivedAt).ToListAsync();
+        var pids = items.Select(i => i.ProductId).Distinct().ToList();
+        var pinfo = await _db.Products.Where(p => pids.Contains(p.Id))
+            .Select(p => new { p.Id, p.Barcode, p.Price }).ToDictionaryAsync(p => p.Id);
+
+        var rows = items.Select(i =>
+        {
+            pinfo.TryGetValue(i.ProductId, out var pi);
+            var disc = (i.ReceivedQty ?? 0) - (i.DispatchedQty ?? 0);
+            return new StockDiscrepancyRow
+            {
+                TransRef = i.StockTransfer.TransferNumber,
+                From = i.StockTransfer.FromStore.Name, To = i.StockTransfer.ToStore.Name,
+                Sent = i.StockTransfer.DispatchedAt, Received = i.StockTransfer.ReceivedAt,
+                Product = i.ProductName + (string.IsNullOrEmpty(i.VariantName) ? "" : $" – {i.VariantName}"),
+                Barcode = pi?.Barcode,
+                SentQty = i.DispatchedQty ?? 0, ReceivedQty = i.ReceivedQty ?? 0,
+                Discrepancy = disc,
+                DiscrepancyValue = disc * (pi?.Price ?? 0),
+                ReasonLabel = disc < 0 ? "Short received" : "Over received"
+            };
+        }).ToList();
+
+        if (!string.IsNullOrWhiteSpace(reason)) rows = rows.Where(r => r.ReasonLabel == reason).ToList();
+
+        if (format == "csv")
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Trans Ref,From,To,Date Sent,Date Received,Product,Barcode,Sent Qty,Received Qty,Discrepancy,Discrepancy Value,Reason");
+            foreach (var r in rows)
+                sb.Append(Csv(r.TransRef)).Append(',').Append(Csv(r.From)).Append(',').Append(Csv(r.To)).Append(',')
+                  .Append(r.Sent?.ToString("yyyy-MM-dd HH:mm")).Append(',').Append(r.Received?.ToString("yyyy-MM-dd HH:mm")).Append(',')
+                  .Append(Csv(r.Product)).Append(',').Append(Csv(r.Barcode)).Append(',').Append(r.SentQty).Append(',')
+                  .Append(r.ReceivedQty).Append(',').Append(r.Discrepancy).Append(',').Append(r.DiscrepancyValue).Append(',').Append(Csv(r.ReasonLabel)).AppendLine();
+            await LogAsync("Export", "Inventory", null, "Exported stock discrepancies");
+            return CsvFile(sb, "stock_discrepancies");
+        }
+
+        ViewBag.TotalDisc = rows.Sum(r => r.Discrepancy);
+        ViewBag.TotalValue = rows.Sum(r => r.DiscrepancyValue);
+        ViewBag.Page = page; ViewBag.TotalPages = (int)Math.Ceiling(rows.Count / (double)Size); ViewBag.Total = rows.Count;
+        return View(rows.Skip((page - 1) * Size).Take(Size).ToList());
+    }
+
     private static string Csv(string? s) => "\"" + (s ?? "").Replace("\"", "\"\"") + "\"";
     private FileContentResult CsvFile(StringBuilder sb, string name)
     {
@@ -658,4 +816,46 @@ public class DeadStockVm
     public int Days { get; set; }
     public int TotalUnits { get; set; }
     public decimal TotalValue { get; set; }
+}
+
+public class StockLevelRow
+{
+    public int ProductId { get; set; }
+    public string Name { get; set; } = "";
+    public string? Barcode { get; set; }
+    public string Category { get; set; } = "";
+    public decimal Price { get; set; }
+    public int TotalStock { get; set; }
+    public int OnOrder { get; set; }
+    public int CurrentStock { get; set; }   // -1 = "All locations" selected (no single-branch figure)
+    public decimal TotalSaleValue => Price * TotalStock;
+}
+
+public class StockWarningRow
+{
+    public string Product { get; set; } = "";
+    public string? Barcode { get; set; }
+    public string Category { get; set; } = "";
+    public string Location { get; set; } = "";
+    public int Current { get; set; }
+    public int Min { get; set; }
+    public int? Max { get; set; }
+    public int OnOrder { get; set; }
+    public int Reorder => System.Math.Max(0, (Max ?? Min) - Current);
+}
+
+public class StockDiscrepancyRow
+{
+    public string TransRef { get; set; } = "";
+    public string From { get; set; } = "";
+    public string To { get; set; } = "";
+    public DateTime? Sent { get; set; }
+    public DateTime? Received { get; set; }
+    public string Product { get; set; } = "";
+    public string? Barcode { get; set; }
+    public int SentQty { get; set; }
+    public int ReceivedQty { get; set; }
+    public int Discrepancy { get; set; }
+    public decimal DiscrepancyValue { get; set; }
+    public string ReasonLabel { get; set; } = "";
 }
