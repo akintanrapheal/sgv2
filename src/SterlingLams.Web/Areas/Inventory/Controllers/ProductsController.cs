@@ -96,6 +96,7 @@ public class ProductsController : InventoryAreaController
                 Variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name)
                     .Select(v => new InvVariantRow
                     {
+                        VariantId = v.Id,
                         Name = v.Name,
                         Sku = v.Sku,
                         Barcode = v.Barcode,
@@ -584,15 +585,25 @@ public class ProductsController : InventoryAreaController
 
     // ── Track Stock slide-in modal (per-location stock editor) ──────────────────
 
-    // Per-location stock levels for the Track Stock modal (product-pool rows).
+    // Per-location stock levels for the Track Stock modal. variantId null = the product pool;
+    // variantId set = that specific colour/size's stock (its own per-branch rows).
     [HttpGet]
-    public async Task<IActionResult> TrackStockData(int id)
+    public async Task<IActionResult> TrackStockData(int id, int? variantId = null)
     {
         var p = await _db.Products.FindAsync(id);
         if (p == null) return Json(new { found = false });
+
+        var displayName = p.Name;
+        if (variantId.HasValue)
+        {
+            var v = await _db.ProductVariants.FirstOrDefaultAsync(x => x.Id == variantId.Value && x.ProductId == id);
+            if (v == null) return Json(new { found = false });
+            displayName = $"{p.Name} – {v.Name}";
+        }
+
         var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
         var inv = await _db.StoreInventories
-            .Where(si => si.ProductId == id && si.ProductVariantId == null)
+            .Where(si => si.ProductId == id && si.ProductVariantId == variantId)
             .ToDictionaryAsync(si => si.StoreId);
         var locations = stores.Select(s =>
         {
@@ -614,7 +625,8 @@ public class ProductsController : InventoryAreaController
         {
             found = true,
             id = p.Id,
-            name = p.Name,
+            variantId,
+            name = displayName,
             trackStock = p.TrackStock,
             defaultMin = p.LowStockThreshold,
             reasons = SterlingLams.Web.Models.Domain.AdjustmentReasons.All,
@@ -636,6 +648,7 @@ public class ProductsController : InventoryAreaController
     public class TrackStockSaveRequest
     {
         public int Id { get; set; }
+        public int? VariantId { get; set; }   // null = product pool; set = specific colour/size
         public bool TrackStock { get; set; }
         public string? Reason { get; set; }
         public string? StaffUserId { get; set; }
@@ -650,6 +663,11 @@ public class ProductsController : InventoryAreaController
         if (req == null) return Json(new { ok = false, error = "No data." });
         var p = await _db.Products.FindAsync(req.Id);
         if (p == null) return Json(new { ok = false, error = "Product not found." });
+
+        // A variant id (if given) must belong to this product.
+        var vid = req.VariantId;
+        if (vid.HasValue && !await _db.ProductVariants.AnyAsync(v => v.Id == vid.Value && v.ProductId == req.Id))
+            return Json(new { ok = false, error = "Variant not found for this product." });
 
         var defaultReason = string.IsNullOrWhiteSpace(req.Reason) ? "Correction" : req.Reason.Trim();
         // Staff member: the chosen user (must be a real, non-guest user) records who did the count;
@@ -683,27 +701,27 @@ public class ProductsController : InventoryAreaController
             // A per-location reason overrides the all-locations default (each branch = its own BSA header).
             var reason = string.IsNullOrWhiteSpace(l.Reason) ? defaultReason : l.Reason.Trim();
             var type = SterlingLams.Web.Models.Domain.AdjustmentReasons.MovementType(reason);
-            var current = await _stock.GetStockAsync(req.Id, null, l.StoreId, fallback: false);
+            var current = await _stock.GetStockAsync(req.Id, vid, l.StoreId, fallback: false);
             var delta = l.OnHand - current;
             if (delta != 0)
             {
                 var adjNo = $"BSA{seq++:D5}";
-                var balance = await _stock.ApplyAsync(req.Id, null, l.StoreId, delta, type, adjNo, note: reason, userId: userId);
+                var balance = await _stock.ApplyAsync(req.Id, vid, l.StoreId, delta, type, adjNo, note: reason, userId: userId, materializeVariant: vid.HasValue);
                 _db.StockAdjustments.Add(new StockAdjustment
                 {
                     AdjustmentNumber = adjNo, StoreId = l.StoreId, Reason = reason, Source = "Form",
                     CreatedByUserId = userId, CreatedAt = DateTime.UtcNow,
-                    Lines = { new StockAdjustmentLine { ProductId = req.Id, ProductName = p.Name, QtyDelta = delta, BalanceAfter = balance } }
+                    Lines = { new StockAdjustmentLine { ProductId = req.Id, ProductVariantId = vid, ProductName = p.Name, QtyDelta = delta, BalanceAfter = balance } }
                 });
                 applied++;
             }
 
-            // Persist the reorder fields on the (pool) location row, creating it if needed.
+            // Persist the reorder fields on the (pool or variant) location row, creating it if needed.
             var row = await _db.StoreInventories
-                .FirstOrDefaultAsync(si => si.ProductId == req.Id && si.StoreId == l.StoreId && si.ProductVariantId == null);
+                .FirstOrDefaultAsync(si => si.ProductId == req.Id && si.StoreId == l.StoreId && si.ProductVariantId == vid);
             if (row == null)
             {
-                row = new StoreInventory { ProductId = req.Id, StoreId = l.StoreId };
+                row = new StoreInventory { ProductId = req.Id, StoreId = l.StoreId, ProductVariantId = vid };
                 _db.StoreInventories.Add(row);
             }
             row.MinStock = l.Min;
@@ -820,6 +838,7 @@ public class InvProductRow
 
 public class InvVariantRow
 {
+    public int VariantId { get; set; }
     public string Name { get; set; } = "";
     public string? Sku { get; set; }
     public string? Barcode { get; set; }

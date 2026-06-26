@@ -129,7 +129,17 @@
                 @foreach (var p in Model)
                 {
                     <tr class="hover:bg-neutral-50">
-                        <td data-col="name" class="px-4 py-3 text-neutral-800">@(string.IsNullOrWhiteSpace(p.Sku) ? p.Name : $"{p.Sku} ({p.Name})")</td>
+                        <td data-col="name" class="px-4 py-3 text-neutral-800">
+                            @if (p.Variants.Any())
+                            {
+                                <button type="button" class="vexpand text-neutral-400 hover:text-neutral-700 mr-1 inline-block w-3 transition-transform" data-pid="@p.Id">▸</button>
+                            }
+                            @(string.IsNullOrWhiteSpace(p.Sku) ? p.Name : $"{p.Sku} ({p.Name})")
+                            @if (p.Variants.Any())
+                            {
+                                <span class="text-[10px] text-blue-600 ml-1">@p.Variants.Count option(s)</span>
+                            }
+                        </td>
                         <td data-col="sku" class="px-4 py-3 text-neutral-600">@(p.Sku ?? "—")</td>
                         <td data-col="category" class="px-4 py-3 text-neutral-600">@p.CategoryName</td>
                         <td data-col="price" class="px-4 py-3 text-right text-neutral-800">@Money(p.Price)</td>
@@ -151,6 +161,23 @@
                             </button>
                         </td>
                     </tr>
+                    @foreach (var v in p.Variants)
+                    {
+                        <tr class="variant-row hidden bg-neutral-50/60" data-parent="@p.Id">
+                            <td colspan="11" class="px-4 py-2 pl-12">
+                                <div class="flex items-center gap-4 text-sm flex-wrap">
+                                    <span class="text-neutral-700">↳ @v.Name</span>
+                                    @if (!string.IsNullOrWhiteSpace(v.Sku)) { <span class="text-neutral-400 text-xs font-mono">@v.Sku</span> }
+                                    <span class="text-neutral-400 text-xs font-mono">@(string.IsNullOrWhiteSpace(v.Barcode) ? "no barcode" : v.Barcode)</span>
+                                    <span class="text-neutral-600">@Money(v.Price)</span>
+                                    <span class="ml-auto flex items-center gap-3">
+                                        <a asp-area="Inventory" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id" class="text-blue-700 text-xs hover:underline">✎ Edit</a>
+                                        <button type="button" class="vtrack text-blue-700 text-xs hover:underline" data-pid="@p.Id" data-vid="@v.VariantId">📦 Track Stock</button>
+                                    </span>
+                                </div>
+                            </td>
+                        </tr>
+                    }
                 }
             </tbody>
         </table>
@@ -555,7 +582,7 @@
     }
 
     // ── Track Stock drawer ──────────────────────────────────────────────────────
-    var tsIdx = -1, tsStores = [], tsData = {}, tsReasons = [];
+    var tsIdx = -1, tsStores = [], tsData = {}, tsReasons = [], tsVariantId = null;
     function tsStepRow(label, field, value) {
         return '<div><label class="block text-[11px] text-neutral-400 mb-1">' + label + '</label>'
             + '<div class="flex items-center gap-2">'
@@ -587,11 +614,13 @@
             + '<button type="button" data-remove class="text-sm text-red-600 hover:underline">🗑 Remove</button>'
             + '</div></div>';
     }
-    function openTrackStock(id) {
+    function openTrackStock(id, variantId) {
+        tsVariantId = variantId || null;
         tsIdx = rowIds.indexOf(String(id));
-        el('ts-prev').disabled = tsIdx <= 0;
-        el('ts-next').disabled = tsIdx === -1 || tsIdx >= rowIds.length - 1;
-        fetch(base + 'TrackStockData?id=' + encodeURIComponent(id), { headers: { 'Accept': 'application/json' } })
+        // Prev/next only make sense product-to-product; disable them in a variant context.
+        el('ts-prev').disabled = tsVariantId != null || tsIdx <= 0;
+        el('ts-next').disabled = tsVariantId != null || tsIdx === -1 || tsIdx >= rowIds.length - 1;
+        fetch(base + 'TrackStockData?id=' + encodeURIComponent(id) + (tsVariantId != null ? '&variantId=' + tsVariantId : ''), { headers: { 'Accept': 'application/json' } })
             .then(function (r) { return r.json(); })
             .then(function (d) {
                 if (!d || !d.found) { alert('Could not load product.'); return; }
@@ -650,7 +679,7 @@
                 reason: pick('reason')
             });
         });
-        var payload = { id: parseInt(id, 10), trackStock: el('ts-track').checked, reason: el('ts-reason').value, staffUserId: el('ts-staff').value, locations: locations };
+        var payload = { id: parseInt(id, 10), variantId: tsVariantId, trackStock: el('ts-track').checked, reason: el('ts-reason').value, staffUserId: el('ts-staff').value, locations: locations };
         var btn = el('ts-save'); btn.disabled = true; btn.textContent = 'Saving…';
         fetch(base + 'SaveTrackStock', {
             method: 'POST',
@@ -667,6 +696,20 @@
                 closeDrawers();
             })
             .catch(function () { btn.disabled = false; btn.textContent = 'Save'; alert('Save failed.'); });
+    });
+
+    // ── Variant expand/collapse + per-variant Track Stock ───────────────────────
+    document.querySelectorAll('.vexpand').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var pid = btn.dataset.pid;
+            btn.classList.toggle('rotate-90');
+            table.querySelectorAll('tr.variant-row[data-parent="' + pid + '"]').forEach(function (vr) { vr.classList.toggle('hidden'); });
+        });
+    });
+    table.addEventListener('click', function (e) {
+        var vt = e.target.closest('.vtrack');
+        if (vt) { e.preventDefault(); openTrackStock(vt.dataset.pid, parseInt(vt.dataset.vid, 10)); }
     });
 
     // ── Quick Add modal ─────────────────────────────────────────────────────────
