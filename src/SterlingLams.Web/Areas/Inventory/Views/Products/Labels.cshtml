@@ -1,8 +1,16 @@
 @model List<SterlingLams.Web.Areas.Inventory.Controllers.LabelRow>
 @{
     Layout = null;
+    bool showName = ViewBag.ShowName ?? true;
+    bool showPrice = ViewBag.ShowPrice ?? true;
+    bool showBarcode = ViewBag.ShowBarcode ?? true;
+    bool showCategory = ViewBag.ShowCategory ?? false;
+    bool showDescription = ViewBag.ShowDescription ?? false;
+    string? customText = ViewBag.CustomText;
+    string preset = ViewBag.Preset ?? "barcode";
     var json = System.Text.Json.JsonSerializer.Serialize(
-        Model.Select(p => new { name = p.Name, code = p.Code, price = p.Price }));
+        Model.Select(p => new { name = p.Name, code = p.Code, price = p.Price, category = p.Category, description = p.Description ?? "" }));
+    var flags = System.Text.Json.JsonSerializer.Serialize(new { showName, showPrice, showBarcode, showCategory, showDescription, customText = customText ?? "", preset });
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -15,16 +23,23 @@
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #f5f5f4; color: #1c1917; }
-        .toolbar { position: sticky; top: 0; background: #0a0a0a; color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 14px; font-size: 13px; }
+        .toolbar { position: sticky; top: 0; background: #0a0a0a; color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 14px; font-size: 13px; z-index: 5; }
         .toolbar input { width: 60px; padding: 5px; border: 1px solid #555; border-radius: 3px; background: #fff; }
         .toolbar button { padding: 7px 16px; border: 0; border-radius: 3px; cursor: pointer; font-size: 13px; }
         .btn-print { background: #059669; color: #fff; }
         .btn-gen { background: #ffffff22; color: #fff; border: 1px solid #ffffff44 !important; }
         .sheet { padding: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
-        .label { position: relative; width: 200px; border: 1px solid #d6d3d1; border-radius: 4px; padding: 8px; text-align: center; background: #fff; page-break-inside: avoid; }
+        .label { position: relative; border: 1px solid #d6d3d1; border-radius: 4px; padding: 8px; text-align: center; background: #fff; page-break-inside: avoid; }
+        .label.shelf { width: 280px; }
+        .label.barcode { width: 200px; }
+        .label.butterfly { width: 150px; }
+        .label.custom { width: 230px; }
         .label.unchecked { opacity: .35; }
-        .lname { font-size: 11px; line-height: 1.2; height: 26px; overflow: hidden; margin-bottom: 4px; }
+        .lcat { font-size: 9px; text-transform: uppercase; letter-spacing: .5px; color: #78716c; margin-bottom: 2px; }
+        .lname { font-size: 11px; line-height: 1.2; min-height: 14px; margin-bottom: 4px; font-weight: 600; }
+        .ldesc { font-size: 9px; color: #57534e; line-height: 1.2; margin-bottom: 4px; max-height: 24px; overflow: hidden; }
         .lprice { font-size: 13px; font-weight: bold; margin-top: 2px; }
+        .lcustom { font-size: 9px; color: #57534e; margin-top: 3px; }
         .lpick { position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; cursor: pointer; }
         @@media print {
             .no-print { display: none !important; }
@@ -49,19 +64,27 @@
     <div id="sheet" class="sheet"></div>
 
     <script id="data" type="application/json">@Html.Raw(json)</script>
+    <script id="flags" type="application/json">@Html.Raw(flags)</script>
     <script>
         const products = JSON.parse(document.getElementById('data').textContent);
+        const F = JSON.parse(document.getElementById('flags').textContent);
         function esc(s) { return String(s).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m])); }
         function render() {
             const copies = Math.min(50, Math.max(1, parseInt(document.getElementById('copies').value) || 1));
             const sheet = document.getElementById('sheet'); sheet.innerHTML = '';
             products.forEach(p => {
                 for (let i = 0; i < copies; i++) {
-                    const el = document.createElement('div'); el.className = 'label';
-                    el.innerHTML = `<input type="checkbox" class="lpick no-print" checked title="Print this label" />
-                        <div class="lname">${esc(p.name)}</div><svg class="bc"></svg><div class="lprice">₦${(+p.price).toLocaleString()}</div>`;
+                    const el = document.createElement('div'); el.className = 'label ' + (F.preset || 'barcode');
+                    let html = '<input type="checkbox" class="lpick no-print" checked title="Print this label" />';
+                    if (F.showCategory && p.category) html += `<div class="lcat">${esc(p.category)}</div>`;
+                    if (F.showName) html += `<div class="lname">${esc(p.name)}</div>`;
+                    if (F.showDescription && p.description) html += `<div class="ldesc">${esc(p.description)}</div>`;
+                    if (F.showBarcode) html += `<svg class="bc"></svg>`;
+                    if (F.showPrice) html += `<div class="lprice">₦${(+p.price).toLocaleString()}</div>`;
+                    if (F.customText) html += `<div class="lcustom">${esc(F.customText)}</div>`;
+                    el.innerHTML = html;
                     sheet.appendChild(el);
-                    try { JsBarcode(el.querySelector('.bc'), p.code, { format: 'CODE39', width: 1.0, height: 38, fontSize: 11, margin: 2 }); } catch (e) { }
+                    if (F.showBarcode) { try { JsBarcode(el.querySelector('.bc'), p.code, { format: 'CODE39', width: 1.0, height: 38, fontSize: 11, margin: 2 }); } catch (e) { } }
                     el.querySelector('.lpick').addEventListener('change', e => el.classList.toggle('unchecked', !e.target.checked));
                 }
             });

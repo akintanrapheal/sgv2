@@ -1,0 +1,190 @@
+@{
+    ViewData["Title"] = "Generate Labels";
+    var categories = ViewBag.Categories as List<Microsoft.AspNetCore.Mvc.Rendering.SelectListItem> ?? new();
+    var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
+}
+
+<div class="mb-5">
+    <h1 class="text-2xl font-semibold text-neutral-900">Generate Labels</h1>
+    <p class="text-sm text-neutral-500 mt-1">Search or scan products (or pick a whole location / category), choose what to print, then generate the label sheet.</p>
+</div>
+
+<div class="bg-white border border-neutral-200 rounded-md p-6 space-y-6 max-w-4xl">
+    <!-- Search -->
+    <div class="relative">
+        <label class="block text-xs text-neutral-500 mb-1">Search for product by name or barcode</label>
+        <input id="lbl-search" type="text" autocomplete="off" placeholder="Start typing or scan…"
+               class="w-full border border-neutral-200 rounded-md px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400" />
+        <div id="lbl-suggest" class="hidden absolute z-20 left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-md shadow-lg max-h-64 overflow-y-auto"></div>
+    </div>
+
+    <div class="flex items-end gap-3">
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">Quantity to print</label>
+            <div class="inline-flex items-center border border-neutral-200 rounded-md overflow-hidden">
+                <button type="button" id="qty-minus" class="px-3 py-2 text-neutral-500 hover:bg-neutral-100">−</button>
+                <input id="lbl-qty" type="number" min="1" value="1" class="w-16 text-center text-sm py-2 focus:outline-none" />
+                <button type="button" id="qty-plus" class="px-3 py-2 text-neutral-500 hover:bg-neutral-100">+</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="text-center text-xs text-neutral-400 font-medium">— OR —</div>
+
+    <!-- Bulk -->
+    <div class="grid grid-cols-2 gap-4">
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">For all stock at</label>
+            <select id="lbl-store" class="w-full border border-neutral-200 rounded-md px-3 py-2.5 text-sm bg-white">
+                <option value="">Select location…</option>
+                @foreach (var s in stores) { <option value="@s.Id">@s.Name</option> }
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">For all products of</label>
+            <select id="lbl-category" class="w-full border border-neutral-200 rounded-md px-3 py-2.5 text-sm bg-white">
+                <option value="">Select category…</option>
+                @foreach (var c in categories) { <option value="@c.Value">@c.Text</option> }
+            </select>
+        </div>
+    </div>
+
+    <!-- Preset -->
+    <div class="border-t border-neutral-100 pt-5">
+        <h3 class="text-sm font-medium text-neutral-800 mb-2">Preset</h3>
+        <div class="flex flex-wrap gap-4 text-sm text-neutral-700">
+            @foreach (var p in new[] { ("shelf", "Shelf Edge"), ("barcode", "Barcode"), ("butterfly", "Butterfly"), ("custom", "Custom") })
+            {
+                <label class="flex items-center gap-2"><input type="radio" name="preset" value="@p.Item1" @(p.Item1 == "barcode" ? "checked" : "") class="accent-blue-600" /> @p.Item2</label>
+            }
+        </div>
+    </div>
+
+    <!-- Details to print -->
+    <div class="border-t border-neutral-100 pt-5">
+        <h3 class="text-sm font-medium text-neutral-800 mb-2">Details to print</h3>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm text-neutral-700">
+            <label class="flex items-center gap-2"><input type="checkbox" id="d-name" checked class="accent-blue-600" /> Name</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="d-price" checked class="accent-blue-600" /> Price</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="d-barcode" checked class="accent-blue-600" /> Barcode</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="d-category" class="accent-blue-600" /> Category</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="d-description" class="accent-blue-600" /> Description</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="d-customtext-on" class="accent-blue-600" /> Custom text</label>
+        </div>
+        <input id="d-customtext" type="text" placeholder="Custom text to print on each label…" class="mt-2 w-full border border-neutral-200 rounded-md px-3 py-2 text-sm hidden focus:outline-none focus:border-blue-400" />
+    </div>
+
+    <!-- Picked products -->
+    <div class="border-t border-neutral-100 pt-5">
+        <h3 class="text-sm font-medium text-neutral-800 mb-2">Products to print</h3>
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-xs text-neutral-400 border-b border-neutral-100">
+                    <th class="text-left py-2 font-medium">Product</th>
+                    <th class="text-center py-2 font-medium w-32">Quantity</th>
+                    <th class="w-10"></th>
+                </tr>
+            </thead>
+            <tbody id="lbl-rows">
+                <tr id="lbl-empty"><td colspan="3" class="py-4 text-center text-neutral-400 text-xs">Scan or search an item above to add it, or use a location / category for bulk.</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="flex items-center justify-end gap-3 border-t border-neutral-100 pt-5">
+        <button type="button" id="lbl-preview" class="px-5 py-2.5 border border-blue-300 text-blue-700 text-sm rounded-md hover:bg-blue-50">Preview</button>
+        <button type="button" id="lbl-generate" class="px-6 py-2.5 bg-emerald-600 text-white text-sm font-medium rounded-md hover:bg-emerald-700">Generate Labels</button>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    var picks = {};   // id → { name, qty }
+    var el = function (id) { return document.getElementById(id); };
+
+    // ── Quantity stepper ──
+    el('qty-minus').addEventListener('click', function () { el('lbl-qty').value = Math.max(1, (parseInt(el('lbl-qty').value, 10) || 1) - 1); });
+    el('qty-plus').addEventListener('click', function () { el('lbl-qty').value = (parseInt(el('lbl-qty').value, 10) || 1) + 1; });
+
+    // ── Custom text toggle ──
+    el('d-customtext-on').addEventListener('change', function () { el('d-customtext').classList.toggle('hidden', !this.checked); });
+
+    // ── Picked products table ──
+    function renderRows() {
+        var rows = el('lbl-rows'); var ids = Object.keys(picks);
+        if (!ids.length) { rows.innerHTML = '<tr id="lbl-empty"><td colspan="3" class="py-4 text-center text-neutral-400 text-xs">Scan or search an item above to add it, or use a location / category for bulk.</td></tr>'; return; }
+        rows.innerHTML = ids.map(function (id) {
+            var p = picks[id];
+            return '<tr class="border-b border-neutral-50" data-id="' + id + '">'
+                + '<td class="py-2 text-neutral-700">' + p.name + '</td>'
+                + '<td class="py-2 text-center"><input type="number" min="1" value="' + p.qty + '" data-qty="' + id + '" class="w-20 text-center border border-neutral-200 rounded px-2 py-1 text-sm" /></td>'
+                + '<td class="py-2 text-right"><button type="button" data-rm="' + id + '" class="text-red-400 hover:text-red-600 px-1">✕</button></td></tr>';
+        }).join('');
+    }
+    el('lbl-rows').addEventListener('input', function (e) {
+        var id = e.target.getAttribute('data-qty'); if (id && picks[id]) picks[id].qty = Math.max(1, parseInt(e.target.value, 10) || 1);
+    });
+    el('lbl-rows').addEventListener('click', function (e) {
+        var rm = e.target.getAttribute('data-rm'); if (rm) { delete picks[rm]; renderRows(); }
+    });
+    function addPick(id, nm) { if (!picks[id]) picks[id] = { name: nm, qty: parseInt(el('lbl-qty').value, 10) || 1 }; renderRows(); }
+
+    // ── Search typeahead ──
+    var sug = el('lbl-suggest'); var t;
+    el('lbl-search').addEventListener('input', function () {
+        var q = this.value.trim(); clearTimeout(t);
+        if (q.length < 2) { sug.classList.add('hidden'); return; }
+        t = setTimeout(function () {
+            fetch('/Inventory/Products/LabelSearch?q=' + encodeURIComponent(q))
+                .then(function (r) { return r.json(); })
+                .then(function (list) {
+                    if (!list.length) { sug.classList.add('hidden'); return; }
+                    sug.innerHTML = list.map(function (p) {
+                        return '<button type="button" data-id="' + p.id + '" data-name="' + (p.name.replace(/"/g, '&quot;')) + '" class="block w-full text-left px-3 py-2 text-sm hover:bg-neutral-50">' + p.name + (p.sku ? ' <span class="text-neutral-400 font-mono text-xs">' + p.sku + '</span>' : '') + '</button>';
+                    }).join('');
+                    sug.classList.remove('hidden');
+                });
+        }, 200);
+    });
+    sug.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-id]'); if (!b) return;
+        addPick(b.getAttribute('data-id'), b.getAttribute('data-name'));
+        el('lbl-search').value = ''; sug.classList.add('hidden');
+    });
+    // Enter → exact barcode/SKU lookup (scanner-friendly)
+    el('lbl-search').addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return; e.preventDefault();
+        var code = this.value.trim(); if (!code) return;
+        fetch('/Inventory/Products/Lookup?barcode=' + encodeURIComponent(code))
+            .then(function (r) { return r.json(); })
+            .then(function (d) { if (d.found) { addPick(d.id, d.name); el('lbl-search').value = ''; sug.classList.add('hidden'); } });
+    });
+    document.addEventListener('click', function (e) { if (!sug.contains(e.target) && e.target !== el('lbl-search')) sug.classList.add('hidden'); });
+
+    // ── Build the Labels URL ──
+    function buildUrl() {
+        var params = new URLSearchParams();
+        var ids = Object.keys(picks).map(function (id) { return id + ':' + picks[id].qty; });
+        if (ids.length) params.set('ids', ids.join(','));
+        if (el('lbl-store').value) params.set('storeId', el('lbl-store').value);
+        if (el('lbl-category').value) params.set('categoryId', el('lbl-category').value);
+        params.set('qty', el('lbl-qty').value || '1');
+        params.set('name', el('d-name').checked); params.set('price', el('d-price').checked);
+        params.set('barcode', el('d-barcode').checked); params.set('category', el('d-category').checked);
+        params.set('description', el('d-description').checked);
+        if (el('d-customtext-on').checked && el('d-customtext').value) params.set('customText', el('d-customtext').value);
+        var preset = document.querySelector('input[name="preset"]:checked'); params.set('preset', preset ? preset.value : 'barcode');
+        return '/Inventory/Products/Labels?' + params.toString();
+    }
+    function go() {
+        if (!Object.keys(picks).length && !el('lbl-store').value && !el('lbl-category').value) {
+            alert('Add at least one product, or choose a location / category.'); return;
+        }
+        window.open(buildUrl(), '_blank');
+    }
+    el('lbl-preview').addEventListener('click', go);
+    el('lbl-generate').addEventListener('click', go);
+})();
+</script>
+}

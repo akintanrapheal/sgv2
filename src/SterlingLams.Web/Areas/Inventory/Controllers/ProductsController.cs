@@ -356,33 +356,68 @@ public class ProductsController : InventoryAreaController
         return File(bytes, "text/csv", $"products_{DateTime.UtcNow:yyyyMMdd}.csv");
     }
 
-    // Printable barcode label sheet for the selected products. Products with per-variant
-    // barcodes get one label per variant (so each color/size gets its own scannable code);
-    // others get a single label using the product's barcode/SKU.
-    public async Task<IActionResult> Labels(string ids)
+    // Generate Labels builder — pick products (search/scan or bulk by location/category),
+    // set quantities + which details to print, then generate the printable sheet.
+    public async Task<IActionResult> GenerateLabels()
     {
-        var idList = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
-            .Select(s => int.TryParse(s, out var n) ? n : 0).Where(n => n > 0).Distinct().ToList();
-        var products = await _db.Products.Include(p => p.Variants)
+        ViewData["Title"] = "Generate Labels";
+        await LoadCategories(null);
+        ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        return View();
+    }
+
+    // Printable barcode label sheet. Accepts an explicit pick list ("pid:qty,…") and/or a bulk
+    // selection (all products in a category and/or in stock at a location). Detail flags choose
+    // which fields print. Products with per-variant barcodes get one label per variant.
+    public async Task<IActionResult> Labels(string? ids, int? categoryId, int? storeId, int qty = 1,
+        bool name = true, bool price = true, bool barcode = true, bool category = false,
+        bool description = false, string? customText = null, string preset = "barcode")
+    {
+        if (qty < 1) qty = 1;
+        if (qty > 200) qty = 200;
+
+        // Explicit picks "pid:qty,pid" (qty optional → defaults to the page qty).
+        var qtyById = new Dictionary<int, int>();
+        foreach (var part in (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var bits = part.Split(':');
+            if (!int.TryParse(bits[0], out var pid) || pid <= 0) continue;
+            var q = bits.Length > 1 && int.TryParse(bits[1], out var qq) && qq > 0 ? qq : qty;
+            qtyById[pid] = qtyById.TryGetValue(pid, out var ex) ? ex + q : q;
+        }
+
+        // Bulk: every active product in the chosen category and/or in stock at the chosen location.
+        if (categoryId.HasValue || storeId.HasValue)
+        {
+            var bulk = _db.Products.Where(p => p.IsActive);
+            if (categoryId.HasValue) bulk = bulk.Where(p => p.CategoryId == categoryId.Value);
+            if (storeId.HasValue) bulk = bulk.Where(p => p.StoreInventories.Any(si => si.StoreId == storeId.Value && si.QuantityOnHand > 0));
+            foreach (var pid in await bulk.Select(p => p.Id).ToListAsync())
+                if (!qtyById.ContainsKey(pid)) qtyById[pid] = qty;
+        }
+
+        var idList = qtyById.Keys.ToList();
+        var products = await _db.Products.Include(p => p.Variants).Include(p => p.Category)
             .Where(p => idList.Contains(p.Id)).OrderBy(p => p.Name).ToListAsync();
 
         var rows = new List<LabelRow>();
         foreach (var p in products)
         {
+            var copies = qtyById[p.Id];
+            var catName = p.Category?.Name ?? "";
+            var desc = p.ShortDescription ?? p.Description;
             var variants = p.Variants.Where(v => v.IsActive && !string.IsNullOrEmpty(v.Barcode))
                 .OrderBy(v => v.Name).ToList();
-            if (variants.Count > 0)
-            {
-                foreach (var v in variants)
-                    rows.Add(new LabelRow { Name = $"{p.Name} – {v.Name}", Price = p.Price + (v.PriceAdjustment ?? 0), Code = v.Barcode! });
-            }
-            else
-            {
-                rows.Add(new LabelRow { Name = p.Name, Price = p.Price, Code = p.Barcode ?? p.Sku ?? ("P" + p.Id) });
-            }
+            var labels = variants.Count > 0
+                ? variants.Select(v => new LabelRow { Name = $"{p.Name} – {v.Name}", Price = p.Price + (v.PriceAdjustment ?? 0), Code = v.Barcode!, Category = catName, Description = desc }).ToList()
+                : new List<LabelRow> { new() { Name = p.Name, Price = p.Price, Code = p.Barcode ?? p.Sku ?? ("P" + p.Id), Category = catName, Description = desc } };
+            for (var i = 0; i < copies; i++) rows.AddRange(labels);
         }
 
         ViewData["Title"] = "Barcode Labels";
+        ViewBag.ShowName = name; ViewBag.ShowPrice = price; ViewBag.ShowBarcode = barcode;
+        ViewBag.ShowCategory = category; ViewBag.ShowDescription = description;
+        ViewBag.CustomText = customText; ViewBag.Preset = preset;
         return View(rows);
     }
 
@@ -703,6 +738,22 @@ public class ProductsController : InventoryAreaController
         return last != null && last.StartsWith("BSA") && int.TryParse(last[3..], out var n) ? n + 1 : 1;
     }
 
+    // Typeahead for the Generate Labels builder — name / SKU / barcode, top matches.
+    [HttpGet]
+    public async Task<IActionResult> LabelSearch(string q)
+    {
+        q = (q ?? "").Trim();
+        if (q.Length < 2) return Json(Array.Empty<object>());
+        var rows = await _db.Products
+            .Where(p => p.IsActive && (EF.Functions.ILike(p.Name, $"%{q}%")
+                     || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
+                     || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")))
+            .OrderBy(p => p.Name).Take(15)
+            .Select(p => new { id = p.Id, name = p.Name, sku = p.Sku })
+            .ToListAsync();
+        return Json(rows);
+    }
+
     private async Task LoadCategories(int? selected)
     {
         ViewBag.Categories = await _db.Categories.OrderBy(c => c.Name)
@@ -739,6 +790,8 @@ public class LabelRow
     public string Name { get; set; } = "";
     public decimal Price { get; set; }
     public string Code { get; set; } = "";
+    public string Category { get; set; } = "";
+    public string? Description { get; set; }
 }
 
 public class MovementHistoryRow
