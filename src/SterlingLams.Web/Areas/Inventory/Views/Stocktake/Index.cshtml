@@ -1,211 +1,232 @@
-@model List<SterlingLams.Web.Areas.Inventory.Controllers.StocktakeRow>
 @{
-    ViewData["Title"] = "Stock-take";
+    ViewData["Title"] = "Stock Take";
     var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
-    var categories = ViewBag.Categories as List<SterlingLams.Web.Models.Domain.Category> ?? new();
+    var staff = (ViewBag.Staff as IEnumerable<dynamic>) ?? Enumerable.Empty<dynamic>();
+    var reasons = ViewBag.Reasons as string[] ?? System.Array.Empty<string>();
     int? storeId = ViewBag.StoreId;
-    string q = ViewBag.Q ?? "";
-    int pg = ViewBag.Page ?? 1;
-    int totalPages = ViewBag.TotalPages ?? 1;
-    int? categoryId = ViewBag.CategoryId;
-    var storeName = stores.FirstOrDefault(s => s.Id == storeId)?.Name;
-    var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+    string? staffId = ViewBag.StaffId;
+    string storeName = ViewBag.StoreName ?? "";
+    bool started = storeId != null;
 }
 @Html.AntiForgeryToken()
 
-<div class="mb-2">
-    <h1 class="text-lg font-medium text-neutral-800">Stock-take</h1>
-    <p class="text-xs text-neutral-400">Count a branch, enter the physical quantities, and reconcile any variance through the ledger.</p>
-</div>
-
-<!-- Branch + search picker -->
-<form asp-area="Inventory" asp-controller="Stocktake" asp-action="Index" method="get" class="flex flex-wrap items-end gap-3 bg-white border border-neutral-100 rounded-sm p-4 mb-4">
-    <div>
-        <label class="block text-xs text-neutral-500 mb-1">Branch</label>
-        <select name="storeId" onchange="this.form.submit()" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white">
-            <option value="">— Select a branch —</option>
-            @foreach (var s in stores)
-            {
-                <option value="@s.Id" selected="@(storeId == s.Id)">@s.Name</option>
-            }
-        </select>
-    </div>
-    @if (storeId != null)
-    {
-        <div>
-            <label class="block text-xs text-neutral-500 mb-1">Search</label>
-            <input id="stocktake-scan" type="text" name="q" value="@q" autofocus autocomplete="off" placeholder="Scan barcode or search…" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:border-emerald-400 focus:outline-none" />
-        </div>
-        <div>
-            <label class="block text-xs text-neutral-500 mb-1">Category</label>
-            <select name="categoryId" onchange="this.form.submit()" class="@selectCls">
-                <option value="">All categories</option>
-                @foreach (var c in categories)
-                {
-                    <option value="@c.Id" selected="@(categoryId == c.Id)">@c.Name</option>
-                }
-            </select>
-        </div>
-        <button type="submit" class="px-4 py-2 text-sm border border-neutral-200 rounded-sm hover:border-neutral-400">Go</button>
-    }
-</form>
-
-@if (storeId == null)
+@if (!started)
 {
-    <div class="bg-white border border-neutral-100 rounded-sm p-12 text-center text-sm text-neutral-400">Choose a branch to start counting.</div>
+    <div class="bg-white border border-neutral-200 rounded-md p-6 max-w-3xl">
+        <h2 class="text-sm font-semibold text-neutral-800 mb-4">Select staff and location of the stock take</h2>
+        <form asp-area="Inventory" asp-controller="Stocktake" asp-action="Index" method="get" class="space-y-4">
+            <div class="grid grid-cols-[140px_1fr] items-center gap-4">
+                <label class="text-sm text-neutral-600">Staff Member:</label>
+                <select name="staffId" required class="border border-neutral-200 rounded-md px-3 py-2.5 text-sm bg-white">
+                    <option value="">No staff member selected</option>
+                    @foreach (var s in staff) { <option value="@s.id">@s.name</option> }
+                </select>
+                <label class="text-sm text-neutral-600">Location:</label>
+                <select name="storeId" required class="border border-neutral-200 rounded-md px-3 py-2.5 text-sm bg-white">
+                    <option value="">No location selected</option>
+                    @foreach (var s in stores) { <option value="@s.Id">@s.Name</option> }
+                </select>
+            </div>
+            <button type="submit" class="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">Start Stock Take</button>
+        </form>
+    </div>
 }
 else
 {
-    <div class="flex items-center justify-between mb-3">
-        <p class="text-xs text-neutral-500">Counting <strong>@storeName</strong> — <span id="entered-count">0</span> counted</p>
-        <button type="button" id="apply-stocktake" class="px-4 py-2 bg-emerald-600 text-white text-xs rounded-sm hover:bg-emerald-700 transition-colors">Apply stock-take</button>
-    </div>
-
-    <div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
-        <table class="w-full text-sm">
-            <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
-                <tr>
-                    <th class="text-left font-medium px-4 py-3">Product</th>
-                    <th class="text-right font-medium px-4 py-3">System</th>
-                    <th class="text-center font-medium px-4 py-3">Counted</th>
-                    <th class="text-right font-medium px-4 py-3">Variance</th>
-                </tr>
-            </thead>
-            <tbody class="divide-y divide-neutral-100">
-                @if (!Model.Any()) { <tr><td colspan="4" class="px-4 py-10 text-center text-neutral-400">No products.</td></tr> }
-                @foreach (var r in Model)
-                {
-                    <tr class="hover:bg-neutral-50" data-row-pid="@r.ProductId">
-                        <td class="px-4 py-2.5">
-                            <p class="text-xs text-neutral-800">@r.Name</p>
-                            @if (!string.IsNullOrEmpty(r.Sku)) { <p class="text-[10px] text-neutral-400 font-mono">@r.Sku</p> }
-                            @if (r.HasVariants) { <p class="text-[10px] text-amber-600">@r.Variants.Count variant(s) — row is unallocated pool</p> }
-                        </td>
-                        <td class="px-4 py-2.5 text-right text-neutral-600">@r.System</td>
-                        <td class="px-4 py-2.5 text-center">
-                            <input type="number" min="0" placeholder="—"
-                                   data-pid="@r.ProductId" data-vid="" data-system="@r.System"
-                                   class="count-cell w-20 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-emerald-400" />
-                        </td>
-                        <td class="px-4 py-2.5 text-right text-xs variance-cell" data-pid="@r.ProductId" data-vid="">—</td>
-                    </tr>
-                    @foreach (var v in r.Variants)
-                    {
-                        <tr class="bg-neutral-50/60" data-row-pid="@r.ProductId" data-row-vid="@v.VariantId">
-                            <td class="px-4 py-1.5 pl-10">
-                                <p class="text-[11px] text-neutral-600">↳ @v.Name</p>
-                                @if (!string.IsNullOrEmpty(v.Sku)) { <p class="text-[10px] text-neutral-400 font-mono">@v.Sku</p> }
-                            </td>
-                            <td class="px-4 py-1.5 text-right text-neutral-500">@v.System</td>
-                            <td class="px-4 py-1.5 text-center">
-                                <input type="number" min="0" placeholder="—"
-                                       data-pid="@r.ProductId" data-vid="@v.VariantId" data-system="@v.System"
-                                       class="count-cell w-20 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-emerald-400" />
-                            </td>
-                            <td class="px-4 py-1.5 text-right text-xs variance-cell" data-pid="@r.ProductId" data-vid="@v.VariantId">—</td>
-                        </tr>
-                    }
-                }
-            </tbody>
-        </table>
-    </div>
-
-    @if (totalPages > 1)
-    {
-        <div class="flex items-center justify-center gap-1.5 mt-4 flex-wrap text-xs text-neutral-500">
-            <span>Page @pg of @totalPages</span>
-            @if (pg > 1) { <a asp-area="Inventory" asp-controller="Stocktake" asp-action="Index" asp-route-storeId="@storeId" asp-route-q="@q" asp-route-categoryId="@categoryId" asp-route-page="@(pg-1)" class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">‹ Prev</a> }
-            @if (pg < totalPages) { <a asp-area="Inventory" asp-controller="Stocktake" asp-action="Index" asp-route-storeId="@storeId" asp-route-q="@q" asp-route-categoryId="@categoryId" asp-route-page="@(pg+1)" class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">Next ›</a> }
+    <div class="bg-white border border-neutral-200 rounded-md">
+        <div class="flex items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 flex-wrap">
+            <div>
+                <h1 class="text-xl font-semibold text-neutral-900">Stocktake</h1>
+                <p class="text-xs text-neutral-500 mt-0.5">@storeName.Replace("Sterlin Glams ", "")</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="button" id="st-notes-btn" class="px-4 py-2 bg-sky-500 text-white text-xs font-medium rounded-md hover:bg-sky-600">Stocktake Notes</button>
+                <button type="button" id="st-review-btn" class="px-4 py-2 bg-emerald-600 text-white text-xs font-medium rounded-md hover:bg-emerald-700">Review Stocktake</button>
+            </div>
         </div>
-        <p class="text-center text-[11px] text-amber-600 mt-2">Counts you enter are saved only when you click “Apply stock-take”. Apply before changing page.</p>
+
+        <div id="st-notes" class="hidden px-5 pt-4">
+            <textarea id="st-note" rows="2" placeholder="Stocktake notes…" class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-blue-400"></textarea>
+        </div>
+
+        <div class="px-5 py-4">
+            <div class="relative">
+                <input id="st-search" type="text" autocomplete="off" placeholder="Search for products…"
+                       class="w-full border border-neutral-300 rounded-md px-4 py-3 text-sm focus:outline-none focus:border-blue-400" />
+                <div id="st-suggest" class="hidden absolute z-20 left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-md shadow-lg max-h-72 overflow-y-auto"></div>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 px-5 pb-3 border-b border-neutral-100 flex-wrap">
+            <select id="st-reason-all" class="border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white">
+                <option value="">Reason (required)</option>
+                @foreach (var r in reasons) { <option value="@r">@r</option> }
+            </select>
+            <button type="button" id="st-apply-all" class="px-4 py-2 bg-blue-500 text-white text-xs font-medium rounded-md hover:bg-blue-600">Apply to all</button>
+            <div class="ml-auto flex items-center gap-2">
+                <button type="button" id="st-clear" class="px-4 py-2 border border-neutral-200 text-neutral-600 text-xs rounded-md hover:border-neutral-400">Clear list</button>
+                <button type="button" id="st-complete" class="px-4 py-2 bg-emerald-600 text-white text-xs font-medium rounded-md hover:bg-emerald-700">Complete Stocktake</button>
+            </div>
+        </div>
+
+        <div id="st-cards" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-3 px-5 py-4">
+            <div class="rounded-md bg-blue-500 text-white text-center py-3"><div class="text-[10px] uppercase tracking-wide">Showing</div><div class="text-2xl font-semibold" id="c-all">0</div><div class="text-[11px]">All items</div></div>
+            <div class="rounded-md border-2 border-red-300 text-center py-3"><div class="text-[10px] uppercase tracking-wide text-red-400">Show</div><div class="text-2xl font-semibold text-red-500" id="c-disc">0</div><div class="text-[11px] text-red-500">Discrepancies</div></div>
+            <div class="rounded-md border-2 border-emerald-300 text-center py-3"><div class="text-[10px] uppercase tracking-wide text-emerald-500">Show</div><div class="text-2xl font-semibold text-emerald-600" id="c-correct">0</div><div class="text-[11px] text-emerald-600">Correct</div></div>
+            <div class="rounded-md border-2 border-neutral-300 text-center py-3"><div class="text-[10px] uppercase tracking-wide text-neutral-400">Show</div><div class="text-2xl font-semibold text-neutral-600" id="c-unc">0</div><div class="text-[11px] text-neutral-600">Uncounted</div></div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm min-w-[760px]">
+                <thead class="bg-neutral-50 text-neutral-500 text-xs">
+                    <tr>
+                        <th class="text-left font-semibold px-4 py-3">Product</th>
+                        <th class="text-left font-semibold px-4 py-3">Barcode</th>
+                        <th class="text-left font-semibold px-4 py-3">Category</th>
+                        <th class="text-center font-semibold px-4 py-3">Expected stock</th>
+                        <th class="text-center font-semibold px-4 py-3">Actual stock</th>
+                        <th class="px-2 py-3 w-10"></th>
+                    </tr>
+                </thead>
+                <tbody id="st-rows" class="divide-y divide-neutral-100">
+                    <tr id="st-empty"><td colspan="6" class="px-4 py-16 text-center text-neutral-400 text-sm">Search or scan a product to add it to the count.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@section Scripts {
+<script>
+(function () {
+    @if (!started) { <text>return;</text> }
+    var storeId = @(storeId ?? 0);
+    var staffId = '@(staffId ?? "")';
+    var reasons = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(reasons));
+    var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+    var el = function (id) { return document.getElementById(id); };
+    var lines = {};   // pid → { name, barcode, category, expected, counted, reason }
+    var reviewing = false;
+
+    function reasonOptions(sel) {
+        return '<option value="">Reason…</option>' + reasons.map(function (r) { return '<option value="' + r + '"' + (r === sel ? ' selected' : '') + '>' + r + '</option>'; }).join('');
+    }
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]); }); }
+
+    function rowHtml(pid, l) {
+        var counted = (l.counted === null || l.counted === undefined) ? '' : l.counted;
+        var diff = counted !== '' && parseInt(counted, 10) !== l.expected;
+        return '<tr data-pid="' + pid + '">'
+            + '<td class="px-4 py-2.5 text-neutral-800">' + esc(l.name) + '</td>'
+            + '<td class="px-4 py-2.5 text-neutral-500 font-mono text-xs">' + esc(l.barcode || '—') + '</td>'
+            + '<td class="px-4 py-2.5 text-neutral-500 text-xs">' + esc(l.category || '—') + '</td>'
+            + '<td class="px-4 py-2.5 text-center text-neutral-600">' + l.expected + '</td>'
+            + '<td class="px-4 py-2.5 text-center"><input type="number" min="0" value="' + counted + '" data-counted class="w-24 text-center border border-neutral-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400" />'
+            + '<div data-reasonwrap class="mt-1 ' + (diff ? '' : 'hidden') + '"><select data-reason class="text-xs border border-neutral-200 rounded px-2 py-1">' + reasonOptions(l.reason) + '</select></div></td>'
+            + '<td class="px-2 py-2.5 text-right"><button type="button" data-rm class="text-neutral-400 hover:text-red-600">✕</button></td></tr>';
+    }
+    function render() {
+        var rows = el('st-rows'); var ids = Object.keys(lines);
+        if (!ids.length) { rows.innerHTML = '<tr id="st-empty"><td colspan="6" class="px-4 py-16 text-center text-neutral-400 text-sm">Search or scan a product to add it to the count.</td></tr>'; updateCards(); return; }
+        rows.innerHTML = ids.map(function (pid) { return rowHtml(pid, lines[pid]); }).join('');
+        updateCards();
+    }
+    function updateCards() {
+        var ids = Object.keys(lines);
+        var counted = ids.filter(function (id) { var c = lines[id].counted; return c !== '' && c !== null && c !== undefined; });
+        var disc = counted.filter(function (id) { return parseInt(lines[id].counted, 10) !== lines[id].expected; });
+        el('c-all').textContent = ids.length;
+        el('c-disc').textContent = disc.length;
+        el('c-correct').textContent = counted.length - disc.length;
+        el('c-unc').textContent = ids.length - counted.length;
     }
 
-    <script>
-    (function () {
-        const storeId = @storeId;
-        const btn = document.getElementById('apply-stocktake');
-        const enteredEl = document.getElementById('entered-count');
-        const token = document.querySelector('input[name="__RequestVerificationToken"]');
-        const counted = () => [...document.querySelectorAll('input.count-cell')].filter(i => i.value !== '');
-        function refresh() {
-            enteredEl.textContent = counted().length;
-            document.querySelectorAll('input.count-cell').forEach(i => {
-                const vc = document.querySelector(`.variance-cell[data-pid="${i.dataset.pid}"][data-vid="${i.dataset.vid || ''}"]`);
-                if (!vc) return;
-                if (i.value === '') { vc.textContent = '—'; vc.className = 'px-4 py-2.5 text-right text-xs variance-cell text-neutral-300'; return; }
-                const v = (+i.value) - (+i.dataset.system);
-                vc.textContent = (v > 0 ? '+' : '') + v;
-                vc.className = 'px-4 py-2.5 text-right text-xs variance-cell ' + (v === 0 ? 'text-neutral-400' : v > 0 ? 'text-emerald-600' : 'text-red-600');
-            });
-        }
-        document.addEventListener('input', e => { if (e.target.classList && e.target.classList.contains('count-cell')) refresh(); });
-        refresh();
-        btn.addEventListener('click', async () => {
-            const counts = counted().map(i => ({ productId: +i.dataset.pid, variantId: i.dataset.vid ? +i.dataset.vid : null, counted: +i.value }));
-            if (!counts.length) { alert('Enter at least one count.'); return; }
-            if (!confirm('Reconcile ' + counts.length + ' product(s) to the counted quantities? This adjusts stock via the ledger.')) return;
-            btn.disabled = true; btn.textContent = 'Applying…';
-            try {
-                const res = await fetch('/Inventory/Stocktake/Apply', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token ? token.value : '' },
-                    body: JSON.stringify({ storeId: storeId, counts: counts })
+    function addProduct(p) {
+        if (!lines[p.id]) lines[p.id] = { name: p.name, barcode: p.barcode, category: p.category, expected: p.expected, counted: '', reason: '' };
+        render();
+        var tr = el('st-rows').querySelector('tr[data-pid="' + p.id + '"]');
+        if (tr) { tr.scrollIntoView({ block: 'center' }); var i = tr.querySelector('[data-counted]'); if (i) i.focus(); }
+    }
+
+    el('st-rows').addEventListener('input', function (e) {
+        if (!e.target.hasAttribute('data-counted')) return;
+        var tr = e.target.closest('tr'); var pid = tr.dataset.pid;
+        lines[pid].counted = e.target.value;
+        var diff = e.target.value !== '' && parseInt(e.target.value, 10) !== lines[pid].expected;
+        tr.querySelector('[data-reasonwrap]').classList.toggle('hidden', !diff);
+        updateCards();
+    });
+    el('st-rows').addEventListener('change', function (e) {
+        if (e.target.hasAttribute('data-reason')) lines[e.target.closest('tr').dataset.pid].reason = e.target.value;
+    });
+    el('st-rows').addEventListener('click', function (e) {
+        if (e.target.hasAttribute('data-rm')) { delete lines[e.target.closest('tr').dataset.pid]; render(); }
+    });
+
+    var sug = el('st-suggest'); var t;
+    el('st-search').addEventListener('input', function () {
+        var q = this.value.trim(); clearTimeout(t);
+        if (q.length < 2) { sug.classList.add('hidden'); return; }
+        t = setTimeout(function () {
+            fetch('/Inventory/Stocktake/StSearch?storeId=' + storeId + '&q=' + encodeURIComponent(q))
+                .then(function (r) { return r.json(); })
+                .then(function (list) {
+                    if (!list.length) { sug.classList.add('hidden'); return; }
+                    sug.innerHTML = list.map(function (p) {
+                        return '<button type="button" data-p="' + esc(JSON.stringify(p)) + '" class="flex items-center justify-between gap-3 w-full text-left px-4 py-2.5 text-sm hover:bg-neutral-50 border-b border-neutral-50">'
+                            + '<span>' + esc(p.name) + '</span><span class="text-blue-600 text-xs">Add</span></button>';
+                    }).join('');
+                    sug.classList.remove('hidden');
                 });
-                const data = await res.json();
-                if (data.success) { alert(data.count + ' product(s) reconciled.'); location.reload(); }
-                else { alert(data.message || 'Failed.'); btn.disabled = false; btn.textContent = 'Apply stock-take'; }
-            } catch { alert('Failed. Please try again.'); btn.disabled = false; btn.textContent = 'Apply stock-take'; }
+        }, 200);
+    });
+    sug.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-p]'); if (!b) return;
+        var raw = b.getAttribute('data-p').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+        addProduct(JSON.parse(raw));
+        el('st-search').value = ''; sug.classList.add('hidden');
+    });
+    el('st-search').addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return; e.preventDefault();
+        var code = this.value.trim(); if (!code) return;
+        fetch('/Inventory/Stocktake/ScanLookup?storeId=' + storeId + '&code=' + encodeURIComponent(code))
+            .then(function (r) { return r.json(); })
+            .then(function (d) { if (d.found) { addProduct(d); el('st-search').value = ''; sug.classList.add('hidden'); } });
+    });
+    document.addEventListener('click', function (e) { if (!sug.contains(e.target) && e.target !== el('st-search')) sug.classList.add('hidden'); });
+
+    el('st-notes-btn').addEventListener('click', function () { el('st-notes').classList.toggle('hidden'); });
+    el('st-review-btn').addEventListener('click', function () { reviewing = !reviewing; el('st-cards').classList.toggle('hidden', !reviewing); });
+    el('st-apply-all').addEventListener('click', function () {
+        var r = el('st-reason-all').value; if (!r) { alert('Pick a reason first.'); return; }
+        Object.keys(lines).forEach(function (pid) { if (lines[pid].counted !== '' && parseInt(lines[pid].counted, 10) !== lines[pid].expected) lines[pid].reason = r; });
+        render();
+    });
+    el('st-clear').addEventListener('click', function () { if (confirm('Clear the count list?')) { lines = {}; render(); } });
+
+    el('st-complete').addEventListener('click', function () {
+        var payload = []; var missingReason = false;
+        Object.keys(lines).forEach(function (pid) {
+            var l = lines[pid];
+            if (l.counted === '' || l.counted === null) return;
+            var c = parseInt(l.counted, 10); if (isNaN(c)) return;
+            if (c !== l.expected && !l.reason) missingReason = true;
+            payload.push({ productId: parseInt(pid, 10), counted: c, reason: l.reason || null });
         });
-
-        // ── Scan box ────────────────────────────────────────────────────────────
-        // Exact barcode/SKU match → jump to / insert the row inline (no reload, so
-        // unsaved counts above survive). Anything else falls back to the normal search.
-        const scanBox = document.getElementById('stocktake-scan');
-        const tbody = document.querySelector('table tbody');
-        const esc = s => String(s).replace(/[&<>]/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]));
-
-        function buildRow(data) {
-            const tr = document.createElement('tr');
-            tr.className = 'hover:bg-neutral-50';
-            tr.setAttribute('data-row-pid', data.productId);
-            tr.innerHTML = `<td class="px-4 py-2.5">
-                    <p class="text-xs text-neutral-800">${esc(data.name)}</p>
-                    ${data.sku ? `<p class="text-[10px] text-neutral-400 font-mono">${esc(data.sku)}</p>` : ''}
-                </td>
-                <td class="px-4 py-2.5 text-right text-neutral-600">${data.system}</td>
-                <td class="px-4 py-2.5 text-center">
-                    <input type="number" min="0" placeholder="—" data-pid="${data.productId}" data-vid="" data-system="${data.system}"
-                           class="count-cell w-20 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-emerald-400" />
-                </td>
-                <td class="px-4 py-2.5 text-right text-xs variance-cell" data-pid="${data.productId}" data-vid="">—</td>`;
-            return tr;
-        }
-
-        scanBox.addEventListener('keydown', async (e) => {
-            if (e.key !== 'Enter') return;
-            // Always swallow Enter on this box: an empty submit would reload the page
-            // and silently discard unsaved counts.
-            e.preventDefault();
-            const code = scanBox.value.trim();
-            if (!code) return;
-            if (!tbody) { scanBox.closest('form').submit(); return; }
-            const res = await fetch(`/Inventory/Stocktake/ScanLookup?code=${encodeURIComponent(code)}&storeId=${storeId}`);
-            const data = await res.json();
-            if (!data.found) { scanBox.closest('form').submit(); return; }
-            scanBox.value = '';
-            let row = tbody.querySelector(`tr[data-row-pid="${data.productId}"]`);
-            if (!row) {
-                const placeholder = tbody.querySelector('td[colspan]');
-                if (placeholder) placeholder.closest('tr').remove();
-                row = buildRow(data);
-                tbody.prepend(row);
-                refresh();
-            }
-            row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            row.classList.add('bg-emerald-50');
-            setTimeout(() => row.classList.remove('bg-emerald-50'), 1500);
-            row.querySelector('.count-cell')?.focus();
-        });
-    })();
-    </script>
+        if (!payload.length) { alert('Enter at least one count.'); return; }
+        if (missingReason) { alert('Please select a reason for each difference.'); return; }
+        var btn = el('st-complete'); btn.disabled = true; btn.textContent = 'Completing…';
+        fetch('/Inventory/Stocktake/Complete', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+            body: JSON.stringify({ storeId: storeId, staffId: staffId, note: el('st-note').value, lines: payload })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.success) { window.location.href = '/Inventory/Stocktake/Details/' + d.id; }
+                else { alert(d.message || 'Could not complete.'); btn.disabled = false; btn.textContent = 'Complete Stocktake'; }
+            })
+            .catch(function () { alert('Could not complete.'); btn.disabled = false; btn.textContent = 'Complete Stocktake'; });
+    });
+})();
+</script>
 }
