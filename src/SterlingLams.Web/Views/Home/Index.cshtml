@@ -23,6 +23,9 @@
 
     var showFeatured    = await SettingsService.GetBoolAsync("homepage.show_featured", true);
     var featuredHeading = await SettingsService.GetAsync("homepage.featured_heading", "Featured Pieces");
+    // Slider speeds (seconds → ms), clamped to a sane minimum.
+    var heroSlideMs     = Math.Max(2, await SettingsService.GetIntAsync("homepage.hero_slide_seconds", 5)) * 1000;
+    var featuredSlideMs = Math.Max(2, await SettingsService.GetIntAsync("homepage.featured_slide_seconds", 3)) * 1000;
     var storeBannerText = await SettingsService.GetAsync("homepage.store_banner_text",
         "Experience our jewellery in person at any of our three Lagos boutiques. Our consultants are ready to help you find the perfect piece.");
 
@@ -445,7 +448,7 @@
         slides.forEach(function (s, i) { s.classList.toggle('opacity-100', i === idx); s.classList.toggle('opacity-0', i !== idx); });
         dots.forEach(function (d, i) { d.classList.toggle('bg-white', i === idx); d.classList.toggle('bg-white/40', i !== idx); });
     }
-    function restart() { clearInterval(timer); timer = setInterval(function () { show(idx + 1); }, 5000); }
+    function restart() { clearInterval(timer); timer = setInterval(function () { show(idx + 1); }, @heroSlideMs); }
     var nb = document.getElementById('hero-next'), pb = document.getElementById('hero-prev');
     if (nb) nb.addEventListener('click', function () { show(idx + 1); restart(); });
     if (pb) pb.addEventListener('click', function () { show(idx - 1); restart(); });
@@ -469,7 +472,7 @@
         if (atEnd()) track.scrollTo({ left: 0, behavior: 'smooth' });
         else track.scrollBy({ left: card(), behavior: 'smooth' });
     }
-    function start() { if (track.scrollWidth > track.clientWidth + 8) timer = setInterval(advance, 3000); }
+    function start() { if (track.scrollWidth > track.clientWidth + 8) timer = setInterval(advance, @featuredSlideMs); }
     function stop() { clearInterval(timer); }
     function restart() { stop(); start(); }
 
