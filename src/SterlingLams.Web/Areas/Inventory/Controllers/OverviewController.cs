@@ -20,18 +20,25 @@ public class OverviewController : InventoryAreaController
         if (storeId.HasValue && stores.All(s => s.Id != storeId)) storeId = null; // ignore unknown branch
         ViewBag.Days = days; ViewBag.StoreId = storeId; ViewBag.Stores = stores;
 
-        // Product-level stock totals (SQL-side sum over each product's inventory rows; scoped to a
-        // branch when one is selected).
-        var prod = await _db.Products.Where(p => p.IsActive)
-            .Select(p => new
-            {
-                p.Name,
-                p.LowStockThreshold,
-                Total = p.StoreInventories.Where(si => storeId == null || si.StoreId == storeId).Sum(si => (int?)si.QuantityOnHand) ?? 0
-            })
+        // Product-level stock totals. Done as a flat product read + ONE grouped inventory aggregate
+        // (instead of a correlated SUM subquery per product, which scanned StoreInventories ~8k times
+        // and was the Overview's main bottleneck).
+        var prods = await _db.Products.Where(p => p.IsActive)
+            .Select(p => new { p.Id, p.Name, p.LowStockThreshold })
             .ToListAsync();
+        var totalsById = await _db.StoreInventories
+            .Where(si => storeId == null || si.StoreId == storeId)
+            .GroupBy(si => si.ProductId)
+            .Select(g => new { ProductId = g.Key, Total = g.Sum(x => x.QuantityOnHand) })
+            .ToDictionaryAsync(x => x.ProductId, x => x.Total);
 
         int Thr(int t) => Math.Max(1, t);
+        var prod = prods.Select(p => new
+        {
+            p.Name, p.LowStockThreshold,
+            Total = totalsById.TryGetValue(p.Id, out var t) ? t : 0
+        }).ToList();
+
         var vm = new InventoryOverviewViewModel
         {
             TotalSkus   = prod.Count,
@@ -68,9 +75,12 @@ public class OverviewController : InventoryAreaController
             && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded
             && (storeId == null || o.PickupStoreId == storeId || o.FulfillingStoreId == storeId));
 
-        // Top products by units sold.
+        // Top products by units sold (join OrderItems → Orders via the nav with the same window/scope,
+        // instead of an EXISTS subquery evaluated per order item across the whole table).
         vm.TopProducts = await _db.OrderItems
-            .Where(oi => soldOrders.Any(o => o.Id == oi.OrderId))
+            .Where(oi => oi.Order.CreatedAt >= since
+                && oi.Order.Status != OrderStatus.Cancelled && oi.Order.Status != OrderStatus.Refunded
+                && (storeId == null || oi.Order.PickupStoreId == storeId || oi.Order.FulfillingStoreId == storeId))
             .GroupBy(oi => oi.ProductName)
             .Select(g => new TopProductRow
             {
