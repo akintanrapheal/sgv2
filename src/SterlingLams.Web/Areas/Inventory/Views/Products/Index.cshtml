@@ -128,53 +128,34 @@
                 }
                 @foreach (var p in Model)
                 {
-                    <tr class="hover:bg-neutral-50">
-                        <td data-col="name" class="px-4 py-3 text-neutral-800">
-                            @if (p.Variants.Any())
-                            {
-                                <button type="button" class="vexpand text-neutral-400 hover:text-neutral-700 mr-1 inline-block w-3 transition-transform" data-pid="@p.Id">▸</button>
-                            }
-                            @(string.IsNullOrWhiteSpace(p.Sku) ? p.Name : $"{p.Sku} ({p.Name})")
-                            @if (p.Variants.Any())
-                            {
-                                <span class="text-[10px] text-blue-600 ml-1">@p.Variants.Count option(s)</span>
-                            }
-                        </td>
-                        <td data-col="sku" class="px-4 py-3 text-neutral-600">@(p.Sku ?? "—")</td>
-                        <td data-col="category" class="px-4 py-3 text-neutral-600">@p.CategoryName</td>
-                        <td data-col="price" class="px-4 py-3 text-right text-neutral-800">@Money(p.Price)</td>
-                        <td data-col="colour" class="px-4 py-3 text-neutral-500">
-                            @if (string.IsNullOrWhiteSpace(p.ButtonColour)) { <span>None</span> }
-                            else { <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full inline-block border border-neutral-200" style="background:@p.ButtonColour"></span>@p.ButtonColour</span> }
-                        </td>
-                        <td data-col="barcode" class="px-4 py-3 text-neutral-500 font-mono text-xs">@(p.Barcode ?? "—")</td>
-                        <td data-col="description" class="px-4 py-3 text-neutral-500">@Trunc(p.Description, 60)</td>
-                        <td data-col="trackstock" class="px-4 py-3 text-center">@(p.TrackStock ? "✓" : "—")</td>
-                        <td data-col="image" class="px-4 py-3 text-center">
-                            @if (!string.IsNullOrEmpty(p.ImageUrl)) { <img src="@p.ImageUrl" class="w-8 h-8 object-cover rounded inline-block" alt="" /> } else { <span class="text-neutral-300">—</span> }
-                        </td>
-                        <td data-col="sellweb" class="px-4 py-3 text-center">@(p.IsActive ? "✓" : "—")</td>
-                        <td data-col="actions" class="px-2 py-3 text-right">
-                            <button type="button" class="kebab text-neutral-400 hover:text-neutral-700 px-2"
-                                    data-id="@p.Id" data-archived="@archived.ToString().ToLower()" data-track="@p.TrackStock.ToString().ToLower()">
-                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 2a2 2 0 110 4 2 2 0 010-4zm0 6a2 2 0 110 4 2 2 0 010-4z"/></svg>
-                            </button>
-                        </td>
-                    </tr>
-                    @foreach (var v in p.Variants)
+                    var disp = string.IsNullOrWhiteSpace(p.Sku) ? p.Name : $"{p.Sku} ({p.Name})";
+                    // Single product → one row; variable product → one row per colour/size (EPOS-style).
+                    var rows = p.Variants.Any()
+                        ? p.Variants.Select(v => new { Name = $"{disp} – {v.Name}", Sku = v.Sku ?? p.Sku, Barcode = v.Barcode, Price = v.Price, Vid = (int?)v.VariantId }).ToList()
+                        : new[] { new { Name = disp, Sku = p.Sku, Barcode = p.Barcode, Price = p.Price, Vid = (int?)null } }.ToList();
+                    foreach (var r in rows)
                     {
-                        <tr class="variant-row hidden bg-neutral-50/60" data-parent="@p.Id">
-                            <td colspan="11" class="px-4 py-2 pl-12">
-                                <div class="flex items-center gap-4 text-sm flex-wrap">
-                                    <span class="text-neutral-700">↳ @v.Name</span>
-                                    @if (!string.IsNullOrWhiteSpace(v.Sku)) { <span class="text-neutral-400 text-xs font-mono">@v.Sku</span> }
-                                    <span class="text-neutral-400 text-xs font-mono">@(string.IsNullOrWhiteSpace(v.Barcode) ? "no barcode" : v.Barcode)</span>
-                                    <span class="text-neutral-600">@Money(v.Price)</span>
-                                    <span class="ml-auto flex items-center gap-3">
-                                        <a asp-area="Inventory" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id" class="text-blue-700 text-xs hover:underline">✎ Edit</a>
-                                        <button type="button" class="vtrack text-blue-700 text-xs hover:underline" data-pid="@p.Id" data-vid="@v.VariantId">📦 Track Stock</button>
-                                    </span>
-                                </div>
+                        <tr class="hover:bg-neutral-50">
+                            <td data-col="name" class="px-4 py-3 text-neutral-800">@r.Name</td>
+                            <td data-col="sku" class="px-4 py-3 text-neutral-600">@(r.Sku ?? "—")</td>
+                            <td data-col="category" class="px-4 py-3 text-neutral-600">@p.CategoryName</td>
+                            <td data-col="price" class="px-4 py-3 text-right text-neutral-800">@Money(r.Price)</td>
+                            <td data-col="colour" class="px-4 py-3 text-neutral-500">
+                                @if (string.IsNullOrWhiteSpace(p.ButtonColour)) { <span>None</span> }
+                                else { <span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full inline-block border border-neutral-200" style="background:@p.ButtonColour"></span>@p.ButtonColour</span> }
+                            </td>
+                            <td data-col="barcode" class="px-4 py-3 text-neutral-500 font-mono text-xs">@(r.Barcode ?? "—")</td>
+                            <td data-col="description" class="px-4 py-3 text-neutral-500">@Trunc(p.Description, 60)</td>
+                            <td data-col="trackstock" class="px-4 py-3 text-center">@(p.TrackStock ? "✓" : "—")</td>
+                            <td data-col="image" class="px-4 py-3 text-center">
+                                @if (!string.IsNullOrEmpty(p.ImageUrl)) { <img src="@p.ImageUrl" class="w-8 h-8 object-cover rounded inline-block" alt="" /> } else { <span class="text-neutral-300">—</span> }
+                            </td>
+                            <td data-col="sellweb" class="px-4 py-3 text-center">@(p.IsActive ? "✓" : "—")</td>
+                            <td data-col="actions" class="px-2 py-3 text-right">
+                                <button type="button" class="kebab text-neutral-400 hover:text-neutral-700 px-2"
+                                        data-id="@p.Id" data-vid="@(r.Vid?.ToString() ?? "")" data-archived="@archived.ToString().ToLower()" data-track="@p.TrackStock.ToString().ToLower()">
+                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zm0 2a2 2 0 110 4 2 2 0 010-4zm0 6a2 2 0 110 4 2 2 0 010-4z"/></svg>
+                                </button>
                             </td>
                         </tr>
                     }
@@ -450,7 +431,7 @@
     document.querySelectorAll('.kebab').forEach(function (btn) {
         btn.addEventListener('click', function (e) {
             e.stopPropagation();
-            var id = btn.dataset.id, isArch = btn.dataset.archived === 'true', tracks = btn.dataset.track === 'true';
+            var id = btn.dataset.id, vid = btn.dataset.vid, isArch = btn.dataset.archived === 'true', tracks = btn.dataset.track === 'true';
             function link(href, label) { return '<a href="' + href + '" class="block px-3 py-2 hover:bg-neutral-50">' + label + '</a>'; }
             function post(action, label, extra, cls, confirmMsg) {
                 var onsub = confirmMsg ? ' onsubmit="return confirm(\'' + confirmMsg + '\')"' : '';
@@ -459,14 +440,23 @@
                     + '<input type="hidden" name="id" value="' + id + '"/>' + (extra || '')
                     + '<button type="submit" class="w-full text-left px-3 py-2 hover:bg-neutral-50 ' + (cls || '') + '">' + label + '</button></form>';
             }
-            menu.innerHTML =
-                  link(base + 'Edit/' + id, '✎ Advanced Edit')
-                + '<button type="button" data-edit-id="' + id + '" class="w-full text-left px-3 py-2 hover:bg-neutral-50">✏ Edit</button>'
-                + '<button type="button" data-track-id="' + id + '" class="w-full text-left px-3 py-2 hover:bg-neutral-50">📦 Track Stock</button>'
-                + post('Duplicate', '⧉ Duplicate')
-                + post('SetArchived', (isArch ? '↩ Restore' : '🗄 Archive'), '<input type="hidden" name="archived" value="' + (isArch ? 'false' : 'true') + '"/>')
-                + '<div class="border-t border-neutral-100 my-1"></div>'
-                + post('Delete', '🗑 Delete', '', 'text-red-600', 'Delete this product? This cannot be undone.');
+            if (vid) {
+                // Variant row → edit the product (Advanced Edit) and track this specific colour/size.
+                menu.innerHTML =
+                      link(base + 'Edit/' + id, '✎ Advanced Edit')
+                    + '<button type="button" data-track-id="' + id + '" data-track-vid="' + vid + '" class="w-full text-left px-3 py-2 hover:bg-neutral-50">📦 Track Stock</button>';
+            }
+            else
+            {
+                menu.innerHTML =
+                      link(base + 'Edit/' + id, '✎ Advanced Edit')
+                    + '<button type="button" data-edit-id="' + id + '" class="w-full text-left px-3 py-2 hover:bg-neutral-50">✏ Edit</button>'
+                    + '<button type="button" data-track-id="' + id + '" class="w-full text-left px-3 py-2 hover:bg-neutral-50">📦 Track Stock</button>'
+                    + post('Duplicate', '⧉ Duplicate')
+                    + post('SetArchived', (isArch ? '↩ Restore' : '🗄 Archive'), '<input type="hidden" name="archived" value="' + (isArch ? 'false' : 'true') + '"/>')
+                    + '<div class="border-t border-neutral-100 my-1"></div>'
+                    + post('Delete', '🗑 Delete', '', 'text-red-600', 'Delete this product? This cannot be undone.');
+            }
             var r = btn.getBoundingClientRect();
             menu.style.top = (r.bottom + 4) + 'px';
             menu.style.left = Math.max(8, r.right - 176) + 'px';
@@ -477,7 +467,8 @@
     window.addEventListener('scroll', closeMenu, true);
 
     // ── Edit Product drawer ─────────────────────────────────────────────────────
-    var rowIds = Array.prototype.map.call(document.querySelectorAll('.kebab'), function (b) { return b.dataset.id; });
+    var rowIds = []; // unique product ids in row order (variant rows repeat their product id)
+    Array.prototype.forEach.call(document.querySelectorAll('.kebab'), function (b) { if (rowIds.indexOf(b.dataset.id) === -1) rowIds.push(b.dataset.id); });
     var editIdx = -1;
     function rowFor(id) { var b = document.querySelector('.kebab[data-id="' + id + '"]'); return b ? b.closest('tr') : null; }
     function cell(tr, col) { return tr ? tr.querySelector('[data-col="' + col + '"]') : null; }
@@ -487,7 +478,7 @@
         var eb = e.target.closest('[data-edit-id]');
         if (eb) { e.preventDefault(); closeMenu(); openEdit(eb.getAttribute('data-edit-id')); return; }
         var tb = e.target.closest('[data-track-id]');
-        if (tb) { e.preventDefault(); closeMenu(); openTrackStock(tb.getAttribute('data-track-id')); }
+        if (tb) { e.preventDefault(); closeMenu(); var vv = tb.getAttribute('data-track-vid'); openTrackStock(tb.getAttribute('data-track-id'), vv ? parseInt(vv, 10) : undefined); }
     });
 
     function openEdit(id) {
@@ -696,20 +687,6 @@
                 closeDrawers();
             })
             .catch(function () { btn.disabled = false; btn.textContent = 'Save'; alert('Save failed.'); });
-    });
-
-    // ── Variant expand/collapse + per-variant Track Stock ───────────────────────
-    document.querySelectorAll('.vexpand').forEach(function (btn) {
-        btn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            var pid = btn.dataset.pid;
-            btn.classList.toggle('rotate-90');
-            table.querySelectorAll('tr.variant-row[data-parent="' + pid + '"]').forEach(function (vr) { vr.classList.toggle('hidden'); });
-        });
-    });
-    table.addEventListener('click', function (e) {
-        var vt = e.target.closest('.vtrack');
-        if (vt) { e.preventDefault(); openTrackStock(vt.dataset.pid, parseInt(vt.dataset.vid, 10)); }
     });
 
     // ── Quick Add modal ─────────────────────────────────────────────────────────
