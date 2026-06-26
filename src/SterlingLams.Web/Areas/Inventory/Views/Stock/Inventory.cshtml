@@ -1,0 +1,130 @@
+@{
+    ViewData["Title"] = "Inventory";
+    int productId = ViewBag.ProductId;
+    string productName = ViewBag.ProductName;
+    int? backStoreId = ViewBag.BackStoreId;
+    var backUrl = Url.Action("Index", "Stock", new { area = "Inventory", storeId = backStoreId });
+}
+@Html.AntiForgeryToken()
+
+<div class="flex items-start justify-between gap-4 mb-6 flex-wrap">
+    <h1 class="text-2xl font-semibold text-neutral-900">@productName <span class="text-neutral-400 font-normal">— Inventory</span></h1>
+    <div class="flex items-center gap-2">
+        <a asp-area="Inventory" asp-controller="Products" asp-action="History" asp-route-id="@productId"
+           class="px-4 py-2.5 border border-blue-300 text-blue-700 text-sm rounded-md hover:bg-blue-50">Stock Batches</a>
+        <button type="button" id="inv-save-back" class="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">Save &amp; Go Back</button>
+    </div>
+</div>
+
+<div class="bg-white border border-neutral-200 rounded-md max-w-4xl">
+    <div class="px-6 py-5 border-b border-neutral-100">
+        <h2 class="text-lg font-medium text-neutral-800">Inventory</h2>
+        <p class="text-sm text-neutral-500 mt-1">Set your current stock plus minimum and maximum levels. Turn on alerts to be flagged when a product is low in stock, and track stock per location.</p>
+    </div>
+
+    <div class="px-6 py-5 border-b border-neutral-100 flex items-center justify-between gap-4">
+        <span class="text-sm font-medium text-neutral-700">Do you track stock for this product?</span>
+        <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="inv-track" class="sr-only peer" />
+            <div class="w-11 h-6 bg-neutral-200 rounded-full peer-checked:bg-blue-600 transition-colors"></div>
+            <span class="absolute left-0.5 top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform peer-checked:translate-x-5"></span>
+        </label>
+    </div>
+
+    <div class="px-6 py-5">
+        <label class="block text-sm font-medium text-neutral-700 mb-1">Search Locations</label>
+        <input id="inv-search" type="text" placeholder="Type a location…" class="w-full border border-neutral-200 rounded-md px-3 py-2.5 text-sm focus:outline-none focus:border-blue-400 mb-4" />
+        <div id="inv-locations" class="space-y-4"></div>
+        <button type="button" id="inv-add" class="mt-4 text-sm text-blue-700 hover:underline">+ Add location</button>
+    </div>
+
+    <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-neutral-100">
+        <a href="@backUrl" class="px-4 py-2 border border-neutral-200 text-neutral-600 text-sm rounded-md hover:border-neutral-400">Back</a>
+        <button type="button" id="inv-save" class="px-6 py-2 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700">Save</button>
+    </div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    var pid = @productId;
+    var backUrl = '@Html.Raw(backUrl)';
+    var token = document.querySelector('input[name="__RequestVerificationToken"]');
+    var el = function (id) { return document.getElementById(id); };
+    var stores = [], data = {};
+
+    function stepInput(field, value) {
+        return '<input type="number" min="0" data-f="' + field + '" value="' + (value == null ? '' : value) + '" placeholder="0" class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />';
+    }
+    function storeOptions(sel) {
+        return stores.map(function (s) { return '<option value="' + s.storeId + '"' + (s.storeId === sel ? ' selected' : '') + '>' + s.name + '</option>'; }).join('');
+    }
+    function card(l) {
+        return '<div class="border border-neutral-200 rounded-md p-4" data-store="' + l.storeId + '">'
+            + '<div class="flex items-center justify-between mb-3">'
+            + '<select data-f="store" class="border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white font-medium text-neutral-700">' + storeOptions(l.storeId) + '</select>'
+            + '<button type="button" data-remove class="text-neutral-400 hover:text-red-600 text-sm">✕ Remove</button></div>'
+            + '<div class="grid grid-cols-3 gap-3 mb-3">'
+            + '<div><div class="text-xs text-neutral-500 mb-1">Current</div>' + stepInput('onHand', l.onHand) + '<div class="text-[10px] text-neutral-400 mt-1">Stock</div></div>'
+            + '<div><div class="text-xs text-neutral-500 mb-1">Min</div>' + stepInput('min', l.min) + '<div class="text-[10px] text-neutral-400 mt-1">Stock</div></div>'
+            + '<div><div class="text-xs text-neutral-500 mb-1">Max</div>' + stepInput('max', l.max) + '<div class="text-[10px] text-neutral-400 mt-1">Stock</div></div>'
+            + '</div>'
+            + '<div class="mb-3"><div class="text-xs text-neutral-500 mb-1">On Order</div>' + stepInput('onOrder', l.onOrder) + '</div>'
+            + '<label class="flex items-center gap-2 text-sm text-neutral-600"><input type="checkbox" data-f="alerts" class="w-4 h-4 accent-blue-600"' + (l.alerts ? ' checked' : '') + ' /> Receive email alerts when products are low in stock?</label>'
+            + '</div>';
+    }
+
+    fetch('/Inventory/Products/TrackStockData?id=' + pid, { headers: { 'Accept': 'application/json' } })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (!d || !d.found) { el('inv-locations').innerHTML = '<p class="text-sm text-red-500">Could not load product.</p>'; return; }
+            el('inv-track').checked = !!d.trackStock;
+            stores = (d.locations || []).map(function (l) { return { storeId: l.storeId, name: l.name }; });
+            data = {}; (d.locations || []).forEach(function (l) { data[l.storeId] = l; });
+            el('inv-locations').innerHTML = (d.locations || []).map(card).join('');
+        });
+
+    el('inv-search').addEventListener('input', function () {
+        var q = this.value.toLowerCase();
+        Array.prototype.forEach.call(el('inv-locations').children, function (c) {
+            var sel = c.querySelector('[data-f="store"]');
+            var name = sel.options[sel.selectedIndex].text.toLowerCase();
+            c.style.display = name.indexOf(q) === -1 ? 'none' : '';
+        });
+    });
+
+    el('inv-locations').addEventListener('click', function (e) {
+        var rem = e.target.closest('[data-remove]');
+        if (rem) { var c = rem.closest('[data-store]'); if (c) c.remove(); }
+    });
+
+    el('inv-add').addEventListener('click', function () {
+        var used = Array.prototype.map.call(el('inv-locations').querySelectorAll('[data-f="store"]'), function (s) { return parseInt(s.value, 10); });
+        var next = stores.filter(function (s) { return used.indexOf(s.storeId) === -1; })[0];
+        if (!next) { alert('All locations are already shown.'); return; }
+        el('inv-locations').insertAdjacentHTML('beforeend', card(data[next.storeId] || { storeId: next.storeId, name: next.name, onHand: 0, min: null, max: null, onOrder: 0, alerts: true }));
+    });
+
+    function save(after) {
+        var seen = {}, locations = [];
+        Array.prototype.forEach.call(el('inv-locations').children, function (c) {
+            function pick(f) { var i = c.querySelector('[data-f="' + f + '"]'); return i ? i.value : ''; }
+            function num(f) { var x = parseInt(pick(f), 10); return isNaN(x) ? null : x; }
+            var sid = parseInt(pick('store'), 10);
+            if (!sid || seen[sid]) return; seen[sid] = true;
+            locations.push({ storeId: sid, onHand: num('onHand') || 0, onOrder: num('onOrder') || 0, min: num('min'), max: num('max'), alerts: c.querySelector('[data-f="alerts"]').checked });
+        });
+        return fetch('/Inventory/Products/SaveTrackStock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token ? token.value : '' },
+            body: JSON.stringify({ id: pid, trackStock: el('inv-track').checked, reason: 'Correction', locations: locations })
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            if (!d || !d.ok) { alert((d && d.error) || 'Save failed.'); return; }
+            if (after === 'back') window.location.href = backUrl; else alert('Saved.');
+        }).catch(function () { alert('Save failed.'); });
+    }
+    el('inv-save').addEventListener('click', function () { save('stay'); });
+    el('inv-save-back').addEventListener('click', function () { save('back'); });
+})();
+</script>
+}

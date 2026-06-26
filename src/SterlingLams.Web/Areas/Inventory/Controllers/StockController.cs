@@ -25,9 +25,10 @@ public class StockController : InventoryAreaController
 
     // Stock Management — EPOS-style single-location grid: Sale price, Stock, On order, Min, Max for
     // the selected branch. Variant products show read-only roll-up + editable per-variant rows.
-    public async Task<IActionResult> Index(string q = "", int page = 1, int? categoryId = null, int? storeId = null)
+    public async Task<IActionResult> Index(string q = "", int page = 1, int? categoryId = null, int? storeId = null, int pageSize = 50)
     {
         ViewData["Title"] = "Stock Management";
+        if (pageSize != 25 && pageSize != 50 && pageSize != 100) pageSize = 50;
 
         var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
         if (stores.Count == 0)
@@ -49,7 +50,7 @@ public class StockController : InventoryAreaController
             pq = pq.Where(p => p.CategoryId == categoryId.Value);
 
         var total = await pq.CountAsync();
-        var prods = await pq.OrderBy(p => p.Name).Skip((page - 1) * PageSize).Take(PageSize).ToListAsync();
+        var prods = await pq.OrderBy(p => p.Name).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         var pids = prods.Select(p => p.Id).ToList();
         var inv = pids.Count > 0
             ? await _db.StoreInventories.Where(si => pids.Contains(si.ProductId) && si.StoreId == selStore).ToListAsync()
@@ -91,9 +92,25 @@ public class StockController : InventoryAreaController
             CategoryFilter = categoryId,
             Categories = await _db.Categories.OrderBy(c => c.Name).ToListAsync(),
             Page = page,
-            TotalPages = (int)Math.Ceiling(total / (double)PageSize),
-            Total = total
+            PageSize = pageSize,
+            TotalPages = (int)Math.Ceiling(total / (double)pageSize),
+            Total = total,
+            FirstRow = total == 0 ? 0 : (page - 1) * pageSize + 1,
+            LastRow = Math.Min(page * pageSize, total)
         });
+    }
+
+    // Full-page per-location Inventory editor (Stock Management row kebab → "Inventory").
+    // Reuses Products.TrackStockData / Products.SaveTrackStock for the data + save.
+    public async Task<IActionResult> Inventory(int id, int? storeId = null)
+    {
+        var p = await _db.Products.Where(x => x.Id == id).Select(x => new { x.Id, x.Name }).FirstOrDefaultAsync();
+        if (p == null) return NotFound();
+        ViewData["Title"] = $"{p.Name} — Inventory";
+        ViewBag.ProductId = p.Id;
+        ViewBag.ProductName = p.Name;
+        ViewBag.BackStoreId = storeId;
+        return View();
     }
 
     // Exact barcode/SKU lookup for the scan box — returns the row data needed to insert/highlight
@@ -347,8 +364,11 @@ public class StockManagementVm
     public int? CategoryFilter { get; set; }
     public List<Category> Categories { get; set; } = new();
     public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 50;
     public int TotalPages { get; set; } = 1;
     public int Total { get; set; }
+    public int FirstRow { get; set; }
+    public int LastRow { get; set; }
 }
 
 public class StockMgmtRow
