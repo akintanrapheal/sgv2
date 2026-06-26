@@ -10,11 +10,16 @@
     var recentlyViewed = ViewBag.RecentlyViewed as List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> ?? new();
 
     var heroImageUrl  = await SettingsService.GetAsync("homepage.hero_image_url", "");
+    var heroImagesRaw = await SettingsService.GetAsync("homepage.hero_images", "");
     var heroEyebrow   = await SettingsService.GetAsync("homepage.hero_eyebrow",   "New Collection 2025");
     var heroHeadline  = await SettingsService.GetAsync("homepage.hero_headline",  "Timeless Elegance");
     var heroSubtext   = await SettingsService.GetAsync("homepage.hero_subtext",   "Luxury jewellery crafted for the discerning woman. Discover our newest arrivals.");
     var heroCta       = await SettingsService.GetAsync("homepage.hero_cta",       "Shop Collection");
-    var hasHeroImage  = !string.IsNullOrWhiteSpace(heroImageUrl);
+    // Slider images: the multi-image list when set, otherwise the single campaign image.
+    var heroImages = heroImagesRaw.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+        .Select(u => u.Trim()).Where(u => u.Length > 0).ToList();
+    if (heroImages.Count == 0 && !string.IsNullOrWhiteSpace(heroImageUrl)) heroImages.Add(heroImageUrl);
+    var hasHeroImage  = heroImages.Count > 0;
 
     var showFeatured    = await SettingsService.GetBoolAsync("homepage.show_featured", true);
     var featuredHeading = await SettingsService.GetAsync("homepage.featured_heading", "Featured Pieces");
@@ -41,15 +46,38 @@
 <!-- ─── Hero ──────────────────────────────────────────────────────────────── -->
 <section class="relative h-screen min-h-[600px] flex items-center overflow-hidden">
 
-    <!-- Background: campaign image (admin-set) or gradient fallback -->
+    <!-- Background: campaign image(s) (admin-set) or gradient fallback -->
     <div class="absolute inset-0">
         @if (hasHeroImage)
         {
-            @* LCP element: load eagerly with high priority so the largest paint isn't delayed. *@
-            <img src="@heroImageUrl" alt="Campaign" loading="eager" fetchpriority="high" decoding="async"
-                 class="w-full h-full object-cover object-center" />
+            <div id="hero-slider" class="absolute inset-0">
+                @for (var i = 0; i < heroImages.Count; i++)
+                {
+                    @* First slide is the LCP element: load eagerly + high priority; the rest are lazy. *@
+                    <img src="@heroImages[i]" alt="Campaign" decoding="async"
+                         loading="@(i == 0 ? "eager" : "lazy")" fetchpriority="@(i == 0 ? "high" : "low")"
+                         class="hero-slide absolute inset-0 w-full h-full object-cover object-center transition-opacity duration-700 @(i == 0 ? "opacity-100" : "opacity-0")"
+                         data-index="@i" />
+                }
+            </div>
             <!-- Dark overlay so text remains readable over any image -->
             <div class="absolute inset-0 bg-black/40"></div>
+
+            @if (heroImages.Count > 1)
+            {
+                <!-- Prev / Next -->
+                <button type="button" id="hero-prev" aria-label="Previous slide"
+                        class="absolute left-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white flex items-center justify-center backdrop-blur-sm transition-colors">‹</button>
+                <button type="button" id="hero-next" aria-label="Next slide"
+                        class="absolute right-4 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-white/20 hover:bg-white/40 text-white flex items-center justify-center backdrop-blur-sm transition-colors">›</button>
+                <!-- Dots -->
+                <div id="hero-dots" class="absolute bottom-20 left-1/2 -translate-x-1/2 z-20 flex gap-2">
+                    @for (var i = 0; i < heroImages.Count; i++)
+                    {
+                        <button type="button" class="hero-dot w-2.5 h-2.5 rounded-full transition-colors @(i == 0 ? "bg-white" : "bg-white/40 hover:bg-white/70")" data-index="@i" aria-label="Go to slide @(i + 1)"></button>
+                    }
+                </div>
+            }
         }
         else
         {
@@ -239,38 +267,49 @@
             <h2 class="font-cormorant text-4xl font-light text-neutral-900">@featuredHeading</h2>
         </div>
 
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
-            @if (featuredProducts.Any())
-            {
-                @foreach (var p in featuredProducts)
+        @if (featuredProducts.Any())
+        {
+            <div class="relative group/carousel">
+                @if (featuredProducts.Count > 4)
                 {
-                    <div class="group">
-                        <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="block">
-                            <div class="aspect-square bg-neutral-100 mb-4 overflow-hidden relative">
-                                <img src="@p.PrimaryImageUrl" alt="@p.Name"
-                                     loading="lazy"
-                                     class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                                <partial name="_DiscountBadge" model="p.DiscountPercent" />
-                                <div class="absolute inset-0 flex items-end justify-center pb-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                    <span class="bg-white text-neutral-900 text-xs tracking-widest uppercase px-6 py-2 shadow-lg">Quick View</span>
-                                </div>
-                            </div>
-                            <h3 class="font-light text-sm text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
-                            @if (p.IsOnSale)
-                            {
-                                <p class="text-xs mt-1"><span class="text-neutral-400 line-through">@p.FormattedRegularPrice</span> <span class="text-brand-600 ml-1">@p.FormattedPrice</span></p>
-                            }
-                            else
-                            {
-                                <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
-                            }
-                        </a>
-                        <partial name="_ProductCardCta" model="p" />
-                    </div>
+                    <button type="button" id="feat-prev" aria-label="Previous"
+                            class="hidden md:flex absolute -left-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white shadow-md border border-neutral-100 text-neutral-700 hover:bg-brand-500 hover:text-white items-center justify-center transition-colors">‹</button>
+                    <button type="button" id="feat-next" aria-label="Next"
+                            class="hidden md:flex absolute -right-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white shadow-md border border-neutral-100 text-neutral-700 hover:bg-brand-500 hover:text-white items-center justify-center transition-colors">›</button>
                 }
-            }
-            else
-            {
+                <div id="feat-track" class="flex gap-6 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-2 [&::-webkit-scrollbar]:hidden" style="scrollbar-width:none;">
+                    @foreach (var p in featuredProducts)
+                    {
+                        <div class="group snap-start shrink-0 w-[calc(50%-12px)] md:w-[calc(25%-18px)]">
+                            <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="block">
+                                <div class="aspect-square bg-neutral-100 mb-4 overflow-hidden relative">
+                                    <img src="@p.PrimaryImageUrl" alt="@p.Name"
+                                         loading="lazy"
+                                         class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                                    <partial name="_DiscountBadge" model="p.DiscountPercent" />
+                                    <div class="absolute inset-0 flex items-end justify-center pb-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                        <span class="bg-white text-neutral-900 text-xs tracking-widest uppercase px-6 py-2 shadow-lg">Quick View</span>
+                                    </div>
+                                </div>
+                                <h3 class="font-light text-sm text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
+                                @if (p.IsOnSale)
+                                {
+                                    <p class="text-xs mt-1"><span class="text-neutral-400 line-through">@p.FormattedRegularPrice</span> <span class="text-brand-600 ml-1">@p.FormattedPrice</span></p>
+                                }
+                                else
+                                {
+                                    <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
+                                }
+                            </a>
+                            <partial name="_ProductCardCta" model="p" />
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
                 @for (int i = 0; i < 4; i++)
                 {
                     <div class="group">
@@ -281,8 +320,8 @@
                         <div class="h-2 bg-neutral-100 rounded w-1/3"></div>
                     </div>
                 }
-            }
-        </div>
+            </div>
+        }
 
         <div class="text-center mt-12">
             <a asp-controller="Products" asp-action="Index"
@@ -390,6 +429,37 @@
             msg.classList.add('text-red-400');
         } finally { btn.disabled = false; }
     });
+}());
+</script>
+<script nonce="@Context.Items["csp-nonce"]">
+// Hero campaign slider — fade between images, auto-advance, arrows + dots.
+(function () {
+    var slider = document.getElementById('hero-slider');
+    if (!slider) return;
+    var slides = slider.querySelectorAll('.hero-slide');
+    if (slides.length < 2) return;
+    var dots = document.querySelectorAll('.hero-dot');
+    var idx = 0, timer;
+    function show(n) {
+        idx = (n + slides.length) % slides.length;
+        slides.forEach(function (s, i) { s.classList.toggle('opacity-100', i === idx); s.classList.toggle('opacity-0', i !== idx); });
+        dots.forEach(function (d, i) { d.classList.toggle('bg-white', i === idx); d.classList.toggle('bg-white/40', i !== idx); });
+    }
+    function restart() { clearInterval(timer); timer = setInterval(function () { show(idx + 1); }, 5000); }
+    var nb = document.getElementById('hero-next'), pb = document.getElementById('hero-prev');
+    if (nb) nb.addEventListener('click', function () { show(idx + 1); restart(); });
+    if (pb) pb.addEventListener('click', function () { show(idx - 1); restart(); });
+    dots.forEach(function (d) { d.addEventListener('click', function () { show(+d.dataset.index); restart(); }); });
+    restart();
+}());
+// Featured products carousel — arrow buttons scroll the snap track.
+(function () {
+    var track = document.getElementById('feat-track');
+    if (!track) return;
+    function step() { return Math.max(track.clientWidth * 0.9, 240); }
+    var next = document.getElementById('feat-next'), prev = document.getElementById('feat-prev');
+    if (next) next.addEventListener('click', function () { track.scrollBy({ left: step(), behavior: 'smooth' }); });
+    if (prev) prev.addEventListener('click', function () { track.scrollBy({ left: -step(), behavior: 'smooth' }); });
 }());
 </script>
 }

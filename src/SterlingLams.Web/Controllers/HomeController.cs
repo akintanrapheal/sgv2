@@ -21,14 +21,14 @@ public class HomeController : Controller
 
     public async Task<IActionResult> Index()
     {
-        // Featured products from DB (IsFeatured = true, active, limit 4)
+        // Featured products from DB (IsFeatured = true, active) — all of them for the slider (capped).
         var featured = await _db.Products
             .Include(p => p.Images)
             .Include(p => p.StoreInventories)
             .Include(p => p.Variants)
             .Where(p => p.IsActive && p.IsFeatured)
             .OrderByDescending(p => p.CreatedAt)
-            .Take(4)
+            .Take(24)
             .ToListAsync();
 
         ViewBag.FeaturedProducts = featured.Select(p => new ProductCardViewModel
