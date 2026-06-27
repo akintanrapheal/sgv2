@@ -13,6 +13,10 @@ public class LogisticsOptions
     /// <summary>Logistics endpoint that receives a new delivery order (our → logistics).</summary>
     public string PushUrl { get; set; } = "https://sterlinglamslogistics.com/api/external-orders";
     public string SharedSecret { get; set; } = string.Empty;
+    /// <summary>States this courier serves — only delivery orders whose state matches are pushed.
+    /// Matched case-insensitively, tolerating a trailing " State" (e.g. "Lagos State" = "Lagos").
+    /// Empty = no state filter (push every delivery order).</summary>
+    public List<string> DeliveryStates { get; set; } = new() { "Lagos" };
     /// <summary>Display name + pickup address sent with each pushed order.</summary>
     public string PickupName { get; set; } = "Sterlin Glams";
     public string PickupAddress { get; set; } = "Sterlin Glams – Ikota Ajah Lagos";

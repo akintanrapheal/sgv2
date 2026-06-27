@@ -39,6 +39,15 @@ public class LogisticsDispatchService : ILogisticsDispatchService
 
     public bool IsConfigured => _opt.Enabled && !string.IsNullOrWhiteSpace(_opt.SharedSecret);
 
+    /// <summary>Case-insensitive state match tolerating a trailing " State" on either side
+    /// (so "Lagos", "lagos" and "Lagos State" are all equal).</summary>
+    private static bool StateMatches(string configured, string? orderState)
+    {
+        static string Norm(string? s) => (s ?? string.Empty).Trim().ToLowerInvariant()
+            .Replace(" state", "").Trim();
+        return Norm(configured) == Norm(orderState) && Norm(configured).Length > 0;
+    }
+
     public string ComputeSignature(string body)
     {
         using var h = new HMACSHA256(Encoding.UTF8.GetBytes(_opt.SharedSecret));
@@ -69,6 +78,15 @@ public class LogisticsDispatchService : ILogisticsDispatchService
             if (string.IsNullOrWhiteSpace(address))
             {
                 _log.LogWarning("Logistics push skipped for {OrderNumber}: no delivery address.", order.OrderNumber);
+                return;
+            }
+
+            // State filter — this courier only serves certain states (default: Lagos). Orders
+            // outside those states are not pushed (they're delivered another way).
+            if (_opt.DeliveryStates.Count > 0 && !_opt.DeliveryStates.Any(s => StateMatches(s, a?.State)))
+            {
+                _log.LogInformation("Logistics push skipped for {OrderNumber}: state '{State}' not served.",
+                    order.OrderNumber, a?.State);
                 return;
             }
 
