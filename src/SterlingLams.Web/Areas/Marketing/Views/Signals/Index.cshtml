@@ -1,0 +1,63 @@
+@{
+    ViewData["Title"] = "Customer Signals";
+    string tab = ViewBag.Tab ?? "carts";
+    int cartCount = ViewBag.CartCount ?? 0;
+    int bisCount = ViewBag.BackInStockCount ?? 0;
+    string TabCls(string t) => t == tab ? "border-neutral-900 text-neutral-900" : "border-transparent text-neutral-400 hover:text-neutral-700";
+    var carts = ViewBag.Carts as IEnumerable<dynamic>;
+    var bis = ViewBag.BackInStock as IEnumerable<dynamic>;
+}
+
+<div class="mb-5">
+    <h1 class="text-2xl font-light text-neutral-900">Customer Signals</h1>
+    <p class="text-sm text-neutral-500 mt-1">Abandoned carts and back-in-stock interest captured from the storefront.</p>
+</div>
+
+<div class="flex gap-6 border-b border-neutral-200 mb-5 text-sm">
+    <a asp-area="Marketing" asp-controller="Signals" asp-action="Index" asp-route-tab="carts" class="pb-2.5 border-b-2 @TabCls("carts")">Abandoned carts (@cartCount open)</a>
+    <a asp-area="Marketing" asp-controller="Signals" asp-action="Index" asp-route-tab="backinstock" class="pb-2.5 border-b-2 @TabCls("backinstock")">Back in stock (@bisCount open)</a>
+</div>
+
+<div class="bg-white border border-neutral-200 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead class="bg-neutral-50 text-neutral-500 text-xs">
+            @if (tab == "backinstock")
+            {
+                <tr><th class="text-left font-semibold px-4 py-3">Email</th><th class="text-left font-semibold px-4 py-3">Product</th><th class="text-left font-semibold px-4 py-3">Requested</th><th class="text-left font-semibold px-4 py-3">Status</th></tr>
+            }
+            else
+            {
+                <tr><th class="text-left font-semibold px-4 py-3">Email</th><th class="text-center font-semibold px-4 py-3">Items</th><th class="text-right font-semibold px-4 py-3">Subtotal</th><th class="text-left font-semibold px-4 py-3">When</th><th class="text-left font-semibold px-4 py-3">Status</th></tr>
+            }
+        </thead>
+        <tbody class="divide-y divide-neutral-100">
+            @if (tab == "backinstock")
+            {
+                @if (bis == null || !bis.Any()) { <tr><td colspan="4" class="px-4 py-12 text-center text-neutral-400">No back-in-stock requests.</td></tr> }
+                @foreach (var r in bis ?? Enumerable.Empty<dynamic>())
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5 text-neutral-700">@r.Email</td>
+                        <td class="px-4 py-2.5 text-neutral-600">@r.Product</td>
+                        <td class="px-4 py-2.5 text-neutral-400 text-xs">@(((DateTime)r.CreatedAt).ToString("dd MMM yyyy"))</td>
+                        <td class="px-4 py-2.5">@(r.NotifiedAt == null ? Html.Raw("<span class=\"text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full\">Open</span>") : Html.Raw("<span class=\"text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full\">Notified</span>"))</td>
+                    </tr>
+                }
+            }
+            else
+            {
+                @if (carts == null || !carts.Any()) { <tr><td colspan="5" class="px-4 py-12 text-center text-neutral-400">No abandoned carts.</td></tr> }
+                @foreach (var c in carts ?? Enumerable.Empty<dynamic>())
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5 text-neutral-700">@c.Email</td>
+                        <td class="px-4 py-2.5 text-center text-neutral-600">@c.ItemCount</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-700">₦@(((decimal)c.Subtotal).ToString("N0"))</td>
+                        <td class="px-4 py-2.5 text-neutral-400 text-xs">@(((DateTime)c.CreatedAt).ToString("dd MMM yyyy"))</td>
+                        <td class="px-4 py-2.5">@(c.RecoveredAt != null ? Html.Raw("<span class=\"text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full\">Recovered</span>") : c.EmailedAt != null ? Html.Raw("<span class=\"text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full\">Emailed</span>") : Html.Raw("<span class=\"text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full\">Open</span>"))</td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>

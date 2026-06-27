@@ -5,9 +5,14 @@
     var ru = Model.ReturnUrl ?? "";
     var staff = ru.StartsWith("/Admin", StringComparison.OrdinalIgnoreCase)
              || ru.StartsWith("/Inventory", StringComparison.OrdinalIgnoreCase)
+             || ru.StartsWith("/Marketing", StringComparison.OrdinalIgnoreCase)
              || ru.StartsWith("/Till", StringComparison.OrdinalIgnoreCase)
              || ru.StartsWith("/Pos", StringComparison.OrdinalIgnoreCase);
     if (staff) { Layout = "_StaffAuthLayout"; }
+    // Workspace label shown on the staff sign-in chrome.
+    ViewData["Workspace"] = ru.StartsWith("/Marketing", StringComparison.OrdinalIgnoreCase) ? "Marketing Hub"
+        : ru.StartsWith("/Inventory", StringComparison.OrdinalIgnoreCase) ? "Inventory System"
+        : "Staff Workspace";
     ViewData["Title"] = staff ? "Staff Sign In" : "Sign In";
 }
 

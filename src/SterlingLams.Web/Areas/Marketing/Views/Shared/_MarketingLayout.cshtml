@@ -1,0 +1,94 @@
+@{
+    var cc = ViewContext.RouteData.Values["controller"]?.ToString();
+    bool Active(string ctrl) => string.Equals(cc, ctrl, StringComparison.OrdinalIgnoreCase);
+    string Cls(string ctrl) => Active(ctrl)
+        ? "bg-neutral-800 text-white"
+        : "text-neutral-400 hover:text-white hover:bg-neutral-800";
+
+    // (Label, Controller, Action, Icon path, Soon)
+    var nav = new (string Label, string Ctrl, string Action, string Icon, bool Soon)[]
+    {
+        ("Dashboard",  "Dashboard", "Index", "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6", false),
+        ("Campaigns",  "Campaigns", "Index", "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z", true),
+        ("Audiences",  "Audiences", "Index", "M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-3a4 4 0 10-8 0 4 4 0 008 0z", true),
+        ("Signals",    "Signals",   "Index", "M13 10V3L4 14h7v7l9-11h-7z", false),
+        ("Automations","Automations","Index","M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z", true),
+        ("Social",     "Social",    "Index", "M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z", true),
+    };
+}
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>@ViewData["Title"] · Marketing</title>
+    <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
+    <link rel="icon" type="image/png" sizes="32x32" href="~/favicon-32.png" />
+</head>
+<body class="h-full bg-neutral-50 text-neutral-900 antialiased">
+<div class="flex h-full">
+    <!-- Sidebar -->
+    <aside class="w-60 bg-neutral-900 text-white flex flex-col flex-shrink-0">
+        <div class="px-5 py-5 border-b border-neutral-800">
+            <div class="font-cormorant text-xl font-semibold tracking-[0.15em]">STERLIN GLAMS</div>
+            <div class="text-[10px] tracking-[0.3em] uppercase text-pink-400 mt-1">Marketing Hub</div>
+        </div>
+        <nav class="flex-1 overflow-y-auto py-3 px-3 space-y-1">
+            @foreach (var n in nav)
+            {
+                if (n.Soon)
+                {
+                    <span class="flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm text-neutral-600 cursor-not-allowed" title="Coming soon">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="@n.Icon" /></svg>
+                        @n.Label <span class="ml-auto text-[9px] uppercase tracking-wider bg-neutral-800 text-neutral-500 px-1.5 py-0.5 rounded">soon</span>
+                    </span>
+                }
+                else
+                {
+                    <a asp-area="Marketing" asp-controller="@n.Ctrl" asp-action="@n.Action"
+                       class="flex items-center gap-3 px-3 py-2.5 rounded-sm text-sm transition-colors @Cls(n.Ctrl)">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="@n.Icon" /></svg>
+                        @n.Label
+                    </a>
+                }
+            }
+        </nav>
+        <div class="px-3 py-4 border-t border-neutral-800 space-y-1">
+            @if (User.IsInRole("Admin"))
+            {
+                <a asp-area="Admin" asp-controller="Dashboard" asp-action="Index" class="flex items-center gap-3 px-3 py-2.5 text-xs text-neutral-500 hover:text-white transition-colors">← Website Admin</a>
+            }
+            <form asp-controller="Account" asp-action="Logout" asp-area="" method="post">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="flex items-center gap-3 px-3 py-2.5 w-full text-xs text-neutral-500 hover:text-white transition-colors text-left">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                    Sign Out
+                </button>
+            </form>
+        </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <header class="bg-white border-b border-neutral-100 px-8 py-4 flex-shrink-0">
+            <h1 class="text-sm font-medium text-neutral-800">@ViewData["Title"]</h1>
+        </header>
+        <main class="flex-1 overflow-y-auto p-8">
+            @if (TempData["Success"] != null)
+            {
+                <div class="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm px-4 py-3 rounded-sm">@TempData["Success"]</div>
+            }
+            @if (TempData["Error"] != null)
+            {
+                <div class="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-sm">@TempData["Error"]</div>
+            }
+            @RenderBody()
+            <partial name="_DevCredit" />
+        </main>
+    </div>
+</div>
+<script src="~/js/app.js" asp-append-version="true"></script>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

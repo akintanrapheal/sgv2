@@ -37,6 +37,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 return;
             }
 
+            // Social Media / Marketing staff operate in the dedicated Marketing Hub.
+            if (!User.IsInRole(AdminSections.AdminRole) && User.IsInRole("Social Media"))
+            {
+                context.Result = RedirectToAction("Index", "Dashboard", new { area = "Marketing" });
+                return;
+            }
+
             var section = Section;
 
             // Admin-only controllers (Section == null): only full admins pass

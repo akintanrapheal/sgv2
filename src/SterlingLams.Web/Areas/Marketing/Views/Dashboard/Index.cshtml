@@ -1,0 +1,40 @@
+@{
+    ViewData["Title"] = "Marketing";
+    int subscribers = ViewBag.Subscribers ?? 0;
+    int customers = ViewBag.Customers ?? 0;
+    int openCarts = ViewBag.OpenCarts ?? 0;
+    int backInStock = ViewBag.BackInStock ?? 0;
+}
+
+<div class="mb-6">
+    <h1 class="text-2xl font-light text-neutral-900">Welcome to the Marketing Hub</h1>
+    <p class="text-sm text-neutral-500 mt-1">Campaigns, audiences and customer signals for the Sterlin Glams social &amp; marketing team.</p>
+</div>
+
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div class="bg-white border border-neutral-200 rounded-sm p-5">
+        <div class="text-xs text-neutral-400">Newsletter subscribers</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">@subscribers.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-sm p-5">
+        <div class="text-xs text-neutral-400">Customers (bought)</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">@customers.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-sm p-5">
+        <div class="text-xs text-neutral-400">Open abandoned carts</div>
+        <div class="text-2xl font-light text-amber-600 mt-1">@openCarts.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-sm p-5">
+        <div class="text-xs text-neutral-400">Back-in-stock requests</div>
+        <div class="text-2xl font-light text-blue-600 mt-1">@backInStock.ToString("N0")</div>
+    </div>
+</div>
+
+<div class="bg-white border border-neutral-200 rounded-sm p-6">
+    <h2 class="text-sm font-medium text-neutral-700 mb-3">Quick actions</h2>
+    <div class="flex flex-wrap gap-3">
+        <a asp-area="Marketing" asp-controller="Signals" asp-action="Index" class="px-4 py-2 text-sm border border-neutral-200 rounded-sm hover:border-neutral-400">View customer signals</a>
+        <span class="px-4 py-2 text-sm border border-neutral-100 text-neutral-400 rounded-sm cursor-not-allowed">New campaign (soon)</span>
+        <span class="px-4 py-2 text-sm border border-neutral-100 text-neutral-400 rounded-sm cursor-not-allowed">Build audience (soon)</span>
+    </div>
+</div>

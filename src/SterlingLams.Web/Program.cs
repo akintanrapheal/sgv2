@@ -273,7 +273,7 @@ app.Use(async (context, next) =>
     // /Inventory, /Till) still rely on inline handlers, so they keep 'unsafe-inline' for now.
     // style-src keeps 'unsafe-inline' (inline style attributes are pervasive + low-risk) + Google Fonts.
     var p = context.Request.Path;
-    var staffArea = p.StartsWithSegments("/Admin") || p.StartsWithSegments("/Inventory") || p.StartsWithSegments("/Till") || p.StartsWithSegments("/Pos");
+    var staffArea = p.StartsWithSegments("/Admin") || p.StartsWithSegments("/Inventory") || p.StartsWithSegments("/Till") || p.StartsWithSegments("/Pos") || p.StartsWithSegments("/Marketing");
     var scriptSrc = staffArea ? "script-src 'self' 'unsafe-inline'" : $"script-src 'self' 'nonce-{nonce}'";
 
     context.Response.Headers["Content-Security-Policy"] =
@@ -327,6 +327,7 @@ app.UseOutputCache();
 // doesn't exist, so a bare /Admin or /Inventory would 404. Send them to the real landing pages.
 app.MapGet("/Admin", () => Results.Redirect("/Admin/Dashboard"));
 app.MapGet("/Inventory", () => Results.Redirect("/Inventory/Overview"));
+app.MapGet("/Marketing", () => Results.Redirect("/Marketing/Dashboard"));
 
 app.MapControllerRoute(
     name: "areas",
