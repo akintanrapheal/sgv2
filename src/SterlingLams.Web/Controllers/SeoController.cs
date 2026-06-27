@@ -38,7 +38,19 @@ public class SeoController : Controller
             ($"{b}/Stores",         null, "monthly", "0.5", null),
             ($"{b}/Home/About",     null, "monthly", "0.4", null),
             ($"{b}/Home/Contact",   null, "monthly", "0.4", null),
+            ($"{b}/journal",        null, "weekly",  "0.6", null),
         };
+
+        // Published Journal posts.
+        var posts = await _db.BlogPosts
+            .Where(p => p.IsPublished)
+            .Select(p => new { p.Slug, p.UpdatedAt, p.CoverImageUrl })
+            .ToListAsync();
+        foreach (var p in posts)
+        {
+            string? pimg = string.IsNullOrEmpty(p.CoverImageUrl) ? null : (p.CoverImageUrl.StartsWith("http") ? p.CoverImageUrl : b + p.CoverImageUrl);
+            entries.Add(($"{b}/journal/{p.Slug}", p.UpdatedAt, "monthly", "0.5", pimg));
+        }
 
         var cats = await _db.Categories
             .Where(c => c.IsActive && c.Products.Any(p => p.IsActive))

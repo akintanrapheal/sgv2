@@ -92,9 +92,10 @@ Strengthen the logged-in experience:
   reviews ship, and `availability`/`price` (verify completeness).
 - **Promotions/banner scheduler**: schedule sale prices and homepage banners with
   start/end dates (sale price exists; add scheduling).
-- **Referral / "refer a friend"** rewards via the loyalty engine.
-- **Blog / lookbook** (content pages) for SEO + storytelling — lightweight CMS or
-  markdown pages.
+- **Referral / "refer a friend"** rewards via the loyalty engine. _(Deferred for now.)_
+- **Blog / lookbook** — ✅ DONE. "Journal" CMS: admin CRUD (rich-text body, cover image,
+  draft/publish, SEO overrides) at /Admin/Journal; public /journal index + /journal/{slug}
+  articles with Open Graph + BlogPosting JSON-LD; footer link; published posts in sitemap.xml.
 - **Cart/checkout recovery**: abandoned-cart capture exists — add the automated
   recovery **email send** + a one-click restore link if not already scheduled.
 

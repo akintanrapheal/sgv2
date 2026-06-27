@@ -57,6 +57,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<PointsLedgerEntry> PointsLedgerEntries => Set<PointsLedgerEntry>();
     public DbSet<GiftCard> GiftCards => Set<GiftCard>();
     public DbSet<GiftCardTransaction> GiftCardTransactions => Set<GiftCardTransaction>();
+    public DbSet<BlogPost> BlogPosts => Set<BlogPost>();
     public DbSet<BackInStockRequest> BackInStockRequests => Set<BackInStockRequest>();
     public DbSet<AbandonedCart> AbandonedCarts => Set<AbandonedCart>();
 
@@ -119,6 +120,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
             e.HasOne(t => t.GiftCard).WithMany(g => g.Transactions).HasForeignKey(t => t.GiftCardId).OnDelete(DeleteBehavior.Cascade);
             e.Property(t => t.Amount).HasColumnType("numeric(12,2)");
             e.HasIndex(t => t.OrderId);
+        });
+
+        // ─── Journal (blog / lookbook) ──────────────────────────────────────
+        builder.Entity<BlogPost>(e =>
+        {
+            e.HasIndex(b => b.Slug).IsUnique();
+            e.HasIndex(b => new { b.IsPublished, b.PublishedAt });
         });
 
         // ─── Product ────────────────────────────────────────────────────────
