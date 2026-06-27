@@ -162,15 +162,30 @@
                 <span id="price-effective" class="text-2xl font-light @(Model.IsOnSale ? "text-brand-600" : "text-neutral-800")">@Model.FormattedPrice</span>
                 <span id="price-regular" class="text-lg font-light text-neutral-400 line-through @(Model.IsOnSale ? "" : "hidden")">@Model.FormattedRegularPrice</span>
             </p>
-            <p id="low-stock-nudge" class="text-sm text-amber-600 font-medium mb-6 flex items-center gap-1.5 @(isLowStock ? "" : "hidden")">
+            @{
+                // "Only N left" urgency: for a simple (no-variant) product we know the exact total
+                // now; for a variant product the count is filled in by JS once an option is chosen.
+                var totalLeft = Model.TotalStock;
+                var showCountNudge = !Model.Variants.Any() && totalLeft > 0 && totalLeft <= lowStockThreshold;
+                var nudgeVisible = Model.Variants.Any() ? isLowStock : showCountNudge;
+            }
+            <p id="low-stock-nudge" class="text-sm text-amber-600 font-medium mb-6 flex items-center gap-1.5 @(nudgeVisible ? "" : "hidden")">
                 <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                Low stock — order soon
+                <span id="low-stock-text">@(showCountNudge ? $"Only {totalLeft} left — order soon" : "Low stock — order soon")</span>
             </p>
 
             @if (!string.IsNullOrEmpty(Model.ShortDescription))
             {
-                <p class="text-sm text-neutral-500 leading-relaxed mb-8 font-light">@Model.ShortDescription</p>
+                <p class="text-sm text-neutral-500 leading-relaxed mb-4 font-light">@Model.ShortDescription</p>
             }
+
+            <button type="button" data-size-guide-open
+                    class="inline-flex items-center gap-1.5 text-xs tracking-[0.12em] uppercase text-neutral-500 hover:text-brand-500 transition-colors mb-8">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7h18M3 12h18M3 17h18"/>
+                </svg>
+                Size &amp; length guide
+            </button>
 
             <!-- ─── Store Stock (per branch, with counts) ───────────────── -->
             @if (Model.StoreStock.Any())
@@ -256,6 +271,7 @@
                         priceAdjustment = v.PriceAdjustment,
                         imageUrl = v.ImageUrl,
                         inStock = v.Available > 0,
+                        available = v.Available,
                         lowStock = v.Available > 0 && v.Available <= lowStockThreshold,
                         // Per-branch stock for this variant, shown once the customer picks the option.
                         stores = v.StoreStock.Select(s => new {
@@ -633,6 +649,8 @@
     }
 </div>
 
+<partial name="_SizeGuideModal" />
+
 @section Scripts {
 <script nonce="@Context.Items["csp-nonce"]">
 (function () {
@@ -817,8 +835,15 @@
             );
             if (match) {
                 selectedVariantId = match.id;
-                // Low-stock nudge follows the chosen variant (boolean flag only — no counts).
-                document.getElementById('low-stock-nudge')?.classList.toggle('hidden', !match.lowStock);
+                // Low-stock nudge follows the chosen variant, now with the exact count.
+                const nudge = document.getElementById('low-stock-nudge');
+                const nudgeText = document.getElementById('low-stock-text');
+                if (nudgeText) {
+                    nudgeText.textContent = (match.available > 0)
+                        ? `Only ${match.available} left — order soon`
+                        : 'Low stock — order soon';
+                }
+                nudge?.classList.toggle('hidden', !match.lowStock);
                 renderVariantStock(match.stores);
                 // The main price (below) already updates to this variant's full price via
                 // applyVariantPrice(), so no separate "+₦X for this option" note is needed.

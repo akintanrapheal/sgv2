@@ -1,0 +1,109 @@
+@* Size & length guide modal — opened by any element with [data-size-guide-open] (see app.js).
+   General jewellery reference (rings / bracelets / necklaces / anklets). One instance per page. *@
+<div id="size-guide-overlay" class="hidden fixed inset-0 z-[400] bg-black/50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Size and length guide">
+    <div class="bg-white max-w-2xl w-full max-h-[88vh] overflow-auto relative">
+        <button type="button" data-size-guide-close
+                class="absolute top-4 right-4 text-neutral-400 hover:text-neutral-900 transition-colors p-1" aria-label="Close size guide">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+
+        <div class="p-8">
+            <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-1">Find your fit</p>
+            <h2 class="font-cormorant text-3xl font-light mb-6">Size &amp; Length Guide</h2>
+
+            <!-- Tabs -->
+            <div class="flex gap-5 border-b border-neutral-200 mb-5 text-xs tracking-[0.15em] uppercase">
+                @{
+                    var tabs = new[] { ("rings", "Rings"), ("bracelets", "Bracelets"), ("necklaces", "Necklaces"), ("anklets", "Anklets") };
+                }
+                @foreach (var (key, label) in tabs)
+                {
+                    <button type="button" class="sg-tab pb-2.5 border-b-2 @(key == "rings" ? "border-neutral-900 text-neutral-900" : "border-transparent text-neutral-400 hover:text-neutral-700")" data-sg-tab="@key">@label</button>
+                }
+            </div>
+
+            @* ── Rings ── *@
+            <div class="sg-panel" data-sg-panel="rings">
+                <p class="text-sm text-neutral-500 font-light mb-4">Measure the inside diameter of a ring that fits, or wrap a strip of paper around your finger and measure its length (circumference).</p>
+                <table class="w-full text-sm border-collapse">
+                    <thead><tr class="bg-neutral-50 text-neutral-500 text-xs tracking-wider uppercase">
+                        <th class="text-left font-medium px-3 py-2">UK / Intl</th>
+                        <th class="text-left font-medium px-3 py-2">US</th>
+                        <th class="text-left font-medium px-3 py-2">Diameter (mm)</th>
+                        <th class="text-left font-medium px-3 py-2">Circumference (mm)</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-neutral-100 text-neutral-700">
+                        <tr><td class="px-3 py-2">H</td><td class="px-3 py-2">4</td><td class="px-3 py-2">14.9</td><td class="px-3 py-2">46.8</td></tr>
+                        <tr><td class="px-3 py-2">J</td><td class="px-3 py-2">5</td><td class="px-3 py-2">15.7</td><td class="px-3 py-2">49.3</td></tr>
+                        <tr><td class="px-3 py-2">L</td><td class="px-3 py-2">6</td><td class="px-3 py-2">16.5</td><td class="px-3 py-2">51.9</td></tr>
+                        <tr><td class="px-3 py-2">N</td><td class="px-3 py-2">7</td><td class="px-3 py-2">17.3</td><td class="px-3 py-2">54.4</td></tr>
+                        <tr><td class="px-3 py-2">P</td><td class="px-3 py-2">8</td><td class="px-3 py-2">18.1</td><td class="px-3 py-2">57.0</td></tr>
+                        <tr><td class="px-3 py-2">R</td><td class="px-3 py-2">9</td><td class="px-3 py-2">19.0</td><td class="px-3 py-2">59.5</td></tr>
+                        <tr><td class="px-3 py-2">T</td><td class="px-3 py-2">10</td><td class="px-3 py-2">19.8</td><td class="px-3 py-2">62.1</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            @* ── Bracelets ── *@
+            <div class="sg-panel hidden" data-sg-panel="bracelets">
+                <p class="text-sm text-neutral-500 font-light mb-4">Wrap a tape measure snugly around your wrist just below the wrist bone. Add 1.5–2&nbsp;cm for a comfortable fit.</p>
+                <table class="w-full text-sm border-collapse">
+                    <thead><tr class="bg-neutral-50 text-neutral-500 text-xs tracking-wider uppercase">
+                        <th class="text-left font-medium px-3 py-2">Wrist size</th>
+                        <th class="text-left font-medium px-3 py-2">Bracelet length</th>
+                        <th class="text-left font-medium px-3 py-2">Fit</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-neutral-100 text-neutral-700">
+                        <tr><td class="px-3 py-2">14–15 cm</td><td class="px-3 py-2">16–17 cm</td><td class="px-3 py-2">Petite</td></tr>
+                        <tr><td class="px-3 py-2">15–16 cm</td><td class="px-3 py-2">17–18 cm</td><td class="px-3 py-2">Standard</td></tr>
+                        <tr><td class="px-3 py-2">16–17 cm</td><td class="px-3 py-2">18–19 cm</td><td class="px-3 py-2">Comfort</td></tr>
+                        <tr><td class="px-3 py-2">17–18 cm</td><td class="px-3 py-2">19–20 cm</td><td class="px-3 py-2">Relaxed</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            @* ── Necklaces ── *@
+            <div class="sg-panel hidden" data-sg-panel="necklaces">
+                <p class="text-sm text-neutral-500 font-light mb-4">Necklace length is measured end to end (including the clasp). Choose based on where you'd like it to sit.</p>
+                <table class="w-full text-sm border-collapse">
+                    <thead><tr class="bg-neutral-50 text-neutral-500 text-xs tracking-wider uppercase">
+                        <th class="text-left font-medium px-3 py-2">Length</th>
+                        <th class="text-left font-medium px-3 py-2">Style</th>
+                        <th class="text-left font-medium px-3 py-2">Where it sits</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-neutral-100 text-neutral-700">
+                        <tr><td class="px-3 py-2">36 cm / 14&quot;</td><td class="px-3 py-2">Choker</td><td class="px-3 py-2">Around the base of the neck</td></tr>
+                        <tr><td class="px-3 py-2">41 cm / 16&quot;</td><td class="px-3 py-2">Princess</td><td class="px-3 py-2">On the collarbone</td></tr>
+                        <tr><td class="px-3 py-2">46 cm / 18&quot;</td><td class="px-3 py-2">Princess+</td><td class="px-3 py-2">Just below the collarbone</td></tr>
+                        <tr><td class="px-3 py-2">56 cm / 22&quot;</td><td class="px-3 py-2">Matinee</td><td class="px-3 py-2">On the chest</td></tr>
+                        <tr><td class="px-3 py-2">76 cm / 30&quot;</td><td class="px-3 py-2">Opera</td><td class="px-3 py-2">Below the bust</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            @* ── Anklets ── *@
+            <div class="sg-panel hidden" data-sg-panel="anklets">
+                <p class="text-sm text-neutral-500 font-light mb-4">Measure around your ankle where you'd wear the anklet, then add 1–2&nbsp;cm so it drapes comfortably.</p>
+                <table class="w-full text-sm border-collapse">
+                    <thead><tr class="bg-neutral-50 text-neutral-500 text-xs tracking-wider uppercase">
+                        <th class="text-left font-medium px-3 py-2">Ankle size</th>
+                        <th class="text-left font-medium px-3 py-2">Anklet length</th>
+                        <th class="text-left font-medium px-3 py-2">Fit</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-neutral-100 text-neutral-700">
+                        <tr><td class="px-3 py-2">20–21 cm</td><td class="px-3 py-2">23 cm</td><td class="px-3 py-2">Snug</td></tr>
+                        <tr><td class="px-3 py-2">21–23 cm</td><td class="px-3 py-2">25 cm</td><td class="px-3 py-2">Standard</td></tr>
+                        <tr><td class="px-3 py-2">23–25 cm</td><td class="px-3 py-2">27 cm</td><td class="px-3 py-2">Relaxed</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <p class="text-[11px] text-neutral-400 font-light mt-6 leading-relaxed">
+                Sizes are a guide only and may vary slightly by piece. If you're between sizes or unsure,
+                reach out and our team will be glad to help.
+            </p>
+        </div>
+    </div>
+</div>

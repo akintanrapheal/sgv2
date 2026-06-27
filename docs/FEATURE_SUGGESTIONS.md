@@ -72,11 +72,15 @@ Strengthen the logged-in experience:
 - "This is a gift" → gift message + gift wrap option (small fee), hide prices on the
   packing slip. Strong fit for the jewellery audience.
 
-### 2.5 Storefront merchandising polish _(Medium value, Low effort)_
-- **Related / "You may also like"** on product detail (same category / co-bought).
-- **Low-stock urgency** ("Only 2 left") using existing stock data.
-- **Size/length guide** for rings, anklets, necklaces (modal partial).
-- Recently restocked row (data already tracked).
+### 2.5 Storefront merchandising polish _(Medium value, Low effort)_ — ✅ MOSTLY DONE
+- **Related / "You may also like"** — ✅ already on product detail (same category) + a
+  Frequently-Bought-Together row.
+- **Low-stock urgency** — ✅ "Only N left — order soon" near the buy box, with the exact
+  count (per selected variant for variant products; total for simple products). Gated by
+  `inventory.show_low_stock_nudge` + `inventory.low_stock_threshold`.
+- **Size/length guide** — ✅ modal (rings / bracelets / necklaces / anklets) opened from a
+  link on every product detail page.
+- **Recently restocked row** — deferred (needs a StockMovement-backed homepage row).
 
 ---
 

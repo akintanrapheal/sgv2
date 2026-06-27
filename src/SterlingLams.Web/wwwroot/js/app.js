@@ -143,6 +143,37 @@ const SiteHeader = (function () {
 })();
 window.SiteHeader = SiteHeader;
 
+// ─── Size & length guide modal ────────────────────────────────────────────
+(function () {
+    const overlay = document.getElementById('size-guide-overlay');
+    if (!overlay) return;
+
+    const open  = () => { overlay.classList.remove('hidden'); document.body.style.overflow = 'hidden'; };
+    const close = () => { overlay.classList.add('hidden'); document.body.style.overflow = ''; };
+
+    document.querySelectorAll('[data-size-guide-open]').forEach(b => b.addEventListener('click', open));
+    overlay.querySelectorAll('[data-size-guide-close]').forEach(b => b.addEventListener('click', close));
+    // Click the backdrop (outside the panel) closes; Esc closes.
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !overlay.classList.contains('hidden')) close(); });
+
+    // Tabs
+    overlay.querySelectorAll('.sg-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            const key = tab.dataset.sgTab;
+            overlay.querySelectorAll('.sg-tab').forEach(t => {
+                const on = t === tab;
+                t.classList.toggle('border-neutral-900', on);
+                t.classList.toggle('text-neutral-900', on);
+                t.classList.toggle('border-transparent', !on);
+                t.classList.toggle('text-neutral-400', !on);
+            });
+            overlay.querySelectorAll('.sg-panel').forEach(p =>
+                p.classList.toggle('hidden', p.dataset.sgPanel !== key));
+        });
+    });
+})();
+
 // ─── Cart Badge Update ────────────────────────────────────────────────────
 function updateCartBadge(count) {
     let badge = document.getElementById('cart-badge');
