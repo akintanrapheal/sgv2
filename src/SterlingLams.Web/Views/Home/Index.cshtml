@@ -21,7 +21,10 @@
     if (heroImages.Count == 0 && !string.IsNullOrWhiteSpace(heroImageUrl)) heroImages.Add(heroImageUrl);
     var hasHeroImage  = heroImages.Count > 0;
 
-    var showFeatured    = await SettingsService.GetBoolAsync("homepage.show_featured", true);
+    var showFeatured     = await SettingsService.GetBoolAsync("homepage.show_featured", true);
+    var showBestSellers  = await SettingsService.GetBoolAsync("homepage.show_best_sellers", true);
+    var showTrending     = await SettingsService.GetBoolAsync("homepage.show_trending", true);
+    var showRecentlyView = await SettingsService.GetBoolAsync("homepage.show_recently_viewed", true);
     var featuredHeading = await SettingsService.GetAsync("homepage.featured_heading", "Featured Pieces");
     // Slider speeds (seconds → ms), clamped to a sane minimum.
     var heroSlideMs     = Math.Max(2, await SettingsService.GetIntAsync("homepage.hero_slide_seconds", 5)) * 1000;
@@ -337,18 +340,27 @@
 }
 
 <!-- ─── Merchandising rows (best sellers / trending / recently viewed) ────────── -->
-@await Html.PartialAsync("_ProductCardRow", bestSellers, new ViewDataDictionary(ViewData)
+@if (showBestSellers)
 {
-    ["RowTitle"] = "Best Sellers", ["RowEyebrow"] = "Most loved", ["RowBg"] = "bg-white",
-})
-@await Html.PartialAsync("_ProductCardRow", trending, new ViewDataDictionary(ViewData)
+    @await Html.PartialAsync("_ProductCardRow", bestSellers, new ViewDataDictionary(ViewData)
+    {
+        ["RowTitle"] = "Best Sellers", ["RowEyebrow"] = "Most loved", ["RowBg"] = "bg-white",
+    })
+}
+@if (showTrending)
 {
-    ["RowTitle"] = "Trending Now", ["RowEyebrow"] = "Popular this month", ["RowBg"] = "bg-stone-50",
-})
-@await Html.PartialAsync("_ProductCardRow", recentlyViewed, new ViewDataDictionary(ViewData)
+    @await Html.PartialAsync("_ProductCardRow", trending, new ViewDataDictionary(ViewData)
+    {
+        ["RowTitle"] = "Trending Now", ["RowEyebrow"] = "Popular this month", ["RowBg"] = "bg-stone-50",
+    })
+}
+@if (showRecentlyView)
 {
-    ["RowTitle"] = "Recently Viewed", ["RowEyebrow"] = "Pick up where you left off", ["RowBg"] = "bg-white",
-})
+    @await Html.PartialAsync("_ProductCardRow", recentlyViewed, new ViewDataDictionary(ViewData)
+    {
+        ["RowTitle"] = "Recently Viewed", ["RowEyebrow"] = "Pick up where you left off", ["RowBg"] = "bg-white",
+    })
+}
 
 <!-- ─── Store Finder Banner ───────────────────────────────────────────────── -->
 <section class="py-20 bg-neutral-900 text-white">
