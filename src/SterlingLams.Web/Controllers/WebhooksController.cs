@@ -17,6 +17,7 @@ public class WebhooksController : ControllerBase
     private readonly SterlingLams.Web.Services.IOrderFulfilmentService _fulfilment;
     private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
     private readonly SterlingLams.Web.Services.IGiftCardService _giftCards;
+    private readonly SterlingLams.Web.Services.Logistics.ILogisticsDispatchService _logistics;
     private readonly ILogger<WebhooksController> _logger;
 
     private readonly SterlingLams.Web.Services.IAuditService _audit;
@@ -27,6 +28,7 @@ public class WebhooksController : ControllerBase
         SterlingLams.Web.Services.IOrderFulfilmentService fulfilment,
         SterlingLams.Web.Services.ILoyaltyService loyalty,
         SterlingLams.Web.Services.IGiftCardService giftCards,
+        SterlingLams.Web.Services.Logistics.ILogisticsDispatchService logistics,
         SterlingLams.Web.Services.IAuditService audit,
         ILogger<WebhooksController> logger)
     {
@@ -35,6 +37,7 @@ public class WebhooksController : ControllerBase
         _fulfilment = fulfilment;
         _loyalty = loyalty;
         _giftCards = giftCards;
+        _logistics = logistics;
         _audit = audit;
         _logger = logger;
     }
@@ -124,11 +127,79 @@ public class WebhooksController : ControllerBase
                 await _loyalty.RedeemForOrderAsync(order.Id);
                 await _giftCards.RedeemForOrderAsync(order.Id);
                 await _loyalty.AccrueForOrderAsync(order.Id);
+                await _logistics.PushOrderAsync(order.Id);
 
                 _logger.LogInformation("Order {OrderNumber} marked as paid via webhook", order.OrderNumber);
             }
         }
 
         return Ok();
+    }
+
+    /// <summary>
+    /// Inbound from Sterlin Glams Logistics: a driver marked a delivery complete. Verifies the
+    /// HMAC-SHA256 signature (x-sg-signature, shared secret), then marks the matching order
+    /// Delivered. Idempotent — re-delivery of the same event is a no-op. The logistics app already
+    /// notifies the customer, so we don't re-email here.
+    /// </summary>
+    [HttpPost("logistics/delivered")]
+    public async Task<IActionResult> LogisticsDelivered()
+    {
+        if (!_logistics.IsConfigured)
+            return StatusCode(503, new { ok = false, error = "Logistics integration not configured." });
+
+        using var reader = new StreamReader(Request.Body, Encoding.UTF8);
+        var raw = await reader.ReadToEndAsync();
+
+        var sig = Request.Headers["x-sg-signature"].FirstOrDefault();
+        if (string.IsNullOrEmpty(sig) || !FixedTimeEquals(sig, _logistics.ComputeSignature(raw)))
+        {
+            _logger.LogWarning("Rejected logistics delivered callback: bad signature.");
+            return Unauthorized(new { ok = false, error = "Invalid signature." });
+        }
+
+        string? orderNumber = null;
+        string? signerName = null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("orderNumber", out var on)) orderNumber = on.GetString();
+            if (root.TryGetProperty("signerName", out var sn)) signerName = sn.GetString();
+        }
+        catch { return BadRequest(new { ok = false, error = "Invalid JSON." }); }
+
+        if (string.IsNullOrWhiteSpace(orderNumber))
+            return BadRequest(new { ok = false, error = "orderNumber is required." });
+
+        var order = await _db.Orders.FirstOrDefaultAsync(o => o.OrderNumber == orderNumber);
+        if (order == null)
+        {
+            // Not one of ours (e.g. a legacy WooCommerce order) — ack so logistics doesn't retry.
+            _logger.LogInformation("Logistics delivered callback for unknown order {OrderNumber} — ignored.", orderNumber);
+            return Ok(new { ok = true, matched = false });
+        }
+
+        // Idempotent + don't override a terminal state.
+        if (order.Status is OrderStatus.Delivered or OrderStatus.Cancelled or OrderStatus.Refunded)
+            return Ok(new { ok = true, alreadyFinal = true, status = order.Status.ToString() });
+
+        var old = order.Status;
+        order.Status = OrderStatus.Delivered;
+        order.UpdatedAt = DateTime.UtcNow;
+        var note = $"Marked Delivered via Sterlin Glams Logistics{(string.IsNullOrWhiteSpace(signerName) ? "" : $" (signed by {signerName})")}.";
+        SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id, note);
+        await _db.SaveChangesAsync();
+        try { await _audit.LogAsync("Delivery", "Order", order.Id.ToString(), $"Order {order.OrderNumber} delivered (logistics): {old} → Delivered"); } catch { }
+
+        _logger.LogInformation("Order {OrderNumber} marked Delivered via logistics callback.", order.OrderNumber);
+        return Ok(new { ok = true, matched = true });
+    }
+
+    private static bool FixedTimeEquals(string a, string b)
+    {
+        var ba = Encoding.UTF8.GetBytes(a);
+        var bb = Encoding.UTF8.GetBytes(b);
+        return System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(ba, bb);
     }
 }

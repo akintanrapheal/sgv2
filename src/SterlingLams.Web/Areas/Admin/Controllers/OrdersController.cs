@@ -25,10 +25,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly IGiftCardService _giftCards;
         private readonly IOrderFulfilmentService _fulfilment;
         private readonly IEmailService _email;
+        private readonly SterlingLams.Web.Services.Logistics.ILogisticsDispatchService _logistics;
         private const int PageSize = 25;
 
         public OrdersController(ApplicationDbContext db, IStockService stock, IPaymentService payment,
-            ILoyaltyService loyalty, IGiftCardService giftCards, IOrderFulfilmentService fulfilment, IEmailService email)
+            ILoyaltyService loyalty, IGiftCardService giftCards, IOrderFulfilmentService fulfilment, IEmailService email,
+            SterlingLams.Web.Services.Logistics.ILogisticsDispatchService logistics)
         {
             _db = db;
             _stock = stock;
@@ -37,6 +39,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             _giftCards = giftCards;
             _fulfilment = fulfilment;
             _email = email;
+            _logistics = logistics;
         }
 
         public async Task<IActionResult> Index(string status = "", string q = "", string channel = "",
@@ -255,6 +258,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 await LogAsync("Update", "Order", order.Id.ToString(),
                     $"Order {order.OrderNumber} status: {old} → {order.Status}");
                 TempData["Success"] = $"Order {order.OrderNumber} updated to {order.Status}.";
+
+                // Push the order to the Lagos delivery system once it's a confirmed delivery order
+                // (covers the post-transfer "ready" moment + manual confirmation). Idempotent + guarded.
+                await _logistics.PushOrderAsync(order.Id);
 
                 // Store-pickup orders: email the customer their QR pickup pass the first time staff
                 // mark it Ready for pickup (sent once, guarded by PickupReadyEmailedAt).

@@ -24,6 +24,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IGiftCardService, GiftCardService>();
         services.AddScoped<IStorefrontCache, StorefrontCache>();
 
+        // ─── Logistics (Lagos delivery) integration — order push + delivered callback ──
+        services.Configure<SterlingLams.Web.Services.Logistics.LogisticsOptions>(configuration.GetSection("Logistics"));
+        services.AddHttpClient("logistics", c => c.Timeout = TimeSpan.FromSeconds(15));
+        services.AddScoped<SterlingLams.Web.Services.Logistics.ILogisticsDispatchService, SterlingLams.Web.Services.Logistics.LogisticsDispatchService>();
+
         // ─── Store-level authorization (writes-only) ──────────────────────────
         services.AddScoped<IStoreAccessService, StoreAccessService>();
 

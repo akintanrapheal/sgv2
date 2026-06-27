@@ -119,6 +119,10 @@ public class Order
     public string? Notes { get; set; }
     public string? AdminNotes { get; set; }
 
+    /// <summary>Set once this online delivery order has been pushed to the Sterlin Glams Logistics
+    /// (Lagos delivery) system — makes the push idempotent across the paid + status-update paths.</summary>
+    public DateTime? LogisticsPushedAt { get; set; }
+
     // ── Order attribution (captured at checkout for online orders) ──
     /// <summary>Client IP at the time the order was placed.</summary>
     public string? CustomerIp { get; set; }

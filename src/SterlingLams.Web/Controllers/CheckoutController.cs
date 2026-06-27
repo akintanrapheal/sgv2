@@ -29,6 +29,7 @@ public class CheckoutController : Controller
     private readonly SterlingLams.Web.Services.IEmailService _email;
     private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
     private readonly SterlingLams.Web.Services.IGiftCardService _giftCards;
+    private readonly SterlingLams.Web.Services.Logistics.ILogisticsDispatchService _logistics;
     private readonly SterlingLams.Web.Services.IStockService _stock;
     private readonly SterlingLams.Web.Services.IAuditService _audit;
     private readonly SterlingLams.Web.Services.IOrderNumberService _orderNumbers;
@@ -48,6 +49,7 @@ public class CheckoutController : Controller
         SterlingLams.Web.Services.IEmailService email,
         SterlingLams.Web.Services.ILoyaltyService loyalty,
         SterlingLams.Web.Services.IGiftCardService giftCards,
+        SterlingLams.Web.Services.Logistics.ILogisticsDispatchService logistics,
         SterlingLams.Web.Services.IStockService stock,
         SterlingLams.Web.Services.IAuditService audit,
         SterlingLams.Web.Services.IOrderNumberService orderNumbers,
@@ -66,6 +68,7 @@ public class CheckoutController : Controller
         _email = email;
         _loyalty = loyalty;
         _giftCards = giftCards;
+        _logistics = logistics;
         _stock = stock;
         _audit = audit;
         _orderNumbers = orderNumbers;
@@ -718,6 +721,7 @@ public class CheckoutController : Controller
             await _loyalty.RedeemForOrderAsync(order.Id);
             await _giftCards.RedeemForOrderAsync(order.Id);
             await _loyalty.AccrueForOrderAsync(order.Id);
+            await _logistics.PushOrderAsync(order.Id);
 
             await SendOrderEmailsAsync(order.Id);
         }
@@ -768,6 +772,7 @@ public class CheckoutController : Controller
         await _loyalty.RedeemForOrderAsync(order.Id);
         await _giftCards.RedeemForOrderAsync(order.Id);
         await _loyalty.AccrueForOrderAsync(order.Id);
+        await _logistics.PushOrderAsync(order.Id);
 
         await SendOrderEmailsAsync(order.Id);
 
