@@ -791,7 +791,10 @@ public class PosController : Controller
                 sku = p.Sku,
                 barcode = p.Barcode,
                 categoryId = p.CategoryId,
-                price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price ? p.SalePrice.Value : p.Price,
+                price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
+                        && (p.SaleStartsAt == null || p.SaleStartsAt <= DateTime.UtcNow)
+                        && (p.SaleEndsAt == null || p.SaleEndsAt >= DateTime.UtcNow)
+                    ? p.SalePrice.Value : p.Price,
                 image = p.Images.Where(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
                 variants = p.ProductType == "variable"
@@ -879,7 +882,10 @@ public class PosController : Controller
                 name = p.Name,
                 sku = p.Sku,
                 barcode = p.Barcode,
-                price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price ? p.SalePrice.Value : p.Price,
+                price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
+                        && (p.SaleStartsAt == null || p.SaleStartsAt <= DateTime.UtcNow)
+                        && (p.SaleEndsAt == null || p.SaleEndsAt >= DateTime.UtcNow)
+                    ? p.SalePrice.Value : p.Price,
                 image = p.Images.Where(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
                 variants = p.ProductType == "variable"
@@ -941,7 +947,10 @@ public class PosController : Controller
                 barcode = p.Barcode,
                 description = p.ShortDescription,
                 category = p.Category.Name,
-                price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price ? p.SalePrice.Value : p.Price,
+                price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
+                        && (p.SaleStartsAt == null || p.SaleStartsAt <= DateTime.UtcNow)
+                        && (p.SaleEndsAt == null || p.SaleEndsAt >= DateTime.UtcNow)
+                    ? p.SalePrice.Value : p.Price,
                 inv = p.StoreInventories.Select(si => new { si.StoreId, store = si.Store.Name, si.ProductVariantId, si.QuantityOnHand, si.QuantityReserved }).ToList(),
                 variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).Select(v => new { id = v.Id, name = v.Name }).ToList()
             })

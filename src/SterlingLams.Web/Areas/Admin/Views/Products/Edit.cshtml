@@ -81,6 +81,18 @@
                                class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
                         <span class="text-[10px] text-neutral-400">Below Price → shows the old price struck through.</span>
                     </div>
+                    <div>
+                        <label asp-for="SaleStartsAt" class="block text-xs text-neutral-500 mb-1">Sale starts (optional)</label>
+                        <input asp-for="SaleStartsAt" type="datetime-local" asp-format="{0:yyyy-MM-ddTHH:mm}"
+                               class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                        <span class="text-[10px] text-neutral-400">Blank = live now. Times are UTC.</span>
+                    </div>
+                    <div>
+                        <label asp-for="SaleEndsAt" class="block text-xs text-neutral-500 mb-1">Sale ends (optional)</label>
+                        <input asp-for="SaleEndsAt" type="datetime-local" asp-format="{0:yyyy-MM-ddTHH:mm}"
+                               class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                        <span class="text-[10px] text-neutral-400">Blank = until cleared. Times are UTC.</span>
+                    </div>
                 </div>
                 <div>
                     <label asp-for="CategoryId" class="block text-xs text-neutral-500 mb-1">Category <span class="text-red-400">*</span></label>

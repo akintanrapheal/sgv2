@@ -174,14 +174,38 @@
     <input type="hidden" name="type"     value="@Model.TypeFilter" />
     <input type="hidden" name="page"     value="@Model.CurrentPage" />
     <input type="hidden" name="op"        id="bulk-op" value="" />
-    <div id="bulk-bar" class="hidden items-center gap-2 bg-neutral-900 text-white rounded-sm px-4 py-2 mb-3">
-        <span id="bulk-count" class="text-xs font-medium"></span>
-        <span class="flex-1"></span>
-        <button type="button" data-op="activate"   class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Activate</button>
-        <button type="button" data-op="deactivate" class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Deactivate</button>
-        <button type="button" data-op="feature"    class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Feature</button>
-        <button type="button" data-op="unfeature"  class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Unfeature</button>
-        <button type="button" data-op="delete"     class="bulk-btn px-3 py-1.5 text-xs bg-rose-500/80 hover:bg-rose-500 rounded-sm transition-colors">Delete</button>
+    <div id="bulk-bar" class="hidden flex-col gap-2 bg-neutral-900 text-white rounded-sm px-4 py-2.5 mb-3">
+        <div class="flex items-center gap-2 flex-wrap">
+            <span id="bulk-count" class="text-xs font-medium"></span>
+            <span class="flex-1"></span>
+            <button type="button" data-op="activate"   class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Activate</button>
+            <button type="button" data-op="deactivate" class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Deactivate</button>
+            <button type="button" data-op="feature"    class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Feature</button>
+            <button type="button" data-op="unfeature"  class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Unfeature</button>
+            <button type="button" data-op="run-seo"    class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Generate SEO</button>
+            <button type="button" data-op="delete"     class="bulk-btn px-3 py-1.5 text-xs bg-rose-500/80 hover:bg-rose-500 rounded-sm transition-colors">Delete</button>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap border-t border-white/10 pt-2 text-xs">
+            <!-- Move to category -->
+            <select name="bulkCategoryId" class="bg-white/10 rounded-sm px-2 py-1.5 text-xs text-white [&>option]:text-neutral-900">
+                <option value="">Category…</option>
+                @foreach (var cat in Model.AvailableCategories)
+                {
+                    <option value="@cat.Id">@cat.Name</option>
+                }
+            </select>
+            <button type="button" data-op="set-category" class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Move</button>
+            <span class="w-px h-5 bg-white/15 mx-1"></span>
+            <!-- Set / schedule sale -->
+            <input name="bulkSalePrice" type="number" step="0.01" min="0" placeholder="Sale ₦" class="w-24 bg-white/10 rounded-sm px-2 py-1.5 text-xs placeholder-white/50" />
+            <label class="text-white/50">from</label>
+            <input name="bulkSaleStartsAt" type="datetime-local" class="bg-white/10 rounded-sm px-2 py-1.5 text-xs [color-scheme:dark]" />
+            <label class="text-white/50">to</label>
+            <input name="bulkSaleEndsAt" type="datetime-local" class="bg-white/10 rounded-sm px-2 py-1.5 text-xs [color-scheme:dark]" />
+            <button type="button" data-op="set-sale" class="bulk-btn px-3 py-1.5 text-xs bg-amber-500/80 hover:bg-amber-500 rounded-sm transition-colors">Set sale</button>
+            <button type="button" data-op="clear-sale" class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Clear sale</button>
+            <span class="text-white/40">(sale times are UTC; blank = open-ended)</span>
+        </div>
     </div>
 </form>
 
@@ -392,6 +416,9 @@
         if (!ids.length) { alert('No products selected.'); return; }
         const op = btn.dataset.op;
         if (op === 'delete' && !confirm('Delete the ' + ids.length + ' selected product(s)? This also removes their variants, images and stock, and cannot be undone.')) return;
+        if (op === 'run-seo' && !confirm('Generate SEO descriptions for ' + ids.length + ' product(s)? This overwrites their current descriptions.')) return;
+        if (op === 'set-sale' && !form.querySelector('[name="bulkSalePrice"]').value) { alert('Enter a sale price first.'); return; }
+        if (op === 'set-category' && !form.querySelector('[name="bulkCategoryId"]').value) { alert('Pick a category first.'); return; }
         opField.value = op;
         form.querySelectorAll('input.injected-id').forEach(e => e.remove());
         ids.forEach(id => {

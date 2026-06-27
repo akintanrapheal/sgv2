@@ -18,8 +18,14 @@ public class ProductDetailViewModel
     public string? ShortDescription { get; set; }
     public decimal Price { get; set; }
     public decimal? SalePrice { get; set; }
+    /// <summary>Sale window (UTC); null = open-ended. Set from Product so a scheduled sale only
+    /// shows within its window. Both null = always live (legacy behaviour).</summary>
+    public DateTime? SaleStartsAt { get; set; }
+    public DateTime? SaleEndsAt { get; set; }
     public string Currency { get; set; } = "NGN";
-    public bool IsOnSale => SalePrice is decimal s && s > 0m && s < Price;
+    public bool IsOnSale => SalePrice is decimal s && s > 0m && s < Price
+        && (SaleStartsAt == null || SaleStartsAt <= DateTime.UtcNow)
+        && (SaleEndsAt == null || SaleEndsAt >= DateTime.UtcNow);
     public decimal EffectivePrice => IsOnSale ? SalePrice!.Value : Price;
     /// <summary>Sale price when on sale, otherwise the regular price.</summary>
     public string FormattedPrice => $"₦{EffectivePrice:N0}";

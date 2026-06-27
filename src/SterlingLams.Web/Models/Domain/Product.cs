@@ -19,9 +19,17 @@ public class Product
     /// Null (or not below Price) = not on sale.</summary>
     public decimal? SalePrice { get; set; }
 
-    /// <summary>True when a valid sale price is in effect.</summary>
+    /// <summary>Optional sale window (UTC). When set, the sale price only applies between these
+    /// times; null = open-ended on that side (so both null = the sale is live as soon as it's set,
+    /// the original behaviour). Evaluated at read time — no background job, no clock-skew lag.</summary>
+    public DateTime? SaleStartsAt { get; set; }
+    public DateTime? SaleEndsAt { get; set; }
+
+    /// <summary>True when a valid sale price is in effect AND within its scheduled window (if any).</summary>
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public bool IsOnSale => SalePrice is decimal s && s > 0m && s < Price;
+    public bool IsOnSale => SalePrice is decimal s && s > 0m && s < Price
+        && (SaleStartsAt == null || SaleStartsAt <= DateTime.UtcNow)
+        && (SaleEndsAt == null || SaleEndsAt >= DateTime.UtcNow);
 
     /// <summary>The price actually charged: the sale price when on sale, otherwise the regular price.</summary>
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]

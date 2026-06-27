@@ -11,8 +11,14 @@ public class ProductCardViewModel
     public string? SecondaryImageUrl { get; set; }
     public decimal Price { get; set; }
     public decimal? SalePrice { get; set; }
+    /// <summary>Sale window (UTC); null = open-ended. Populate from Product so scheduled sales
+    /// only show within their window. When both are null the sale is always live (legacy behaviour).</summary>
+    public DateTime? SaleStartsAt { get; set; }
+    public DateTime? SaleEndsAt { get; set; }
     public string Currency { get; set; } = "NGN";
-    public bool IsOnSale => SalePrice is decimal s && s > 0m && s < Price;
+    public bool IsOnSale => SalePrice is decimal s && s > 0m && s < Price
+        && (SaleStartsAt == null || SaleStartsAt <= DateTime.UtcNow)
+        && (SaleEndsAt == null || SaleEndsAt >= DateTime.UtcNow);
     public decimal EffectivePrice => IsOnSale ? SalePrice!.Value : Price;
     /// <summary>The price to show prominently (sale price when on sale).</summary>
     public string FormattedPrice => $"₦{EffectivePrice:N0}";

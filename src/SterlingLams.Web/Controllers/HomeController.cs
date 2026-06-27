@@ -39,6 +39,8 @@ public class HomeController : Controller
             Slug = p.Slug,
             Price = p.Price,
             SalePrice = p.SalePrice,
+            SaleStartsAt = p.SaleStartsAt,
+            SaleEndsAt = p.SaleEndsAt,
             Currency = p.Currency,
             PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
                 .Select(i => i.Url).FirstOrDefault() ?? "/images/placeholder.jpg",

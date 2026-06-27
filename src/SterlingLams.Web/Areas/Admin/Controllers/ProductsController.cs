@@ -23,6 +23,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly IWebHostEnvironment _env;
         private readonly IConfiguration _config;
         private readonly IStorefrontCache _storefrontCache;
+        private readonly SeoDescriptionGenerator _seo;
         private const int PageSize = 30;
 
         public ProductsController(
@@ -30,13 +31,15 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             IWooCommerceImportService wooImporter,
             IWebHostEnvironment env,
             IConfiguration config,
-            IStorefrontCache storefrontCache)
+            IStorefrontCache storefrontCache,
+            SeoDescriptionGenerator seo)
         {
             _db = db;
             _wooImporter = wooImporter;
             _env = env;
             _config = config;
             _storefrontCache = storefrontCache;
+            _seo = seo;
         }
 
         public async Task<IActionResult> Index(
@@ -170,6 +173,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 ShortDescription = product.ShortDescription,
                 Price            = product.Price,
                 SalePrice        = product.SalePrice,
+                SaleStartsAt     = product.SaleStartsAt,
+                SaleEndsAt       = product.SaleEndsAt,
                 Colour           = product.Metal,
                 Weight           = product.Weight,
                 IsActive         = product.IsActive,
@@ -389,6 +394,17 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             product.Price = vm.Price;
             // Sale price only applies when it's a positive number below the regular price.
             product.SalePrice = vm.SalePrice is decimal sp && sp > 0m && sp < vm.Price ? sp : null;
+            // Sale schedule (UTC). Cleared with the sale price; null on either side = open-ended.
+            if (product.SalePrice == null)
+            {
+                product.SaleStartsAt = null;
+                product.SaleEndsAt = null;
+            }
+            else
+            {
+                product.SaleStartsAt = vm.SaleStartsAt.HasValue ? DateTime.SpecifyKind(vm.SaleStartsAt.Value, DateTimeKind.Utc) : null;
+                product.SaleEndsAt = vm.SaleEndsAt.HasValue ? DateTime.SpecifyKind(vm.SaleEndsAt.Value, DateTimeKind.Utc) : null;
+            }
             product.Sku = string.IsNullOrWhiteSpace(vm.Sku) ? null : vm.Sku.Trim();
             product.ProductType = vm.ProductType == "variable" ? "variable" : "simple";
             product.IsActive = vm.IsActive;
@@ -482,6 +498,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Bulk(string op, int[] ids,
+            int? bulkCategoryId = null, decimal? bulkSalePrice = null,
+            DateTime? bulkSaleStartsAt = null, DateTime? bulkSaleEndsAt = null,
             string q = "", string category = "", string status = "", string type = "", int page = 1)
         {
             var back = new { q, category, status, type, page };
@@ -492,7 +510,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 return RedirectToAction(nameof(Index), back);
             }
 
-            var products = await _db.Products.Where(p => ids.Contains(p.Id)).ToListAsync();
+            var products = await _db.Products.Include(p => p.Category).Where(p => ids.Contains(p.Id)).ToListAsync();
             var n = products.Count;
 
             // Delete is special: skip products with order/stock history (RESTRICT FKs) and report.
@@ -526,6 +544,52 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 case "deactivate": products.ForEach(p => { p.IsActive = false;  p.UpdatedAt = DateTime.UtcNow; }); break;
                 case "feature":    products.ForEach(p => { p.IsFeatured = true; p.UpdatedAt = DateTime.UtcNow; }); break;
                 case "unfeature":  products.ForEach(p => { p.IsFeatured = false;p.UpdatedAt = DateTime.UtcNow; }); break;
+
+                case "set-category":
+                    if (bulkCategoryId is not int catId || !await _db.Categories.AnyAsync(c => c.Id == catId))
+                    {
+                        TempData["Error"] = "Pick a category to move the selected products to.";
+                        return RedirectToAction(nameof(Index), back);
+                    }
+                    products.ForEach(p => { p.CategoryId = catId; p.UpdatedAt = DateTime.UtcNow; });
+                    break;
+
+                case "set-sale":
+                    if (bulkSalePrice is not decimal salePrice || salePrice <= 0m)
+                    {
+                        TempData["Error"] = "Enter a sale price greater than zero.";
+                        return RedirectToAction(nameof(Index), back);
+                    }
+                    var saleStart = bulkSaleStartsAt.HasValue ? DateTime.SpecifyKind(bulkSaleStartsAt.Value, DateTimeKind.Utc) : (DateTime?)null;
+                    var saleEnd   = bulkSaleEndsAt.HasValue ? DateTime.SpecifyKind(bulkSaleEndsAt.Value, DateTimeKind.Utc) : (DateTime?)null;
+                    // Apply per product — only where the sale price is genuinely below that item's price.
+                    var applied = 0;
+                    foreach (var p in products.Where(p => salePrice < p.Price))
+                    {
+                        p.SalePrice = salePrice; p.SaleStartsAt = saleStart; p.SaleEndsAt = saleEnd;
+                        p.UpdatedAt = DateTime.UtcNow; applied++;
+                    }
+                    await _db.SaveChangesAsync();
+                    await _storefrontCache.EvictAsync();
+                    await LogAsync("Update", "Product", null, $"Bulk set-sale ₦{salePrice:N0} on {applied}/{n} product(s)");
+                    TempData["Success"] = $"Sale price applied to {applied} of {n} product(s)" +
+                        (applied < n ? " (skipped those priced at or below the sale price)." : ".");
+                    return RedirectToAction(nameof(Index), back);
+
+                case "clear-sale":
+                    products.ForEach(p => { p.SalePrice = null; p.SaleStartsAt = null; p.SaleEndsAt = null; p.UpdatedAt = DateTime.UtcNow; });
+                    break;
+
+                case "run-seo":
+                    foreach (var p in products)
+                    {
+                        var catName = p.Category?.Name ?? "Jewellery";
+                        p.Description = ProductHtml.Sanitize(_seo.Build(p.Id, p.Name, catName));
+                        p.ShortDescription = _seo.BuildShort(p.Id, p.Name, catName);
+                        p.UpdatedAt = DateTime.UtcNow;
+                    }
+                    break;
+
                 default:
                     TempData["Error"] = "Unknown bulk action.";
                     return RedirectToAction(nameof(Index), back);

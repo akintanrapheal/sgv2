@@ -84,6 +84,8 @@ public class ProductsController : Controller
                 Slug = p.Slug,
                 Price = p.Price,
                 SalePrice = p.SalePrice,
+                SaleStartsAt = p.SaleStartsAt,
+                SaleEndsAt = p.SaleEndsAt,
                 Currency = p.Currency,
                 PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
                     .Select(i => i.Url).FirstOrDefault() ?? "/images/placeholder.jpg",
@@ -241,6 +243,8 @@ public class ProductsController : Controller
             ShortDescription = product.ShortDescription,
             Price = product.Price,
             SalePrice = product.SalePrice,
+            SaleStartsAt = product.SaleStartsAt,
+            SaleEndsAt = product.SaleEndsAt,
             Currency = product.Currency,
             Material = product.Material,
             Metal = product.Metal,
@@ -287,6 +291,8 @@ public class ProductsController : Controller
                 Slug = p.Slug,
                 Price = p.Price,
                 SalePrice = p.SalePrice,
+                SaleStartsAt = p.SaleStartsAt,
+                SaleEndsAt = p.SaleEndsAt,
                 PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
                     .Select(i => i.Url).FirstOrDefault() ?? "/images/placeholder.jpg",
                 SecondaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)

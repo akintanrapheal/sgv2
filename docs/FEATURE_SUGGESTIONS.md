@@ -120,9 +120,12 @@ The inventory system is already strong. Suggested refinements that stay within s
 
 ## 5. Admin & operations
 
-- **Bulk product actions**: multi-select → archive, set category, set sale price,
-  feature/unfeature, run SEO generator on a selection (generator already exists).
-- **Scheduled price / sale** (start + end datetime) per product.
+- **Bulk product actions** — ✅ DONE. Multi-select → activate/deactivate, feature/unfeature,
+  delete, **set category**, **set/clear sale price (with optional schedule)**, **run the SEO
+  generator** on the selection.
+- **Scheduled price / sale** (start + end datetime) per product — ✅ DONE. `SaleStartsAt`/
+  `SaleEndsAt` on the product (UTC); the sale price only applies within the window
+  (evaluated at read time — storefront, cart and POS all agree; null = always-on as before).
 - **Saved report exports** + email a report on a schedule.
 - **Better media management**: bulk image upload + drag-reorder + alt-text (alt helps SEO).
 - **Activity dashboard widgets**: today's sales by channel, low-stock count, pending
