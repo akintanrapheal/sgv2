@@ -131,6 +131,25 @@ public class ProductsController : Controller
         return View(vm);
     }
 
+    // GET /products/compare?slugs=a,b,c — side-by-side comparison of up to 4 products.
+    // (Literal route beats the {slug} route below, so "compare" is never treated as a product slug.)
+    [HttpGet("products/compare")]
+    public async Task<IActionResult> Compare(string? slugs)
+    {
+        ViewData["Title"] = "Compare Products";
+        var list = (slugs ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim()).Where(s => s.Length > 0).Distinct().Take(4).ToList();
+
+        var products = list.Count == 0 ? new List<Product>() : await _db.Products
+            .Include(p => p.Category).Include(p => p.Images).Include(p => p.StoreInventories)
+            .Where(p => p.IsActive && list.Contains(p.Slug))
+            .ToListAsync();
+
+        // Preserve the order the customer added them.
+        var ordered = list.Select(s => products.FirstOrDefault(p => p.Slug == s)).Where(p => p != null).Select(p => p!).ToList();
+        return View(ordered);
+    }
+
     // GET /products/{slug}
     [HttpGet("products/{slug}")]
     public async Task<IActionResult> Detail(string slug)

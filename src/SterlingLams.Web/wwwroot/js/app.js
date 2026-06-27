@@ -154,6 +154,46 @@ document.querySelectorAll('.select-options-btn').forEach(btn => {
     btn.addEventListener('click', (e) => { e.preventDefault(); openQuickView(btn.dataset.productSlug); });
 });
 
+// Hover "Quick view" icon on product cards — opens the popup for any product.
+document.querySelectorAll('.quick-view-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); openQuickView(btn.dataset.productSlug); });
+});
+
+// ─── Compare (client-side list + floating bar) ─────────────────────────────
+const COMPARE_KEY = 'sg-compare';
+function getCompare() { try { return JSON.parse(localStorage.getItem(COMPARE_KEY) || '[]'); } catch { return []; } }
+function setCompare(a) { localStorage.setItem(COMPARE_KEY, JSON.stringify(a)); renderCompareBar(); syncCompareButtons(); }
+function syncCompareButtons() {
+    const a = getCompare();
+    document.querySelectorAll('.compare-toggle').forEach(b => {
+        const on = a.includes(b.dataset.productSlug);
+        b.classList.toggle('bg-brand-500', on);
+        b.classList.toggle('text-white', on);
+    });
+}
+function renderCompareBar() {
+    const bar = document.getElementById('compare-bar'); if (!bar) return;
+    const a = getCompare();
+    if (a.length === 0) { bar.classList.add('hidden'); return; }
+    bar.classList.remove('hidden');
+    const countEl = document.getElementById('compare-count'); if (countEl) countEl.textContent = a.length;
+    const go = document.getElementById('compare-go'); if (go) go.href = '/products/compare?slugs=' + a.map(encodeURIComponent).join(',');
+}
+document.querySelectorAll('.compare-toggle').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        let a = getCompare(); const slug = btn.dataset.productSlug;
+        if (a.indexOf(slug) !== -1) { a = a.filter(x => x !== slug); showToast('Removed from compare'); }
+        else { if (a.length >= 4) { showToast('You can compare up to 4 items'); return; } a.push(slug); showToast('Added to compare'); }
+        setCompare(a);
+    });
+});
+document.getElementById('compare-clear')?.addEventListener('click', (e) => { e.preventDefault(); setCompare([]); });
+// Keep the saved list in sync with a compare page opened directly (its slugs win).
+if (window.__comparePageSlugs) { localStorage.setItem(COMPARE_KEY, JSON.stringify(window.__comparePageSlugs)); }
+renderCompareBar();
+syncCompareButtons();
+
 // ─── Quick-view popup (Select Options) ─────────────────────────────────────
 let qvState = null; // { price, salePrice, variants, selected:{}, variantId }
 function openQuickView(slug) {

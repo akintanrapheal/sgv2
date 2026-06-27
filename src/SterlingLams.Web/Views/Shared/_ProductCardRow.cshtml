@@ -39,8 +39,9 @@
                                 }
                                 else if (p.IsNewArrival)
                                 {
-                                    <span class="absolute top-3 right-3 bg-brand-500 text-white text-[9px] tracking-widest uppercase px-2 py-1">New</span>
+                                    <span class="absolute top-3 left-3 bg-brand-500 text-white text-[9px] tracking-widest uppercase px-2 py-1">New</span>
                                 }
+                                <partial name="_ProductHoverActions" model="p" />
                             </div>
                             <h3 class="font-light text-sm text-neutral-700 group-hover:text-neutral-900 transition-colors leading-snug">@p.Name</h3>
                             @if (p.IsOnSale)

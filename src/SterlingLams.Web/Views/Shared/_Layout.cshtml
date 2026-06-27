@@ -133,6 +133,13 @@
         <span id="toast-message"></span>
     </div>
 
+    <!-- Compare bar (shown when products are selected to compare) -->
+    <div id="compare-bar" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[9998] bg-neutral-900 text-white rounded-full shadow-xl px-5 py-3 flex items-center gap-4 text-xs tracking-wide">
+        <span><span id="compare-count">0</span> selected to compare</span>
+        <a id="compare-go" href="#" class="bg-brand-500 hover:bg-brand-600 transition-colors px-4 py-1.5 rounded-full uppercase tracking-widest">Compare</a>
+        <button id="compare-clear" type="button" class="text-neutral-400 hover:text-white transition-colors">Clear</button>
+    </div>
+
     <!-- Scripts -->
     <script src="~/js/app.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)

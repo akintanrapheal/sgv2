@@ -1,0 +1,118 @@
+@model List<SterlingLams.Web.Models.Domain.Product>
+@{
+    ViewData["Title"] = "Compare Products";
+    Layout = "_Layout";
+    string Money(decimal v) => "₦" + v.ToString("N0");
+    string Img(SterlingLams.Web.Models.Domain.Product p) =>
+        p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault() ?? "/images/placeholder.jpg";
+    var slugsJson = System.Text.Json.JsonSerializer.Serialize(Model.Select(p => p.Slug));
+}
+<script>window.__comparePageSlugs = @Html.Raw(slugsJson);</script>
+@Html.AntiForgeryToken()
+
+<div class="max-w-7xl mx-auto px-6 py-12">
+    <div class="text-center mb-10">
+        <p class="text-xs tracking-[0.3em] uppercase text-brand-500 mb-2">Side by side</p>
+        <h1 class="font-cormorant text-4xl font-light text-neutral-900">Compare Products</h1>
+    </div>
+
+    @if (!Model.Any())
+    {
+        <div class="text-center py-20">
+            <p class="text-neutral-500 mb-6">You haven't added any products to compare yet. Hover a product and tap the compare icon.</p>
+            <a asp-controller="Products" asp-action="Index" class="inline-block bg-brand-500 text-white text-xs tracking-[0.2em] uppercase px-10 py-4 rounded-md hover:bg-brand-600 transition-colors">Browse Collections</a>
+        </div>
+    }
+    else
+    {
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-sm min-w-[640px]">
+                <tbody>
+                    <!-- Product header row -->
+                    <tr>
+                        <td class="w-32 align-bottom"></td>
+                        @foreach (var p in Model)
+                        {
+                            <td class="p-3 align-top text-center border-l border-neutral-100" style="width:@(100 / Model.Count)%">
+                                <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="block group">
+                                    <div class="aspect-square bg-neutral-100 overflow-hidden mb-3 rounded-md">
+                                        <img src="@Img(p)" alt="@p.Name" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                    </div>
+                                    <h3 class="text-sm font-light text-neutral-800 leading-snug">@p.Name</h3>
+                                </a>
+                                <a href="/products/compare?slugs=@(string.Join(",", Model.Where(x => x.Slug != p.Slug).Select(x => x.Slug)))"
+                                   class="text-[11px] text-neutral-400 hover:text-red-600 transition-colors">✕ Remove</a>
+                            </td>
+                        }
+                    </tr>
+                    <!-- Price -->
+                    <tr class="border-t border-neutral-100">
+                        <th class="text-left text-xs tracking-widest uppercase text-neutral-400 py-3 pr-4 align-middle">Price</th>
+                        @foreach (var p in Model)
+                        {
+                            <td class="text-center py-3 border-l border-neutral-100">
+                                @if (p.IsOnSale)
+                                {
+                                    <span class="text-neutral-400 line-through mr-1">@Money(p.Price)</span><span class="text-brand-600 font-medium">@Money(p.EffectivePrice)</span>
+                                }
+                                else { <span class="text-neutral-800">@Money(p.Price)</span> }
+                            </td>
+                        }
+                    </tr>
+                    <!-- Category -->
+                    <tr class="border-t border-neutral-100 bg-neutral-50/50">
+                        <th class="text-left text-xs tracking-widest uppercase text-neutral-400 py-3 pr-4">Category</th>
+                        @foreach (var p in Model) { <td class="text-center py-3 text-neutral-600 border-l border-neutral-100">@(p.Category?.Name ?? "—")</td> }
+                    </tr>
+                    <!-- Availability -->
+                    <tr class="border-t border-neutral-100">
+                        <th class="text-left text-xs tracking-widest uppercase text-neutral-400 py-3 pr-4">Availability</th>
+                        @foreach (var p in Model)
+                        {
+                            <td class="text-center py-3 border-l border-neutral-100">
+                                @if (p.IsAvailable) { <span class="text-emerald-600">In stock</span> } else { <span class="text-red-500">Out of stock</span> }
+                            </td>
+                        }
+                    </tr>
+                    <!-- Material -->
+                    @if (Model.Any(p => !string.IsNullOrWhiteSpace(p.Material) || !string.IsNullOrWhiteSpace(p.Metal)))
+                    {
+                        <tr class="border-t border-neutral-100 bg-neutral-50/50">
+                            <th class="text-left text-xs tracking-widest uppercase text-neutral-400 py-3 pr-4">Material</th>
+                            @foreach (var p in Model)
+                            {
+                                <td class="text-center py-3 text-neutral-600 border-l border-neutral-100">@(string.Join(" · ", new[] { p.Metal, p.Material }.Where(x => !string.IsNullOrWhiteSpace(x))) is { Length: > 0 } s ? s : "—")</td>
+                            }
+                        </tr>
+                    }
+                    <!-- Summary -->
+                    <tr class="border-t border-neutral-100">
+                        <th class="text-left text-xs tracking-widest uppercase text-neutral-400 py-3 pr-4 align-top">Description</th>
+                        @foreach (var p in Model) { <td class="py-3 px-3 text-neutral-500 text-xs leading-relaxed align-top border-l border-neutral-100">@(p.ShortDescription ?? "—")</td> }
+                    </tr>
+                    <!-- Add to bag -->
+                    <tr class="border-t border-neutral-100">
+                        <td class="py-4"></td>
+                        @foreach (var p in Model)
+                        {
+                            <td class="py-4 px-3 text-center border-l border-neutral-100">
+                                @if (p.IsAvailable)
+                                {
+                                    <button type="button" class="add-to-cart-btn w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 rounded-md hover:bg-brand-600 transition-colors" data-product-id="@p.Id">Add to Bag</button>
+                                }
+                                else
+                                {
+                                    <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="block w-full border border-neutral-300 text-neutral-600 text-xs tracking-[0.2em] uppercase py-3 rounded-md hover:border-neutral-500 transition-colors">View</a>
+                                }
+                            </td>
+                        }
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="text-center mt-10">
+            <a asp-controller="Products" asp-action="Index" class="text-xs tracking-[0.2em] uppercase text-neutral-500 hover:text-neutral-900 underline underline-offset-4">Continue shopping</a>
+        </div>
+    }
+</div>
