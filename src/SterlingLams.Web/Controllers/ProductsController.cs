@@ -118,6 +118,14 @@ public class ProductsController : Controller
             })
             .ToListAsync();
 
+        // Page heading: the category being viewed, else the search term, else the default.
+        string? pageTitle = null;
+        if (!string.IsNullOrWhiteSpace(filters.Category))
+            pageTitle = await _db.Categories.Where(c => c.Slug == filters.Category)
+                .Select(c => c.Name).FirstOrDefaultAsync();
+        else if (!string.IsNullOrWhiteSpace(filters.Search))
+            pageTitle = $"Results for “{filters.Search.Trim()}”";
+
         var vm = new ProductListViewModel
         {
             Products = products,
@@ -125,7 +133,8 @@ public class ProductsController : Controller
             TotalCount = totalCount,
             Page = page,
             PageSize = pageSize,
-            ActiveCategory = filters.Category
+            ActiveCategory = filters.Category,
+            PageTitle = pageTitle
         };
 
         return View(vm);
