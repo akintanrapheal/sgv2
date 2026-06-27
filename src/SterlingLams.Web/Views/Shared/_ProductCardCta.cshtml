@@ -7,14 +7,14 @@
 @if (!Model.IsAvailable)
 {
     <button type="button" disabled
-            class="mt-3 w-full bg-neutral-100 text-neutral-400 text-xs tracking-[0.2em] uppercase py-3 cursor-not-allowed">
+            class="mt-3 w-full bg-neutral-100 text-neutral-400 text-xs tracking-[0.2em] uppercase py-3 rounded-md cursor-not-allowed">
         Sold Out
     </button>
 }
 else if (Model.HasVariants)
 {
     <button type="button"
-            class="cta-btn select-options-btn mt-3 w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 hover:bg-brand-600 transition-colors flex items-center justify-center"
+            class="cta-btn select-options-btn mt-3 w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 rounded-md hover:bg-brand-600 transition-colors flex items-center justify-center"
             data-product-slug="@Model.Slug">
         <span>Select Options</span>@Html.Raw(cartIcon)
     </button>
@@ -22,7 +22,7 @@ else if (Model.HasVariants)
 else
 {
     <button type="button"
-            class="cta-btn add-to-cart-btn mt-3 w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 hover:bg-brand-600 transition-colors flex items-center justify-center"
+            class="cta-btn add-to-cart-btn mt-3 w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 rounded-md hover:bg-brand-600 transition-colors flex items-center justify-center"
             data-product-id="@Model.Id">
         <span>Add to Cart</span>@Html.Raw(cartIcon)
     </button>

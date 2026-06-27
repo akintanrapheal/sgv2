@@ -269,13 +269,13 @@
                         <button id="add-to-cart"
                                 data-product-id="@Model.Id"
                                 data-has-variants="@(Model.Variants.Any() ? "true" : "false")"
-                                class="flex-1 bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-4 px-8 hover:bg-brand-600 transition-colors duration-300">
+                                class="flex-1 bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-4 px-8 rounded-md hover:bg-brand-600 transition-colors duration-300">
                             Add to Bag
                         </button>
                         <button id="wishlist-btn"
                                 data-product-id="@Model.Id"
                                 aria-label="@(Model.IsInWishlist ? "Remove from wishlist" : "Add to wishlist")"
-                                class="border border-neutral-300 px-4 hover:border-brand-500 hover:text-brand-500 transition-colors">
+                                class="border border-neutral-300 px-4 rounded-md hover:border-brand-500 hover:text-brand-500 transition-colors">
                             <svg class="w-5 h-5 @(Model.IsInWishlist ? "fill-brand-500 text-brand-500" : "")"
                                  fill="@(Model.IsInWishlist ? "currentColor" : "none")"
                                  stroke="currentColor" viewBox="0 0 24 24">
@@ -300,7 +300,7 @@
                                    placeholder="your@email.com"
                                    class="flex-1 min-w-0 border border-neutral-300 px-4 py-3 text-sm focus:outline-none focus:border-brand-500 transition-colors" />
                             <button type="submit"
-                                    class="bg-brand-500 text-white text-xs tracking-[0.15em] uppercase px-6 py-3 hover:bg-brand-600 transition-colors whitespace-nowrap">
+                                    class="bg-brand-500 text-white text-xs tracking-[0.15em] uppercase px-6 py-3 rounded-md hover:bg-brand-600 transition-colors whitespace-nowrap">
                                 Notify Me
                             </button>
                         </form>
@@ -316,7 +316,7 @@
                         <button id="wishlist-btn"
                                 data-product-id="@Model.Id"
                                 aria-label="@(Model.IsInWishlist ? "Remove from wishlist" : "Add to wishlist")"
-                                class="border border-neutral-300 px-4 hover:border-brand-500 hover:text-brand-500 transition-colors">
+                                class="border border-neutral-300 px-4 rounded-md hover:border-brand-500 hover:text-brand-500 transition-colors">
                             <svg class="w-5 h-5 @(Model.IsInWishlist ? "fill-brand-500 text-brand-500" : "")"
                                  fill="@(Model.IsInWishlist ? "currentColor" : "none")"
                                  stroke="currentColor" viewBox="0 0 24 24">
