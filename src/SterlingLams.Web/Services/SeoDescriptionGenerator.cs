@@ -74,6 +74,28 @@ public class SeoDescriptionGenerator
              + Care;
     }
 
+    private static readonly string[] Shorts =
+    {
+        "Handmade {0} {1}{2} from Sterlin Glams — nickel & lead free, perfect for gifting.",
+        "Elegant {0} {1}{2}, handcrafted by Sterlin Glams. Lightweight and nickel & lead free.",
+        "{0} {1}{2} — a handmade Sterlin Glams statement piece, gentle on sensitive skin.",
+    };
+
+    /// <summary>One-line plain-text summary for the product's short description / meta snippet.</summary>
+    public string BuildShort(int seed, string name, string category)
+    {
+        var n = (name ?? "").ToLowerInvariant();
+        var c = (category ?? "").ToLowerInvariant();
+        var (noun, style, _, _) = Categorize(n, c);
+        var fin = Finish(n);
+        var typ = string.IsNullOrEmpty(style) ? noun : $"{style} {noun}";
+        var adorn = n.Contains("pearl") ? " with elegant faux pearls"
+            : ContainsAny(n, "stone", "crystal", "sparkle", "shiny", "gloss", "zirconia", "laser",
+                "shimmer", "bloom", "royal", "glow", "diamond", "ice", "star") ? " with sparkling cubic zirconia"
+            : "";
+        return string.Format(Shorts[Math.Abs(seed) % Shorts.Length], fin, typ, adorn);
+    }
+
     private static (string noun, string style, string closeLabel, string closeVal) Categorize(string n, string c)
     {
         string Pick(params (string kw, string val)[] m)

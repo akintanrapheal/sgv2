@@ -49,8 +49,10 @@
                 if (!d.ok) { setStatus(d.error || 'Failed.', 'text-red-600'); return; }
                 setStatus('Showing ' + d.samples.length + ' sample(s) of ' + d.total + ' product(s) in ' + d.category + '. Review, then Apply.');
                 samples.innerHTML = d.samples.map(function (s) {
+                    var esc = function (t) { return (t || '').replace(/[&<>]/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]); }); };
                     return '<div class="bg-white border border-neutral-200 rounded-sm p-5">'
                         + '<div class="text-[11px] uppercase tracking-wide text-neutral-400 mb-2">Preview — ' + s.name + '</div>'
+                        + '<div class="mb-3 text-xs text-neutral-500"><span class="font-medium text-neutral-600">Short summary (meta):</span> ' + esc(s.shortText) + '</div>'
                         + '<div class="prose prose-sm max-w-none text-neutral-700 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1 [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-0.5">' + s.html + '</div></div>';
                 }).join('');
                 applyBtn.disabled = false;

@@ -44,7 +44,12 @@ public class SeoController : AdminBaseController
         var step = Math.Max(1, prods.Count / 6);
         var picks = prods.Where((_, i) => i % step == 0).Take(6).ToList();
 
-        var samples = picks.Select(p => new { name = p.Name, html = _gen.Build(p.Id, p.Name, cat.Name) }).ToList();
+        var samples = picks.Select(p => new
+        {
+            name = p.Name,
+            shortText = _gen.BuildShort(p.Id, p.Name, cat.Name),
+            html = _gen.Build(p.Id, p.Name, cat.Name)
+        }).ToList();
         return Json(new { ok = true, total, category = cat.Name, samples });
     }
 
@@ -63,6 +68,7 @@ public class SeoController : AdminBaseController
         foreach (var p in prods)
         {
             p.Description = ProductHtml.Sanitize(_gen.Build(p.Id, p.Name, cat.Name));
+            p.ShortDescription = _gen.BuildShort(p.Id, p.Name, cat.Name);
             p.UpdatedAt = now;
         }
         await _db.SaveChangesAsync();
