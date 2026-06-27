@@ -28,6 +28,7 @@ public class CheckoutController : Controller
     private readonly SterlingLams.Web.Services.IDiscountService _discounts;
     private readonly SterlingLams.Web.Services.IEmailService _email;
     private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
+    private readonly SterlingLams.Web.Services.IGiftCardService _giftCards;
     private readonly SterlingLams.Web.Services.IStockService _stock;
     private readonly SterlingLams.Web.Services.IAuditService _audit;
     private readonly SterlingLams.Web.Services.IOrderNumberService _orderNumbers;
@@ -46,6 +47,7 @@ public class CheckoutController : Controller
         SterlingLams.Web.Services.IDiscountService discounts,
         SterlingLams.Web.Services.IEmailService email,
         SterlingLams.Web.Services.ILoyaltyService loyalty,
+        SterlingLams.Web.Services.IGiftCardService giftCards,
         SterlingLams.Web.Services.IStockService stock,
         SterlingLams.Web.Services.IAuditService audit,
         SterlingLams.Web.Services.IOrderNumberService orderNumbers,
@@ -63,6 +65,7 @@ public class CheckoutController : Controller
         _discounts = discounts;
         _email = email;
         _loyalty = loyalty;
+        _giftCards = giftCards;
         _stock = stock;
         _audit = audit;
         _orderNumbers = orderNumbers;
@@ -170,6 +173,8 @@ public class CheckoutController : Controller
                 vm.LoyaltyMaxDiscount = Math.Min(balance * pointValue, cart.Subtotal);
             }
         }
+
+        vm.GiftCardsAvailable = await _giftCards.RedemptionEnabledAsync();
 
         return View(vm);
     }
@@ -314,6 +319,8 @@ public class CheckoutController : Controller
                 vm.LoyaltyMaxDiscount   = Math.Min(balance * pointValue, cart.Subtotal);
             }
         }
+
+        vm.GiftCardsAvailable = await _giftCards.RedemptionEnabledAsync();
     }
 
     // Re-render checkout after a validation error, with all display data repopulated.
@@ -493,6 +500,30 @@ public class CheckoutController : Controller
             }
         }
 
+        // ── Gift card redemption ────────────────────────────────────────────
+        // Drawn from whatever is left to pay after promo + loyalty. Earmark now; the actual
+        // balance draw happens on payment success (RedeemForOrderAsync) so an abandoned order
+        // never drains the card. We leave ≥₦1 to charge so the gateway always has a positive
+        // amount (full gift-card payment / zero-total checkout is a deferred enhancement).
+        string? giftCardCode = null;
+        decimal giftCardAmount = 0m;
+        if (!string.IsNullOrWhiteSpace(vm.GiftCardCode) && await _giftCards.RedemptionEnabledAsync())
+        {
+            var lookup = await _giftCards.ValidateAsync(vm.GiftCardCode);
+            if (!lookup.Ok)
+            {
+                ModelState.AddModelError("GiftCardCode", lookup.Message);
+                return await RedisplayCheckoutAsync(vm);
+            }
+            var dueBeforeCard = cart.Subtotal - discountAmount + deliveryFee - loyaltyDiscount;
+            var cap = Math.Min(lookup.Balance, dueBeforeCard - 1m);
+            if (cap > 0)
+            {
+                giftCardAmount = Math.Round(cap, 2);
+                giftCardCode = lookup.Code;
+            }
+        }
+
         // Build order — short sequential number, e.g. SL-30012.
         var orderNumber = await _orderNumbers.NextAsync(OrderChannel.Online);
 
@@ -516,7 +547,9 @@ public class CheckoutController : Controller
             DiscountAmount = discountAmount,
             LoyaltyPointsRedeemed = loyaltyPoints,
             LoyaltyDiscount = loyaltyDiscount,
-            Total = cart.Subtotal - discountAmount + deliveryFee - loyaltyDiscount,
+            GiftCardCode = giftCardCode,
+            GiftCardAmount = giftCardAmount,
+            Total = cart.Subtotal - discountAmount + deliveryFee - loyaltyDiscount - giftCardAmount,
             Items = cart.Items.Select(i => new OrderItem
             {
                 ProductId = i.ProductId,
@@ -683,6 +716,7 @@ public class CheckoutController : Controller
 
             await IncrementDiscountUsageAsync(order);
             await _loyalty.RedeemForOrderAsync(order.Id);
+            await _giftCards.RedeemForOrderAsync(order.Id);
             await _loyalty.AccrueForOrderAsync(order.Id);
 
             await SendOrderEmailsAsync(order.Id);
@@ -732,6 +766,7 @@ public class CheckoutController : Controller
 
         await IncrementDiscountUsageAsync(order);
         await _loyalty.RedeemForOrderAsync(order.Id);
+        await _giftCards.RedeemForOrderAsync(order.Id);
         await _loyalty.AccrueForOrderAsync(order.Id);
 
         await SendOrderEmailsAsync(order.Id);

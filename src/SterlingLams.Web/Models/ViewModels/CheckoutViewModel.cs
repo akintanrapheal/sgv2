@@ -21,6 +21,11 @@ public class CheckoutViewModel : IValidatableObject
     public decimal LoyaltyMaxDiscount { get; set; }     // capped at the order subtotal
     public bool RedeemPoints { get; set; }              // posted: customer ticked "apply points"
 
+    // Gift card redemption
+    public bool GiftCardsAvailable { get; set; }        // redemption enabled in settings
+    public string? GiftCardCode { get; set; }           // posted: code the customer typed in
+    public decimal GiftCardAmount { get; set; }         // ₦ drawn from the card (reflected in Total)
+
     // Delivery
     public DeliveryAddressViewModel DeliveryAddress { get; set; } = new();
 
@@ -53,12 +58,14 @@ public class CheckoutViewModel : IValidatableObject
     public decimal DiscountAmount { get; set; }
     public string? AppliedDiscountCode { get; set; }
     public string? DiscountDescription { get; set; }
-    public decimal Total => Subtotal - DiscountAmount + DeliveryFee;
+    public decimal Total => Subtotal - DiscountAmount + DeliveryFee - GiftCardAmount;
     public string FormattedTotal => $"₦{Total:N0}";
     public string FormattedSubtotal => $"₦{Subtotal:N0}";
     public string FormattedDeliveryFee => DeliveryFee == 0 ? "Free" : $"₦{DeliveryFee:N0}";
     public string FormattedDiscount => $"-₦{DiscountAmount:N0}";
     public bool HasDiscount => DiscountAmount > 0;
+    public string FormattedGiftCard => $"-₦{GiftCardAmount:N0}";
+    public bool HasGiftCard => GiftCardAmount > 0;
 
     // Guest checkout fields (used when user is not signed in)
     [EmailAddress]

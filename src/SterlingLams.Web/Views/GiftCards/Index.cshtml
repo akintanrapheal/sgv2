@@ -1,0 +1,48 @@
+@{
+    ViewData["Title"] = "Gift Card Balance";
+    ViewData["Description"] = "Check the remaining balance on your Sterlin Glams gift card.";
+    Layout = "_Layout";
+    bool searched = ViewBag.Searched ?? false;
+    bool ok = ViewBag.Ok ?? false;
+    string? message = ViewBag.Message;
+    string? code = ViewBag.Code;
+    decimal balance = ViewBag.Balance ?? 0m;
+}
+
+<div class="max-w-2xl mx-auto px-6 py-16">
+    <div class="text-center mb-10">
+        <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-3">Gift cards</p>
+        <h1 class="font-cormorant text-4xl font-light">Check your balance</h1>
+        <p class="text-sm text-neutral-500 font-light mt-3">Enter your gift card code to see how much is left to spend.</p>
+    </div>
+
+    <form asp-controller="GiftCards" asp-action="Index" method="post" class="space-y-4 max-w-md mx-auto">
+        @Html.AntiForgeryToken()
+        <div>
+            <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Gift Card Code</label>
+            <input name="code" value="@code" class="form-input font-mono tracking-wider" placeholder="SLGC-XXXX-XXXX" autocomplete="off" autocapitalize="characters" />
+        </div>
+        <button type="submit" class="w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-4 hover:bg-brand-600 transition-colors">
+            Check Balance
+        </button>
+    </form>
+
+    @if (searched)
+    {
+        if (ok)
+        {
+            <div class="mt-10 border border-emerald-200 bg-emerald-50/50 rounded-sm text-center py-10 px-6">
+                <p class="text-xs tracking-[0.2em] uppercase text-neutral-400">Available balance</p>
+                <p class="font-cormorant text-5xl font-light text-neutral-900 mt-3">₦@balance.ToString("N0")</p>
+                <p class="text-sm text-neutral-500 mt-4">Apply this code at checkout to spend it.</p>
+                <a asp-controller="Products" asp-action="Index" class="inline-block mt-5 text-xs tracking-[0.2em] uppercase text-brand-600 hover:text-brand-700 border-b border-brand-200 pb-0.5">Start shopping</a>
+            </div>
+        }
+        else
+        {
+            <div class="mt-10 border border-neutral-200 rounded-sm text-center py-8 px-6 text-sm text-neutral-600">
+                @message
+            </div>
+        }
+    }
+</div>

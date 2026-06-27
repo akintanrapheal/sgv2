@@ -55,6 +55,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<Models.Domain.UserStore> UserStores => Set<Models.Domain.UserStore>();
     public DbSet<LoyaltyAccount> LoyaltyAccounts => Set<LoyaltyAccount>();
     public DbSet<PointsLedgerEntry> PointsLedgerEntries => Set<PointsLedgerEntry>();
+    public DbSet<GiftCard> GiftCards => Set<GiftCard>();
+    public DbSet<GiftCardTransaction> GiftCardTransactions => Set<GiftCardTransaction>();
     public DbSet<BackInStockRequest> BackInStockRequests => Set<BackInStockRequest>();
     public DbSet<AbandonedCart> AbandonedCarts => Set<AbandonedCart>();
 
@@ -103,6 +105,20 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
             e.HasOne(p => p.Order).WithMany().HasForeignKey(p => p.OrderId).OnDelete(DeleteBehavior.SetNull);
             // One accrual per order — makes point-awarding idempotent across the callback + webhook.
             e.HasIndex(p => p.OrderId).IsUnique().HasFilter("\"OrderId\" IS NOT NULL");
+        });
+
+        // ─── Gift cards ─────────────────────────────────────────────────────
+        builder.Entity<GiftCard>(e =>
+        {
+            e.HasIndex(g => g.Code).IsUnique();
+            e.Property(g => g.InitialAmount).HasColumnType("numeric(12,2)");
+            e.Property(g => g.Balance).HasColumnType("numeric(12,2)");
+        });
+        builder.Entity<GiftCardTransaction>(e =>
+        {
+            e.HasOne(t => t.GiftCard).WithMany(g => g.Transactions).HasForeignKey(t => t.GiftCardId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(t => t.Amount).HasColumnType("numeric(12,2)");
+            e.HasIndex(t => t.OrderId);
         });
 
         // ─── Product ────────────────────────────────────────────────────────

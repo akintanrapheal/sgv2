@@ -59,11 +59,14 @@ Strengthen the logged-in experience:
 - Loyalty balance + history; wishlist; back-in-stock subscriptions in one place.
 - Re-download/track pickup pass.
 
-### 2.3 Gift cards & e-vouchers _(High value, Medium effort)_
-No gift-card concept exists. Popular for jewellery gifting.
-- Purchasable gift card (code + balance), redeemable at checkout and POS.
-- Balance check page; partial redemption; expiry rules.
-- (Pairs naturally with the existing discount-code engine.)
+### 2.3 Gift cards & e-vouchers _(High value, Medium effort)_ — ✅ v1 SHIPPED
+- **Done:** Admin issue/manage (unique code + balance, deactivate, manual adjust, ledger),
+  public balance-check page (`/gift-cards`, rate-limited), partial redemption at online
+  checkout (earmark at placement → draw on payment success, idempotent), expiry rules,
+  full-refund returns the drawn balance. Setting `giftcards.enabled` gates redemption.
+- **Deferred:** POS redemption; purchasable gift-card-as-product; full gift-card payment
+  (a ≥₦1 remainder is always charged so the gateway has a positive amount — zero-total
+  checkout needs a separate gateway-bypass path).
 
 ### 2.4 Gifting at checkout _(Medium value, Low effort)_
 - "This is a gift" → gift message + gift wrap option (small fee), hide prices on the

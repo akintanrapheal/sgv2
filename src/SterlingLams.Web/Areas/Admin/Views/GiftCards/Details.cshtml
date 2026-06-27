@@ -1,0 +1,115 @@
+@model SterlingLams.Web.Models.Domain.GiftCard
+@{
+    ViewData["Title"] = $"Gift Card {Model.Code}";
+    Layout = "_AdminLayout";
+    var now = DateTime.UtcNow;
+    bool expired = Model.ExpiresAt != null && Model.ExpiresAt <= now;
+    string? newCode = TempData["NewCardCode"] as string;
+    string TypeLabel(SterlingLams.Web.Models.Domain.GiftCardTxnType t) => t switch
+    {
+        SterlingLams.Web.Models.Domain.GiftCardTxnType.Issue => "Issued",
+        SterlingLams.Web.Models.Domain.GiftCardTxnType.Redeem => "Redeemed",
+        SterlingLams.Web.Models.Domain.GiftCardTxnType.Refund => "Refunded",
+        _ => "Adjusted"
+    };
+}
+@Html.AntiForgeryToken()
+
+<div class="mb-6">
+    <a asp-area="Admin" asp-controller="GiftCards" asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← All gift cards</a>
+    <h1 class="text-2xl font-light text-neutral-900 mt-2 font-mono">@Model.Code</h1>
+</div>
+
+@if (TempData["Message"] != null)
+{
+    <div class="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm px-4 py-3 rounded-sm">@TempData["Message"]</div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-sm">@TempData["Error"]</div>
+}
+@if (newCode != null)
+{
+    <div class="mb-6 bg-neutral-900 text-white rounded-sm p-5">
+        <div class="text-xs text-neutral-400 uppercase tracking-wide">New gift card code — share with the recipient</div>
+        <div class="text-2xl font-mono mt-2 tracking-wider">@newCode</div>
+    </div>
+}
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-1 space-y-4">
+        <div class="bg-white border border-neutral-200 rounded-sm p-5">
+            <div class="text-xs text-neutral-400">Current balance</div>
+            <div class="text-3xl font-light text-neutral-900 mt-1">₦@Model.Balance.ToString("N0")</div>
+            <div class="text-xs text-neutral-400 mt-1">of ₦@Model.InitialAmount.ToString("N0") issued</div>
+
+            <dl class="mt-5 space-y-2 text-sm">
+                <div class="flex justify-between"><dt class="text-neutral-400">Status</dt><dd>
+                    @if (!Model.IsActive) { <span class="text-neutral-500">Deactivated</span> }
+                    else if (expired) { <span class="text-red-600">Expired</span> }
+                    else if (Model.Balance <= 0) { <span class="text-neutral-500">Spent</span> }
+                    else { <span class="text-emerald-600">Active</span> }
+                </dd></div>
+                <div class="flex justify-between"><dt class="text-neutral-400">Recipient</dt><dd class="text-neutral-700">@(Model.RecipientName ?? "—")</dd></div>
+                <div class="flex justify-between"><dt class="text-neutral-400">Email</dt><dd class="text-neutral-700">@(Model.RecipientEmail ?? "—")</dd></div>
+                <div class="flex justify-between"><dt class="text-neutral-400">Expires</dt><dd class="text-neutral-700">@(Model.ExpiresAt?.ToString("dd MMM yyyy") ?? "Never")</dd></div>
+                <div class="flex justify-between"><dt class="text-neutral-400">Created</dt><dd class="text-neutral-700">@Model.CreatedAt.ToString("dd MMM yyyy")</dd></div>
+                <div class="flex justify-between"><dt class="text-neutral-400">Last used</dt><dd class="text-neutral-700">@(Model.LastUsedAt?.ToString("dd MMM yyyy") ?? "—")</dd></div>
+            </dl>
+            @if (!string.IsNullOrWhiteSpace(Model.Note))
+            {
+                <p class="mt-4 text-sm text-neutral-500 border-t border-neutral-100 pt-3">@Model.Note</p>
+            }
+
+            <form asp-area="Admin" asp-controller="GiftCards" asp-action="SetActive" method="post" class="mt-5">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Id" />
+                <input type="hidden" name="active" value="@((!Model.IsActive).ToString().ToLower())" />
+                <button type="submit" class="w-full px-4 py-2 text-sm rounded-sm @(Model.IsActive ? "border border-red-200 text-red-600 hover:bg-red-50" : "bg-emerald-600 text-white hover:bg-emerald-700")">
+                    @(Model.IsActive ? "Deactivate card" : "Reactivate card")
+                </button>
+            </form>
+        </div>
+
+        <div class="bg-white border border-neutral-200 rounded-sm p-5">
+            <div class="text-sm font-medium text-neutral-700 mb-3">Adjust balance</div>
+            <form asp-area="Admin" asp-controller="GiftCards" asp-action="Adjust" method="post" class="space-y-3">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Id" />
+                <input name="amount" type="number" step="0.01" required class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm" placeholder="e.g. 5000 (top-up) or -2000 (debit)" />
+                <input name="reason" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm" placeholder="Reason (optional)" />
+                <button type="submit" class="w-full px-4 py-2 text-sm border border-neutral-300 text-neutral-700 rounded-sm hover:bg-neutral-50">Apply adjustment</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="lg:col-span-2">
+        <div class="bg-white border border-neutral-200 rounded-sm overflow-hidden">
+            <div class="px-5 py-3 border-b border-neutral-100 text-sm font-medium text-neutral-700">Transaction history</div>
+            <table class="w-full text-sm">
+                <thead class="bg-neutral-50 text-neutral-500 text-xs">
+                    <tr>
+                        <th class="text-left font-semibold px-5 py-2.5">Type</th>
+                        <th class="text-left font-semibold px-5 py-2.5">Note</th>
+                        <th class="text-right font-semibold px-5 py-2.5">Amount</th>
+                        <th class="text-left font-semibold px-5 py-2.5">When</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-neutral-100">
+                    @foreach (var t in Model.Transactions)
+                    {
+                        <tr>
+                            <td class="px-5 py-2.5 text-neutral-700">@TypeLabel(t.Type)</td>
+                            <td class="px-5 py-2.5 text-neutral-500">
+                                @(t.Note ?? "—")
+                                @if (t.OrderId != null) { <a asp-area="Admin" asp-controller="Orders" asp-action="Detail" asp-route-id="@t.OrderId" class="text-neutral-400 hover:text-neutral-700 ml-1">(order)</a> }
+                            </td>
+                            <td class="px-5 py-2.5 text-right font-medium @(t.Amount >= 0 ? "text-emerald-600" : "text-neutral-700")">@(t.Amount >= 0 ? "+" : "−")₦@Math.Abs(t.Amount).ToString("N0")</td>
+                            <td class="px-5 py-2.5 text-neutral-400 text-xs">@t.CreatedAt.ToString("dd MMM yyyy HH:mm")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

@@ -22,17 +22,19 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly IStockService _stock;
         private readonly IPaymentService _payment;
         private readonly ILoyaltyService _loyalty;
+        private readonly IGiftCardService _giftCards;
         private readonly IOrderFulfilmentService _fulfilment;
         private readonly IEmailService _email;
         private const int PageSize = 25;
 
         public OrdersController(ApplicationDbContext db, IStockService stock, IPaymentService payment,
-            ILoyaltyService loyalty, IOrderFulfilmentService fulfilment, IEmailService email)
+            ILoyaltyService loyalty, IGiftCardService giftCards, IOrderFulfilmentService fulfilment, IEmailService email)
         {
             _db = db;
             _stock = stock;
             _payment = payment;
             _loyalty = loyalty;
+            _giftCards = giftCards;
             _fulfilment = fulfilment;
             _email = email;
         }
@@ -575,9 +577,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 return RedirectToAction(nameof(Detail), new { id });
             }
 
-            // On a full refund, reverse loyalty: claw back points earned, return points redeemed.
+            // On a full refund, reverse loyalty (claw back earned, return redeemed) and return any
+            // gift-card balance that was drawn on the order.
             if (fullyRefunded)
+            {
                 await _loyalty.ReverseForOrderAsync(order.Id);
+                await _giftCards.ReverseForOrderAsync(order.Id);
+            }
 
             await LogAsync("Refund", "Order", order.Id.ToString(),
                 $"Refund {refundNumber} for {order.OrderNumber}: ₦{amount:N0}, {refund.Items.Sum(r => r.Quantity)} item(s)" +

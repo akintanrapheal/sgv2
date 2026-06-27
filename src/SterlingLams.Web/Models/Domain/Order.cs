@@ -90,6 +90,15 @@ public class Order
     /// <summary>Set when loyalty was reversed on a full refund (claw back earned, return redeemed) — idempotency guard.</summary>
     public DateTime? LoyaltyReversedAt { get; set; }
 
+    /// <summary>Gift card code applied to this order (earmarked at placement), or null.</summary>
+    public string? GiftCardCode { get; set; }
+    /// <summary>₦ amount drawn from the gift card (already reflected in <see cref="Total"/>).</summary>
+    public decimal GiftCardAmount { get; set; }
+    /// <summary>Set when the earmarked gift-card amount was actually drawn (on payment) — idempotency guard.</summary>
+    public DateTime? GiftCardRedeemedAt { get; set; }
+    /// <summary>Set when the gift-card draw was returned on a full refund — idempotency guard.</summary>
+    public DateTime? GiftCardReversedAt { get; set; }
+
     public string? PaymentReference { get; set; }
     public string? PaymentProvider { get; set; }
     public bool IsPaid { get; set; }

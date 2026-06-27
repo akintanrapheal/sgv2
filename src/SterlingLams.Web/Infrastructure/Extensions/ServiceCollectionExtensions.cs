@@ -21,6 +21,7 @@ public static class ServiceCollectionExtensions
         // ─── Merchandising (best sellers / trending / new arrivals / recently viewed) ──
         services.AddScoped<IMerchandisingService, MerchandisingService>();
         services.AddScoped<ILoyaltyService, LoyaltyService>();
+        services.AddScoped<IGiftCardService, GiftCardService>();
 
         // ─── Store-level authorization (writes-only) ──────────────────────────
         services.AddScoped<IStoreAccessService, StoreAccessService>();

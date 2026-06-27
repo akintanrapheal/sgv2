@@ -16,6 +16,7 @@ public class WebhooksController : ControllerBase
     private readonly IPaymentService _payment;
     private readonly SterlingLams.Web.Services.IOrderFulfilmentService _fulfilment;
     private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
+    private readonly SterlingLams.Web.Services.IGiftCardService _giftCards;
     private readonly ILogger<WebhooksController> _logger;
 
     private readonly SterlingLams.Web.Services.IAuditService _audit;
@@ -25,6 +26,7 @@ public class WebhooksController : ControllerBase
         IPaymentService payment,
         SterlingLams.Web.Services.IOrderFulfilmentService fulfilment,
         SterlingLams.Web.Services.ILoyaltyService loyalty,
+        SterlingLams.Web.Services.IGiftCardService giftCards,
         SterlingLams.Web.Services.IAuditService audit,
         ILogger<WebhooksController> logger)
     {
@@ -32,6 +34,7 @@ public class WebhooksController : ControllerBase
         _payment = payment;
         _fulfilment = fulfilment;
         _loyalty = loyalty;
+        _giftCards = giftCards;
         _audit = audit;
         _logger = logger;
     }
@@ -119,6 +122,7 @@ public class WebhooksController : ControllerBase
                     return Ok();
                 }
                 await _loyalty.RedeemForOrderAsync(order.Id);
+                await _giftCards.RedeemForOrderAsync(order.Id);
                 await _loyalty.AccrueForOrderAsync(order.Id);
 
                 _logger.LogInformation("Order {OrderNumber} marked as paid via webhook", order.OrderNumber);

@@ -110,6 +110,9 @@ public static class SettingsSeedData
         new() { Key = "loyalty.point_value",        Group = "Loyalty", Label = "Point Value on Redemption (₦)",          Type = "number",  Value = "1",    Description = "₦ discount per point when redeemed at checkout (e.g. 1 = 1 point is worth ₦1).", SortOrder = 3 },
         new() { Key = "loyalty.redemption_enabled", Group = "Loyalty", Label = "Allow Redeeming Points at Checkout",     Type = "boolean", Value = "true", Description = "Let signed-in customers apply their points for a discount at checkout.",        SortOrder = 4 },
 
+        // ── Gift cards ─────────────────────────────────────────────────────────
+        new() { Key = "giftcards.enabled", Group = "Gift Cards", Label = "Enable Gift Card Redemption", Type = "boolean", Value = "true", Description = "Let customers apply a gift card code at checkout. Issue cards from Admin → Gift Cards.", SortOrder = 1 },
+
         // ── Emails (customizer) ───────────────────────────────────────────────
         // Branding (shared by every email)
         new() { Key = "email.from_name",    Group = "Emails", Label = "Sender Name",          Type = "text",     Value = "Sterlin Glams", Description = "Display name on the From line of every email.",            SortOrder = 1 },

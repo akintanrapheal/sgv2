@@ -278,6 +278,15 @@
                             <span class="text-neutral-500 font-light">Delivery</span>
                             <span id="summary-delivery">—</span>
                         </div>
+                        @if (Model.GiftCardsAvailable)
+                        {
+                            <div class="pt-2">
+                                <label class="block text-[11px] tracking-[0.12em] uppercase text-neutral-400 mb-1.5">Gift card</label>
+                                <input asp-for="GiftCardCode" class="w-full border border-neutral-200 px-3 py-2 text-sm font-mono tracking-wider focus:outline-none focus:border-neutral-400" placeholder="SLGC-XXXX-XXXX" autocomplete="off" autocapitalize="characters" />
+                                <span asp-validation-for="GiftCardCode" class="block text-xs text-red-500 mt-1"></span>
+                                <p class="text-[11px] text-neutral-400 mt-1 font-light">Your card balance is applied when you pay; any remainder is charged to your card.</p>
+                            </div>
+                        }
                         <div class="flex justify-between text-sm font-medium border-t border-neutral-200 pt-3 mt-3">
                             <span>Total</span>
                             <span id="summary-total">@Model.FormattedSubtotal</span>
