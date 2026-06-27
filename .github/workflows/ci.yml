@@ -1,0 +1,37 @@
+name: CI
+
+# Build + run the test suite on every push and PR to the main branches, so a red
+# build is caught before it reaches Render. Tests use an in-memory SQLite DB, so no
+# database service is needed here.
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+# Cancel an in-progress run when a newer commit is pushed to the same branch/PR.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        run: dotnet restore SterlingLams.sln
+
+      # BuildTailwind=false skips the npm/Tailwind CSS step — CSS isn't needed to compile or
+      # run the tests, and there's no Node toolchain in this job (Render builds CSS separately).
+      - name: Build
+        run: dotnet build SterlingLams.sln --configuration Release --no-restore -p:BuildTailwind=false
+
+      - name: Test
+        run: dotnet test SterlingLams.sln --configuration Release --no-build --verbosity normal

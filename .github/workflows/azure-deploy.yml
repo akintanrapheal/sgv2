@@ -15,8 +15,8 @@
 name: Deploy to Azure
 
 on:
-  push:
-    branches: [main]
+  # Azure deploys are retired (the site runs on Render). No longer triggered on push — kept
+  # for reference; run manually from the Actions tab only if Azure is ever revisited.
   workflow_dispatch: {}      # lets you run it manually from the Actions tab
 
 env:

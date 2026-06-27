@@ -155,13 +155,16 @@ The inventory system is already strong. Suggested refinements that stay within s
 
 ## 7. Technical / DevOps
 
-- **CI pipeline**: build + run the existing test suite on every push (8 test files exist);
-  block deploy on red.
-- **Staging environment** mirroring prod for safe testing before Render production.
+- **CI pipeline** — ✅ DONE. `.github/workflows/ci.yml` restores, builds (Release,
+  `BuildTailwind=false`) and runs the xUnit suite on every push/PR to main. The retired
+  Azure deploy workflow is now manual-only so it stops failing on push.
+- **Test coverage growth** — ✅ EXPANDED. Added unit tests for the scheduled-sale window,
+  GiftCardService (issue / validate / redeem-idempotent / clamp / reverse) and
+  OrderNumberService (short number + channel prefix). 29 tests green.
+- **Staging environment** — ⏭️ Render dashboard step (create a second service off the same
+  repo/branch with its own DB). Not code; do it in Render when ready.
 - **Dev → Prod data sync**: a documented, repeatable process for product/content data
   (this is currently a manual gap — the SEO tool now runs directly on prod, which helps).
-- **Test coverage growth**: add tests around checkout, stock concurrency, transfers,
-  order-number generation, and the new compare/SEO tools.
 - **Feature flags**: the settings system already acts as lightweight flags — formalise a
   few (e.g. enable reviews, gift cards) for safe rollout.
 
