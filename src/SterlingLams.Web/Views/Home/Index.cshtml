@@ -299,6 +299,13 @@
                                     </div>
                                 </div>
                                 <h3 class="font-light text-sm text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
+                                @if (p.ReviewCount > 0)
+                                {
+                                    <p class="flex items-center gap-1 mt-1 text-xs leading-none">
+                                        <span>@for (int i = 1; i <= 5; i++) { <span class="@(i <= Math.Round(p.AverageRating) ? "text-brand-500" : "text-neutral-300")">★</span> }</span>
+                                        <span class="text-neutral-400">(@p.ReviewCount)</span>
+                                    </p>
+                                }
                                 @if (p.IsOnSale)
                                 {
                                     <p class="text-xs mt-1"><span class="text-neutral-400 line-through">@p.FormattedRegularPrice</span> <span class="text-brand-600 ml-1">@p.FormattedPrice</span></p>

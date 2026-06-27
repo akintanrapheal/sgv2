@@ -47,6 +47,23 @@ public class HomeController : Controller
             HasVariants = p.Variants.Any(v => v.IsActive)
         }).ToList();
 
+        // Attach approved-review ratings to the featured cards (one grouped query).
+        var featuredCards = (List<ProductCardViewModel>)ViewBag.FeaturedProducts;
+        var featuredIds = featuredCards.Select(c => c.Id).ToList();
+        if (featuredIds.Count > 0)
+        {
+            var fr = await _db.ProductReviews
+                .Where(r => featuredIds.Contains(r.ProductId) && r.IsApproved)
+                .GroupBy(r => r.ProductId)
+                .Select(g => new { ProductId = g.Key, Count = g.Count(), Avg = g.Average(x => (double)x.Rating) })
+                .ToListAsync();
+            foreach (var c in featuredCards)
+            {
+                var rr = fr.FirstOrDefault(x => x.ProductId == c.Id);
+                if (rr != null) { c.ReviewCount = rr.Count; c.AverageRating = Math.Round(rr.Avg, 1); }
+            }
+        }
+
         // "Shop by Category" — active top-level categories. Prefer those with an
         // image (admin-curated); fall back to the first few so the section is never empty.
         var topCategories = await _db.Categories

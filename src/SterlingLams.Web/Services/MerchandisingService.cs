@@ -147,6 +147,19 @@ public class MerchandisingService : IMerchandisingService
                 CategoryName = p.Category.Name,
             })
             .ToListAsync();
+
+        // Attach approved-review ratings in one grouped query (shared across all merchandising rows).
+        var ratings = await _db.ProductReviews
+            .Where(r => ids.Contains(r.ProductId) && r.IsApproved)
+            .GroupBy(r => r.ProductId)
+            .Select(g => new { ProductId = g.Key, Count = g.Count(), Avg = g.Average(x => (double)x.Rating) })
+            .ToListAsync();
+        foreach (var c in products)
+        {
+            var rr = ratings.FirstOrDefault(x => x.ProductId == c.Id);
+            if (rr != null) { c.ReviewCount = rr.Count; c.AverageRating = Math.Round(rr.Avg, 1); }
+        }
+
         return products.ToDictionary(p => p.Id);
     }
 }
