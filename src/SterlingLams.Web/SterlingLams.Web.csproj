@@ -39,6 +39,7 @@
     <!-- Authentication -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Cookies" Version="2.2.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="9.0.4" />
+    <PackageReference Include="Sentry.AspNetCore" Version="6.6.0" />
 
     <!-- Stripe -->
     <PackageReference Include="Stripe.net" Version="47.3.0" />

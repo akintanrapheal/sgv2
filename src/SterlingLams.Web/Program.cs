@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Sentry.AspNetCore;
 using Serilog;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Infrastructure.Extensions;
@@ -22,6 +23,24 @@ Log.Logger = new LoggerConfiguration()
     .CreateLogger();
 
 builder.Host.UseSerilog();
+
+// ─── Error monitoring (Sentry) ───────────────────────────────────────────────
+// Opt-in: stays completely inert until a DSN is supplied (Sentry:Dsn or SENTRY_DSN env var),
+// so local/dev runs never phone home. Set the DSN in Render to start capturing server-side
+// exceptions + performance traces. No secret needs to live in the repo.
+var sentryDsn = builder.Configuration["Sentry:Dsn"];
+if (!string.IsNullOrWhiteSpace(sentryDsn))
+{
+    builder.WebHost.UseSentry(o =>
+    {
+        o.Dsn = sentryDsn;
+        o.Environment = builder.Environment.EnvironmentName;
+        o.TracesSampleRate = builder.Configuration.GetValue("Sentry:TracesSampleRate", 0.1);
+        // Don't capture request bodies (they can carry PII / payment data).
+        o.MaxRequestBodySize = Sentry.Extensibility.RequestSize.None;
+        o.SendDefaultPii = false;
+    });
+}
 
 // ─── Database ───────────────────────────────────────────────────────────────
 // Render/Heroku/Railway hand the database to the app as a postgres:// URL in DATABASE_URL.
@@ -179,6 +198,12 @@ builder.Services.AddControllersWithViews()
 
 builder.Services.AddHttpContextAccessor();
 
+// ─── Health checks ────────────────────────────────────────────────────────────
+// /health        → liveness  (process is up & serving)        — Render deploy probe
+// /health/ready  → readiness (can actually reach Postgres)    — catches a bad deploy
+builder.Services.AddHealthChecks()
+    .AddCheck<SterlingLams.Web.Infrastructure.DatabaseHealthCheck>("database", tags: new[] { "ready" });
+
 var app = builder.Build();
 
 // ─── Middleware Pipeline ─────────────────────────────────────────────────────
@@ -289,6 +314,17 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.MapControllers(); // API controllers (WebhooksController)
+
+// Health probes (anonymous). Liveness runs no checks (is the process serving?); readiness
+// includes the DB check so Render can detect an instance that's up but can't reach Postgres.
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = _ => false
+});
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+});
 
 // ─── DB Initialisation ───────────────────────────────────────────────────────
 {
