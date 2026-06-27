@@ -54,6 +54,29 @@ public class ProductDetailViewModel
     public string OutOfStockMessage { get; set; } = "This item is currently out of stock. Check back soon.";
     public List<ProductCardViewModel> RelatedProducts { get; set; } = new();
     public List<ProductCardViewModel> FrequentlyBoughtTogether { get; set; } = new();
+
+    // ── Reviews ──────────────────────────────────────────────────────────────
+    public bool ReviewsEnabled { get; set; } = true;
+    public double AverageRating { get; set; }
+    public int ReviewCount { get; set; }
+    public List<ProductReviewViewModel> Reviews { get; set; } = new();
+    /// <summary>The visitor is signed in (and so may submit a review).</summary>
+    public bool CanReview { get; set; }
+    /// <summary>The signed-in visitor has already reviewed this product.</summary>
+    public bool HasReviewed { get; set; }
+    /// <summary>Counts per star (1..5) for the rating breakdown bars.</summary>
+    public Dictionary<int, int> RatingBreakdown { get; set; } = new();
+}
+
+public class ProductReviewViewModel
+{
+    public string AuthorName { get; set; } = string.Empty;
+    public int Rating { get; set; }
+    public string? Title { get; set; }
+    public string Body { get; set; } = string.Empty;
+    public bool IsVerifiedBuyer { get; set; }
+    public string? AdminReply { get; set; }
+    public DateTime CreatedAt { get; set; }
 }
 
 public class AttributeLabelViewModel

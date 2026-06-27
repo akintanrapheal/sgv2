@@ -39,6 +39,12 @@
         ["sku"] = string.IsNullOrWhiteSpace(Model.Sku) ? null : Model.Sku,
         ["brand"] = new Dictionary<string, object?> { ["@type"] = "Brand", ["name"] = "Sterlin Glams" },
         ["category"] = Model.CategoryName,
+        ["aggregateRating"] = Model.ReviewCount > 0 ? new Dictionary<string, object?>
+        {
+            ["@type"] = "AggregateRating",
+            ["ratingValue"] = Model.AverageRating,
+            ["reviewCount"] = Model.ReviewCount,
+        } : null,
         ["offers"] = new Dictionary<string, object?>
         {
             ["@type"] = "Offer",
@@ -139,7 +145,19 @@
         <!-- ─── Product Info ──────────────────────────────────────────── -->
         <div class="flex flex-col">
             <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-2">@Model.CategoryName</p>
-            <h1 class="font-cormorant text-4xl font-light text-neutral-900 mb-4">@Model.Name</h1>
+            <h1 class="font-cormorant text-4xl font-light text-neutral-900 mb-2">@Model.Name</h1>
+            @if (Model.ReviewsEnabled && Model.ReviewCount > 0)
+            {
+                <a href="#product-tabs" data-tab-jump="reviews" class="inline-flex items-center gap-2 mb-4 text-sm w-fit">
+                    <span class="text-base leading-none">
+                        @for (int i = 1; i <= 5; i++)
+                        {
+                            <span class="@(i <= Math.Round(Model.AverageRating) ? "text-brand-500" : "text-neutral-300")">★</span>
+                        }
+                    </span>
+                    <span class="text-neutral-500 hover:text-neutral-900 underline underline-offset-2">@Model.AverageRating.ToString("0.0") (@Model.ReviewCount)</span>
+                </a>
+            }
             <p class="mb-2 flex items-baseline gap-3 flex-wrap" id="price-block">
                 <span id="price-effective" class="text-2xl font-light @(Model.IsOnSale ? "text-brand-600" : "text-neutral-800")">@Model.FormattedPrice</span>
                 <span id="price-regular" class="text-lg font-light text-neutral-400 line-through @(Model.IsOnSale ? "" : "hidden")">@Model.FormattedRegularPrice</span>
@@ -392,7 +410,7 @@
             </button>
             <button type="button" data-tab="reviews"
                     class="prod-tab-btn pb-3 text-xs tracking-[0.15em] uppercase border-b-2 border-transparent text-neutral-400 hover:text-neutral-700 transition-colors">
-                Reviews (0)
+                Reviews (@Model.ReviewCount)
             </button>
             <button type="button" data-tab="shipping"
                     class="prod-tab-btn pb-3 text-xs tracking-[0.15em] uppercase border-b-2 border-transparent text-neutral-400 hover:text-neutral-700 transition-colors">
@@ -421,9 +439,119 @@
             </div>
 
             <!-- Reviews -->
-            <div class="prod-tab-panel hidden text-center py-6" data-panel="reviews">
-                <p class="text-sm text-neutral-500">There are no reviews yet.</p>
-                <p class="text-xs text-neutral-400 mt-1">Be the first to review &ldquo;@Model.Name&rdquo;.</p>
+            <div class="prod-tab-panel hidden" data-panel="reviews">
+                @if (TempData["ReviewSuccess"] != null)
+                {
+                    <div class="mb-6 px-4 py-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm rounded-md">@TempData["ReviewSuccess"]</div>
+                }
+                @if (TempData["ReviewError"] != null)
+                {
+                    <div class="mb-6 px-4 py-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-md">@TempData["ReviewError"]</div>
+                }
+
+                @if (Model.ReviewCount > 0)
+                {
+                    <div class="flex flex-col sm:flex-row gap-8 items-center sm:items-start mb-10">
+                        <div class="text-center shrink-0">
+                            <div class="text-5xl font-light text-neutral-900">@Model.AverageRating.ToString("0.0")</div>
+                            <div class="text-base leading-none mt-1">
+                                @for (int i = 1; i <= 5; i++)
+                                {
+                                    <span class="@(i <= Math.Round(Model.AverageRating) ? "text-brand-500" : "text-neutral-300")">★</span>
+                                }
+                            </div>
+                            <div class="text-xs text-neutral-400 mt-2">@Model.ReviewCount review@(Model.ReviewCount == 1 ? "" : "s")</div>
+                        </div>
+                        <div class="flex-1 w-full space-y-1.5">
+                            @for (int s = 5; s >= 1; s--)
+                            {
+                                var c = Model.RatingBreakdown.GetValueOrDefault(s);
+                                var pct = Model.ReviewCount > 0 ? (int)Math.Round(c * 100.0 / Model.ReviewCount) : 0;
+                                <div class="flex items-center gap-3 text-xs text-neutral-500">
+                                    <span class="w-10 whitespace-nowrap">@s ★</span>
+                                    <div class="flex-1 bg-neutral-100 h-2 rounded-full overflow-hidden"><div class="bg-brand-500 h-2" style="width:@pct%"></div></div>
+                                    <span class="w-6 text-right">@c</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (Model.CanReview)
+                {
+                    @if (Model.HasReviewed)
+                    {
+                        <p class="text-sm text-neutral-500 mb-8">You've already reviewed this product — thank you!</p>
+                    }
+                    else
+                    {
+                        <form asp-controller="Reviews" asp-action="Submit" method="post" class="mb-10 bg-stone-50 p-6 rounded-md">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="productId" value="@Model.Id" />
+                            <input type="hidden" name="slug" value="@Model.Slug" />
+                            <h3 class="text-sm font-medium text-neutral-800 mb-3">Write a review</h3>
+                            <div id="star-input" class="flex gap-1 text-2xl text-neutral-300 mb-3" data-rating="0">
+                                @for (int i = 1; i <= 5; i++)
+                                {
+                                    <button type="button" class="star-pick leading-none hover:text-brand-400 transition-colors" data-val="@i" aria-label="@i stars">★</button>
+                                }
+                            </div>
+                            <input type="hidden" name="rating" id="review-rating" value="0" />
+                            <input name="title" maxlength="120" placeholder="Add a title (optional)" class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm mb-3 focus:outline-none focus:border-brand-400" />
+                            <textarea name="body" rows="4" required maxlength="2000" placeholder="Share your thoughts about this piece…" class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm mb-3 focus:outline-none focus:border-brand-400"></textarea>
+                            <button type="submit" class="bg-brand-500 text-white text-xs tracking-[0.2em] uppercase px-8 py-3 rounded-md hover:bg-brand-600 transition-colors">Submit review</button>
+                        </form>
+                    }
+                }
+                else
+                {
+                    <p class="text-sm text-neutral-500 mb-8 text-center">
+                        <a href="/Account/Login?returnUrl=@Uri.EscapeDataString("/products/" + Model.Slug)" class="text-brand-600 underline underline-offset-2">Sign in</a> to write a review.
+                    </p>
+                }
+
+                @if (Model.Reviews.Any())
+                {
+                    <div class="space-y-6">
+                        @foreach (var r in Model.Reviews)
+                        {
+                            <div class="border-b border-neutral-100 pb-5 last:border-0">
+                                <div class="flex items-center justify-between">
+                                    <div class="text-sm leading-none">
+                                        @for (int i = 1; i <= 5; i++)
+                                        {
+                                            <span class="@(i <= r.Rating ? "text-brand-500" : "text-neutral-300")">★</span>
+                                        }
+                                    </div>
+                                    <span class="text-xs text-neutral-400">@r.CreatedAt.ToString("dd MMM yyyy")</span>
+                                </div>
+                                <div class="flex items-center gap-2 mt-1.5">
+                                    <span class="text-sm font-medium text-neutral-800">@r.AuthorName</span>
+                                    @if (r.IsVerifiedBuyer)
+                                    {
+                                        <span class="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">Verified buyer</span>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(r.Title))
+                                {
+                                    <p class="text-sm font-medium text-neutral-800 mt-2">@r.Title</p>
+                                }
+                                <p class="text-sm text-neutral-600 mt-1 leading-relaxed whitespace-pre-line">@r.Body</p>
+                                @if (!string.IsNullOrWhiteSpace(r.AdminReply))
+                                {
+                                    <div class="mt-3 ml-4 bg-stone-50 border-l-2 border-brand-300 p-3 rounded">
+                                        <span class="text-xs font-medium text-neutral-500">Sterlin Glams replied</span>
+                                        <p class="text-sm text-neutral-600 mt-1">@r.AdminReply</p>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <p class="text-sm text-neutral-400 text-center">No reviews yet. Be the first to review &ldquo;@Model.Name&rdquo;.</p>
+                }
             </div>
 
             <!-- Shipping & Return Policy -->
@@ -781,6 +909,34 @@
             });
         });
     });
+
+    // Jump to the Reviews tab from the star summary near the title.
+    document.querySelectorAll('[data-tab-jump]').forEach(el => {
+        el.addEventListener('click', (e) => {
+            e.preventDefault();
+            document.querySelector('.prod-tab-btn[data-tab="' + el.dataset.tabJump + '"]')?.click();
+            document.getElementById('product-tabs')?.scrollIntoView({ behavior: 'smooth' });
+        });
+    });
+
+    // Review star picker.
+    (function () {
+        const wrap = document.getElementById('star-input');
+        if (!wrap) return;
+        const input = document.getElementById('review-rating');
+        const stars = [...wrap.querySelectorAll('.star-pick')];
+        function paint(n) { stars.forEach((s, i) => s.classList.toggle('text-brand-500', i < n)); }
+        stars.forEach(s => {
+            s.addEventListener('mouseenter', () => paint(+s.dataset.val));
+            s.addEventListener('click', () => { input.value = s.dataset.val; wrap.dataset.rating = s.dataset.val; });
+        });
+        wrap.addEventListener('mouseleave', () => paint(+wrap.dataset.rating || 0));
+    })();
+
+    // If we just submitted (or arrived at #reviews), open the Reviews tab.
+    if (location.hash === '#reviews' || @( (TempData["ReviewSuccess"] != null || TempData["ReviewError"] != null) ? "true" : "false" )) {
+        document.querySelector('.prod-tab-btn[data-tab="reviews"]')?.click();
+    }
 
     // ── Back-in-stock notify form ─────────────────────────────────────────────
     document.getElementById('notify-form')?.addEventListener('submit', async (e) => {

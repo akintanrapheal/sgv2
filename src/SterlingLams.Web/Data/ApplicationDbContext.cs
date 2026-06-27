@@ -41,6 +41,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<OrderPayment> OrderPayments => Set<OrderPayment>();
     public DbSet<OrderNote> OrderNotes => Set<OrderNote>();
     public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
+    public DbSet<ProductReview> ProductReviews => Set<ProductReview>();
     public DbSet<Address> Addresses => Set<Address>();
     public DbSet<DiscountCode> DiscountCodes => Set<DiscountCode>();
     public DbSet<DiscountCategory> DiscountCategories => Set<DiscountCategory>();

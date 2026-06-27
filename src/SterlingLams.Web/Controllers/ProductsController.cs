@@ -95,6 +95,22 @@ public class ProductsController : Controller
             })
             .ToListAsync();
 
+        // Card ratings — one grouped query over the page's products (not a per-card subquery).
+        var cardIds = products.Select(c => c.Id).ToList();
+        if (cardIds.Count > 0)
+        {
+            var ratings = await _db.ProductReviews
+                .Where(r => cardIds.Contains(r.ProductId) && r.IsApproved)
+                .GroupBy(r => r.ProductId)
+                .Select(g => new { ProductId = g.Key, Count = g.Count(), Avg = g.Average(x => (double)x.Rating) })
+                .ToListAsync();
+            foreach (var c in products)
+            {
+                var rr = ratings.FirstOrDefault(x => x.ProductId == c.Id);
+                if (rr != null) { c.ReviewCount = rr.Count; c.AverageRating = Math.Round(rr.Avg, 1); }
+            }
+        }
+
         var wishlistProductIds = User.Identity?.IsAuthenticated == true
             ? (await _db.WishlistItems
                 .Where(w => w.UserId == GetUserId())
@@ -280,6 +296,30 @@ public class ProductsController : Controller
             OutOfStockMessage = await _settings.GetAsync("store.out_of_stock_msg",
                 "This item is currently out of stock. Check back soon.")
         };
+
+        // ── Reviews ──────────────────────────────────────────────────────────
+        vm.ReviewsEnabled = await _settings.GetBoolAsync("reviews.enabled", true);
+        if (vm.ReviewsEnabled)
+        {
+            var approved = await _db.ProductReviews
+                .Where(r => r.ProductId == product.Id && r.IsApproved)
+                .OrderByDescending(r => r.CreatedAt)
+                .ToListAsync();
+            vm.ReviewCount = approved.Count;
+            vm.AverageRating = approved.Count > 0 ? Math.Round(approved.Average(r => r.Rating), 1) : 0;
+            vm.RatingBreakdown = Enumerable.Range(1, 5).ToDictionary(s => s, s => approved.Count(r => r.Rating == s));
+            vm.Reviews = approved.Take(30).Select(r => new ProductReviewViewModel
+            {
+                AuthorName = r.AuthorName, Rating = r.Rating, Title = r.Title, Body = r.Body,
+                IsVerifiedBuyer = r.IsVerifiedBuyer, AdminReply = r.AdminReply, CreatedAt = r.CreatedAt
+            }).ToList();
+            if (User.Identity?.IsAuthenticated == true)
+            {
+                var uid = GetUserId();
+                vm.CanReview = true;
+                vm.HasReviewed = await _db.ProductReviews.AnyAsync(r => r.ProductId == product.Id && r.UserId == uid);
+            }
+        }
 
         return View(vm);
     }

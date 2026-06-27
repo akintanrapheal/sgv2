@@ -1,0 +1,92 @@
+@model List<SterlingLams.Web.Areas.Admin.Controllers.ReviewsController.ReviewRow>
+@{
+    ViewData["Title"] = "Reviews";
+    Layout = "_AdminLayout";
+    string filter = ViewBag.Filter ?? "pending";
+    int page = ViewBag.Page ?? 1; int totalPages = ViewBag.TotalPages ?? 1; int total = ViewBag.Total ?? 0;
+    int pending = ViewBag.PendingCount ?? 0;
+    string TabCls(string f) => f == filter ? "border-neutral-900 text-neutral-900" : "border-transparent text-neutral-400 hover:text-neutral-700";
+}
+@Html.AntiForgeryToken()
+
+<div class="mb-6">
+    <h1 class="text-2xl font-light text-neutral-900">Product Reviews</h1>
+    <p class="text-sm text-neutral-500 mt-1">Approve, hide, reply to, or delete customer reviews. @pending pending.</p>
+</div>
+
+<div class="flex gap-6 border-b border-neutral-200 mb-5 text-sm">
+    @foreach (var f in new[] { ("pending", "Pending"), ("approved", "Approved"), ("all", "All") })
+    {
+        <a asp-area="Admin" asp-controller="Reviews" asp-action="Index" asp-route-filter="@f.Item1"
+           class="pb-2.5 border-b-2 @TabCls(f.Item1)">@f.Item2 @(f.Item1 == "pending" && pending > 0 ? $"({pending})" : "")</a>
+    }
+</div>
+
+@if (!Model.Any())
+{
+    <div class="bg-white border border-neutral-200 rounded-sm p-12 text-center text-sm text-neutral-400">No reviews here.</div>
+}
+else
+{
+    <div class="space-y-4">
+        @foreach (var r in Model)
+        {
+            <div class="bg-white border border-neutral-200 rounded-sm p-5">
+                <div class="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm leading-none">@for (int i = 1; i <= 5; i++) { <span class="@(i <= r.Rating ? "text-amber-500" : "text-neutral-300")">★</span> }</span>
+                            <span class="text-sm font-medium text-neutral-800">@r.Author</span>
+                            @if (r.IsVerifiedBuyer) { <span class="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">Verified buyer</span> }
+                            @if (r.IsApproved) { <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Approved</span> } else { <span class="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">Pending</span> }
+                        </div>
+                        <a asp-controller="Products" asp-action="Detail" asp-area="" asp-route-slug="@r.ProductSlug" target="_blank" class="text-xs text-neutral-400 hover:text-neutral-700 mt-1 inline-block">@r.ProductName ↗</a>
+                    </div>
+                    <span class="text-xs text-neutral-400">@r.CreatedAt.ToString("dd MMM yyyy HH:mm")</span>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(r.Title)) { <p class="text-sm font-medium text-neutral-800 mt-3">@r.Title</p> }
+                <p class="text-sm text-neutral-600 mt-1 leading-relaxed whitespace-pre-line">@r.Body</p>
+
+                @if (!string.IsNullOrWhiteSpace(r.AdminReply))
+                {
+                    <div class="mt-3 ml-4 bg-stone-50 border-l-2 border-neutral-300 p-3 rounded text-sm text-neutral-600"><span class="text-xs font-medium text-neutral-500">Your reply:</span> @r.AdminReply</div>
+                }
+
+                <div class="flex items-center gap-2 mt-4 flex-wrap">
+                    <form asp-area="Admin" asp-controller="Reviews" asp-action="SetApproved" method="post" class="inline">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@r.Id" /><input type="hidden" name="filter" value="@filter" />
+                        <input type="hidden" name="approved" value="@((!r.IsApproved).ToString().ToLower())" />
+                        <button type="submit" class="px-3 py-1.5 text-xs rounded-sm @(r.IsApproved ? "border border-neutral-200 text-neutral-600 hover:border-neutral-400" : "bg-emerald-600 text-white hover:bg-emerald-700")">@(r.IsApproved ? "Hide" : "Approve")</button>
+                    </form>
+                    <details class="inline-block">
+                        <summary class="px-3 py-1.5 text-xs rounded-sm border border-neutral-200 text-neutral-600 hover:border-neutral-400 cursor-pointer list-none">Reply</summary>
+                        <form asp-area="Admin" asp-controller="Reviews" asp-action="Reply" method="post" class="mt-2 flex gap-2">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@r.Id" /><input type="hidden" name="filter" value="@filter" />
+                            <input name="reply" value="@r.AdminReply" placeholder="Public reply…" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm w-80" />
+                            <button type="submit" class="px-3 py-1.5 text-xs bg-neutral-900 text-white rounded-sm hover:bg-neutral-700">Save reply</button>
+                        </form>
+                    </details>
+                    <form asp-area="Admin" asp-controller="Reviews" asp-action="Delete" method="post" class="inline" onsubmit="return confirm('Delete this review permanently?');">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@r.Id" /><input type="hidden" name="filter" value="@filter" />
+                        <button type="submit" class="px-3 py-1.5 text-xs rounded-sm border border-red-200 text-red-600 hover:bg-red-50">Delete</button>
+                    </form>
+                </div>
+            </div>
+        }
+    </div>
+
+    @if (totalPages > 1)
+    {
+        <div class="flex items-center justify-center gap-1.5 mt-6 text-xs">
+            @for (int p = 1; p <= totalPages; p++)
+            {
+                <a asp-area="Admin" asp-controller="Reviews" asp-action="Index" asp-route-filter="@filter" asp-route-page="@p"
+                   class="px-3 py-1.5 rounded-sm border @(p == page ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")">@p</a>
+            }
+        </div>
+    }
+}

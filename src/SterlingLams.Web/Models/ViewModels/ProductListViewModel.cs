@@ -27,6 +27,8 @@ public class ProductCardViewModel
     public bool IsNewArrival { get; set; }
     public bool HasVariants { get; set; }
     public string CategoryName { get; set; } = string.Empty;
+    public double AverageRating { get; set; }
+    public int ReviewCount { get; set; }
 }
 
 public class ProductListViewModel

@@ -201,9 +201,21 @@
                             <!-- Info -->
                             <a asp-controller="Products" asp-action="Detail" asp-route-slug="@product.Slug">
                                 <p class="text-[10px] tracking-[0.2em] uppercase text-neutral-400 mb-1">@product.CategoryName</p>
-                                <h3 class="text-sm font-light text-neutral-800 group-hover:text-neutral-900 transition-colors leading-snug mb-2">
+                                <h3 class="text-sm font-light text-neutral-800 group-hover:text-neutral-900 transition-colors leading-snug mb-1">
                                     @product.Name
                                 </h3>
+                                @if (product.ReviewCount > 0)
+                                {
+                                    <p class="flex items-center gap-1 mb-1.5 text-xs leading-none">
+                                        <span>
+                                            @for (int i = 1; i <= 5; i++)
+                                            {
+                                                <span class="@(i <= Math.Round(product.AverageRating) ? "text-brand-500" : "text-neutral-300")">★</span>
+                                            }
+                                        </span>
+                                        <span class="text-neutral-400">(@product.ReviewCount)</span>
+                                    </p>
+                                }
                                 @if (product.IsOnSale)
                                 {
                                     <p class="text-sm"><span class="text-neutral-400 line-through">@product.FormattedRegularPrice</span> <span class="text-brand-600 font-medium ml-1">@product.FormattedPrice</span></p>
