@@ -24,6 +24,10 @@ public class CheckoutViewModel : IValidatableObject
     // Delivery
     public DeliveryAddressViewModel DeliveryAddress { get; set; } = new();
 
+    // Saved address book (signed-in customers) — pick one to prefill the form.
+    public List<SterlingLams.Web.Models.Domain.Address> SavedAddresses { get; set; } = new();
+    public int? SelectedAddressId { get; set; }
+
     // Delivery zone & type selection
     public string SelectedDeliveryType { get; set; } = "Standard";
     public List<DeliveryOptionViewModel> DeliveryOptions { get; set; } = new();

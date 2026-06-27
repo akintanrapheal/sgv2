@@ -92,6 +92,30 @@
                 <section id="delivery-section" class="@(Model.FulfillmentType == FulfillmentChoice.StorePickup ? "hidden" : "")">
                     <h2 class="font-cormorant text-2xl font-light mb-6">Delivery Address</h2>
 
+                    @if (Model.SavedAddresses.Any())
+                    {
+                        <div class="mb-6 space-y-2" id="saved-addresses">
+                            <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Use a saved address</label>
+                            @foreach (var a in Model.SavedAddresses)
+                            {
+                                <label class="saved-addr-card flex items-start gap-3 border rounded-sm p-3 cursor-pointer transition-colors @(Model.SelectedAddressId == a.Id ? "border-neutral-900" : "border-neutral-200 hover:border-neutral-400")">
+                                    <input type="radio" name="saved-address" class="mt-1 saved-addr-radio" value="@a.Id"
+                                           data-fullname="@a.FullName" data-phone="@a.Phone" data-line1="@a.Line1" data-line2="@a.Line2"
+                                           data-city="@a.City" data-state="@a.State" data-postal="@a.PostalCode"
+                                           @(Model.SelectedAddressId == a.Id ? "checked" : "") />
+                                    <span class="text-sm">
+                                        <span class="font-medium text-neutral-800">@a.Label@(a.IsDefault ? " · Default" : "")</span><br />
+                                        <span class="text-neutral-500">@a.FullName, @a.Line1, @a.City, @a.State</span>
+                                    </span>
+                                </label>
+                            }
+                            <label class="saved-addr-card flex items-center gap-3 border border-neutral-200 hover:border-neutral-400 rounded-sm p-3 cursor-pointer transition-colors">
+                                <input type="radio" name="saved-address" class="saved-addr-radio" value="new" />
+                                <span class="text-sm text-neutral-700">+ Use a new address</span>
+                            </label>
+                        </div>
+                    }
+
                     <div class="space-y-4">
                         <div class="grid grid-cols-2 gap-4">
                             <div>
@@ -427,6 +451,30 @@ function updateSummary(fee) {
         document.getElementById('city-input').value = e.target.value;
     });
     document.getElementById('redeem-points')?.addEventListener('change', () => updateSummary(CURRENT_FEE));
+
+    // Saved-address picker: fill the form from the chosen saved address (or clear for a new one).
+    function setVal(id, v) { var el = document.getElementById(id); if (el) el.value = v || ''; }
+    document.querySelectorAll('.saved-addr-radio').forEach(radio => {
+        radio.addEventListener('change', () => {
+            document.querySelectorAll('.saved-addr-card').forEach(c =>
+                c.classList.toggle('border-neutral-900', c.contains(radio) && radio.checked));
+            const d = radio.dataset;
+            if (radio.value === 'new') {
+                ['DeliveryAddress_FullName', 'DeliveryAddress_Phone', 'DeliveryAddress_Line1', 'DeliveryAddress_Line2', 'city-input'].forEach(id => setVal(id, ''));
+                document.getElementById('DeliveryAddress_FullName')?.focus();
+            } else {
+                setVal('DeliveryAddress_FullName', d.fullname);
+                setVal('DeliveryAddress_Phone', d.phone);
+                setVal('DeliveryAddress_Line1', d.line1);
+                setVal('DeliveryAddress_Line2', d.line2);
+                var st = document.getElementById('state-select');
+                if (st) { st.value = d.state || ''; onStateChanged(st.value); }
+                setVal('city-input', d.city);
+                var lga = document.getElementById('lagos-lga-select');
+                if (lga && !lga.classList.contains('hidden')) lga.value = d.city || '';
+            }
+        });
+    });
 
     const stateVal = document.getElementById('state-select').value;
     if (stateVal) onStateChanged(stateVal);

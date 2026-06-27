@@ -138,6 +138,24 @@ public class CheckoutController : Controller
             }).ToList()
         };
 
+        // Saved addresses (signed-in customers): list them and prefill the form with the default.
+        if (user != null)
+        {
+            var saved = await _db.Addresses.Where(a => a.UserId == user.Id)
+                .OrderByDescending(a => a.IsDefault).ThenBy(a => a.Id).ToListAsync();
+            vm.SavedAddresses = saved;
+            var def = saved.FirstOrDefault(a => a.IsDefault) ?? saved.FirstOrDefault();
+            if (def != null)
+            {
+                vm.SelectedAddressId = def.Id;
+                vm.DeliveryAddress = new DeliveryAddressViewModel
+                {
+                    FullName = def.FullName, Phone = def.Phone, Line1 = def.Line1, Line2 = def.Line2,
+                    City = def.City, State = def.State, Country = def.Country, PostalCode = def.PostalCode
+                };
+            }
+        }
+
         // Loyalty redemption (signed-in customers only).
         if (user != null && await _loyalty.RedemptionEnabledAsync())
         {
