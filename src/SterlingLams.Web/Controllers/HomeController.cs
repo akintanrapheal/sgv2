@@ -19,6 +19,7 @@ public class HomeController : Controller
         _merch = merch;
     }
 
+    [Microsoft.AspNetCore.OutputCaching.OutputCache(PolicyName = "Storefront")]
     public async Task<IActionResult> Index()
     {
         // Featured products from DB (IsFeatured = true, active) — all of them for the slider (capped).

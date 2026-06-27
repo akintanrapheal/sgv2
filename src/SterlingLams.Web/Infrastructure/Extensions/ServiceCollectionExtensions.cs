@@ -22,6 +22,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMerchandisingService, MerchandisingService>();
         services.AddScoped<ILoyaltyService, LoyaltyService>();
         services.AddScoped<IGiftCardService, GiftCardService>();
+        services.AddScoped<IStorefrontCache, StorefrontCache>();
 
         // ─── Store-level authorization (writes-only) ──────────────────────────
         services.AddScoped<IStoreAccessService, StoreAccessService>();

@@ -11,7 +11,8 @@
 }
 
 <div class="max-w-7xl mx-auto px-6 py-12">
-    @Html.AntiForgeryToken()
+    @* Antiforgery token comes from _QuickViewModal's placeholder (filled by /site/header-state)
+       so this page stays output-cacheable — no server-rendered token / Set-Cookie. *@
     <partial name="_QuickViewModal" />
 
     <!-- Page Header -->

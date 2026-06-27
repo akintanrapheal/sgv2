@@ -11,11 +11,14 @@ public class SettingsController : AdminBaseController
 
     private readonly ISettingsService _settings;
     private readonly ApplicationDbContext _db;
+    private readonly SterlingLams.Web.Services.IStorefrontCache _storefrontCache;
 
-    public SettingsController(ISettingsService settings, ApplicationDbContext db)
+    public SettingsController(ISettingsService settings, ApplicationDbContext db,
+        SterlingLams.Web.Services.IStorefrontCache storefrontCache)
     {
         _settings = settings;
         _db = db;
+        _storefrontCache = storefrontCache;
     }
 
     public async Task<IActionResult> Index(string tab = "General")
@@ -54,6 +57,7 @@ public class SettingsController : AdminBaseController
         }
 
         await _settings.SaveManyAsync(updates);
+        await _storefrontCache.EvictAsync(); // homepage/announcement/merchandising settings are cached
         await LogAsync("Update", "Setting", null,
             $"Updated {group} settings ({updates.Count} field(s))");
         TempData["Success"] = $"{group} settings saved.";
@@ -69,6 +73,7 @@ public class SettingsController : AdminBaseController
             return BadRequest(new { error = "Missing setting key." });
 
         await _settings.SaveManyAsync(new Dictionary<string, string> { [key] = value ?? string.Empty });
+        await _storefrontCache.EvictAsync();
         await LogAsync("Update", "Setting", key, $"Updated setting '{key}'");
         return Ok(new { success = true });
     }

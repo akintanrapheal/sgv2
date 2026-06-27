@@ -22,18 +22,21 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly IWooCommerceImportService _wooImporter;
         private readonly IWebHostEnvironment _env;
         private readonly IConfiguration _config;
+        private readonly IStorefrontCache _storefrontCache;
         private const int PageSize = 30;
 
         public ProductsController(
             ApplicationDbContext db,
             IWooCommerceImportService wooImporter,
             IWebHostEnvironment env,
-            IConfiguration config)
+            IConfiguration config,
+            IStorefrontCache storefrontCache)
         {
             _db = db;
             _wooImporter = wooImporter;
             _env = env;
             _config = config;
+            _storefrontCache = storefrontCache;
         }
 
         public async Task<IActionResult> Index(
@@ -397,6 +400,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             var isNew = vm.Id == 0;
             await _db.SaveChangesAsync();
+            await _storefrontCache.EvictAsync();
 
             await LogAsync(isNew ? "Create" : "Update", "Product", product.Id.ToString(),
                 $"{(isNew ? "Created" : "Updated")} product '{product.Name}' (₦{product.Price:N0})");
@@ -465,6 +469,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             product.IsActive = !product.IsActive;
             product.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
+            await _storefrontCache.EvictAsync();
 
             await LogAsync("Update", "Product", product.Id.ToString(),
                 $"Set '{product.Name}' to {(product.IsActive ? "active" : "inactive")}");
@@ -507,6 +512,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     TempData["Error"] = "Some products are referenced by existing records and can't be deleted. Deactivate them instead.";
                     return RedirectToAction(nameof(Index), back);
                 }
+                await _storefrontCache.EvictAsync();
                 await LogAsync("Delete", "Product", null, $"Bulk delete: {deletable.Count} deleted, {blocked.Count} skipped (history)");
                 TempData[deletable.Count > 0 ? "Success" : "Error"] = blocked.Count > 0
                     ? $"{deletable.Count} product(s) deleted; {blocked.Count} kept — they have order/stock history (deactivate instead)."
@@ -526,6 +532,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
 
             await _db.SaveChangesAsync();
+            await _storefrontCache.EvictAsync();
             await LogAsync("Update", "Product", null, $"Bulk {op} on {n} product(s)");
             TempData["Success"] = $"{op} applied to {n} product(s).";
             return RedirectToAction(nameof(Index), back);
@@ -592,6 +599,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     TempData["Error"] = $"'{name}' is referenced by existing records and can't be deleted. Deactivate it instead.";
                     return RedirectToAction(nameof(Index));
                 }
+                await _storefrontCache.EvictAsync();
                 await LogAsync("Delete", "Product", id.ToString(), $"Deleted product '{name}'");
                 TempData["Success"] = $"Product '{name}' deleted.";
             }

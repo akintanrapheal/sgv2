@@ -128,13 +128,16 @@ The inventory system is already strong. Suggested refinements that stay within s
 
 ## 6. Performance, reliability & security
 
-- **Health checks** (`/health`) for DB + cache (currently none) — Render uses it to
-  detect a bad deploy.
-- **Output/response caching** for the homepage, category pages and product detail
-  (short TTL) — biggest pages, mostly read-only. (Overview query already optimised.)
+- **Health checks** — ✅ DONE. `/health` (liveness) + `/health/ready` (DB reachability).
+- **Output/response caching** — ✅ DONE (home + category lists, 60s TTL, tag-evicted on
+  product/settings edits). Per-user bits (cart/wishlist/auth/CSRF token) load client-side
+  from `/site/header-state`; TempData moved to session so pages stay cookie-free/cacheable.
+  **Deferred:** product **detail** caching — it carries per-user review-form + wishlist
+  state that needs the same client-side treatment first.
 - **Image optimisation**: serve responsive sizes / `srcset` + AVIF/WebP via Cloudinary
   transforms; lazy-load below the fold (partly done).
-- **Error monitoring**: add Sentry (or similar) for server + client exceptions.
+- **Error monitoring** — ✅ DONE (Sentry, gated by `Sentry:Dsn`; add the DSN in Render to
+  activate). Client-side (browser) Sentry still optional.
 - **Automated DB backups** verification (Render Postgres) + a documented restore drill.
 - **2FA**: confirm the Identity 2FA flow is fully wired for admin/staff accounts and
   enforce it for the Admin role.

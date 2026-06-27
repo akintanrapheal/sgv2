@@ -74,6 +74,75 @@ document.getElementById('mobile-menu-toggle')?.addEventListener('click', () => {
     menu?.classList.toggle('hidden');
 });
 
+// ─── Per-user header state ────────────────────────────────────────────────
+// The storefront's big pages (home, category lists) are output-cached, so their HTML carries
+// no per-user data. This pulls cart/wishlist counts, signed-in state, the wishlist hearts, and
+// a valid antiforgery token from /site/header-state and applies them after the page loads.
+const SiteHeader = (function () {
+    let token = '';
+    let loaded = null;
+
+    function fillTokens(t) {
+        if (!t) return;
+        // Only fill EMPTY placeholders — never clobber a real token rendered on a non-cached page.
+        document.querySelectorAll('input[name="__RequestVerificationToken"]').forEach(i => {
+            if (!i.value) i.value = t;
+        });
+    }
+
+    function apply(state) {
+        if (!state) return;
+        token = state.antiforgeryToken || '';
+        fillTokens(token);
+
+        updateCartBadge(state.cartCount || 0);
+
+        const wb = document.getElementById('wishlist-badge');
+        if (wb) {
+            wb.textContent = state.wishlistCount || 0;
+            wb.classList.toggle('hidden', !state.wishlistCount);
+        }
+
+        // Account UI: reveal the matching variant (defaults render the signed-out view).
+        const authed = !!state.authenticated;
+        document.querySelectorAll('[data-auth="in"]').forEach(el => el.classList.toggle('hidden', !authed));
+        document.querySelectorAll('[data-auth="out"]').forEach(el => el.classList.toggle('hidden', authed));
+
+        // Fill in the saved-to-wishlist hearts on product cards.
+        const ids = new Set((state.wishlistProductIds || []).map(String));
+        document.querySelectorAll('.wishlist-toggle').forEach(btn => {
+            if (ids.has(String(btn.dataset.productId))) {
+                const svg = btn.querySelector('svg');
+                if (svg) svg.setAttribute('fill', 'currentColor');
+            }
+        });
+    }
+
+    function load() {
+        if (!loaded) {
+            loaded = fetch('/site/header-state', { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(r => (r.ok ? r.json() : null))
+                .then(s => { apply(s); return s; })
+                .catch(() => null);
+        }
+        return loaded;
+    }
+
+    // Returns a usable antiforgery token, fetching header-state first if needed (covers an
+    // instant click before the initial load resolves, and pages with no token in the DOM yet).
+    async function ensureToken() {
+        if (token) return token;
+        const onPage = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+        if (onPage) { token = onPage; return token; }
+        await load();
+        return token || document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    }
+
+    load();
+    return { ensureToken, reload: () => { loaded = null; return load(); } };
+})();
+window.SiteHeader = SiteHeader;
+
 // ─── Cart Badge Update ────────────────────────────────────────────────────
 function updateCartBadge(count) {
     let badge = document.getElementById('cart-badge');
@@ -124,7 +193,7 @@ document.querySelectorAll('.add-to-bag-quick').forEach(btn => {
 
 // Shared add-to-bag — used by the hover icon, the card "Add to Cart" button and the popup.
 async function addToBag(productId, variantId, qty, btn) {
-    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+    const token = await SiteHeader.ensureToken();
     if (btn) btn.disabled = true;
     try {
         const body = new URLSearchParams({ productId, quantity: qty || 1, __RequestVerificationToken: token });
@@ -324,7 +393,7 @@ document.querySelectorAll('.wishlist-toggle').forEach(btn => {
         e.stopPropagation();
 
         const productId = btn.dataset.productId;
-        const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+        const token = await SiteHeader.ensureToken();
 
         try {
             const res = await fetch('/Wishlist/Toggle', {

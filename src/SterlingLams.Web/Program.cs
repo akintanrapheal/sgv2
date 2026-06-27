@@ -194,9 +194,28 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.AbandonedCartS
 // ─── MVC ────────────────────────────────────────────────────────────────────
 builder.Services.AddControllersWithViews()
     .AddJsonOptions(opts =>
-        opts.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
+        opts.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase)
+    // Store TempData in the session, not a cookie. The cookie provider writes a Set-Cookie on
+    // every response that touches TempData (the layout reads TempData["Success"]/["Error"]),
+    // which would make every storefront page uncacheable. Session-backed TempData has no such
+    // per-response cookie. (Session is already enabled below.)
+    .AddSessionStateTempDataProvider();
 
 builder.Services.AddHttpContextAccessor();
+
+// ─── Output caching ───────────────────────────────────────────────────────────
+// Opt-in only: nothing is cached unless an action carries [OutputCache(PolicyName="Storefront")].
+// The big, read-mostly storefront pages (home, category lists) use it. Their per-user bits
+// (cart/wishlist badges, signed-in state, CSRF token) are loaded client-side from
+// /site/header-state, so the cached HTML is identical for everyone. Short TTL + tag eviction
+// keep it fresh; the "no-store if Set-Cookie" rule is the correctness backstop.
+builder.Services.AddOutputCache(options =>
+{
+    options.AddPolicy("Storefront", policy => policy
+        .Expire(TimeSpan.FromSeconds(60))
+        .SetVaryByQuery("*")
+        .Tag("storefront"));
+});
 
 // ─── Health checks ────────────────────────────────────────────────────────────
 // /health        → liveness  (process is up & serving)        — Render deploy probe
@@ -299,6 +318,10 @@ app.UseAuthorization();
 
 // Public storefront maintenance page (store.maintenance_mode). After auth so staff are exempt.
 app.UseMiddleware<SterlingLams.Web.Infrastructure.MaintenanceModeMiddleware>();
+
+// Output cache sits as late as possible: session, order-attribution, auth and maintenance all
+// run BEFORE it, so they still execute on a cache hit — only the MVC page render is short-circuited.
+app.UseOutputCache();
 
 // Friendly redirects for the staff-area roots — the area default controller is "Home", which
 // doesn't exist, so a bare /Admin or /Inventory would 404. Send them to the real landing pages.

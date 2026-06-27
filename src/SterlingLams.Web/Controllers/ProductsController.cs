@@ -25,6 +25,7 @@ public class ProductsController : Controller
     }
 
     // GET /products
+    [Microsoft.AspNetCore.OutputCaching.OutputCache(PolicyName = "Storefront")]
     public async Task<IActionResult> Index(ProductFilterViewModel filters, int page = 1, int pageSize = 24)
     {
         // No Includes: the card only needs a handful of fields + three booleans, so we project

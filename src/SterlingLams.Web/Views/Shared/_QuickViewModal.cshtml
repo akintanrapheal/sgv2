@@ -1,7 +1,10 @@
 @* Quick-view popup opened by "Select Options" on a product card. Populated client-side
    from /api/product-quickview (see wwwroot/js/app.js). One instance per page.
-   Also emits the antiforgery token the card "Add to Cart" / popup uses for /Cart/Add. *@
-@Html.AntiForgeryToken()
+   Antiforgery token placeholder for the card "Add to Cart" / popup /Cart/Add — left EMPTY and
+   filled client-side from /site/header-state so this page can be safely output-cached
+   (a server-rendered token would set a cookie + be shared across users). *@
+<input type="hidden" name="__RequestVerificationToken" value="" />
+@* @Html.AntiForgeryToken() — intentionally not used here; token comes from header-state *@
 <div id="quickview-overlay" class="hidden fixed inset-0 z-[400] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white max-w-3xl w-full max-h-[90vh] overflow-auto relative grid grid-cols-1 md:grid-cols-2">
         <button type="button" id="quickview-close"
