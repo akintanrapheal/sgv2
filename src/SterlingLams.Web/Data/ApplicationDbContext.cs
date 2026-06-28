@@ -63,6 +63,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<MarketingSuppression> MarketingSuppressions => Set<MarketingSuppression>();
     public DbSet<Automation> Automations => Set<Automation>();
     public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
+    public DbSet<Referral> Referrals => Set<Referral>();
     public DbSet<BackInStockRequest> BackInStockRequests => Set<BackInStockRequest>();
     public DbSet<AbandonedCart> AbandonedCarts => Set<AbandonedCart>();
 
@@ -147,6 +148,17 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
             // One enrolment per customer per automation.
             e.HasIndex(r => new { r.AutomationId, r.Email }).IsUnique();
             e.HasIndex(r => new { r.Status, r.RunAt });
+        });
+        builder.Entity<Referral>(e =>
+        {
+            e.HasOne(r => r.Referrer).WithMany().HasForeignKey(r => r.ReferrerUserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(r => r.Referee).WithMany().HasForeignKey(r => r.RefereeUserId).OnDelete(DeleteBehavior.Restrict);
+            e.HasIndex(r => r.RefereeUserId).IsUnique();   // a person is referred at most once
+            e.HasIndex(r => r.Status);
+        });
+        builder.Entity<ApplicationUser>(e =>
+        {
+            e.HasIndex(u => u.ReferralCode).IsUnique().HasFilter("\"ReferralCode\" IS NOT NULL");
         });
 
         // ─── Journal (blog / lookbook) ──────────────────────────────────────

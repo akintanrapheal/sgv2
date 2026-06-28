@@ -194,6 +194,8 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.AbandonedCartS
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.CampaignSenderService>();
 // Runs marketing automations (welcome / post-purchase / win-back) — poll-based enrol + send.
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.AutomationSweepService>();
+// Rewards refer-a-friend referrals when the referred customer's first order is paid.
+builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.ReferralRewardService>();
 
 // ─── MVC ────────────────────────────────────────────────────────────────────
 builder.Services.AddControllersWithViews()

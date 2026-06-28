@@ -1,0 +1,46 @@
+@model List<SterlingLams.Web.Areas.Marketing.Controllers.ReferralsController.ReferralRow>
+@{
+    ViewData["Title"] = "Referrals";
+    int total = ViewBag.Total ?? 0;
+    int rewarded = ViewBag.Rewarded ?? 0;
+    int pointsGiven = ViewBag.PointsGiven ?? 0;
+}
+
+<div class="mb-6">
+    <h1 class="text-2xl font-light text-neutral-900">Referrals</h1>
+    <p class="text-sm text-neutral-500 mt-1">Refer-a-friend activity. Rewards are granted when a referred friend's first order is paid.</p>
+</div>
+
+<div class="grid grid-cols-3 gap-4 mb-6">
+    <div class="bg-white border border-neutral-200 rounded-sm p-5"><div class="text-xs text-neutral-400">Total referrals</div><div class="text-2xl font-light mt-1">@total.ToString("N0")</div></div>
+    <div class="bg-white border border-neutral-200 rounded-sm p-5"><div class="text-xs text-neutral-400">Rewarded</div><div class="text-2xl font-light text-emerald-600 mt-1">@rewarded.ToString("N0")</div></div>
+    <div class="bg-white border border-neutral-200 rounded-sm p-5"><div class="text-xs text-neutral-400">Loyalty points given</div><div class="text-2xl font-light mt-1">@pointsGiven.ToString("N0")</div></div>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="bg-white border border-neutral-200 rounded-sm p-12 text-center text-sm text-neutral-400">No referrals yet. Customers can share their link from the "Refer a Friend" page.</div>
+}
+else
+{
+    <div class="bg-white border border-neutral-200 rounded-sm overflow-x-auto">
+        <table class="w-full text-sm min-w-[720px]">
+            <thead class="bg-neutral-50 text-neutral-500 text-xs">
+                <tr><th class="text-left font-semibold px-4 py-3">Referrer</th><th class="text-left font-semibold px-4 py-3">Friend</th><th class="text-left font-semibold px-4 py-3">Code</th><th class="text-left font-semibold px-4 py-3">Status</th><th class="text-center font-semibold px-4 py-3">Points</th><th class="text-left font-semibold px-4 py-3">When</th></tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-100">
+                @foreach (var r in Model)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5 text-neutral-700">@r.Referrer</td>
+                        <td class="px-4 py-2.5 text-neutral-700">@r.Referee</td>
+                        <td class="px-4 py-2.5 font-mono text-xs text-neutral-500">@r.Code</td>
+                        <td class="px-4 py-2.5">@(r.Status == "Rewarded" ? Html.Raw("<span class=\"text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full\">Rewarded</span>") : Html.Raw("<span class=\"text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full\">Pending</span>"))</td>
+                        <td class="px-4 py-2.5 text-center text-neutral-600">@(r.Points > 0 ? r.Points.ToString() : "—")</td>
+                        <td class="px-4 py-2.5 text-neutral-400 text-xs">@((r.RewardedAt ?? r.CreatedAt).ToString("dd MMM yyyy"))</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

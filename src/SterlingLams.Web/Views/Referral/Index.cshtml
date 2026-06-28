@@ -1,0 +1,41 @@
+@{
+    ViewData["Title"] = "Refer a Friend";
+    Layout = "_Layout";
+    var stats = (SterlingLams.Web.Services.ReferralStats)ViewBag.Stats;
+    string shareUrl = ViewBag.ShareUrl;
+}
+
+<div class="max-w-2xl mx-auto px-6 py-16">
+    <div class="text-center mb-10">
+        <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-3">Refer a friend</p>
+        <h1 class="font-cormorant text-4xl font-light">Share Sterlin Glams, earn rewards</h1>
+        <p class="text-sm text-neutral-500 font-light mt-3">Share your link. When a friend places their first order, you both earn loyalty points.</p>
+    </div>
+
+    <div class="border border-neutral-200 rounded-sm p-6 text-center">
+        <p class="text-xs tracking-[0.2em] uppercase text-neutral-400 mb-2">Your referral link</p>
+        <div class="flex gap-2 max-w-lg mx-auto">
+            <input id="ref-link" value="@shareUrl" readonly class="flex-1 border border-neutral-200 px-3 py-2 text-sm text-neutral-700 bg-neutral-50" />
+            <button id="copy-btn" type="button" class="px-4 py-2 text-xs tracking-[0.15em] uppercase bg-brand-500 text-white hover:bg-brand-600 transition-colors">Copy</button>
+        </div>
+        <p class="text-xs text-neutral-400 mt-3">Your code: <span class="font-mono text-neutral-700">@stats.Code</span></p>
+    </div>
+
+    <div class="grid grid-cols-3 gap-4 mt-6 text-center">
+        <div class="border border-neutral-200 rounded-sm p-4"><div class="text-2xl font-light">@stats.Referred</div><div class="text-xs text-neutral-400 mt-1">Friends referred</div></div>
+        <div class="border border-neutral-200 rounded-sm p-4"><div class="text-2xl font-light text-emerald-600">@stats.Rewarded</div><div class="text-xs text-neutral-400 mt-1">Rewarded</div></div>
+        <div class="border border-neutral-200 rounded-sm p-4"><div class="text-2xl font-light">@stats.PointsEarned</div><div class="text-xs text-neutral-400 mt-1">Points earned</div></div>
+    </div>
+</div>
+
+@section Scripts {
+<script nonce="@Context.Items["csp-nonce"]">
+    document.getElementById('copy-btn')?.addEventListener('click', async () => {
+        const input = document.getElementById('ref-link');
+        try { await navigator.clipboard.writeText(input.value); }
+        catch { input.select(); document.execCommand('copy'); }
+        const b = document.getElementById('copy-btn'); const t = b.textContent;
+        b.textContent = 'Copied!'; setTimeout(() => b.textContent = t, 1500);
+    });
+</script>
+}

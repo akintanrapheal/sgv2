@@ -19,6 +19,7 @@ public class AccountController : Controller
     private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
     private readonly SterlingLams.Web.Services.ISettingsService _settings;
     private readonly SterlingLams.Web.Services.IAuditService _audit;
+    private readonly SterlingLams.Web.Services.IReferralService _referrals;
     private readonly IWebHostEnvironment _env;
 
     public AccountController(
@@ -30,6 +31,7 @@ public class AccountController : Controller
         SterlingLams.Web.Services.ILoyaltyService loyalty,
         SterlingLams.Web.Services.ISettingsService settings,
         SterlingLams.Web.Services.IAuditService audit,
+        SterlingLams.Web.Services.IReferralService referrals,
         IWebHostEnvironment env)
     {
         _userManager = userManager;
@@ -40,7 +42,17 @@ public class AccountController : Controller
         _loyalty = loyalty;
         _settings = settings;
         _audit = audit;
+        _referrals = referrals;
         _env = env;
+    }
+
+    /// <summary>If a referral cookie is present, record the new customer as a referral, then clear it.</summary>
+    private async Task CaptureReferralAsync(string newUserId)
+    {
+        var code = Request.Cookies[ReferralController.RefCookie];
+        if (string.IsNullOrWhiteSpace(code)) return;
+        try { await _referrals.TryCreateReferralAsync(newUserId, code); } catch { /* never block signup */ }
+        Response.Cookies.Delete(ReferralController.RefCookie);
     }
 
     // ─── Login ───────────────────────────────────────────────────────────────
@@ -207,6 +219,7 @@ public class AccountController : Controller
         if (result.Succeeded)
         {
             _logger.LogInformation("New account created: {Email}", model.Email);
+            await CaptureReferralAsync(user.Id);
             await SendConfirmationEmailAsync(user);
             // Email confirmation is not enforced yet, so we still sign the user in — the link just
             // verifies their address for when enforcement is turned on.

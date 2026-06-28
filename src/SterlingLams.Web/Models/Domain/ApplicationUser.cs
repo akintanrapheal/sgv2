@@ -21,6 +21,9 @@ public class ApplicationUser : IdentityUser
     /// <summary>Free-text admin tags (comma-separated), e.g. "vip, wholesale". For CRM filtering only.</summary>
     public string? Tags { get; set; }
 
+    /// <summary>The customer's own refer-a-friend code (generated on first use). Unique.</summary>
+    public string? ReferralCode { get; set; }
+
     public string FullName => $"{FirstName} {LastName}".Trim();
 
     public ICollection<Order> Orders { get; set; } = new List<Order>();

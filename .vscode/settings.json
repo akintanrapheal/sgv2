@@ -1,0 +1,7 @@
+{
+  // Tailwind uses @tailwind / @apply / @layer, which the built-in CSS linter flags as
+  // "unknown at-rule". These are valid — silence the false positives.
+  "css.lint.unknownAtRules": "ignore",
+  "scss.lint.unknownAtRules": "ignore",
+  "less.lint.unknownAtRules": "ignore"
+}

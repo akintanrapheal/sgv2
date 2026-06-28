@@ -113,6 +113,11 @@ public static class SettingsSeedData
         // ── Gift cards ─────────────────────────────────────────────────────────
         new() { Key = "giftcards.enabled", Group = "Gift Cards", Label = "Enable Gift Card Redemption", Type = "boolean", Value = "true", Description = "Let customers apply a gift card code at checkout. Issue cards from Admin → Gift Cards.", SortOrder = 1 },
 
+        // ── Referral programme ───────────────────────────────────────────────────
+        new() { Key = "referral.enabled",         Group = "Referrals", Label = "Enable Refer-a-Friend",      Type = "boolean", Value = "true", Description = "Give customers a referral link; reward both sides when a referred friend's first order is paid.", SortOrder = 1 },
+        new() { Key = "referral.referrer_points", Group = "Referrals", Label = "Points to the Referrer",     Type = "number",  Value = "100",  Description = "Loyalty points the referrer earns per successful referral.", SortOrder = 2 },
+        new() { Key = "referral.referee_points",  Group = "Referrals", Label = "Points to the New Customer", Type = "number",  Value = "50",   Description = "Loyalty points the referred friend earns on their first paid order.", SortOrder = 3 },
+
         // ── Emails (customizer) ───────────────────────────────────────────────
         // Branding (shared by every email)
         new() { Key = "email.from_name",    Group = "Emails", Label = "Sender Name",          Type = "text",     Value = "Sterlin Glams", Description = "Display name on the From line of every email.",            SortOrder = 1 },
