@@ -190,6 +190,8 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.FulfilmentRetr
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.LowStockAlertService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.BackInStockNotifier>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.AbandonedCartService>();
+// Sends marketing campaigns (Marketing Hub) in the background — due/scheduled + resumable.
+builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.CampaignSenderService>();
 
 // ─── MVC ────────────────────────────────────────────────────────────────────
 builder.Services.AddControllersWithViews()

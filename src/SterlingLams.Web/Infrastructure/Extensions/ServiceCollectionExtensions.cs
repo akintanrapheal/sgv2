@@ -29,6 +29,9 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient("logistics", c => c.Timeout = TimeSpan.FromSeconds(15));
         services.AddScoped<SterlingLams.Web.Services.Logistics.ILogisticsDispatchService, SterlingLams.Web.Services.Logistics.LogisticsDispatchService>();
 
+        // ─── Marketing (campaigns / audiences) ────────────────────────────────
+        services.AddScoped<SterlingLams.Web.Services.Marketing.IMarketingService, SterlingLams.Web.Services.Marketing.MarketingService>();
+
         // ─── Store-level authorization (writes-only) ──────────────────────────
         services.AddScoped<IStoreAccessService, StoreAccessService>();
 

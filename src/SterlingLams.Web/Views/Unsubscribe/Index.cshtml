@@ -1,0 +1,21 @@
+@{
+    ViewData["Title"] = "Unsubscribe";
+    Layout = "_Layout";
+    bool ok = ViewBag.Ok ?? false;
+}
+<div class="max-w-lg mx-auto px-6 py-20 text-center">
+    @if (ok)
+    {
+        <h1 class="font-cormorant text-3xl font-light">You're unsubscribed</h1>
+        <p class="text-sm text-neutral-500 font-light mt-3">
+            @ViewBag.Email will no longer receive marketing emails from Sterlin Glams.
+            You'll still get essential messages about your orders.
+        </p>
+    }
+    else
+    {
+        <h1 class="font-cormorant text-3xl font-light">Link not valid</h1>
+        <p class="text-sm text-neutral-500 font-light mt-3">This unsubscribe link is invalid or has expired. If you keep receiving unwanted emails, please contact us.</p>
+    }
+    <a asp-controller="Home" asp-action="Index" class="inline-block mt-6 text-xs tracking-[0.2em] uppercase text-brand-600 border-b border-brand-200 pb-0.5">Back to store</a>
+</div>

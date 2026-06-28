@@ -1,0 +1,24 @@
+@model List<(string Name, string Desc, int Count)>
+@{
+    ViewData["Title"] = "Audiences";
+}
+
+<div class="mb-6">
+    <h1 class="text-2xl font-light text-neutral-900">Audiences</h1>
+    <p class="text-sm text-neutral-500 mt-1">Built-in segments you can target with a campaign. Sizes are live and exclude unsubscribed contacts.</p>
+</div>
+
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+    @foreach (var s in Model)
+    {
+        <div class="bg-white border border-neutral-200 rounded-sm p-5">
+            <div class="text-3xl font-light text-neutral-900">@s.Count.ToString("N0")</div>
+            <div class="text-sm font-medium text-neutral-700 mt-1">@s.Name</div>
+            <div class="text-xs text-neutral-400 mt-1">@s.Desc</div>
+        </div>
+    }
+</div>
+
+<div class="mt-6">
+    <a asp-area="Marketing" asp-controller="Campaigns" asp-action="Create" class="px-4 py-2 text-sm bg-neutral-900 text-white rounded-sm hover:bg-neutral-700">Create a campaign</a>
+</div>

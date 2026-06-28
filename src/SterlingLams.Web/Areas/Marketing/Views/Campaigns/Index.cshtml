@@ -1,0 +1,59 @@
+@model List<SterlingLams.Web.Models.Domain.Campaign>
+@using SterlingLams.Web.Models.Domain
+@{
+    ViewData["Title"] = "Campaigns";
+    string Badge(CampaignStatus s) => s switch
+    {
+        CampaignStatus.Draft => "bg-neutral-100 text-neutral-600",
+        CampaignStatus.Scheduled => "bg-amber-50 text-amber-700",
+        CampaignStatus.Sending => "bg-blue-50 text-blue-700",
+        CampaignStatus.Sent => "bg-emerald-50 text-emerald-700",
+        _ => "bg-red-50 text-red-700"
+    };
+}
+
+<div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+    <div>
+        <h1 class="text-2xl font-light text-neutral-900">Campaigns</h1>
+        <p class="text-sm text-neutral-500 mt-1">Email blasts to a chosen audience.</p>
+    </div>
+    <a asp-area="Marketing" asp-controller="Campaigns" asp-action="Create" class="px-4 py-2 text-sm bg-neutral-900 text-white rounded-sm hover:bg-neutral-700">+ New campaign</a>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="bg-white border border-neutral-200 rounded-sm p-12 text-center text-sm text-neutral-400">No campaigns yet.</div>
+}
+else
+{
+    <div class="bg-white border border-neutral-200 rounded-sm overflow-x-auto">
+        <table class="w-full text-sm min-w-[720px]">
+            <thead class="bg-neutral-50 text-neutral-500 text-xs">
+                <tr>
+                    <th class="text-left font-semibold px-4 py-3">Campaign</th>
+                    <th class="text-left font-semibold px-4 py-3">Audience</th>
+                    <th class="text-left font-semibold px-4 py-3">Status</th>
+                    <th class="text-center font-semibold px-4 py-3">Sent / Total</th>
+                    <th class="text-left font-semibold px-4 py-3">When</th>
+                    <th class="px-4 py-3"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-100">
+                @foreach (var c in Model)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5">
+                            <div class="text-neutral-800 font-medium">@c.Name</div>
+                            <div class="text-xs text-neutral-400">@c.Subject</div>
+                        </td>
+                        <td class="px-4 py-2.5 text-neutral-600">@System.Text.RegularExpressions.Regex.Replace(c.Audience.ToString(), "([a-z])([A-Z])", "$1 $2")</td>
+                        <td class="px-4 py-2.5"><span class="text-[10px] px-2 py-0.5 rounded-full @Badge(c.Status)">@c.Status</span></td>
+                        <td class="px-4 py-2.5 text-center text-neutral-600">@(c.Status == CampaignStatus.Draft ? "—" : $"{c.SentCount} / {c.RecipientCount}")</td>
+                        <td class="px-4 py-2.5 text-neutral-400 text-xs">@((c.SentAt ?? c.ScheduledAt)?.ToString("dd MMM yyyy HH:mm") ?? c.CreatedAt.ToString("dd MMM yyyy"))</td>
+                        <td class="px-4 py-2.5 text-right"><a asp-area="Marketing" asp-controller="Campaigns" asp-action="Detail" asp-route-id="@c.Id" class="text-xs text-neutral-500 hover:text-neutral-900">Open →</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

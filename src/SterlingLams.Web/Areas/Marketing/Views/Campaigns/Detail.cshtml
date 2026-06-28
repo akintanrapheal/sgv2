@@ -1,0 +1,103 @@
+@model SterlingLams.Web.Models.Domain.Campaign
+@using SterlingLams.Web.Models.Domain
+@{
+    ViewData["Title"] = Model.Name;
+    int est = ViewBag.EstimatedCount ?? 0;
+    var recipients = ViewBag.Recipients as List<CampaignRecipient> ?? new();
+    bool draft = Model.Status == CampaignStatus.Draft;
+    string Badge(CampaignStatus s) => s switch
+    {
+        CampaignStatus.Draft => "bg-neutral-100 text-neutral-600",
+        CampaignStatus.Scheduled => "bg-amber-50 text-amber-700",
+        CampaignStatus.Sending => "bg-blue-50 text-blue-700",
+        CampaignStatus.Sent => "bg-emerald-50 text-emerald-700",
+        _ => "bg-red-50 text-red-700"
+    };
+}
+@Html.AntiForgeryToken()
+
+<div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+    <div>
+        <a asp-area="Marketing" asp-controller="Campaigns" asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← All campaigns</a>
+        <h1 class="text-2xl font-light text-neutral-900 mt-2">@Model.Name</h1>
+        <p class="text-sm text-neutral-500 mt-1">@Model.Subject</p>
+    </div>
+    <span class="text-xs px-3 py-1.5 rounded-full @Badge(Model.Status)">@Model.Status</span>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 space-y-4">
+        <div class="bg-white border border-neutral-200 rounded-sm p-5">
+            <div class="text-xs text-neutral-400 mb-2">Preview</div>
+            <div class="border border-neutral-100 rounded-sm p-4 text-sm text-neutral-700 prod-rich-desc">@Html.Raw(Model.BodyHtml)</div>
+        </div>
+
+        @if (!draft)
+        {
+            <div class="bg-white border border-neutral-200 rounded-sm overflow-hidden">
+                <div class="px-5 py-3 border-b border-neutral-100 text-sm font-medium text-neutral-700">Recent recipients</div>
+                <table class="w-full text-sm">
+                    <thead class="bg-neutral-50 text-neutral-500 text-xs"><tr><th class="text-left font-semibold px-5 py-2.5">Email</th><th class="text-left font-semibold px-5 py-2.5">Status</th><th class="text-left font-semibold px-5 py-2.5">Sent</th></tr></thead>
+                    <tbody class="divide-y divide-neutral-100">
+                        @foreach (var r in recipients)
+                        {
+                            <tr><td class="px-5 py-2 text-neutral-700">@r.Email</td><td class="px-5 py-2 text-neutral-500">@r.Status</td><td class="px-5 py-2 text-neutral-400 text-xs">@(r.SentAt?.ToString("dd MMM HH:mm") ?? "—")</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <div class="lg:col-span-1 space-y-4">
+        <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-neutral-400">Audience</span><span class="text-neutral-700">@System.Text.RegularExpressions.Regex.Replace(Model.Audience.ToString(), "([a-z])([A-Z])", "$1 $2")</span></div>
+            @if (draft)
+            {
+                <div class="flex justify-between"><span class="text-neutral-400">Estimated size</span><span class="text-neutral-900 font-medium">@est.ToString("N0")</span></div>
+            }
+            else
+            {
+                <div class="flex justify-between"><span class="text-neutral-400">Recipients</span><span class="text-neutral-900 font-medium">@Model.RecipientCount.ToString("N0")</span></div>
+                <div class="flex justify-between"><span class="text-neutral-400">Sent</span><span class="text-emerald-600 font-medium">@Model.SentCount.ToString("N0")</span></div>
+                @if (Model.FailedCount > 0) { <div class="flex justify-between"><span class="text-neutral-400">Failed</span><span class="text-red-600 font-medium">@Model.FailedCount.ToString("N0")</span></div> }
+                <div class="flex justify-between"><span class="text-neutral-400">@(Model.Status == CampaignStatus.Sent ? "Sent at" : "Scheduled")</span><span class="text-neutral-700">@((Model.SentAt ?? Model.ScheduledAt)?.ToString("dd MMM yyyy HH:mm") ?? "—") UTC</span></div>
+            }
+        </div>
+
+        @if (draft)
+        {
+            <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-3">
+                <a asp-area="Marketing" asp-controller="Campaigns" asp-action="Edit" asp-route-id="@Model.Id" class="block text-center px-4 py-2 text-sm border border-neutral-300 rounded-sm hover:bg-neutral-50">Edit</a>
+                <form asp-area="Marketing" asp-controller="Campaigns" asp-action="Send" method="post" onsubmit="return confirm('Send this campaign now to ~@est.ToString("N0") recipient(s)?');">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@Model.Id" />
+                    <button type="submit" class="w-full px-4 py-2 text-sm bg-emerald-600 text-white rounded-sm hover:bg-emerald-700">Send now</button>
+                </form>
+                <details>
+                    <summary class="text-xs text-neutral-500 cursor-pointer">Schedule for later</summary>
+                    <form asp-area="Marketing" asp-controller="Campaigns" asp-action="Send" method="post" class="mt-2 flex gap-2">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@Model.Id" />
+                        <input type="datetime-local" name="scheduledAt" required class="flex-1 border border-neutral-200 rounded-sm px-2 py-1.5 text-xs" />
+                        <button type="submit" class="px-3 py-1.5 text-xs bg-neutral-900 text-white rounded-sm">Schedule</button>
+                    </form>
+                    <p class="text-[10px] text-neutral-400 mt-1">Times are UTC.</p>
+                </details>
+                <form asp-area="Marketing" asp-controller="Campaigns" asp-action="Delete" method="post" onsubmit="return confirm('Delete this campaign?');">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@Model.Id" />
+                    <button type="submit" class="w-full px-4 py-2 text-xs text-red-600 border border-red-200 rounded-sm hover:bg-red-50">Delete</button>
+                </form>
+            </div>
+        }
+        else if (Model.Status == CampaignStatus.Scheduled)
+        {
+            <form asp-area="Marketing" asp-controller="Campaigns" asp-action="Cancel" method="post" class="bg-white border border-neutral-200 rounded-sm p-5">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Id" />
+                <button type="submit" class="w-full px-4 py-2 text-sm border border-amber-300 text-amber-700 rounded-sm hover:bg-amber-50">Cancel schedule (back to draft)</button>
+            </form>
+        }
+    </div>
+</div>
