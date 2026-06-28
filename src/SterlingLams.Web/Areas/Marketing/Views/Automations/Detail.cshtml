@@ -1,0 +1,65 @@
+@model SterlingLams.Web.Models.Domain.Automation
+@using SterlingLams.Web.Models.Domain
+@{
+    ViewData["Title"] = Model.Name;
+    int enrolled = ViewBag.Enrolled ?? 0;
+    int sent = ViewBag.Sent ?? 0;
+    int pending = ViewBag.Pending ?? 0;
+    string TriggerLabel(AutomationTrigger t) => t switch
+    {
+        AutomationTrigger.WelcomeNewCustomer => "When a new customer registers",
+        AutomationTrigger.PostPurchase => "When a customer's order is paid",
+        AutomationTrigger.WinBackLapsed => $"When a customer hasn't ordered in {Model.WinBackDays} days",
+        _ => t.ToString()
+    };
+}
+@Html.AntiForgeryToken()
+
+<div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+    <div>
+        <a asp-area="Marketing" asp-controller="Automations" asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← All automations</a>
+        <h1 class="text-2xl font-light text-neutral-900 mt-2">@Model.Name</h1>
+        <p class="text-sm text-neutral-500 mt-1">@Model.Subject</p>
+    </div>
+    <span class="text-xs px-3 py-1.5 rounded-full @(Model.IsActive ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500")">@(Model.IsActive ? "Active" : "Paused")</span>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 space-y-4">
+        <div class="bg-white border border-neutral-200 rounded-sm p-5">
+            <div class="text-xs text-neutral-400 mb-2">Email preview</div>
+            <div class="border border-neutral-100 rounded-sm p-4 text-sm text-neutral-700 prod-rich-desc">@Html.Raw(Model.BodyHtml)</div>
+        </div>
+        <div class="grid grid-cols-3 gap-4">
+            <div class="bg-white border border-neutral-200 rounded-sm p-4"><div class="text-xs text-neutral-400">Enrolled</div><div class="text-xl font-light mt-1">@enrolled.ToString("N0")</div></div>
+            <div class="bg-white border border-neutral-200 rounded-sm p-4"><div class="text-xs text-neutral-400">Sent</div><div class="text-xl font-light text-emerald-600 mt-1">@sent.ToString("N0")</div></div>
+            <div class="bg-white border border-neutral-200 rounded-sm p-4"><div class="text-xs text-neutral-400">Pending</div><div class="text-xl font-light text-amber-600 mt-1">@pending.ToString("N0")</div></div>
+        </div>
+    </div>
+
+    <div class="lg:col-span-1 space-y-4">
+        <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-2 text-sm">
+            <div class="flex justify-between gap-3"><span class="text-neutral-400">Trigger</span><span class="text-neutral-700 text-right">@TriggerLabel(Model.Trigger)</span></div>
+            <div class="flex justify-between"><span class="text-neutral-400">Delay</span><span class="text-neutral-700">@(Model.DelayHours)h</span></div>
+            <div class="flex justify-between"><span class="text-neutral-400">Activated</span><span class="text-neutral-700">@(Model.ActivatedAt?.ToString("dd MMM yyyy") ?? "—")</span></div>
+        </div>
+        <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-3">
+            <a asp-area="Marketing" asp-controller="Automations" asp-action="Edit" asp-route-id="@Model.Id" class="block text-center px-4 py-2 text-sm border border-neutral-300 rounded-sm hover:bg-neutral-50">Edit</a>
+            <form asp-area="Marketing" asp-controller="Automations" asp-action="SetActive" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Id" />
+                <input type="hidden" name="active" value="@((!Model.IsActive).ToString().ToLower())" />
+                <button type="submit" class="w-full px-4 py-2 text-sm rounded-sm @(Model.IsActive ? "border border-amber-300 text-amber-700 hover:bg-amber-50" : "bg-emerald-600 text-white hover:bg-emerald-700")">@(Model.IsActive ? "Pause" : "Activate")</button>
+            </form>
+            <form asp-area="Marketing" asp-controller="Automations" asp-action="Delete" method="post" onsubmit="return confirm('Delete this automation?');">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Id" />
+                <button type="submit" class="w-full px-4 py-2 text-xs text-red-600 border border-red-200 rounded-sm hover:bg-red-50">Delete</button>
+            </form>
+        </div>
+        @if (!Model.IsActive)
+        {
+            <p class="text-[11px] text-neutral-400 px-1">When you activate, only customers/orders from that point on are enrolled — it won't email your whole history.</p>
+        }
+    </div>
+</div>

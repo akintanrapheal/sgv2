@@ -61,6 +61,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<CampaignRecipient> CampaignRecipients => Set<CampaignRecipient>();
     public DbSet<MarketingSuppression> MarketingSuppressions => Set<MarketingSuppression>();
+    public DbSet<Automation> Automations => Set<Automation>();
+    public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
     public DbSet<BackInStockRequest> BackInStockRequests => Set<BackInStockRequest>();
     public DbSet<AbandonedCart> AbandonedCarts => Set<AbandonedCart>();
 
@@ -138,6 +140,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
         builder.Entity<MarketingSuppression>(e =>
         {
             e.HasIndex(s => s.Email).IsUnique();
+        });
+        builder.Entity<AutomationRun>(e =>
+        {
+            e.HasOne(r => r.Automation).WithMany(a => a.Runs).HasForeignKey(r => r.AutomationId).OnDelete(DeleteBehavior.Cascade);
+            // One enrolment per customer per automation.
+            e.HasIndex(r => new { r.AutomationId, r.Email }).IsUnique();
+            e.HasIndex(r => new { r.Status, r.RunAt });
         });
 
         // ─── Journal (blog / lookbook) ──────────────────────────────────────

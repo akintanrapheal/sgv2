@@ -112,11 +112,14 @@ public class MarketingService : IMarketingService
 
             case CampaignAudience.NeverOrdered:
             {
-                var customerRoleId = await _db.Roles.Where(r => r.Name == "Customer").Select(r => r.Id).FirstOrDefaultAsync(ct);
+                // Customers = non-guest accounts that aren't staff (no role is assigned on signup).
+                var staffRoleNames = new[] { "Admin", "Operations", "Sales", "Inventory", "Social Media" };
+                var staffRoleIds = await _db.Roles.Where(r => r.Name != null && staffRoleNames.Contains(r.Name))
+                    .Select(r => r.Id).ToListAsync(ct);
                 var buyerIds = _db.Orders.Select(o => o.UserId);
                 raw = await _db.Users.AsNoTracking()
                     .Where(u => !u.IsGuest && u.Email != null
-                        && _db.UserRoles.Any(ur => ur.UserId == u.Id && ur.RoleId == customerRoleId)
+                        && !_db.UserRoles.Any(ur => ur.UserId == u.Id && staffRoleIds.Contains(ur.RoleId))
                         && !buyerIds.Contains(u.Id))
                     .Select(u => new AudienceRecipient(u.Email!, u.FullName, u.Id))
                     .ToListAsync(ct);

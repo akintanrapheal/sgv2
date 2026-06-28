@@ -192,6 +192,8 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.BackInStockNot
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.AbandonedCartService>();
 // Sends marketing campaigns (Marketing Hub) in the background — due/scheduled + resumable.
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.CampaignSenderService>();
+// Runs marketing automations (welcome / post-purchase / win-back) — poll-based enrol + send.
+builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.AutomationSweepService>();
 
 // ─── MVC ────────────────────────────────────────────────────────────────────
 builder.Services.AddControllersWithViews()
