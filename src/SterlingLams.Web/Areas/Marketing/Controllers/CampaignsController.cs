@@ -68,6 +68,11 @@ public class CampaignsController : MarketingAreaController
         c.AudienceDays = vm.AudienceDays;
         c.AudienceMinSpend = vm.AudienceMinSpend;
         c.AudienceState = string.IsNullOrWhiteSpace(vm.AudienceState) ? null : vm.AudienceState.Trim();
+        c.CouponEnabled = vm.CouponEnabled;
+        c.CouponType = vm.CouponType;
+        c.CouponValue = vm.CouponValue;
+        c.CouponExpiryDays = vm.CouponExpiryDays < 1 ? 14 : vm.CouponExpiryDays;
+        c.CouponMinOrder = vm.CouponMinOrder;
         c.UpdatedAt = DateTime.UtcNow;
         if (isNew)
         {

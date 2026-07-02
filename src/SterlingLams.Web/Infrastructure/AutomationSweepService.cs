@@ -148,7 +148,14 @@ public class AutomationSweepService : BackgroundService
             }
             try
             {
-                var body = a.BodyHtml + Footer(baseUrl, marketing, r.Email);
+                var bodyHtml = a.BodyHtml;
+                if (a.CouponEnabled && a.CouponValue > 0)
+                {
+                    var code = await marketing.MintCouponAsync(a.CouponType, a.CouponValue,
+                        a.CouponExpiryDays, a.CouponMinOrder, $"Automation: {a.Name}", ct);
+                    bodyHtml = Services.Marketing.MarketingService.ApplyCoupon(bodyHtml, code);
+                }
+                var body = bodyHtml + Footer(baseUrl, marketing, r.Email);
                 var ok = await email.SendAsync(r.Email, a.Subject, body, r.Name, ct);
                 r.Status = ok ? AutomationRunStatus.Sent : AutomationRunStatus.Failed;
                 r.SentAt = ok ? DateTime.UtcNow : null;

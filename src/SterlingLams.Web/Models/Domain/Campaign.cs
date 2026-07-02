@@ -36,6 +36,14 @@ public class Campaign
     [MaxLength(80)]
     public string? AudienceState { get; set; }      // ByState
 
+    // Optional per-recipient auto-coupon: a unique single-use discount code minted for each
+    // recipient and dropped in where {{coupon}} appears in the body (or appended if absent).
+    public bool CouponEnabled { get; set; }
+    public DiscountType CouponType { get; set; } = DiscountType.Percentage;
+    public decimal CouponValue { get; set; }
+    public int CouponExpiryDays { get; set; } = 14;
+    public decimal? CouponMinOrder { get; set; }
+
     public CampaignStatus Status { get; set; } = CampaignStatus.Draft;
     /// <summary>When to start sending (UTC). "Send now" sets this to now.</summary>
     public DateTime? ScheduledAt { get; set; }

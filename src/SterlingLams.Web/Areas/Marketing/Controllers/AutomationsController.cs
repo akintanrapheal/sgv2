@@ -52,6 +52,11 @@ public class AutomationsController : MarketingAreaController
         a.DelayHours = vm.DelayHours < 0 ? 0 : vm.DelayHours;
         a.Subject = vm.Subject.Trim();
         a.BodyHtml = ProductHtml.Sanitize(vm.BodyHtml ?? "");
+        a.CouponEnabled = vm.CouponEnabled;
+        a.CouponType = vm.CouponType;
+        a.CouponValue = vm.CouponValue;
+        a.CouponExpiryDays = vm.CouponExpiryDays < 1 ? 14 : vm.CouponExpiryDays;
+        a.CouponMinOrder = vm.CouponMinOrder;
         a.UpdatedAt = DateTime.UtcNow;
         if (isNew)
         {

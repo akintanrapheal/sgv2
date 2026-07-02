@@ -34,6 +34,13 @@ public class Automation
     public string Subject { get; set; } = string.Empty;
     public string BodyHtml { get; set; } = string.Empty;
 
+    // Optional per-recipient auto-coupon (unique single-use code injected where {{coupon}} appears).
+    public bool CouponEnabled { get; set; }
+    public DiscountType CouponType { get; set; } = DiscountType.Percentage;
+    public decimal CouponValue { get; set; }
+    public int CouponExpiryDays { get; set; } = 14;
+    public decimal? CouponMinOrder { get; set; }
+
     public bool IsActive { get; set; }
     /// <summary>When the automation was switched on — the cutoff so it never back-emails historical
     /// customers (welcome/post-purchase only enrol events at/after this time).</summary>

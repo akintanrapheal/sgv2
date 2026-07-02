@@ -26,9 +26,10 @@
                 <div>
                     <label class="block text-xs text-neutral-500 mb-1">Email body</label>
                     <partial name="_RichTextEditor" model='new SterlingLams.Web.Models.ViewModels.RichTextEditorVm(nameof(Model.BodyHtml), "automation-body", Model.BodyHtml, "min-h-[16rem]")' />
-                    <p class="text-[10px] text-neutral-400 mt-1">An unsubscribe footer is added automatically. Tip: include a discount code for extra punch.</p>
+                    <p class="text-[10px] text-neutral-400 mt-1">An unsubscribe footer is added automatically.</p>
                 </div>
             </div>
+            <partial name="_CouponFields" model='new SterlingLams.Web.Models.ViewModels.CouponFieldsVm(Model.CouponEnabled, Model.CouponType, Model.CouponValue, Model.CouponExpiryDays, Model.CouponMinOrder)' />
         </div>
         <div class="lg:col-span-1 space-y-4">
             <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-4">

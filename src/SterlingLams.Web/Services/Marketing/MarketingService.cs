@@ -22,6 +22,10 @@ public interface IMarketingService
     Task SuppressAsync(string email, string? reason, CancellationToken ct = default);
 
     string Normalize(string? email);
+
+    /// <summary>Mints a unique single-use discount code (returns the code) for a per-recipient
+    /// marketing coupon — max 1 use, expiring in <paramref name="expiryDays"/> days.</summary>
+    Task<string> MintCouponAsync(DiscountType type, decimal value, int expiryDays, decimal? minOrder, string label, CancellationToken ct = default);
 }
 
 public class MarketingService : IMarketingService
@@ -41,6 +45,51 @@ public class MarketingService : IMarketingService
     public string? ReadUnsubscribeToken(string token)
     {
         try { return _protector.Unprotect(token); } catch { return null; }
+    }
+
+    private const string CouponAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+    public async Task<string> MintCouponAsync(DiscountType type, decimal value, int expiryDays, decimal? minOrder, string label, CancellationToken ct = default)
+    {
+        string code;
+        do { code = "SG" + RandomBlock(8); } while (await _db.DiscountCodes.AnyAsync(d => d.Code == code, ct));
+        _db.DiscountCodes.Add(new DiscountCode
+        {
+            Code = code,
+            Description = string.IsNullOrWhiteSpace(label) ? "Marketing coupon" : (label.Length > 180 ? label[..180] : label),
+            Type = type,
+            Value = value,
+            Scope = DiscountScope.EntireOrder,
+            MinimumOrderAmount = minOrder,
+            MaxUses = 1,
+            MaxUsesPerCustomer = 1,
+            IsActive = true,
+            ExpiresAt = expiryDays > 0 ? DateTime.UtcNow.AddDays(expiryDays) : (DateTime?)null,
+            CreatedAt = DateTime.UtcNow
+        });
+        await _db.SaveChangesAsync(ct);
+        return code;
+    }
+
+    private static string RandomBlock(int len)
+    {
+        var sb = new System.Text.StringBuilder(len);
+        Span<byte> buf = stackalloc byte[len];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(buf);
+        foreach (var b in buf) sb.Append(CouponAlphabet[b % CouponAlphabet.Length]);
+        return sb.ToString();
+    }
+
+    /// <summary>Injects a coupon code into an email body: replaces {{coupon}} tokens, or appends a
+    /// styled line if the placeholder is absent. No-op when <paramref name="code"/> is null/empty.</summary>
+    public static string ApplyCoupon(string body, string? code)
+    {
+        if (string.IsNullOrEmpty(code)) return body;
+        if (body.Contains("{{coupon}}", StringComparison.OrdinalIgnoreCase))
+            return System.Text.RegularExpressions.Regex.Replace(body, @"\{\{coupon\}\}", code,
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return body + $"<p style=\"text-align:center;margin:18px 0\">Your code: " +
+               $"<strong style=\"letter-spacing:1px;font-size:15px\">{code}</strong></p>";
     }
 
     public async Task SuppressAsync(string email, string? reason, CancellationToken ct = default)

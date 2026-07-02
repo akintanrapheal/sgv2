@@ -98,7 +98,14 @@ public class CampaignSenderService : BackgroundService
             if (ct.IsCancellationRequested) break;
             try
             {
-                var body = campaign.BodyHtml + UnsubscribeFooter(baseUrl, marketing, r.Email);
+                var bodyHtml = campaign.BodyHtml;
+                if (campaign.CouponEnabled && campaign.CouponValue > 0)
+                {
+                    var code = await marketing.MintCouponAsync(campaign.CouponType, campaign.CouponValue,
+                        campaign.CouponExpiryDays, campaign.CouponMinOrder, $"Campaign: {campaign.Name}", ct);
+                    bodyHtml = Services.Marketing.MarketingService.ApplyCoupon(bodyHtml, code);
+                }
+                var body = bodyHtml + UnsubscribeFooter(baseUrl, marketing, r.Email);
                 var ok = await email.SendAsync(r.Email, campaign.Subject, body, r.Name, ct);
                 r.Status = ok ? CampaignRecipientStatus.Sent : CampaignRecipientStatus.Failed;
                 r.SentAt = ok ? DateTime.UtcNow : null;

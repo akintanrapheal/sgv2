@@ -1,0 +1,39 @@
+@model SterlingLams.Web.Models.ViewModels.CouponFieldsVm
+@using SterlingLams.Web.Models.Domain
+<div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-3">
+    <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" name="CouponEnabled" value="true" @(Model.Enabled ? "checked" : "") class="coupon-toggle rounded-none border-neutral-300 text-neutral-900" />
+        <span class="text-sm font-medium text-neutral-700">Attach a unique coupon to each email</span>
+    </label>
+    <div class="coupon-fields grid grid-cols-2 gap-3 @(Model.Enabled ? "" : "hidden")">
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">Type</label>
+            <select name="CouponType" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white">
+                <option value="Percentage" selected="@(Model.Type == DiscountType.Percentage)">Percentage %</option>
+                <option value="FixedAmount" selected="@(Model.Type == DiscountType.FixedAmount)">Fixed ₦</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">Value</label>
+            <input type="number" name="CouponValue" step="0.01" min="0" value="@Model.Value" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm" />
+        </div>
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">Expires in (days)</label>
+            <input type="number" name="CouponExpiryDays" min="1" value="@Model.ExpiryDays" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm" />
+        </div>
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">Min order ₦ (optional)</label>
+            <input type="number" name="CouponMinOrder" step="0.01" min="0" value="@(Model.MinOrder?.ToString() ?? "")" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm" />
+        </div>
+    </div>
+    <p class="text-[10px] text-neutral-400">Put <code>@("{{coupon}}")</code> in the body where the code should appear (otherwise it's added at the end). Each recipient gets their own single-use code.</p>
+</div>
+<script>
+    document.querySelectorAll('.coupon-toggle').forEach(function (t) {
+        t.addEventListener('change', function () {
+            var root = t.closest('.space-y-3');
+            var f = root && root.querySelector('.coupon-fields');
+            if (f) f.classList.toggle('hidden', !t.checked);
+        });
+    });
+</script>
