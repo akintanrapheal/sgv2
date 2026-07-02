@@ -27,9 +27,10 @@ public class CampaignsController : MarketingAreaController
         return View(campaigns);
     }
 
-    public IActionResult Create()
+    public async Task<IActionResult> Create()
     {
         ViewData["Title"] = "New Campaign";
+        await LoadSegmentsAsync();
         return View("Edit", new Campaign());
     }
 
@@ -40,8 +41,12 @@ public class CampaignsController : MarketingAreaController
         if (c.Status != CampaignStatus.Draft)
             return RedirectToAction(nameof(Detail), new { id });  // sent/sending campaigns are read-only
         ViewData["Title"] = "Edit Campaign";
+        await LoadSegmentsAsync();
         return View(c);
     }
+
+    private async Task LoadSegmentsAsync() =>
+        ViewBag.Segments = await _db.Segments.AsNoTracking().OrderBy(s => s.Name).ToListAsync();
 
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Save(Campaign vm)
@@ -49,6 +54,7 @@ public class CampaignsController : MarketingAreaController
         if (string.IsNullOrWhiteSpace(vm.Name) || string.IsNullOrWhiteSpace(vm.Subject))
         {
             TempData["Error"] = "Name and subject are required.";
+            await LoadSegmentsAsync();
             return View("Edit", vm);
         }
 
@@ -64,6 +70,7 @@ public class CampaignsController : MarketingAreaController
         c.Name = vm.Name.Trim();
         c.Subject = vm.Subject.Trim();
         c.BodyHtml = ProductHtml.Sanitize(vm.BodyHtml ?? "");
+        c.SegmentId = vm.SegmentId;
         c.Audience = vm.Audience;
         c.AudienceDays = vm.AudienceDays;
         c.AudienceMinSpend = vm.AudienceMinSpend;

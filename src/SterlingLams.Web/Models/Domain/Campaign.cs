@@ -30,6 +30,10 @@ public class Campaign
     /// <summary>Sanitised HTML body (inner content; wrapped in the branded email shell on send).</summary>
     public string BodyHtml { get; set; } = string.Empty;
 
+    /// <summary>Optional saved segment. When set, its definition overrides the inline audience fields.</summary>
+    public int? SegmentId { get; set; }
+    public Segment? Segment { get; set; }
+
     public CampaignAudience Audience { get; set; } = CampaignAudience.AllCustomers;
     public int? AudienceDays { get; set; }          // RecentBuyers / LapsedCustomers
     public decimal? AudienceMinSpend { get; set; }  // HighValue

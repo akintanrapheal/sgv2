@@ -60,6 +60,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<BlogPost> BlogPosts => Set<BlogPost>();
     public DbSet<Campaign> Campaigns => Set<Campaign>();
     public DbSet<CampaignRecipient> CampaignRecipients => Set<CampaignRecipient>();
+    public DbSet<Segment> Segments => Set<Segment>();
     public DbSet<MarketingSuppression> MarketingSuppressions => Set<MarketingSuppression>();
     public DbSet<Automation> Automations => Set<Automation>();
     public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
@@ -148,6 +149,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
             // One enrolment per customer per automation.
             e.HasIndex(r => new { r.AutomationId, r.Email }).IsUnique();
             e.HasIndex(r => new { r.Status, r.RunAt });
+        });
+        builder.Entity<Campaign>(e =>
+        {
+            e.HasOne(c => c.Segment).WithMany().HasForeignKey(c => c.SegmentId).OnDelete(DeleteBehavior.SetNull);
         });
         builder.Entity<Referral>(e =>
         {

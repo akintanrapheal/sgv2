@@ -35,6 +35,19 @@
         <div class="lg:col-span-1 space-y-4">
             <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-4">
                 <div class="text-sm font-medium text-neutral-700">Audience</div>
+                @{ var savedSegs = ViewBag.Segments as List<SterlingLams.Web.Models.Domain.Segment> ?? new(); }
+                @if (savedSegs.Any())
+                {
+                    <div>
+                        <label asp-for="SegmentId" class="block text-xs text-neutral-500 mb-1">Saved segment</label>
+                        <select asp-for="SegmentId" id="seg-select" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white">
+                            <option value="">— Custom (choose below) —</option>
+                            @foreach (var sg in savedSegs) { <option value="@sg.Id">@sg.Name</option> }
+                        </select>
+                        <p class="text-[10px] text-neutral-400 mt-1">Pick a saved segment, or leave as Custom to define the audience below.</p>
+                    </div>
+                }
+                <div id="custom-aud" class="space-y-4">
                 <div>
                     <label asp-for="Audience" class="block text-xs text-neutral-500 mb-1">Segment</label>
                     <select asp-for="Audience" id="aud-select" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white">
@@ -55,6 +68,7 @@
                 <div data-aud="ByState">
                     <label asp-for="AudienceState" class="block text-xs text-neutral-500 mb-1">State</label>
                     <input asp-for="AudienceState" placeholder="e.g. Lagos" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm" />
+                </div>
                 </div>
                 <button type="button" id="count-btn" class="w-full px-3 py-2 text-xs border border-neutral-300 rounded-sm hover:bg-neutral-50">Preview audience size</button>
                 <p id="count-out" class="text-sm text-center text-neutral-600 hidden"></p>
@@ -79,6 +93,13 @@
     }
     sel.addEventListener('change', () => { sync(); document.getElementById('count-out').classList.add('hidden'); });
     sync();
+
+    // Saved-segment picker: when a segment is chosen, hide the custom-audience fields (the segment
+    // definition takes over on send).
+    const segSel = document.getElementById('seg-select');
+    const custom = document.getElementById('custom-aud');
+    function syncSeg() { if (custom) custom.style.display = (segSel && segSel.value) ? 'none' : ''; }
+    if (segSel) { segSel.addEventListener('change', syncSeg); syncSeg(); }
 
     document.getElementById('count-btn').addEventListener('click', async () => {
         const form = document.getElementById('campaign-form');

@@ -106,6 +106,14 @@ public class MarketingService : IMarketingService
 
     public async Task<List<AudienceRecipient>> ResolveAudienceAsync(Campaign c, CancellationToken ct = default)
     {
+        // A saved segment, when attached, overrides the inline audience definition.
+        if (c.SegmentId is int sid)
+        {
+            var seg = await _db.Segments.AsNoTracking().FirstOrDefaultAsync(s => s.Id == sid, ct);
+            if (seg != null)
+                c = new Campaign { Audience = seg.Audience, AudienceDays = seg.Days, AudienceMinSpend = seg.MinSpend, AudienceState = seg.State };
+        }
+
         var now = DateTime.UtcNow;
         var raw = new List<AudienceRecipient>();
 
@@ -117,34 +125,36 @@ public class MarketingService : IMarketingService
                 break;
 
             case CampaignAudience.AllCustomers:
-                raw = await PaidBuyersQuery()
-                    .Select(g => new AudienceRecipient(g.Email, g.Name, g.UserId)).ToListAsync(ct);
+                raw = (await PaidBuyersQuery().ToListAsync(ct))
+                    .Select(g => new AudienceRecipient(g.Email, g.Name, g.UserId)).ToList();
                 break;
 
             case CampaignAudience.RecentBuyers:
             {
+                // Filtering on the post-GroupBy aggregate (Last/Spend) can't be translated through the
+                // BuyerRow projection, so materialise the grouped buyers then filter in memory.
                 var cutoff = now.AddDays(-(c.AudienceDays ?? 30));
-                raw = await PaidBuyersQuery()
+                raw = (await PaidBuyersQuery().ToListAsync(ct))
                     .Where(g => g.Last >= cutoff)
-                    .Select(g => new AudienceRecipient(g.Email, g.Name, g.UserId)).ToListAsync(ct);
+                    .Select(g => new AudienceRecipient(g.Email, g.Name, g.UserId)).ToList();
                 break;
             }
 
             case CampaignAudience.LapsedCustomers:
             {
                 var cutoff = now.AddDays(-(c.AudienceDays ?? 90));
-                raw = await PaidBuyersQuery()
+                raw = (await PaidBuyersQuery().ToListAsync(ct))
                     .Where(g => g.Last < cutoff)
-                    .Select(g => new AudienceRecipient(g.Email, g.Name, g.UserId)).ToListAsync(ct);
+                    .Select(g => new AudienceRecipient(g.Email, g.Name, g.UserId)).ToList();
                 break;
             }
 
             case CampaignAudience.HighValue:
             {
                 var min = c.AudienceMinSpend ?? 0m;
-                raw = await PaidBuyersQuery()
+                raw = (await PaidBuyersQuery().ToListAsync(ct))
                     .Where(g => g.Spend >= min)
-                    .Select(g => new AudienceRecipient(g.Email, g.Name, g.UserId)).ToListAsync(ct);
+                    .Select(g => new AudienceRecipient(g.Email, g.Name, g.UserId)).ToList();
                 break;
             }
 
@@ -154,7 +164,7 @@ public class MarketingService : IMarketingService
                 raw = await _db.Orders.AsNoTracking()
                     .Where(o => o.IsPaid && o.User != null && o.User.Email != null
                         && o.DeliveryAddress != null && o.DeliveryAddress.State.ToLower() == state)
-                    .Select(o => new AudienceRecipient(o.User!.Email!, o.User.FullName, o.UserId))
+                    .Select(o => new AudienceRecipient(o.User!.Email!, o.User!.FirstName + " " + o.User.LastName, o.UserId))
                     .ToListAsync(ct);
                 break;
             }
@@ -199,8 +209,10 @@ public class MarketingService : IMarketingService
     private IQueryable<BuyerRow> PaidBuyersQuery() =>
         _db.Orders.AsNoTracking()
             .Where(o => o.IsPaid && o.User != null && o.User.Email != null)
-            .GroupBy(o => new { o.UserId, o.User!.Email, o.User.FullName })
+            // Group by mapped columns only — FullName is [NotMapped] and can't be translated;
+            // build the display name from FirstName/LastName in the projection instead.
+            .GroupBy(o => new { o.UserId, o.User!.Email, o.User.FirstName, o.User.LastName })
             .Select(g => new BuyerRow(
-                g.Key.Email!, g.Key.FullName, g.Key.UserId,
+                g.Key.Email!, g.Key.FirstName + " " + g.Key.LastName, g.Key.UserId,
                 g.Max(o => o.CreatedAt), g.Sum(o => o.Total)));
 }
