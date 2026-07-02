@@ -19,6 +19,10 @@ public interface IMarketingService
     string MakeUnsubscribeToken(string email);
     string? ReadUnsubscribeToken(string token);
 
+    /// <summary>Tamper-proof open/click tracking token for a campaign recipient row.</summary>
+    string MakeTrackToken(int recipientId);
+    int? ReadTrackToken(string token);
+
     Task SuppressAsync(string email, string? reason, CancellationToken ct = default);
 
     string Normalize(string? email);
@@ -32,11 +36,37 @@ public class MarketingService : IMarketingService
 {
     private readonly ApplicationDbContext _db;
     private readonly IDataProtector _protector;
+    private readonly IDataProtector _trackProtector;
 
     public MarketingService(ApplicationDbContext db, IDataProtectionProvider dp)
     {
         _db = db;
         _protector = dp.CreateProtector("Marketing.Unsubscribe.v1");
+        _trackProtector = dp.CreateProtector("Marketing.Track.v1");
+    }
+
+    public string MakeTrackToken(int recipientId) => _trackProtector.Protect(recipientId.ToString());
+    public int? ReadTrackToken(string token)
+    {
+        try { return int.Parse(_trackProtector.Unprotect(token)); } catch { return null; }
+    }
+
+    /// <summary>Rewrites external http(s) links through the click tracker and appends a 1×1 open
+    /// pixel. Links to our own domain (unsubscribe/tracking) are left as-is.</summary>
+    public static string InjectTracking(string body, string baseUrl, string token)
+    {
+        if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(token)) return body;
+        var t = Uri.EscapeDataString(token);
+        var rewritten = System.Text.RegularExpressions.Regex.Replace(body,
+            "href=\"(https?://[^\"]+)\"",
+            m =>
+            {
+                var url = m.Groups[1].Value;
+                if (url.StartsWith(baseUrl, StringComparison.OrdinalIgnoreCase)) return m.Value; // our own links
+                return $"href=\"{baseUrl}/e/c/{t}?u={Uri.EscapeDataString(url)}\"";
+            },
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return rewritten + $"<img src=\"{baseUrl}/e/o/{t}\" width=\"1\" height=\"1\" style=\"display:none\" alt=\"\" />";
     }
 
     public string Normalize(string? email) => (email ?? string.Empty).Trim().ToLowerInvariant();

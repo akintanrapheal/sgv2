@@ -51,7 +51,7 @@ public class AutomationsController : MarketingAreaController
         a.WinBackDays = vm.WinBackDays < 1 ? 90 : vm.WinBackDays;
         a.DelayHours = vm.DelayHours < 0 ? 0 : vm.DelayHours;
         a.Subject = vm.Subject.Trim();
-        a.BodyHtml = ProductHtml.Sanitize(vm.BodyHtml ?? "");
+        a.BodyHtml = ProductHtml.SanitizeRich(vm.BodyHtml ?? "");
         a.CouponEnabled = vm.CouponEnabled;
         a.CouponType = vm.CouponType;
         a.CouponValue = vm.CouponValue;

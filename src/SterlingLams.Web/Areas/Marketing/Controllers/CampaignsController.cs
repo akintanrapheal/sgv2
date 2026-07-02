@@ -69,7 +69,7 @@ public class CampaignsController : MarketingAreaController
 
         c.Name = vm.Name.Trim();
         c.Subject = vm.Subject.Trim();
-        c.BodyHtml = ProductHtml.Sanitize(vm.BodyHtml ?? "");
+        c.BodyHtml = ProductHtml.SanitizeRich(vm.BodyHtml ?? "");
         c.SegmentId = vm.SegmentId;
         c.Audience = vm.Audience;
         c.AudienceDays = vm.AudienceDays;

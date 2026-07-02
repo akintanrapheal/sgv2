@@ -56,6 +56,9 @@ public class Campaign
     public int RecipientCount { get; set; }
     public int SentCount { get; set; }
     public int FailedCount { get; set; }
+    /// <summary>Unique recipients who opened / clicked (self-hosted pixel + link tracking).</summary>
+    public int OpenCount { get; set; }
+    public int ClickCount { get; set; }
 
     public string? CreatedByUserId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -78,6 +81,8 @@ public class CampaignRecipient
 
     public CampaignRecipientStatus Status { get; set; } = CampaignRecipientStatus.Pending;
     public DateTime? SentAt { get; set; }
+    public DateTime? OpenedAt { get; set; }
+    public DateTime? ClickedAt { get; set; }
     [MaxLength(300)]
     public string? Error { get; set; }
 }

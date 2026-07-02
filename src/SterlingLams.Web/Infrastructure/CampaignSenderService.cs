@@ -106,6 +106,9 @@ public class CampaignSenderService : BackgroundService
                     bodyHtml = Services.Marketing.MarketingService.ApplyCoupon(bodyHtml, code);
                 }
                 var body = bodyHtml + UnsubscribeFooter(baseUrl, marketing, r.Email);
+                // Self-hosted open/click tracking: rewrite links + append a 1×1 pixel keyed to this recipient.
+                if (!string.IsNullOrEmpty(baseUrl))
+                    body = Services.Marketing.MarketingService.InjectTracking(body, baseUrl, marketing.MakeTrackToken(r.Id));
                 var ok = await email.SendAsync(r.Email, campaign.Subject, body, r.Name, ct);
                 r.Status = ok ? CampaignRecipientStatus.Sent : CampaignRecipientStatus.Failed;
                 r.SentAt = ok ? DateTime.UtcNow : null;

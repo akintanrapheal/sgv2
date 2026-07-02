@@ -11,9 +11,10 @@ namespace SterlingLams.Web.Services;
 /// </summary>
 public static class ProductHtml
 {
-    private static readonly HtmlSanitizer _sanitizer = CreateSanitizer();
+    private static readonly HtmlSanitizer _sanitizer = CreateSanitizer(allowLinks: false);
+    private static readonly HtmlSanitizer _richSanitizer = CreateSanitizer(allowLinks: true);
 
-    private static HtmlSanitizer CreateSanitizer()
+    private static HtmlSanitizer CreateSanitizer(bool allowLinks)
     {
         var s = new HtmlSanitizer();
 
@@ -42,15 +43,31 @@ public static class ProductHtml
         })
             s.AllowedCssProperties.Add(c);
 
-        // No links/images by design — description is plain formatted copy.
+        // Product descriptions: no links by design. Rich content (marketing emails) may link.
         s.AllowedSchemes.Clear();
+        if (allowLinks)
+        {
+            s.AllowedTags.Add("a");
+            s.AllowedAttributes.Add("href");
+            s.AllowedAttributes.Add("target");
+            s.AllowedAttributes.Add("rel");
+            s.AllowedSchemes.Add("http");
+            s.AllowedSchemes.Add("https");
+            s.AllowedSchemes.Add("mailto");
+            // javascript:/data: hrefs are dropped automatically (not in AllowedSchemes).
+        }
 
         return s;
     }
 
-    /// <summary>Strip everything outside the formatting allow-list. Returns "" for null/blank.</summary>
+    /// <summary>Strip everything outside the formatting allow-list (NO links). Returns "" for null/blank.</summary>
     public static string Sanitize(string? html)
         => string.IsNullOrWhiteSpace(html) ? "" : _sanitizer.Sanitize(html);
+
+    /// <summary>Like <see cref="Sanitize"/> but also permits safe &lt;a href&gt; links — for
+    /// marketing email bodies (CTAs / tracked links).</summary>
+    public static string SanitizeRich(string? html)
+        => string.IsNullOrWhiteSpace(html) ? "" : _richSanitizer.Sanitize(html);
 
     /// <summary>Heuristic: does this description contain HTML markup (vs. legacy plain text)?</summary>
     public static bool LooksLikeHtml(string? value)

@@ -61,6 +61,13 @@
                 <div class="flex justify-between"><span class="text-neutral-400">Recipients</span><span class="text-neutral-900 font-medium">@Model.RecipientCount.ToString("N0")</span></div>
                 <div class="flex justify-between"><span class="text-neutral-400">Sent</span><span class="text-emerald-600 font-medium">@Model.SentCount.ToString("N0")</span></div>
                 @if (Model.FailedCount > 0) { <div class="flex justify-between"><span class="text-neutral-400">Failed</span><span class="text-red-600 font-medium">@Model.FailedCount.ToString("N0")</span></div> }
+                @if (Model.SentCount > 0)
+                {
+                    var openRate = Model.SentCount > 0 ? (double)Model.OpenCount / Model.SentCount * 100 : 0;
+                    var clickRate = Model.SentCount > 0 ? (double)Model.ClickCount / Model.SentCount * 100 : 0;
+                    <div class="flex justify-between"><span class="text-neutral-400">Opened</span><span class="text-neutral-900 font-medium">@Model.OpenCount.ToString("N0") <span class="text-neutral-400 font-normal">(@openRate.ToString("0.#")%)</span></span></div>
+                    <div class="flex justify-between"><span class="text-neutral-400">Clicked</span><span class="text-neutral-900 font-medium">@Model.ClickCount.ToString("N0") <span class="text-neutral-400 font-normal">(@clickRate.ToString("0.#")%)</span></span></div>
+                }
                 <div class="flex justify-between"><span class="text-neutral-400">@(Model.Status == CampaignStatus.Sent ? "Sent at" : "Scheduled")</span><span class="text-neutral-700">@((Model.SentAt ?? Model.ScheduledAt)?.ToString("dd MMM yyyy HH:mm") ?? "—") UTC</span></div>
             }
         </div>
