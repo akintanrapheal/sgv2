@@ -20,6 +20,15 @@
         : (Model.ShortDescription ?? "");
     var shippingPolicy = await SettingsService.GetAsync("shipping.returns_policy", "");
 
+    // The size & length guide only makes sense for wearables that need sizing — rings, bracelets/
+    // bangles, necklaces and anklets. Explicit allow-list (by category slug) so lookalikes like
+    // "key-rings", "earrings" and "bracelet-watches" don't show it.
+    var sizeGuideCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "rings", "bracelets", "bracelets-bangles", "necklaces", "necklaces-pendants", "anklets"
+    };
+    var showSizeGuide = sizeGuideCategories.Contains(Model.CategorySlug ?? "");
+
     // ── Structured data (Product + breadcrumbs) ──────────────────────────────
     var sdReq = Context.Request;
     var sdBase = $"{sdReq.Scheme}://{sdReq.Host}";
@@ -179,13 +188,16 @@
                 <p class="text-sm text-neutral-500 leading-relaxed mb-4 font-light">@Model.ShortDescription</p>
             }
 
-            <button type="button" data-size-guide-open
-                    class="inline-flex items-center gap-1.5 text-xs tracking-[0.12em] uppercase text-neutral-500 hover:text-brand-500 transition-colors mb-8">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7h18M3 12h18M3 17h18"/>
-                </svg>
-                Size &amp; length guide
-            </button>
+            @if (showSizeGuide)
+            {
+                <button type="button" data-size-guide-open
+                        class="inline-flex items-center gap-1.5 text-xs tracking-[0.12em] uppercase text-neutral-500 hover:text-brand-500 transition-colors mb-8">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 7h18M3 12h18M3 17h18"/>
+                    </svg>
+                    Size &amp; length guide
+                </button>
+            }
 
             <!-- ─── Store Stock (per branch, with counts) ───────────────── -->
             @if (Model.StoreStock.Any())
@@ -649,7 +661,10 @@
     }
 </div>
 
-<partial name="_SizeGuideModal" />
+@if (showSizeGuide)
+{
+    <partial name="_SizeGuideModal" />
+}
 
 @section Scripts {
 <script nonce="@Context.Items["csp-nonce"]">
