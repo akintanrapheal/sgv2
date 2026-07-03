@@ -113,9 +113,65 @@
 
             <!-- Description -->
             <div>
-                <label asp-for="Description" class="block text-xs text-neutral-500 mb-1">Full Description</label>
+                <div class="flex items-center justify-between mb-1">
+                    <label asp-for="Description" class="block text-xs text-neutral-500">Full Description</label>
+                    <button type="button" id="gen-seo-desc"
+                            data-url="@Url.Action("GenerateDescription")"
+                            class="text-xs px-2.5 py-1 rounded-sm border border-neutral-300 text-neutral-600 hover:bg-neutral-900 hover:text-white hover:border-neutral-900 transition-colors">
+                        ✨ Generate SEO description
+                    </button>
+                </div>
                 <partial name="_RichTextEditor" model='new SterlingLams.Web.Models.ViewModels.RichTextEditorVm(nameof(Model.Description), "product-description-editor", Model.Description)' />
+                <p id="gen-seo-msg" class="text-xs text-neutral-400 mt-1 hidden"></p>
             </div>
+            <script>
+                (function () {
+                    var btn = document.getElementById('gen-seo-desc');
+                    if (!btn) return;
+                    var msg = document.getElementById('gen-seo-msg');
+                    function show(text, isErr) {
+                        if (!msg) return;
+                        msg.textContent = text;
+                        msg.classList.remove('hidden');
+                        msg.classList.toggle('text-red-500', !!isErr);
+                        msg.classList.toggle('text-neutral-400', !isErr);
+                    }
+                    btn.addEventListener('click', async function () {
+                        var name = (document.getElementById('Name') || {}).value || '';
+                        var categoryId = (document.getElementById('CategoryId') || {}).value || '';
+                        name = name.trim();
+                        if (!name) { show('Enter a product name first.', true); return; }
+                        if (!categoryId) { show('Choose a category first.', true); return; }
+
+                        var wrap = document.querySelector('[data-editor="product-description-editor"]');
+                        var editor = wrap && wrap.querySelector('.rte-editor');
+                        var ta = wrap && wrap.querySelector('textarea');
+                        if (editor && editor.textContent.trim() &&
+                            !confirm('Replace the current description with a freshly generated one? You can still edit it afterwards.')) return;
+
+                        btn.disabled = true;
+                        var original = btn.textContent;
+                        btn.textContent = 'Generating…';
+                        try {
+                            var url = btn.dataset.url + '?id=@Model.Id&categoryId=' + encodeURIComponent(categoryId) +
+                                      '&name=' + encodeURIComponent(name);
+                            var res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                            var data = await res.json();
+                            if (!data.ok) { show(data.error || 'Could not generate a description.', true); return; }
+                            if (editor) editor.innerHTML = data.html;
+                            if (ta) ta.value = data.html;
+                            var shortInput = document.getElementById('ShortDescription');
+                            if (shortInput && !shortInput.value.trim()) shortInput.value = data.shortText;
+                            show('Generated for “' + data.kind + '”. Edit as needed, then Save.', false);
+                        } catch (e) {
+                            show('Could not generate a description. Please try again.', true);
+                        } finally {
+                            btn.disabled = false;
+                            btn.textContent = original;
+                        }
+                    });
+                })();
+            </script>
 
             <!-- SKU + External Code -->
             <div class="grid grid-cols-2 gap-4">

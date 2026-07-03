@@ -237,6 +237,29 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return View(vm);
         }
 
+        /// <summary>Generates an SEO description from the current form values (name + category) so the
+        /// admin can drop it into the editor, then tweak and save. Category-aware: jewellery vs. bag,
+        /// belt, cap/scarf, sunglasses, watch, etc. Nothing is saved here — the returned HTML lands in
+        /// the editable rich-text field.</summary>
+        [HttpGet]
+        public async Task<IActionResult> GenerateDescription(int id, string name, int categoryId)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return Json(new { ok = false, error = "Enter a product name first." });
+
+            var catName = await _db.Categories.Where(c => c.Id == categoryId)
+                .Select(c => c.Name).FirstOrDefaultAsync();
+            if (string.IsNullOrWhiteSpace(catName))
+                return Json(new { ok = false, error = "Choose a category first." });
+
+            // Same seed rule as the batch tools so a saved product regenerates consistently.
+            var seed = id > 0 ? id : Math.Abs(StringComparer.Ordinal.GetHashCode(name));
+            var html = ProductHtml.Sanitize(_seo.Build(seed, name, catName));
+            var shortText = _seo.BuildShort(seed, name, catName);
+            var kind = SeoDescriptionGenerator.DetectKind(name, catName).ToString();
+            return Json(new { ok = true, html, shortText, kind });
+        }
+
         [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> GenerateVariants(int id, List<int> selectedValueIds)
         {
