@@ -3,6 +3,18 @@
     ViewData["Title"] = Model.PageTitle ?? "Collections";
     Layout = "_Layout";
 
+    // Base URL (current filters, minus page) for the "View more" progressive-load button.
+    var qsParts = new List<string>();
+    if (!string.IsNullOrWhiteSpace(Model.Filters.Category)) { qsParts.Add("category=" + Uri.EscapeDataString(Model.Filters.Category)); }
+    if (!string.IsNullOrWhiteSpace(Model.Filters.SortBy)) { qsParts.Add("sortBy=" + Uri.EscapeDataString(Model.Filters.SortBy)); }
+    if (!string.IsNullOrWhiteSpace(Model.Filters.Search)) { qsParts.Add("search=" + Uri.EscapeDataString(Model.Filters.Search)); }
+    if (!string.IsNullOrWhiteSpace(Model.Filters.Metal)) { qsParts.Add("metal=" + Uri.EscapeDataString(Model.Filters.Metal)); }
+    if (Model.Filters.MinPrice.HasValue) { qsParts.Add("minPrice=" + Model.Filters.MinPrice.Value); }
+    if (Model.Filters.MaxPrice.HasValue) { qsParts.Add("maxPrice=" + Model.Filters.MaxPrice.Value); }
+    if (Model.Filters.InStockOnly == true) { qsParts.Add("inStockOnly=true"); }
+    var loadMoreBaseUrl = "/products" + (qsParts.Count > 0 ? "?" + string.Join("&", qsParts) : "");
+    var shownNow = Math.Min(Model.Page * Model.PageSize, Model.TotalCount);
+
     // Self-canonical that keeps the category but drops page/sort/filter noise (avoids duplicates).
     var canonBase = $"{Context.Request.Scheme}://{Context.Request.Host}/products";
     ViewData["Canonical"] = string.IsNullOrWhiteSpace(Model.Filters.Category)
@@ -165,122 +177,34 @@
             }
             else
             {
-                <div class="grid grid-cols-2 md:grid-cols-3 gap-6">
-                    @foreach (var product in Model.Products)
-                    {
-                        <div class="group">
-                            <!-- Image -->
-                            <a asp-controller="Products" asp-action="Detail" asp-route-slug="@product.Slug"
-                               class="block aspect-square bg-neutral-50 overflow-hidden relative mb-4">
-                                <img src="@product.PrimaryImageUrl" alt="@product.Name"
-                                     loading="lazy"
-                                     class="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 @(product.SecondaryImageUrl != null ? "group-hover:opacity-0" : "")" />
-                                @if (product.SecondaryImageUrl != null)
-                                {
-                                    <img src="@product.SecondaryImageUrl" alt="@product.Name" loading="lazy"
-                                         class="absolute inset-0 w-full h-full object-cover opacity-0 transition-all duration-700 group-hover:opacity-100 group-hover:scale-105" />
-                                }
-
-                                <partial name="_DiscountBadge" model="product.DiscountPercent" />
-                                @if (product.IsNewArrival)
-                                {
-                                    <span class="absolute top-3 right-3 bg-brand-500 text-white text-[9px] tracking-widest uppercase px-2 py-1">
-                                        New
-                                    </span>
-                                }
-                                @if (!product.IsAvailable)
-                                {
-                                    <div class="absolute inset-0 bg-white/50 flex items-center justify-center">
-                                        <span class="text-xs tracking-widest uppercase text-neutral-500">Sold Out</span>
-                                    </div>
-                                }
-
-                                <!-- Quick actions on hover: Compare / Quick View / Wishlist -->
-                                <partial name="_ProductHoverActions" model="product" />
-                            </a>
-
-                            <!-- Info -->
-                            <a asp-controller="Products" asp-action="Detail" asp-route-slug="@product.Slug">
-                                <p class="text-[10px] tracking-[0.2em] uppercase text-neutral-400 mb-1">@product.CategoryName</p>
-                                <h3 class="text-sm font-light text-neutral-800 group-hover:text-neutral-900 transition-colors leading-snug mb-1">
-                                    @product.Name
-                                </h3>
-                                @if (product.ReviewCount > 0)
-                                {
-                                    <p class="flex items-center gap-1 mb-1.5 text-xs leading-none">
-                                        <span>
-                                            @for (int i = 1; i <= 5; i++)
-                                            {
-                                                <span class="@(i <= Math.Round(product.AverageRating) ? "text-brand-500" : "text-neutral-300")">★</span>
-                                            }
-                                        </span>
-                                        <span class="text-neutral-400">(@product.ReviewCount)</span>
-                                    </p>
-                                }
-                                @if (product.IsOnSale)
-                                {
-                                    <p class="text-sm"><span class="text-neutral-400 line-through">@product.FormattedRegularPrice</span> <span class="text-brand-600 font-medium ml-1">@product.FormattedPrice</span></p>
-                                }
-                                else
-                                {
-                                    <p class="text-sm text-neutral-700">@product.FormattedPrice</p>
-                                }
-                            </a>
-
-                            <!-- CTA: Select Options (variants) / Add to Cart (simple) / Sold Out -->
-                            <partial name="_ProductCardCta" model="product" />
-                        </div>
-                    }
+                <div id="product-grid" class="grid grid-cols-2 md:grid-cols-3 gap-6">
+                    <partial name="_ProductCards" model="Model.Products" />
                 </div>
 
-                <!-- Pagination — windowed, preserves filters -->
-                @if (Model.TotalPages > 1)
-                {
-                    var cur = Model.Page;
-                    var last = Model.TotalPages;
-                    var start = Math.Max(1, cur - 2);
-                    var end = Math.Min(last, cur + 2);
-                    Func<int, Dictionary<string, string>> rd = pg => new Dictionary<string, string>
+                <!-- Progressive "View more" (appends the next page in place) + Back to top -->
+                <div class="mt-16 flex flex-col items-center gap-8">
+                    <p class="text-sm text-neutral-500">
+                        Showing 1–<span id="shown-count">@shownNow</span> of @Model.TotalCount
+                    </p>
+                    @if (Model.Page < Model.TotalPages)
                     {
-                        ["page"] = pg.ToString(),
-                        ["category"] = Model.Filters.Category ?? "",
-                        ["sortBy"] = Model.Filters.SortBy ?? "",
-                        ["search"] = Model.Filters.Search ?? "",
-                        ["metal"] = Model.Filters.Metal ?? "",
-                        ["minPrice"] = Model.Filters.MinPrice?.ToString() ?? "",
-                        ["maxPrice"] = Model.Filters.MaxPrice?.ToString() ?? "",
-                        ["inStockOnly"] = Model.Filters.InStockOnly == true ? "true" : "",
-                    };
-                    var cls = "min-w-10 h-10 px-2 flex items-center justify-center text-xs border border-neutral-200 text-neutral-600 hover:border-brand-500 hover:text-brand-500 transition-colors";
-
-                    <div class="flex justify-center items-center gap-1.5 mt-16 flex-wrap">
-                        @if (cur > 1)
-                        {
-                            <a asp-action="Index" asp-all-route-data="rd(1)" class="@cls">« First</a>
-                            <a asp-action="Index" asp-all-route-data="rd(cur - 1)" class="@cls">‹ Prev</a>
-                        }
-                        @if (start > 1)
-                        {
-                            <a asp-action="Index" asp-all-route-data="rd(1)" class="@cls">1</a>
-                            @if (start > 2) { <span class="px-1 text-neutral-300">…</span> }
-                        }
-                        @for (int i = start; i <= end; i++)
-                        {
-                            <a asp-action="Index" asp-all-route-data="rd(i)"
-                               class="w-10 h-10 flex items-center justify-center text-xs border @(i == cur ? "border-brand-500 bg-brand-500 text-white" : "border-neutral-200 text-neutral-600 hover:border-brand-500 hover:text-brand-500") transition-colors">@i</a>
-                        }
-                        @if (end < last)
-                        {
-                            @if (end < last - 1) { <span class="px-1 text-neutral-300">…</span> }
-                            <a asp-action="Index" asp-all-route-data="rd(last)" class="@cls">@last</a>
-                        }
-                        @if (cur < last)
-                        {
-                            <a asp-action="Index" asp-all-route-data="rd(cur + 1)" class="@cls">Next ›</a>
-                            <a asp-action="Index" asp-all-route-data="rd(last)" class="@cls">Last »</a>
-                        }
-                    </div>
-                }
+                        <div id="load-more-wrap" class="w-full max-w-xl">
+                            <button type="button" id="load-more-btn"
+                                    data-url="@loadMoreBaseUrl" data-next="@(Model.Page + 1)" data-total="@Model.TotalPages"
+                                    data-count="@Model.TotalCount" data-size="@Model.PageSize"
+                                    class="w-full border border-neutral-300 py-4 text-xs tracking-[0.2em] uppercase text-neutral-800 hover:border-neutral-900 transition-colors">
+                                <span data-label>View more</span>
+                            </button>
+                        </div>
+                    }
+                    <button type="button" id="back-to-top"
+                            class="flex items-center gap-2 text-xs tracking-[0.2em] uppercase text-neutral-700 hover:text-neutral-900 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 19V5M5 12l7-7 7 7" />
+                        </svg>
+                        Back to top
+                    </button>
+                </div>
             }
         </div>
     </div>

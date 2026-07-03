@@ -139,7 +139,7 @@ const SiteHeader = (function () {
     }
 
     load();
-    return { ensureToken, reload: () => { loaded = null; return load(); } };
+    return { ensureToken, reload: () => { loaded = null; return load(); }, ready: () => loaded || load() };
 })();
 window.SiteHeader = SiteHeader;
 
@@ -464,4 +464,110 @@ document.querySelectorAll('[data-autosubmit]').forEach(function (el) {
     if (cancel && form && toggle) cancel.addEventListener('click', function () {
         form.classList.add('hidden'); toggle.classList.remove('hidden');
     });
+}());
+
+// ─── Product listing: "View more" (progressive load) + Back to top ────────────
+// Cards on first paint are wired by the load-time binders above. Cards appended by
+// "View more" are fresh DOM, so re-wire each new card's actions here (scoped to the
+// card, so existing cards are never double-bound).
+function bindProductCards(root) {
+    root.querySelectorAll('.add-to-bag-quick').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            if (btn.dataset.hasVariants === 'true') { openQuickView(btn.dataset.productSlug); return; }
+            addToBag(btn.dataset.productId, null, 1, btn);
+        });
+    });
+    root.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.preventDefault(); addToBag(btn.dataset.productId, null, 1, btn); });
+    });
+    root.querySelectorAll('.select-options-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.preventDefault(); openQuickView(btn.dataset.productSlug); });
+    });
+    root.querySelectorAll('.quick-view-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); openQuickView(btn.dataset.productSlug); });
+    });
+    root.querySelectorAll('.compare-toggle').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault(); e.stopPropagation();
+            let a = getCompare(); const slug = btn.dataset.productSlug;
+            if (a.indexOf(slug) !== -1) { a = a.filter(x => x !== slug); showToast('Removed from compare'); }
+            else { if (a.length >= 4) { showToast('You can compare up to 4 items'); return; } a.push(slug); showToast('Added to compare'); }
+            setCompare(a);
+        });
+    });
+    root.querySelectorAll('.wishlist-toggle').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+            e.preventDefault(); e.stopPropagation();
+            const productId = btn.dataset.productId;
+            const token = await SiteHeader.ensureToken();
+            try {
+                const res = await fetch('/Wishlist/Toggle', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `productId=${productId}&__RequestVerificationToken=${encodeURIComponent(token)}`
+                });
+                const data = await res.json();
+                if (data.success) { const svg = btn.querySelector('svg'); if (svg) svg.setAttribute('fill', data.added ? 'currentColor' : 'none'); }
+            } catch (err) { console.error('Wishlist toggle failed', err); }
+        });
+    });
+    syncCompareButtons();
+    // Pre-fill "saved to wishlist" hearts for this batch from the cached header state.
+    SiteHeader.ready?.().then(s => {
+        if (!s) return;
+        const ids = new Set((s.wishlistProductIds || []).map(String));
+        root.querySelectorAll('.wishlist-toggle').forEach(btn => {
+            if (ids.has(String(btn.dataset.productId))) {
+                const svg = btn.querySelector('svg');
+                if (svg) svg.setAttribute('fill', 'currentColor');
+            }
+        });
+    });
+}
+
+(function () {
+    const btn = document.getElementById('load-more-btn');
+    const grid = document.getElementById('product-grid');
+    const shownEl = document.getElementById('shown-count');
+    if (btn && grid) {
+        btn.addEventListener('click', async () => {
+            const url = btn.dataset.url;
+            let next = parseInt(btn.dataset.next, 10);
+            const totalPages = parseInt(btn.dataset.total, 10);
+            const totalCount = parseInt(btn.dataset.count, 10);
+            const pageSize = parseInt(btn.dataset.size, 10);
+            const label = btn.querySelector('[data-label]');
+            const original = label ? label.textContent : '';
+            btn.disabled = true;
+            if (label) label.textContent = 'Loading…';
+            try {
+                const sep = url.indexOf('?') === -1 ? '?' : '&';
+                const res = await fetch(`${url}${sep}page=${next}&partial=cards`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                if (!res.ok) throw new Error('bad status ' + res.status);
+                const html = (await res.text()).trim();
+                const tmp = document.createElement('div');
+                tmp.innerHTML = html;
+                const newCards = Array.from(tmp.children);
+                newCards.forEach(card => { grid.appendChild(card); bindProductCards(card); });
+                if (shownEl) shownEl.textContent = Math.min(next * pageSize, totalCount);
+                next += 1;
+                btn.dataset.next = next;
+                if (next > totalPages) {
+                    const wrap = document.getElementById('load-more-wrap');
+                    (wrap || btn).remove();
+                } else {
+                    btn.disabled = false;
+                    if (label) label.textContent = original;
+                }
+            } catch (err) {
+                console.error('View more failed', err);
+                btn.disabled = false;
+                if (label) label.textContent = original;
+                showToast('Sorry, we couldn’t load more pieces. Please try again.');
+            }
+        });
+    }
+    const top = document.getElementById('back-to-top');
+    if (top) top.addEventListener('click', (e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); });
 }());
