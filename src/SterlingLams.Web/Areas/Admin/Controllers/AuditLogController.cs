@@ -45,6 +45,22 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 })
                 .ToListAsync();
 
+            // Show the staff member's name, not their email. Older / nameless-at-write-time entries
+            // stored the email (UserName fallback); resolve those to the current name where we can.
+            var emailPerformers = logs.Where(r => r.PerformedBy.Contains('@'))
+                .Select(r => r.PerformedBy).Distinct().ToList();
+            if (emailPerformers.Count > 0)
+            {
+                var byEmail = (await _db.Users
+                        .Where(u => u.Email != null && emailPerformers.Contains(u.Email))
+                        .Select(u => new { u.Email, u.FirstName, u.LastName })
+                        .ToListAsync())
+                    .ToDictionary(u => u.Email!, u => $"{u.FirstName} {u.LastName}".Trim(), StringComparer.OrdinalIgnoreCase);
+                foreach (var r in logs)
+                    if (r.PerformedBy.Contains('@') && byEmail.TryGetValue(r.PerformedBy, out var nm) && !string.IsNullOrWhiteSpace(nm))
+                        r.PerformedBy = nm;
+            }
+
             var availableActions  = await _db.AuditLogs.Select(l => l.Action).Distinct().OrderBy(a => a).ToListAsync();
             var availableEntities = await _db.AuditLogs.Select(l => l.EntityType).Distinct().OrderBy(e => e).ToListAsync();
 
