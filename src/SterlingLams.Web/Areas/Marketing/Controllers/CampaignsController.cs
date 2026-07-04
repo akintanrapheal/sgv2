@@ -12,11 +12,14 @@ public class CampaignsController : MarketingAreaController
 {
     private readonly ApplicationDbContext _db;
     private readonly IMarketingService _marketing;
+    private readonly IMarketingAttributionService _attribution;
 
-    public CampaignsController(ApplicationDbContext db, IMarketingService marketing)
+    public CampaignsController(ApplicationDbContext db, IMarketingService marketing,
+        IMarketingAttributionService attribution)
     {
         _db = db;
         _marketing = marketing;
+        _attribution = attribution;
     }
 
     public async Task<IActionResult> Index()
@@ -108,6 +111,16 @@ public class CampaignsController : MarketingAreaController
         ViewBag.EstimatedCount = c.Status == CampaignStatus.Draft ? await _marketing.EstimateCountAsync(c) : c.RecipientCount;
         ViewBag.Recipients = await _db.CampaignRecipients.AsNoTracking()
             .Where(r => r.CampaignId == id).OrderByDescending(r => r.Id).Take(50).ToListAsync();
+
+        // Revenue attributed to this campaign (last-touch, from its send date to now).
+        if (c.SentAt is DateTime sentAt)
+        {
+            var attr = await _attribution.ComputeAsync(sentAt, DateTime.UtcNow);
+            var (rev, orders) = attr.ForCampaign(id);
+            ViewBag.AttributedRevenue = rev;
+            ViewBag.AttributedOrders = orders;
+            ViewBag.AttributionWindow = attr.WindowDays;
+        }
         return View(c);
     }
 
