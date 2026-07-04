@@ -279,6 +279,56 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return RedirectToAction(nameof(Index));
         }
 
+        // ── Opening-stock ledger backfill (OP-15) ────────────────────────────────
+        // Stock imported as zero + balances entered before typed movements existed left on-hand
+        // quantities the ledger can't explain (SUM(movements) ≠ QuantityOnHand). This writes a
+        // one-time "Opening balance" Adjustment for each row's unexplained delta so the ledger
+        // reconstructs current stock. It does NOT change on-hand (the balance is already correct)
+        // and is idempotent — a row that already reconciles is skipped. Full administrators only.
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> BackfillOpeningStock()
+        {
+            if (!User.IsInRole(AdminSections.AdminRole)) return Forbid();
+            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var now = DateTime.UtcNow;
+
+            // Ledger total per (product, variant, store).
+            var sums = await _db.StockMovements
+                .GroupBy(m => new { m.ProductId, m.ProductVariantId, m.StoreId })
+                .Select(g => new { g.Key.ProductId, g.Key.ProductVariantId, g.Key.StoreId, Moved = g.Sum(x => x.QuantityChange) })
+                .ToListAsync();
+            var sumMap = sums.ToDictionary(s => (s.ProductId, s.ProductVariantId, s.StoreId), s => s.Moved);
+
+            var rows = await _db.StoreInventories.Where(si => si.QuantityOnHand > 0).ToListAsync();
+            int created = 0; long units = 0;
+            foreach (var si in rows)
+            {
+                var moved = sumMap.TryGetValue((si.ProductId, si.ProductVariantId, si.StoreId), out var m) ? m : 0;
+                var delta = si.QuantityOnHand - moved;
+                if (delta == 0) continue;
+                _db.StockMovements.Add(new StockMovement
+                {
+                    ProductId        = si.ProductId,
+                    ProductVariantId = si.ProductVariantId,
+                    StoreId          = si.StoreId,
+                    QuantityChange   = delta,
+                    BalanceAfter     = si.QuantityOnHand,
+                    Type             = StockMovementType.Adjustment,
+                    Reference        = "Opening balance",
+                    Note             = "Opening-stock ledger backfill",
+                    CreatedByUserId  = userId,
+                    CreatedAt        = now,
+                });
+                created++; units += delta;
+            }
+            await _db.SaveChangesAsync();
+            await LogAsync("Backfill", "Inventory", null, $"Opening-stock ledger backfill: {created} movement(s), {units} unit(s)");
+            TempData["Success"] = created == 0
+                ? "Stock ledger already reconciles with on-hand — nothing to backfill."
+                : $"Wrote {created} opening-stock ledger entr(ies) covering {units} unit(s). Stock history now reconstructs on-hand.";
+            return RedirectToAction(nameof(Index));
+        }
+
         // ── Update low-stock threshold for a product ──────────────────────────────
         [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> UpdateThreshold(int productId, int threshold)

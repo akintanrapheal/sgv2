@@ -24,6 +24,17 @@
                 ⊕ Create Missing Records
             </button>
         </form>
+        @if (ViewData["IsFullAdmin"] as bool? == true)
+        {
+            <form asp-area="Admin" asp-controller="Inventory" asp-action="BackfillOpeningStock" method="post"
+                  onsubmit="return confirm('Write one-time &quot;Opening balance&quot; ledger entries for stock that has no history? This does not change any quantities — it only makes stock history reconstruct current on-hand. Safe to run once.');">
+                @Html.AntiForgeryToken()
+                <button type="submit"
+                        class="px-4 py-2 border border-neutral-300 text-neutral-600 text-xs rounded-sm hover:bg-neutral-50 transition-colors">
+                    ⚖ Backfill opening-stock ledger
+                </button>
+            </form>
+        }
     </div>
 </div>
 
