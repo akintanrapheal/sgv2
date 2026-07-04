@@ -56,10 +56,21 @@ public class SettingsController : AdminBaseController
                     : form[s.Key].ToString();
         }
 
+        // Before/after diff of only the keys that actually changed (values truncated for readability).
+        var oldByKey = groupSettings.ToDictionary(s => s.Key, s => s.Value ?? "");
+        string Short(string v) => v.Length > 120 ? v[..120] + "…" : v;
+        var changed = updates
+            .Where(kv => (oldByKey.TryGetValue(kv.Key, out var ov) ? ov : "") != (kv.Value ?? ""))
+            .Select(kv => (kv.Key,
+                (object?)Short(oldByKey.TryGetValue(kv.Key, out var ov) ? ov : ""),
+                (object?)Short(kv.Value ?? "")))
+            .ToArray();
+        var changes = SterlingLams.Web.Services.AuditChanges.Build(changed);
+
         await _settings.SaveManyAsync(updates);
         await _storefrontCache.EvictAsync(); // homepage/announcement/merchandising settings are cached
         await LogAsync("Update", "Setting", null,
-            $"Updated {group} settings ({updates.Count} field(s))");
+            $"Updated {group} settings ({(changed.Length)} changed of {updates.Count})", changes);
         TempData["Success"] = $"{group} settings saved.";
         return RedirectToAction(nameof(Index), new { tab = group });
     }

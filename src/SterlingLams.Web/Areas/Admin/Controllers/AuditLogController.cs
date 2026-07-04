@@ -40,7 +40,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 {
                     Id = l.Id,
                     Action = l.Action, EntityType = l.EntityType, EntityId = l.EntityId,
-                    Description = l.Description, PerformedBy = l.PerformedBy,
+                    Description = l.Description, Changes = l.Changes, PerformedBy = l.PerformedBy,
                     IpAddress = l.IpAddress, CreatedAt = l.CreatedAt
                 })
                 .ToListAsync();
@@ -83,7 +83,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .ToListAsync();
 
             var sb = new StringBuilder();
-            sb.AppendLine("Timestamp (UTC),Action,Entity Type,Entity ID,Description,Performed By,IP Address");
+            sb.AppendLine("Timestamp (UTC),Action,Entity Type,Entity ID,Description,Changes,Performed By,IP Address");
             foreach (var l in logs)
             {
                 sb.AppendLine(string.Join(",",
@@ -92,6 +92,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     $"\"{l.EntityType}\"",
                     $"\"{l.EntityId}\"",
                     $"\"{l.Description.Replace("\"", "\"\"")}\"",
+                    $"\"{(l.Changes ?? "").Replace("\"", "\"\"").Replace("\n", "; ")}\"",
                     $"\"{l.PerformedBy}\"",
                     $"\"{l.IpAddress}\""));
             }

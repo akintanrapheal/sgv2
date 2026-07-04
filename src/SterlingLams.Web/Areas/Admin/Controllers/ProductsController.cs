@@ -408,6 +408,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 product = await _db.Products.FindAsync(vm.Id) ?? new Product();
             }
 
+            // Snapshot for the audit before/after diff (meaningful on an update).
+            var oldName = product.Name; var oldPrice = product.Price; var oldSale = product.SalePrice;
+            var oldSku = product.Sku; var oldActive = product.IsActive;
+            var oldFeatured = product.IsFeatured; var oldNewArr = product.IsNewArrival;
+
             product.Name = vm.Name.Trim();
             product.Slug = string.IsNullOrWhiteSpace(vm.Slug)
                 ? Regex.Replace(vm.Name.ToLower().Trim(), @"[^a-z0-9]+", "-")
@@ -441,8 +446,16 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             await _db.SaveChangesAsync();
             await _storefrontCache.EvictAsync();
 
+            var changes = isNew ? null : SterlingLams.Web.Services.AuditChanges.Build(
+                ("Name", oldName, product.Name),
+                ("Price", oldPrice, product.Price),
+                ("Sale price", oldSale, product.SalePrice),
+                ("SKU", oldSku, product.Sku),
+                ("Active", oldActive, product.IsActive),
+                ("Featured", oldFeatured, product.IsFeatured),
+                ("New arrival", oldNewArr, product.IsNewArrival));
             await LogAsync(isNew ? "Create" : "Update", "Product", product.Id.ToString(),
-                $"{(isNew ? "Created" : "Updated")} product '{product.Name}' (₦{product.Price:N0})");
+                $"{(isNew ? "Created" : "Updated")} product '{product.Name}' (₦{product.Price:N0})", changes);
 
             if (isNew)
             {

@@ -517,6 +517,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string EntityType { get; set; } = "";
         public string EntityId { get; set; } = "";
         public string Description { get; set; } = "";
+        public string? Changes { get; set; }
         public string PerformedBy { get; set; } = "";
         public string? IpAddress { get; set; }
         public DateTime CreatedAt { get; set; }

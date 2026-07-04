@@ -8,8 +8,37 @@ namespace SterlingLams.Web.Services;
 
 public interface IAuditService
 {
-    /// <summary>Records an admin action with the current user, IP, and timestamp.</summary>
-    Task LogAsync(string action, string entityType, string? entityId, string description);
+    /// <summary>Records an admin action with the current user, IP, and timestamp. Pass
+    /// <paramref name="changes"/> (e.g. built with <see cref="AuditChanges"/>) to capture a
+    /// before/after snapshot for Update actions.</summary>
+    Task LogAsync(string action, string entityType, string? entityId, string description, string? changes = null);
+}
+
+/// <summary>Builds a compact "Field: old → new" before/after snapshot, skipping unchanged fields.
+/// Returns null when nothing changed.</summary>
+public static class AuditChanges
+{
+    public static string? Build(params (string Field, object? Old, object? New)[] fields)
+    {
+        var lines = new List<string>();
+        foreach (var (field, oldVal, newVal) in fields)
+        {
+            var o = Fmt(oldVal);
+            var n = Fmt(newVal);
+            if (!string.Equals(o, n, StringComparison.Ordinal))
+                lines.Add($"{field}: {(string.IsNullOrEmpty(o) ? "—" : o)} → {(string.IsNullOrEmpty(n) ? "—" : n)}");
+        }
+        return lines.Count == 0 ? null : string.Join("\n", lines);
+    }
+
+    private static string Fmt(object? v) => v switch
+    {
+        null => "",
+        bool b => b ? "yes" : "no",
+        decimal d => d.ToString("0.##"),
+        DateTime dt => dt.ToString("yyyy-MM-dd HH:mm"),
+        _ => v.ToString() ?? ""
+    };
 }
 
 public class AuditService : IAuditService
@@ -23,7 +52,7 @@ public class AuditService : IAuditService
         _http = http;
     }
 
-    public async Task LogAsync(string action, string entityType, string? entityId, string description)
+    public async Task LogAsync(string action, string entityType, string? entityId, string description, string? changes = null)
     {
         var ctx  = _http.HttpContext;
         var user = await ResolvePerformerAsync(ctx);
@@ -35,6 +64,7 @@ public class AuditService : IAuditService
             EntityType  = entityType,
             EntityId    = entityId ?? "",
             Description = description.Length > 1000 ? description[..1000] : description,
+            Changes     = string.IsNullOrWhiteSpace(changes) ? null : (changes.Length > 4000 ? changes[..4000] : changes),
             PerformedBy = user,
             IpAddress   = ip,
             CreatedAt   = DateTime.UtcNow,

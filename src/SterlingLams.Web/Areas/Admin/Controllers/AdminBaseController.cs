@@ -67,12 +67,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         /// <summary>
         /// Records an admin action to the audit log. Best-effort — never throws.
         /// </summary>
-        protected async Task LogAsync(string action, string entityType, string? entityId, string description)
+        protected async Task LogAsync(string action, string entityType, string? entityId, string description, string? changes = null)
         {
             try
             {
                 var audit = HttpContext.RequestServices.GetRequiredService<IAuditService>();
-                await audit.LogAsync(action, entityType, entityId, description);
+                await audit.LogAsync(action, entityType, entityId, description, changes);
             }
             catch
             {

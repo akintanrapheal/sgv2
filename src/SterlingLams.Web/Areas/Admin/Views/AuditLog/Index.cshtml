@@ -105,7 +105,16 @@
                             <span>@log.EntityType</span>
                             @if (!string.IsNullOrEmpty(log.EntityId)) { <span class="text-neutral-400"> #@log.EntityId</span> }
                         </td>
-                        <td class="px-6 py-3 text-xs text-neutral-600">@log.Description</td>
+                        <td class="px-6 py-3 text-xs text-neutral-600">
+                            @log.Description
+                            @if (!string.IsNullOrEmpty(log.Changes))
+                            {
+                                <details class="mt-1">
+                                    <summary class="text-[10px] text-brand-500 cursor-pointer select-none">what changed</summary>
+                                    <pre class="mt-1 text-[11px] text-neutral-500 bg-neutral-50 border border-neutral-100 rounded-sm px-2 py-1 whitespace-pre-wrap font-sans">@log.Changes</pre>
+                                </details>
+                            }
+                        </td>
                         <td class="px-6 py-3 text-xs text-neutral-500 whitespace-nowrap">@log.PerformedBy</td>
                         <td class="px-6 py-3 text-xs text-neutral-400 font-mono whitespace-nowrap">@(string.IsNullOrEmpty(log.IpAddress) ? "—" : log.IpAddress)</td>
                     </tr>
