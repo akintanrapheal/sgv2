@@ -34,6 +34,11 @@
     var sdBase = $"{sdReq.Scheme}://{sdReq.Host}";
     var sdUrl = sdBase + sdReq.Path;
     string SdAbs(string u) => string.IsNullOrEmpty(u) ? u : (u.StartsWith("/") ? sdBase + u : u);
+    // Real values so the Offer enrichments Google wants aren't fabricated: national shipping rate
+    // and the configured return window (default 7 days). priceValidUntil silences Google's warning.
+    var sdShipFee = await SettingsService.GetDecimalAsync("shipping.national_standard_fee", 7500);
+    var sdReturnDays = (int)await SettingsService.GetDecimalAsync("shipping.return_days", 7);
+    var sdPriceValidUntil = DateTime.UtcNow.AddYears(1).ToString("yyyy-MM-dd");
     var jsonOpts = new System.Text.Json.JsonSerializerOptions
     {
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
@@ -59,9 +64,34 @@
             ["@type"] = "Offer",
             ["url"] = sdUrl,
             ["priceCurrency"] = Model.Currency,
-            ["price"] = Model.Price,
+            ["price"] = Model.EffectivePrice,
+            ["priceValidUntil"] = sdPriceValidUntil,
             ["availability"] = Model.IsAvailableAnywhere ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
             ["itemCondition"] = "https://schema.org/NewCondition",
+            ["shippingDetails"] = new Dictionary<string, object?>
+            {
+                ["@type"] = "OfferShippingDetails",
+                ["shippingRate"] = new Dictionary<string, object?>
+                {
+                    ["@type"] = "MonetaryAmount",
+                    ["value"] = sdShipFee,
+                    ["currency"] = Model.Currency,
+                },
+                ["shippingDestination"] = new Dictionary<string, object?>
+                {
+                    ["@type"] = "DefinedRegion",
+                    ["addressCountry"] = "NG",
+                },
+            },
+            ["hasMerchantReturnPolicy"] = new Dictionary<string, object?>
+            {
+                ["@type"] = "MerchantReturnPolicy",
+                ["applicableCountry"] = "NG",
+                ["returnPolicyCategory"] = "https://schema.org/MerchantReturnFiniteReturnWindow",
+                ["merchantReturnDays"] = sdReturnDays,
+                ["returnMethod"] = "https://schema.org/ReturnByMail",
+                ["returnFees"] = "https://schema.org/ReturnShippingFees",
+            },
         },
     }, jsonOpts);
     var breadcrumbLd = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
@@ -113,7 +143,7 @@
         <div class="space-y-3">
             <!-- Zoom container: hover to zoom, click to toggle pinned zoom -->
             <div class="aspect-square bg-neutral-50 overflow-hidden zoom-container cursor-zoom-in relative" id="zoom-container">
-                <img id="main-image" src="@Model.PrimaryImageUrl" alt="@Model.Name"
+                <img id="main-image" src="@Model.PrimaryImageUrl" alt="@Model.Name" width="800" height="800"
                      class="w-full h-full object-cover object-center transition-transform duration-300 will-change-transform" />
                 <partial name="_DiscountBadge" model="Model.DiscountPercent" />
             </div>
@@ -124,7 +154,7 @@
                     {
                         <button type="button" data-img-url="@url"
                                 class="thumb-btn aspect-square bg-neutral-50 overflow-hidden border-2 @(i == 0 ? "border-brand-500" : "border-transparent") hover:border-brand-300 transition-colors">
-                            <img src="@url" alt="@Model.Name view @(i+1)" class="w-full h-full object-cover" />
+                            <img src="@url" alt="@Model.Name view @(i+1)" loading="lazy" width="150" height="150" class="w-full h-full object-cover" />
                         </button>
                     }
                 </div>
@@ -610,7 +640,7 @@
                     <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="group">
                         <div class="aspect-square bg-neutral-50 mb-3 overflow-hidden">
                             <img src="@p.PrimaryImageUrl" alt="@p.Name"
-                                 loading="lazy"
+                                 loading="lazy" width="400" height="400"
                                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                         </div>
                         <h3 class="text-sm font-light text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
@@ -642,7 +672,7 @@
                     <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="group">
                         <div class="aspect-square bg-neutral-50 mb-3 overflow-hidden">
                             <img src="@p.PrimaryImageUrl" alt="@p.Name"
-                                 loading="lazy"
+                                 loading="lazy" width="400" height="400"
                                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                         </div>
                         <h3 class="text-sm font-light text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
