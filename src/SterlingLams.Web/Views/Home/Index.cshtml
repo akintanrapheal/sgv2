@@ -127,18 +127,25 @@
 <!-- ─── Trust Bar (continuously scrolling marquee) ─────────────────────────── -->
 <section class="py-5 bg-brand-500 overflow-hidden" aria-label="Why shop with us">
     <div class="trust-marquee flex w-max">
-        @* Two identical groups so the -50% translate loops seamlessly. *@
+        @* Two IDENTICAL halves so the -50% translate loops seamlessly. Each half repeats the (few,
+           short) items enough times to always overflow the viewport — otherwise the strip is
+           narrower than the screen and an empty gap scrolls past. *@
+        @{ const int TrustReps = 6; }
         @for (var g = 0; g < 2; g++)
         {
-            <div class="flex shrink-0" aria-hidden="@(g == 1 ? "true" : "false")">
-                @for (var i = 0; i < trustItems.Length; i++)
+            <div class="flex shrink-0">
+                @for (var r = 0; r < TrustReps; r++)
                 {
-                    <div class="flex items-center justify-center gap-3 text-white px-12">
-                        <svg class="w-5 h-5 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="@trustPaths[i]" />
-                        </svg>
-                        <span class="text-xs tracking-[0.2em] uppercase font-light whitespace-nowrap">@trustItems[i]</span>
-                    </div>
+                    @for (var i = 0; i < trustItems.Length; i++)
+                    {
+                        <div class="flex items-center justify-center gap-3 text-white px-12"
+                             aria-hidden="@((g == 1 || r > 0) ? "true" : "false")">
+                            <svg class="w-5 h-5 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="@trustPaths[i]" />
+                            </svg>
+                            <span class="text-xs tracking-[0.2em] uppercase font-light whitespace-nowrap">@trustItems[i]</span>
+                        </div>
+                    }
                 }
             </div>
         }
@@ -146,7 +153,8 @@
 </section>
 <style>
     @@keyframes trustScroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-    .trust-marquee { animation: trustScroll 30s linear infinite; }
+    /* Duration scaled to the wider strip so the on-screen speed stays the same, calm ~26px/s. */
+    .trust-marquee { animation: trustScroll 180s linear infinite; will-change: transform; }
     .trust-marquee:hover { animation-play-state: paused; }
     @@media (prefers-reduced-motion: reduce) { .trust-marquee { animation: none; } }
 </style>
