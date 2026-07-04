@@ -13,9 +13,9 @@ module.exports = {
         inter: ['Inter', 'system-ui', 'sans-serif'],
       },
       colors: {
-        // Subtle warm off-white page canvas — sits a shade below pure-white product
-        // photos and the near-white (#fafafa) image tiles so products separate from the page.
-        canvas: '#f6f4ef',
+        // Subtle warm off-white page canvas — matches the Featured Pieces section (bg-stone-50)
+        // so the whole storefront shares that soft near-white shade.
+        canvas: '#fafaf9',
         gold: {
           50:  '#fdf9f0',
           100: '#faefd4',
