@@ -74,7 +74,7 @@
             + '</div>';
     }
 
-    fetch('/Inventory/Products/TrackStockData?id=' + pid, { headers: { 'Accept': 'application/json' } })
+    fetch(__invBase + '/Products/TrackStockData?id=' + pid, { headers: { 'Accept': 'application/json' } })
         .then(function (r) { return r.json(); })
         .then(function (d) {
             if (!d || !d.found) { el('inv-locations').innerHTML = '<p class="text-sm text-red-500">Could not load product.</p>'; return; }
@@ -114,7 +114,7 @@
             if (!sid || seen[sid]) return; seen[sid] = true;
             locations.push({ storeId: sid, onHand: num('onHand') || 0, onOrder: num('onOrder') || 0, min: num('min'), max: num('max'), alerts: c.querySelector('[data-f="alerts"]').checked });
         });
-        return fetch('/Inventory/Products/SaveTrackStock', {
+        return fetch(__invBase + '/Products/SaveTrackStock', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token ? token.value : '' },
             body: JSON.stringify({ id: pid, trackStock: el('inv-track').checked, reason: 'Correction', locations: locations })

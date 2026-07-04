@@ -168,7 +168,7 @@ else
         var q = this.value.trim(); clearTimeout(t);
         if (q.length < 2) { sug.classList.add('hidden'); return; }
         t = setTimeout(function () {
-            fetch('/Inventory/Stocktake/StSearch?storeId=' + storeId + '&q=' + encodeURIComponent(q))
+            fetch(__invBase + '/Stocktake/StSearch?storeId=' + storeId + '&q=' + encodeURIComponent(q))
                 .then(function (r) { return r.json(); })
                 .then(function (list) {
                     if (!list.length) { sug.classList.add('hidden'); return; }
@@ -189,7 +189,7 @@ else
     el('st-search').addEventListener('keydown', function (e) {
         if (e.key !== 'Enter') return; e.preventDefault();
         var code = this.value.trim(); if (!code) return;
-        fetch('/Inventory/Stocktake/ScanLookup?storeId=' + storeId + '&code=' + encodeURIComponent(code))
+        fetch(__invBase + '/Stocktake/ScanLookup?storeId=' + storeId + '&code=' + encodeURIComponent(code))
             .then(function (r) { return r.json(); })
             .then(function (d) { if (d.found) { addProduct(d); el('st-search').value = ''; sug.classList.add('hidden'); } });
     });
@@ -216,13 +216,13 @@ else
         if (!payload.length) { alert('Enter at least one count.'); return; }
         if (missingReason) { alert('Please select a reason for each difference.'); return; }
         var btn = el('st-complete'); btn.disabled = true; btn.textContent = 'Completing…';
-        fetch('/Inventory/Stocktake/Complete', {
+        fetch(__invBase + '/Stocktake/Complete', {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
             body: JSON.stringify({ storeId: storeId, staffId: staffId, note: el('st-note').value, lines: payload })
         })
             .then(function (r) { return r.json(); })
             .then(function (d) {
-                if (d.success) { window.location.href = '/Inventory/Stocktake/Details/' + d.id; }
+                if (d.success) { window.location.href = __invBase + '/Stocktake/Details/' + d.id; }
                 else { alert(d.message || 'Could not complete.'); btn.disabled = false; btn.textContent = 'Complete Stocktake'; }
             })
             .catch(function () { alert('Could not complete.'); btn.disabled = false; btn.textContent = 'Complete Stocktake'; });

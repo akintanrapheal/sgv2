@@ -98,7 +98,7 @@
         fd.append('subfolder', 'journal');
         fd.append('__RequestVerificationToken', token);
         try {
-            const res = await fetch('/Admin/Upload/Image', { method: 'POST', body: fd });
+            const res = await fetch(__adminBase + '/Upload/Image', { method: 'POST', body: fd });
             const data = await res.json();
             if (res.ok && data.url) {
                 urlInput.value = data.url;

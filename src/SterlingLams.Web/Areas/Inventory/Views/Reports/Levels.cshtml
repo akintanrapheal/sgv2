@@ -103,7 +103,7 @@
             if (!row.classList.contains('hidden')) { row.classList.add('hidden'); return; }
             row.classList.remove('hidden');
             var cell = row.querySelector('td');
-            fetch('/Inventory/Reports/LevelBreakdown?id=' + id).then(function (r) { return r.json(); }).then(function (list) {
+            fetch(__invBase + '/Reports/LevelBreakdown?id=' + id).then(function (r) { return r.json(); }).then(function (list) {
                 if (!list.length) { cell.innerHTML = '<div class="text-xs text-neutral-400">No location records.</div>'; return; }
                 var rows = list.map(function (l) {
                     return '<tr class="border-t border-neutral-100"><td class="py-1.5 text-neutral-700">' + l.location + '</td>'

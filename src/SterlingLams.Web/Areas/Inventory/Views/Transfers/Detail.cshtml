@@ -324,7 +324,7 @@
     async function run(btn, action, body, successMsg) {
         btn.disabled = true;
         try {
-            const res = await fetch(`/Inventory/Transfers/${action}/${id}`, {
+            const res = await fetch(`${__invBase}/Transfers/${action}/${id}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
                 body: JSON.stringify(body ?? {})

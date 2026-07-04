@@ -9,10 +9,15 @@ using Microsoft.EntityFrameworkCore;
 using Sentry.AspNetCore;
 using Serilog;
 using SterlingLams.Web.Data;
+using SterlingLams.Web.Infrastructure;
 using SterlingLams.Web.Infrastructure.Extensions;
 using SterlingLams.Web.Models.Domain;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Configurable secret prefixes for the staff backends (StaffPaths:Admin/Inventory/Marketing);
+// unset → current names. Read once here so routing + CSP + staff-path checks all agree.
+SterlingLams.Web.Infrastructure.StaffPaths.Init(builder.Configuration);
 
 // ─── Serilog ────────────────────────────────────────────────────────────────
 Log.Logger = new LoggerConfiguration()
@@ -281,7 +286,7 @@ app.Use(async (context, next) =>
     // /Inventory, /Till) still rely on inline handlers, so they keep 'unsafe-inline' for now.
     // style-src keeps 'unsafe-inline' (inline style attributes are pervasive + low-risk) + Google Fonts.
     var p = context.Request.Path;
-    var staffArea = p.StartsWithSegments("/Admin") || p.StartsWithSegments("/Inventory") || p.StartsWithSegments("/Till") || p.StartsWithSegments("/Pos") || p.StartsWithSegments("/Marketing");
+    var staffArea = p.StartsWithSegments($"/{StaffPaths.Admin}") || p.StartsWithSegments($"/{StaffPaths.Inventory}") || p.StartsWithSegments("/Till") || p.StartsWithSegments("/Pos") || p.StartsWithSegments($"/{StaffPaths.Marketing}");
     var scriptSrc = staffArea ? "script-src 'self' 'unsafe-inline'" : $"script-src 'self' 'nonce-{nonce}'";
 
     context.Response.Headers["Content-Security-Policy"] =
@@ -332,14 +337,17 @@ app.UseMiddleware<SterlingLams.Web.Infrastructure.MaintenanceModeMiddleware>();
 app.UseOutputCache();
 
 // Friendly redirects for the staff-area roots — the area default controller is "Home", which
-// doesn't exist, so a bare /Admin or /Inventory would 404. Send them to the real landing pages.
-app.MapGet("/Admin", () => Results.Redirect("/Admin/Dashboard"));
-app.MapGet("/Inventory", () => Results.Redirect("/Inventory/Overview"));
-app.MapGet("/Marketing", () => Results.Redirect("/Marketing/Dashboard"));
+// doesn't exist, so a bare root would 404. Send them to the real landing pages (secret-prefix aware).
+app.MapGet($"/{StaffPaths.Admin}", () => Results.Redirect($"/{StaffPaths.Admin}/Dashboard"));
+app.MapGet($"/{StaffPaths.Inventory}", () => Results.Redirect($"/{StaffPaths.Inventory}/Overview"));
+app.MapGet($"/{StaffPaths.Marketing}", () => Results.Redirect($"/{StaffPaths.Marketing}/Dashboard"));
 
-app.MapControllerRoute(
-    name: "areas",
-    pattern: "{area:exists}/{controller=Home}/{action=Index}/{id?}");
+// Explicit per-area routes using the configurable secret prefix (instead of the generic
+// {area:exists} route which would expose the real area names). asp-area links auto-resolve to
+// the prefix; the real names (/Admin …) 404 once a secret prefix is set.
+app.MapAreaControllerRoute(name: "admin_area",     areaName: "Admin",     pattern: $"{StaffPaths.Admin}/{{controller=Home}}/{{action=Index}}/{{id?}}");
+app.MapAreaControllerRoute(name: "inventory_area", areaName: "Inventory", pattern: $"{StaffPaths.Inventory}/{{controller=Home}}/{{action=Index}}/{{id?}}");
+app.MapAreaControllerRoute(name: "marketing_area", areaName: "Marketing", pattern: $"{StaffPaths.Marketing}/{{controller=Home}}/{{action=Index}}/{{id?}}");
 
 app.MapControllerRoute(
     name: "default",

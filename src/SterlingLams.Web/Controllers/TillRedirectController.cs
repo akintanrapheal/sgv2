@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using SterlingLams.Web.Infrastructure;
 
 namespace SterlingLams.Web.Controllers;
 
@@ -32,15 +33,15 @@ public class TillRedirectController : Controller
         if (rest.StartsWith("Receipt/", System.StringComparison.OrdinalIgnoreCase))
             return Redirect("/Pos/" + rest);
         if (rest.StartsWith("DiscountReasons", System.StringComparison.OrdinalIgnoreCase))
-            return Redirect("/Inventory/Till/DiscountReasons");
+            return Redirect($"/{StaffPaths.Inventory}/Till/DiscountReasons");
         if (rest.StartsWith("Sales", System.StringComparison.OrdinalIgnoreCase))
-            return Redirect("/Inventory/Sales/Completed");
+            return Redirect($"/{StaffPaths.Inventory}/Sales/Completed");
         // Sessions / Index / anything else → POS oversight
-        return Redirect("/Inventory/Till");
+        return Redirect($"/{StaffPaths.Inventory}/Till");
     }
 
     // Register management moved to the Inventory System.
     [Route("/Admin/Registers")]
     [Route("/Admin/Registers/{**rest}")]
-    public IActionResult AdminRegistersToInventory() => Redirect("/Inventory/Org/Registers");
+    public IActionResult AdminRegistersToInventory() => Redirect($"/{StaffPaths.Inventory}/Org/Registers");
 }

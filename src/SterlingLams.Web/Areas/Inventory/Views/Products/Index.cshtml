@@ -361,7 +361,7 @@
 <script>
 (function () {
     var token = document.querySelector('input[name="__RequestVerificationToken"]') ? document.querySelector('input[name="__RequestVerificationToken"]').value : '';
-    var base = '/Inventory/Products/';
+    var base = __invBase + '/Products/';
     var table = document.getElementById('prod-table');
 
     // ── Column registry (key → label, default visible) ──────────────────────────

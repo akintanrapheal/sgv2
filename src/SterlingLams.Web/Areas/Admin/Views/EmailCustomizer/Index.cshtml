@@ -126,7 +126,7 @@
         async function refresh() {
             try {
                 const qs = new URLSearchParams({ type, subject: subject.value, intro: intro.value, logoHeight: logoHeight.value });
-                const res = await fetch('/Admin/EmailCustomizer/Preview?' + qs.toString());
+                const res = await fetch(__adminBase + '/EmailCustomizer/Preview?' + qs.toString());
                 iframe.srcdoc = await res.text();
             } catch { /* ignore preview errors */ }
         }
@@ -145,7 +145,7 @@
             const out = document.getElementById('test-result');
             out.textContent = 'Sending…'; out.className = 'text-xs mt-2 text-neutral-400';
             try {
-                const res = await fetch('/Admin/EmailCustomizer/SendTest', {
+                const res = await fetch(__adminBase + '/EmailCustomizer/SendTest', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token },
                     body: new URLSearchParams({ type, email })

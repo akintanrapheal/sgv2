@@ -136,7 +136,7 @@
         var q = this.value.trim(); clearTimeout(t);
         if (q.length < 2) { sug.classList.add('hidden'); return; }
         t = setTimeout(function () {
-            fetch('/Inventory/Products/LabelSearch?q=' + encodeURIComponent(q))
+            fetch(__invBase + '/Products/LabelSearch?q=' + encodeURIComponent(q))
                 .then(function (r) { return r.json(); })
                 .then(function (list) {
                     if (!list.length) { sug.classList.add('hidden'); return; }
@@ -156,7 +156,7 @@
     el('lbl-search').addEventListener('keydown', function (e) {
         if (e.key !== 'Enter') return; e.preventDefault();
         var code = this.value.trim(); if (!code) return;
-        fetch('/Inventory/Products/Lookup?barcode=' + encodeURIComponent(code))
+        fetch(__invBase + '/Products/Lookup?barcode=' + encodeURIComponent(code))
             .then(function (r) { return r.json(); })
             .then(function (d) { if (d.found) { addPick(d.id, d.name); el('lbl-search').value = ''; sug.classList.add('hidden'); } });
     });
@@ -175,7 +175,7 @@
         params.set('description', el('d-description').checked);
         if (el('d-customtext-on').checked && el('d-customtext').value) params.set('customText', el('d-customtext').value);
         var preset = document.querySelector('input[name="preset"]:checked'); params.set('preset', preset ? preset.value : 'barcode');
-        return '/Inventory/Products/Labels?' + params.toString();
+        return __invBase + '/Products/Labels?' + params.toString();
     }
     function go() {
         if (!Object.keys(picks).length && !el('lbl-store').value && !el('lbl-category').value) {

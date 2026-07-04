@@ -91,6 +91,8 @@
     <link rel="apple-touch-icon" href="~/apple-touch-icon.png" />
 </head>
 <body class="bg-neutral-50 text-neutral-900 font-inter antialiased">
+    @* Secret-URL-aware base for this area so inline fetch()/link JS resolves to the configured prefix. *@
+    <script>window.__invBase = '/@SterlingLams.Web.Infrastructure.StaffPaths.Inventory';</script>
 
 <div class="flex h-screen overflow-hidden">
 

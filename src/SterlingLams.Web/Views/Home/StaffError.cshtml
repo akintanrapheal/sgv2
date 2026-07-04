@@ -10,7 +10,7 @@
         try again, or head back to your dashboard.
     </p>
     <div class="flex gap-3 justify-center">
-        <a href="/Inventory/Overview" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">Inventory System</a>
-        <a href="/Admin/Dashboard" class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:bg-neutral-50 transition-colors">Website Admin</a>
+        <a asp-area="Inventory" asp-controller="Overview" asp-action="Index" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">Inventory System</a>
+        <a asp-area="Admin" asp-controller="Dashboard" asp-action="Index" class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:bg-neutral-50 transition-colors">Website Admin</a>
     </div>
 </div>

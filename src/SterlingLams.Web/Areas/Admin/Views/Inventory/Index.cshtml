@@ -348,7 +348,7 @@ else
             if (!edits.length) { alert('No changes to save.'); return; }
             btn.disabled = true; const label = btn.querySelector('span') ? null : null; btn.textContent = 'Saving…';
             try {
-                const res = await fetch('/Admin/Inventory/SetAllProductStock', {
+                const res = await fetch(__adminBase + '/Inventory/SetAllProductStock', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': tokenEl ? tokenEl.value : '' },
                     body: JSON.stringify(edits)

@@ -28,6 +28,8 @@
     <link rel="icon" type="image/png" sizes="32x32" href="~/favicon-32.png" />
 </head>
 <body class="h-full bg-neutral-50 text-neutral-900 antialiased">
+    @* Secret-URL-aware base for this area so inline fetch()/link JS resolves to the configured prefix. *@
+    <script>window.__mktBase = '/@SterlingLams.Web.Infrastructure.StaffPaths.Marketing';</script>
 <div class="flex h-full">
     <!-- Sidebar -->
     <aside class="w-60 bg-neutral-900 text-white flex flex-col flex-shrink-0">

@@ -35,7 +35,7 @@ public class MaintenanceModeMiddleware
     private static bool IsExempt(string path)
     {
         bool Starts(string p) => path.StartsWith(p, StringComparison.OrdinalIgnoreCase);
-        return Starts("/Admin") || Starts("/Inventory") || Starts("/Till") || Starts("/Pos")
+        return Starts($"/{StaffPaths.Admin}") || Starts($"/{StaffPaths.Inventory}") || Starts($"/{StaffPaths.Marketing}") || Starts("/Till") || Starts("/Pos")
             || Starts("/Account/Login") || Starts("/Account/Logout") || Starts("/Account/AccessDenied")
             || Starts("/webhooks")
             || Starts("/css") || Starts("/js") || Starts("/lib") || Starts("/uploads")

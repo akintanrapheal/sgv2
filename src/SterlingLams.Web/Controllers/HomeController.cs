@@ -144,9 +144,15 @@ public class HomeController : Controller
         return View();
     }
 
-    private static bool IsStaffPath(string path) =>
-        path.StartsWith("/Admin", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/Inventory", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/Till", StringComparison.OrdinalIgnoreCase)
-        || path.StartsWith("/Pos", StringComparison.OrdinalIgnoreCase);
+    private static bool IsStaffPath(string path)
+    {
+        var sp = SterlingLams.Web.Infrastructure.StaffPaths.Admin;
+        var si = SterlingLams.Web.Infrastructure.StaffPaths.Inventory;
+        var sm = SterlingLams.Web.Infrastructure.StaffPaths.Marketing;
+        return path.StartsWith($"/{sp}", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith($"/{si}", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith($"/{sm}", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/Till", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/Pos", StringComparison.OrdinalIgnoreCase);
+    }
 }

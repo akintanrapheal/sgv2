@@ -107,7 +107,7 @@
         const out = document.getElementById('count-out');
         out.classList.remove('hidden'); out.textContent = 'Counting…';
         try {
-            const res = await fetch('/Marketing/Campaigns/Count', { method: 'POST', body: fd });
+            const res = await fetch(__mktBase + '/Campaigns/Count', { method: 'POST', body: fd });
             const data = await res.json();
             out.textContent = (data.count ?? 0).toLocaleString() + ' recipient(s)';
         } catch { out.textContent = 'Could not estimate.'; }

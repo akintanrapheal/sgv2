@@ -79,7 +79,7 @@
         e.preventDefault();
         const code = scanBox.value.trim();
         if (!code || !fromSel.value) return;
-        const res = await fetch(`/Inventory/Transfers/SearchStock?fromStoreId=${fromSel.value}&q=${encodeURIComponent(code)}`);
+        const res = await fetch(`${__invBase}/Transfers/SearchStock?fromStoreId=${fromSel.value}&q=${encodeURIComponent(code)}`);
         const items = await res.json();
         const match = items.find(p => p.barcode === code || p.sku === code) || items[0];
         if (match) {
@@ -95,7 +95,7 @@
 
     async function runSearch() {
         if (!fromSel.value) return;
-        const res = await fetch(`/Inventory/Transfers/SearchStock?fromStoreId=${fromSel.value}&q=${encodeURIComponent(searchBox.value.trim())}`);
+        const res = await fetch(`${__invBase}/Transfers/SearchStock?fromStoreId=${fromSel.value}&q=${encodeURIComponent(searchBox.value.trim())}`);
         const items = await res.json();
         if (!items.length) { resultsEl.innerHTML = '<p class="col-span-full text-sm text-neutral-400">No products with stock here.</p>'; return; }
         lastResults = items;
@@ -128,11 +128,11 @@
         if (fromSel.value === toSel.value) { alert('Pick two different branches.'); return; }
         submitBtn.disabled = true; submitBtn.textContent = 'Submitting…';
         try {
-            const res = await fetch('/Inventory/Transfers/Request', { method: 'POST',
+            const res = await fetch(__invBase + '/Transfers/Request', { method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
                 body: JSON.stringify({ fromStoreId: +fromSel.value, toStoreId: +toSel.value, note: document.getElementById('t-note').value, items: cart.map(c => ({ productId: c.productId, quantity: c.qty })) }) });
             const data = await res.json();
-            if (data.success) location.href = '/Inventory/Transfers/Detail/' + data.id;
+            if (data.success) location.href = __invBase + '/Transfers/Detail/' + data.id;
             else { alert(data.message || 'Request failed.'); }
         } finally { submitBtn.textContent = 'Submit Request'; updateSubmit(); }
     });

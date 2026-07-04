@@ -43,7 +43,7 @@
     previewBtn.addEventListener('click', function () {
         var id = cat.value; if (!id) { setStatus('Pick a category first.', 'text-amber-600'); return; }
         setStatus('Generating preview…'); samples.innerHTML = ''; applyBtn.disabled = true;
-        fetch('/Admin/Seo/Preview?categoryId=' + id)
+        fetch(__adminBase + '/Seo/Preview?categoryId=' + id)
             .then(function (r) { return r.json(); })
             .then(function (d) {
                 if (!d.ok) { setStatus(d.error || 'Failed.', 'text-red-600'); return; }
@@ -69,7 +69,7 @@
         body.append('categoryId', id);
         body.append('overwrite', document.getElementById('overwrite').checked);
         body.append('__RequestVerificationToken', token);
-        fetch('/Admin/Seo/Apply', { method: 'POST', body: body })
+        fetch(__adminBase + '/Seo/Apply', { method: 'POST', body: body })
             .then(function (r) { return r.json(); })
             .then(function (d) {
                 if (!d.ok) { setStatus(d.error || 'Failed.', 'text-red-600'); applyBtn.disabled = false; return; }

@@ -597,7 +597,7 @@
                     fd.append('subfolder', 'products');
                     fd.append('__RequestVerificationToken', token);
                     try {
-                        var res = await fetch('/Admin/Upload/Image', { method: 'POST', body: fd });
+                        var res = await fetch(__adminBase + '/Upload/Image', { method: 'POST', body: fd });
                         var data = await res.json();
                         if (res.ok && data.url) {
                             var urlInput = document.getElementById('vimg-' + vid);

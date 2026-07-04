@@ -205,7 +205,7 @@
             const label = input.closest('label');
             if (label) label.textContent = 'Uploading…';
 
-            const res = await fetch('/Admin/Upload/Image', { method: 'POST', body: form });
+            const res = await fetch(__adminBase + '/Upload/Image', { method: 'POST', body: form });
             const data = await res.json();
 
             if (label) { label.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/> </svg> Upload Image <input id="' + input.id + '" type="file" accept="image/*" class="hidden" data-setting-key="' + key + '" data-preview-id="' + previewId + '" />'; }
@@ -221,7 +221,7 @@
                 // separate "Save" click (and survives any form quirks).
                 const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
                 try {
-                    await fetch('/Admin/Settings/SaveOne', {
+                    await fetch(__adminBase + '/Settings/SaveOne', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: 'key=' + encodeURIComponent(key) + '&value=' + encodeURIComponent(data.url) + '&__RequestVerificationToken=' + encodeURIComponent(token)
@@ -243,7 +243,7 @@
             var urls = Array.prototype.map.call(wrap.querySelectorAll('.il-item'), function (i) { return i.getAttribute('data-url'); });
             hidden.value = urls.join('\n');
             // Persist immediately (like the single-image picker) so it takes effect without Save.
-            fetch('/Admin/Settings/SaveOne', {
+            fetch(__adminBase + '/Settings/SaveOne', {
                 method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: 'key=' + encodeURIComponent(wrap.dataset.key) + '&value=' + encodeURIComponent(hidden.value) + '&__RequestVerificationToken=' + encodeURIComponent(token)
             }).catch(function () {});
@@ -261,7 +261,7 @@
             var form = new FormData();
             form.append('file', file); form.append('subfolder', 'settings'); form.append('__RequestVerificationToken', token);
             try {
-                var res = await fetch('/Admin/Upload/Image', { method: 'POST', body: form });
+                var res = await fetch(__adminBase + '/Upload/Image', { method: 'POST', body: form });
                 var data = await res.json();
                 add.value = '';
                 if (res.ok && data.url) {
