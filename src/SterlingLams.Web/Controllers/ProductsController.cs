@@ -186,7 +186,13 @@ public class ProductsController : Controller
     [HttpGet("products/{slug}")]
     public async Task<IActionResult> Detail(string slug)
     {
+        // Read-only page. Four collection Includes (Images, Variants, StoreInventories, Tags) on one
+        // root would cartesian-explode into tens of thousands of rows for a many-variant product like
+        // the alphabet necklace (26 variants × 26 images × 81 stock rows). AsSplitQuery loads each
+        // collection with its own query (~150 rows total), and AsNoTracking skips change tracking.
         var product = await _db.Products
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(p => p.Category)
             .Include(p => p.Images.OrderBy(i => i.SortOrder))
             .Include(p => p.Variants).ThenInclude(v => v.AttributeValues).ThenInclude(av => av.Attribute)
@@ -208,7 +214,10 @@ public class ProductsController : Controller
         var isInWishlist = User.Identity?.IsAuthenticated == true
             && await _db.WishlistItems.AnyAsync(w => w.UserId == GetUserId() && w.ProductId == product.Id);
 
+        // NB: single-query (not split) on purpose — split + random ordering would re-roll the random
+        // pick per collection query and mismatch the includes. Take(4) keeps the cartesian tiny anyway.
         var relatedProducts = await _db.Products
+            .AsNoTracking()
             .Include(p => p.Images)
             .Include(p => p.StoreInventories)
             .Where(p => p.CategoryId == product.CategoryId && p.Id != product.Id && p.IsActive)
@@ -366,7 +375,10 @@ public class ProductsController : Controller
     [HttpGet("/api/product-quickview")]
     public async Task<IActionResult> QuickView(string slug)
     {
+        // Same cartesian-explosion guard as Detail (Images × Variants × StoreInventories).
         var product = await _db.Products
+            .AsNoTracking()
+            .AsSplitQuery()
             .Include(p => p.Category)
             .Include(p => p.Images.OrderBy(i => i.SortOrder))
             .Include(p => p.Variants).ThenInclude(v => v.AttributeValues).ThenInclude(av => av.Attribute)
