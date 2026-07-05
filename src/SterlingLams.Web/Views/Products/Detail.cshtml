@@ -149,11 +149,13 @@
             </div>
             @if (Model.ImageUrls.Count > 1)
             {
-                <div class="grid grid-cols-4 gap-2">
+                @* Mobile: a single swipeable row (many-image products would otherwise stack into a
+                   tall grid and push the buy box off-screen). md+: the 4-column grid. *@
+                <div class="flex md:grid md:grid-cols-4 gap-2 overflow-x-auto pb-1 snap-x">
                     @foreach (var (url, i) in Model.ImageUrls.Select((u, i) => (u, i)))
                     {
                         <button type="button" data-img-url="@url"
-                                class="thumb-btn aspect-square bg-neutral-50 overflow-hidden border-2 @(i == 0 ? "border-brand-500" : "border-transparent") hover:border-brand-300 transition-colors">
+                                class="thumb-btn shrink-0 w-16 md:w-auto aspect-square bg-neutral-50 overflow-hidden border-2 @(i == 0 ? "border-brand-500" : "border-transparent") hover:border-brand-300 transition-colors snap-start">
                             <img src="@url" alt="@Model.Name view @(i+1)" loading="lazy" width="150" height="150" class="w-full h-full object-cover" />
                         </button>
                     }
@@ -696,6 +698,22 @@
     <partial name="_SizeGuideModal" />
 }
 
+@* Sticky mobile buy bar — keeps price + Add to Bag reachable without scrolling past the gallery. *@
+@if (Model.IsAvailableAnywhere)
+{
+    <div id="sticky-buy" class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-neutral-200 px-4 py-3 flex items-center gap-3" style="box-shadow:0 -2px 12px rgba(0,0,0,0.06);">
+        <div class="min-w-0">
+            <div class="text-[10px] uppercase tracking-wide text-neutral-400 leading-none truncate">@Model.CategoryName</div>
+            <div id="sticky-price" class="text-base font-semibold text-neutral-900 leading-tight">@Model.FormattedPrice</div>
+        </div>
+        <button id="sticky-add" type="button"
+                class="flex-1 bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 rounded-sm hover:bg-brand-600 active:bg-brand-700 transition-colors">
+            Add to Bag
+        </button>
+    </div>
+    <div class="h-20 md:hidden" aria-hidden="true"></div> @* spacer so content isn't hidden behind the bar *@
+}
+
 @section Scripts {
 <script nonce="@Context.Items["csp-nonce"]">
 (function () {
@@ -1038,6 +1056,31 @@
         t.addEventListener('click', () => window.switchMainImage(t.dataset.imgUrl, t)));
     document.querySelectorAll('.attr-select').forEach(s =>
         s.addEventListener('change', () => window.onAttrSelectChange(s.dataset.attr, s.value)));
+
+    // ── Sticky mobile buy bar ──────────────────────────────────────────────
+    (function () {
+        const stickyAdd = document.getElementById('sticky-add');
+        if (!stickyAdd) return;
+        const stickyPrice = document.getElementById('sticky-price');
+        const mainAdd = document.getElementById('add-to-cart');
+        const priceEl = document.getElementById('price-effective');
+        const variantsWrap = document.getElementById('variant-selectors');
+
+        // Keep the sticky price in sync with the main price (which updates on variant change).
+        if (priceEl && stickyPrice) {
+            new MutationObserver(() => { stickyPrice.textContent = priceEl.textContent; })
+                .observe(priceEl, { childList: true, characterData: true, subtree: true });
+        }
+
+        stickyAdd.addEventListener('click', () => {
+            if (mainAdd) mainAdd.click();   // reuse ALL existing logic (variant validation, stock, toast)
+            // If the main button flagged "select options", bring the picker into view.
+            const prompt = document.getElementById('select-colour-prompt');
+            if (variantsWrap && prompt && !prompt.classList.contains('hidden')) {
+                variantsWrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
+    })();
 })();
 </script>
 }
