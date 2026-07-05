@@ -6,7 +6,7 @@
 *@
 @foreach (var product in Model)
 {
-    <div class="group">
+    <div class="group flex flex-col h-full">
         <!-- Image -->
         <a asp-controller="Products" asp-action="Detail" asp-route-slug="@product.Slug"
            class="block aspect-square bg-neutral-50 overflow-hidden relative mb-4">
@@ -38,7 +38,7 @@
         </a>
 
         <!-- Info -->
-        <a asp-controller="Products" asp-action="Detail" asp-route-slug="@product.Slug">
+        <a asp-controller="Products" asp-action="Detail" asp-route-slug="@product.Slug" class="block flex-grow">
             <p class="text-[10px] tracking-[0.2em] uppercase text-neutral-400 mb-1">@product.CategoryName</p>
             <h3 class="text-sm font-light text-neutral-800 group-hover:text-neutral-900 transition-colors leading-snug mb-1">
                 @product.Name

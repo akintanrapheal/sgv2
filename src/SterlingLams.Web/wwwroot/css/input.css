@@ -76,6 +76,10 @@
     margin-left: 0.5rem;
     transform: translateX(0);
   }
+  /* Card CTA: swap the label to "Cart" on hover (with the icon that slides in above) */
+  .cta-label-hover { display: none; }
+  .cta-btn:hover .cta-label-default { display: none; }
+  .cta-btn:hover .cta-label-hover { display: inline; }
 
   /* Image zoom */
   .zoom-container {

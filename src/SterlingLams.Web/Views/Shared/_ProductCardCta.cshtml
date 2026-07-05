@@ -16,7 +16,7 @@ else if (Model.HasVariants)
     <button type="button"
             class="cta-btn select-options-btn mt-3 w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 rounded-md hover:bg-brand-600 transition-colors flex items-center justify-center"
             data-product-slug="@Model.Slug">
-        <span>Select Options</span>@Html.Raw(cartIcon)
+        <span class="cta-label-default">Select Options</span><span class="cta-label-hover">Cart</span>@Html.Raw(cartIcon)
     </button>
 }
 else
@@ -24,6 +24,6 @@ else
     <button type="button"
             class="cta-btn add-to-cart-btn mt-3 w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 rounded-md hover:bg-brand-600 transition-colors flex items-center justify-center"
             data-product-id="@Model.Id">
-        <span>Add to Cart</span>@Html.Raw(cartIcon)
+        <span class="cta-label-default">Add to Cart</span><span class="cta-label-hover">Cart</span>@Html.Raw(cartIcon)
     </button>
 }
