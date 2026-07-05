@@ -89,6 +89,11 @@ public class CampaignSenderService : BackgroundService
         }
 
         var baseUrl = (_config["App:BaseUrl"] ?? "").TrimEnd('/');
+        // "You might also like" block — best sellers, same for every recipient, so built once.
+        var recsHtml = await Services.Marketing.MarketingService.BestSellerRecsHtmlAsync(
+            scope.ServiceProvider.GetRequiredService<SterlingLams.Web.Services.IMerchandisingService>(),
+            scope.ServiceProvider.GetRequiredService<SterlingLams.Web.Services.ISettingsService>(), baseUrl, ct);
+
         var pending = await db.CampaignRecipients
             .Where(r => r.CampaignId == campaign.Id && r.Status == CampaignRecipientStatus.Pending)
             .OrderBy(r => r.Id).Take(BatchSize).ToListAsync(ct);
@@ -105,6 +110,7 @@ public class CampaignSenderService : BackgroundService
                         campaign.CouponExpiryDays, campaign.CouponMinOrder, $"Campaign: {campaign.Name}", ct);
                     bodyHtml = Services.Marketing.MarketingService.ApplyCoupon(bodyHtml, code);
                 }
+                bodyHtml = Services.Marketing.MarketingService.ApplyRecommendations(bodyHtml, recsHtml);
                 var body = bodyHtml + UnsubscribeFooter(baseUrl, marketing, r.Email);
                 // Self-hosted open/click tracking: rewrite links + append a 1×1 pixel keyed to this recipient.
                 if (!string.IsNullOrEmpty(baseUrl))

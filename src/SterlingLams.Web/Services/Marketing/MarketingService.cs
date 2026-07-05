@@ -122,6 +122,77 @@ public class MarketingService : IMarketingService
                $"<strong style=\"letter-spacing:1px;font-size:15px\">{code}</strong></p>";
     }
 
+    /// <summary>Builds an email-safe (table-based, inline-styled) 2-across product grid for use as
+    /// "You might also like" recommendations. Returns "" when there are no products.</summary>
+    public static string BuildRecommendationsHtml(
+        IReadOnlyList<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> products,
+        string baseUrl, string heading = "You might also like")
+    {
+        if (products == null || products.Count == 0) return "";
+        string Enc(string s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+        string Abs(string u) => string.IsNullOrEmpty(u) ? u : (u.StartsWith("/") ? baseUrl + u : u);
+
+        string Cell(SterlingLams.Web.Models.ViewModels.ProductCardViewModel p)
+        {
+            var url = $"{baseUrl}/products/{p.Slug}";
+            var price = p.IsOnSale
+                ? $"<span style=\"color:#c90278;font-weight:600;\">{p.FormattedPrice}</span> <span style=\"color:#9ca3af;text-decoration:line-through;font-size:12px;\">{p.FormattedRegularPrice}</span>"
+                : $"<span style=\"color:#111;font-weight:600;\">{p.FormattedPrice}</span>";
+            return $@"<td width=""50%"" style=""padding:8px;vertical-align:top;"">
+  <a href=""{url}"" style=""text-decoration:none;color:#111;"">
+    <img src=""{Abs(p.PrimaryImageUrl)}"" alt=""{Enc(p.Name)}"" width=""260"" style=""width:100%;max-width:260px;height:auto;border:0;display:block;border-radius:4px;"" />
+    <div style=""font-size:13px;line-height:1.3;margin:8px 0 3px;"">{Enc(p.Name)}</div>
+    <div style=""font-size:13px;"">{price}</div>
+  </a>
+</td>";
+        }
+
+        var rows = new System.Text.StringBuilder();
+        for (int i = 0; i < products.Count; i += 2)
+        {
+            rows.Append("<tr>").Append(Cell(products[i]));
+            rows.Append(i + 1 < products.Count ? Cell(products[i + 1]) : "<td width=\"50%\"></td>");
+            rows.Append("</tr>");
+        }
+        return $@"<div style=""margin-top:28px;"">
+  <h3 style=""font-size:14px;text-transform:uppercase;letter-spacing:1px;color:#111;border-top:1px solid #eee;padding-top:20px;margin-bottom:8px;"">{Enc(heading)}</h3>
+  <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""width:100%;"">{rows}</table>
+</div>";
+    }
+
+    /// <summary>Injects a product-recommendation block into an email body: replaces {{recommendations}}
+    /// tokens, or appends when the placeholder is absent. No-op when the block is empty.</summary>
+    public static string ApplyRecommendations(string body, string recsHtml)
+    {
+        if (string.IsNullOrEmpty(recsHtml)) return body;
+        if (body.Contains("{{recommendations}}", StringComparison.OrdinalIgnoreCase))
+            return System.Text.RegularExpressions.Regex.Replace(body, @"\{\{\s*recommendations\s*\}\}", recsHtml,
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return body + recsHtml;
+    }
+
+    /// <summary>Builds the best-seller recommendation block for marketing emails (topped up with new
+    /// arrivals if there aren't enough best sellers yet). Empty when the feature is off. Same block for
+    /// everyone, so callers build it once per send batch.</summary>
+    public static async Task<string> BestSellerRecsHtmlAsync(
+        SterlingLams.Web.Services.IMerchandisingService merch,
+        SterlingLams.Web.Services.ISettingsService settings,
+        string baseUrl, CancellationToken ct = default)
+    {
+        if (string.IsNullOrEmpty(baseUrl)) return "";
+        if (!await settings.GetBoolAsync("marketing.email_recommendations", true)) return "";
+        var take = await settings.GetIntAsync("marketing.email_recommendations_count", 4);
+        if (take < 1) return "";
+
+        var products = await merch.BestSellersAsync(take);
+        if (products.Count < take)
+        {
+            foreach (var e in await merch.NewArrivalsAsync(take))
+                if (products.Count < take && products.All(p => p.Id != e.Id)) products.Add(e);
+        }
+        return BuildRecommendationsHtml(products, baseUrl);
+    }
+
     public async Task SuppressAsync(string email, string? reason, CancellationToken ct = default)
     {
         var norm = Normalize(email);

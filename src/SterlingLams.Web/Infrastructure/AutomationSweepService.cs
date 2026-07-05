@@ -134,6 +134,10 @@ public class AutomationSweepService : BackgroundService
         var baseUrl = (_config["App:BaseUrl"] ?? "").TrimEnd('/');
         var suppressed = (await db.MarketingSuppressions.Select(s => s.Email).ToListAsync(ct)).ToHashSet();
         var automations = await db.Automations.ToDictionaryAsync(a => a.Id, ct);
+        // "You might also like" block — best sellers, built once for this batch.
+        var recsHtml = await Services.Marketing.MarketingService.BestSellerRecsHtmlAsync(
+            scope.ServiceProvider.GetRequiredService<SterlingLams.Web.Services.IMerchandisingService>(),
+            scope.ServiceProvider.GetRequiredService<SterlingLams.Web.Services.ISettingsService>(), baseUrl, ct);
 
         foreach (var r in due)
         {
@@ -155,6 +159,7 @@ public class AutomationSweepService : BackgroundService
                         a.CouponExpiryDays, a.CouponMinOrder, $"Automation: {a.Name}", ct);
                     bodyHtml = Services.Marketing.MarketingService.ApplyCoupon(bodyHtml, code);
                 }
+                bodyHtml = Services.Marketing.MarketingService.ApplyRecommendations(bodyHtml, recsHtml);
                 var body = bodyHtml + Footer(baseUrl, marketing, r.Email);
                 var ok = await email.SendAsync(r.Email, a.Subject, body, r.Name, ct);
                 r.Status = ok ? AutomationRunStatus.Sent : AutomationRunStatus.Failed;

@@ -99,6 +99,8 @@ public static class SettingsSeedData
         new() { Key = "popup.subtext",      Group = "Marketing", Label = "Popup Subtext",            Type = "textarea", Value = "Join our list for early access to new pieces and exclusive offers.", Description = "Line under the headline.", SortOrder = 4 },
         new() { Key = "popup.min_order",    Group = "Marketing", Label = "Popup Coupon Min Order (₦)", Type = "number", Value = "0",     Description = "Minimum order value for the popup coupon. 0 = no minimum.", SortOrder = 5 },
         new() { Key = "popup.expiry_days",  Group = "Marketing", Label = "Popup Coupon Expiry (days)", Type = "number", Value = "14",    Description = "How long the welcome coupon stays valid.", SortOrder = 6 },
+        new() { Key = "marketing.email_recommendations",       Group = "Marketing", Label = "Product Recs in Emails",     Type = "boolean", Value = "true", Description = "Add a 'You might also like' best-seller grid to campaign & automation emails. Use {{recommendations}} in the email body to control placement, or it's appended at the end.", SortOrder = 7 },
+        new() { Key = "marketing.email_recommendations_count", Group = "Marketing", Label = "Email Recs Count",           Type = "number",  Value = "4",    Description = "How many products to show in the email recommendations grid.", SortOrder = 8 },
 
         // ── Inventory ─────────────────────────────────────────────────────────
         new() { Key = "inventory.show_low_stock_nudge", Group = "Inventory", Label = "Show \"Low stock\" Nudge", Type = "boolean", Value = "true", Description = "Show a 'Low stock — order soon' nudge on product pages when an item is at/below the threshold.", SortOrder = 2 },
