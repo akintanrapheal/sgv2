@@ -19,8 +19,10 @@ public class AbandonedCart
     public int ItemCount { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    /// <summary>Set when the recovery email has been sent (so it's only sent once per snapshot).</summary>
+    /// <summary>Time the most recent reminder was sent (the recovery sequence sends several).</summary>
     public DateTime? EmailedAt { get; set; }
+    /// <summary>How many reminders in the recovery sequence have gone out (0..N).</summary>
+    public int RemindersSent { get; set; }
     /// <summary>Set when the shopper completed a paid order (or used the recovery link) — no email.</summary>
     public DateTime? RecoveredAt { get; set; }
 }
