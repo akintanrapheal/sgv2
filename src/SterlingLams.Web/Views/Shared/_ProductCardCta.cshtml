@@ -2,7 +2,7 @@
 @* Card call-to-action: "Add to Cart" (simple) / "Select Options" (variants) / "Sold Out".
    The cart icon slides in on hover (see .cta-cart-icon in input.css). Wired in app.js. *@
 @{
-    var cartIcon = "<svg class=\"cta-cart-icon w-4 h-4\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\" d=\"M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-.534 1.872-1.683 1.872-2.946 0-1.66-1.34-3-3-3H6.272M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z\"/></svg>";
+    var cartIcon = "<svg class=\"cta-cart-icon w-5 h-5\" fill=\"none\" stroke=\"currentColor\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1.5\" d=\"M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-.534 1.872-1.683 1.872-2.946 0-1.66-1.34-3-3-3H6.272M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z\"/></svg>";
 }
 @if (!Model.IsAvailable)
 {
@@ -16,7 +16,7 @@ else if (Model.HasVariants)
     <button type="button"
             class="cta-btn select-options-btn mt-3 w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 rounded-md hover:bg-brand-600 transition-colors flex items-center justify-center"
             data-product-slug="@Model.Slug">
-        <span class="cta-label-default">Select Options</span><span class="cta-label-hover">Cart</span>@Html.Raw(cartIcon)
+        <span class="cta-label-default">Select Options</span>@Html.Raw(cartIcon)
     </button>
 }
 else
@@ -24,6 +24,6 @@ else
     <button type="button"
             class="cta-btn add-to-cart-btn mt-3 w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 rounded-md hover:bg-brand-600 transition-colors flex items-center justify-center"
             data-product-id="@Model.Id">
-        <span class="cta-label-default">Add to Cart</span><span class="cta-label-hover">Cart</span>@Html.Raw(cartIcon)
+        <span class="cta-label-default">Add to Cart</span>@Html.Raw(cartIcon)
     </button>
 }

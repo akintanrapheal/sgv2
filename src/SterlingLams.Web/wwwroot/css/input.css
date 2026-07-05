@@ -62,24 +62,20 @@
     @apply scale-105;
   }
 
-  /* Card CTA: the cart icon slides in when hovering "Add to Cart" / "Select Options" */
+  /* Card CTA (Select Options / Add to Cart): Lato to match sterlinglams.com. On hover the text
+     label disappears and only the cart icon shows, centred. */
+  .cta-btn { font-family: 'Lato', Arial, Helvetica, sans-serif; }
   .cta-cart-icon {
     opacity: 0;
     max-width: 0;
     overflow: hidden;
-    transform: translateX(-4px);
-    transition: opacity .2s ease, max-width .2s ease, transform .2s ease;
+    transition: opacity .18s ease, max-width .18s ease;
   }
+  .cta-btn:hover .cta-label-default { display: none; }
   .cta-btn:hover .cta-cart-icon {
     opacity: 1;
-    max-width: 1.25rem;
-    margin-left: 0.5rem;
-    transform: translateX(0);
+    max-width: 1.75rem;
   }
-  /* Card CTA: swap the label to "Cart" on hover (with the icon that slides in above) */
-  .cta-label-hover { display: none; }
-  .cta-btn:hover .cta-label-default { display: none; }
-  .cta-btn:hover .cta-label-hover { display: inline; }
 
   /* Image zoom */
   .zoom-container {
