@@ -1,3 +1,31 @@
+// ─── Page loader (spinning diamond) ───────────────────────────────────────
+(function () {
+    const loader = document.getElementById('page-loader');
+    if (!loader) return;
+    const hide = () => loader.classList.add('is-hidden');
+    const show = () => loader.classList.remove('is-hidden');
+
+    hide();                                        // DOM is ready by the time app.js runs
+    window.addEventListener('pageshow', hide);     // restored from bfcache → don't stay covered
+    window.addEventListener('pagehide', show);     // leaving the page → cover the gap to the next one
+
+    // Show the loader immediately when a same-origin navigation starts (nicer than waiting for unload).
+    document.addEventListener('click', function (e) {
+        const a = e.target.closest && e.target.closest('a[href]');
+        if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
+        const href = a.getAttribute('href') || '';
+        if (!href || href[0] === '#' || /^(javascript|mailto|tel):/i.test(href)) return;
+        try { if (new URL(a.href).origin !== location.origin) return; } catch (_) { return; }
+        if (a.href === location.href) return;      // same page (e.g. a filter that only sets a hash)
+        show();
+    }, true);
+    document.addEventListener('submit', function (e) {
+        const f = e.target;
+        if (f && f.method && f.method.toLowerCase() === 'get' && (f.target === '_blank')) return;
+        show();
+    }, true);
+})();
+
 // ─── Search Overlay ───────────────────────────────────────────────────────
 (function () {
     const overlay     = document.getElementById('search-overlay');

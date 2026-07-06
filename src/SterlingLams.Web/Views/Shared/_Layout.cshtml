@@ -102,6 +102,20 @@
 </head>
 <body class="bg-canvas text-neutral-900 font-inter antialiased">
 
+    <!-- ─── Page loader (spinning diamond; hidden by app.js once ready) ────── -->
+    <div id="page-loader" aria-hidden="true">
+        <div class="pl-diamond">
+            <svg viewBox="0 0 100 100" width="50" height="50" fill="none" aria-hidden="true">
+                <g stroke="#c99210" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+                    <path d="M50 6 L88 40 L50 94 L12 40 Z" />
+                    <path d="M12 40 H88" />
+                    <path d="M50 6 L34 40 M50 6 L66 40" />
+                    <path d="M34 40 L50 94 M66 40 L50 94" />
+                </g>
+            </svg>
+        </div>
+    </div>
+
     <!-- ─── Navigation ──────────────────────────────────────────────────── -->
     @await Html.PartialAsync("_Navigation")
 

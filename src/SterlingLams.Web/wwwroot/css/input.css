@@ -24,6 +24,41 @@
 
 /* ─── Components ─────────────────────────────────────────────────────────── */
 @layer components {
+  /* Page loader — a slowly turning diamond over the canvas while a page loads. Visible by default;
+     app.js hides it once the DOM is ready and re-shows it during navigation. A CSS safety timer
+     hides it even if the script fails, so it can never trap the page. */
+  #page-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fafaf9;
+    transition: opacity .45s ease, visibility .45s ease;
+    animation: plSafety .01s linear 5s forwards;
+  }
+  #page-loader.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+    animation: none;
+  }
+  @keyframes plSafety { to { opacity: 0; visibility: hidden; } }
+
+  .pl-diamond { perspective: 320px; }
+  .pl-diamond svg {
+    transform-origin: center;
+    animation: plTurn 1.5s cubic-bezier(.65, 0, .35, 1) infinite;
+    filter: drop-shadow(0 2px 6px rgba(201, 146, 16, .25));
+  }
+  @keyframes plTurn {
+    0%   { transform: rotateY(0deg); }
+    100% { transform: rotateY(360deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pl-diamond svg { animation: none; }
+  }
+
   .btn-primary {
     @apply inline-block bg-brand-500 text-white text-xs tracking-[0.2em] uppercase px-10 py-4
            hover:bg-brand-600 transition-colors duration-300;
