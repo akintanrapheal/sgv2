@@ -132,7 +132,7 @@ public class CheckoutController : Controller
             DeliveryPricingJson = pricingJson,
             NigerianStates = SterlingLams.Web.Services.DeliveryZoneService.NigerianStates,
             LagosLGAs = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs,
-            PaystackPublicKey = _config["Payment:Paystack:PublicKey"],
+            PaystackPublicKey = await _settings.GetAsync("payment.paystack.public_key", _config["Payment:Paystack:PublicKey"] ?? ""),
             PickupAvailable = await _settings.GetBoolAsync("store.pickup_available", true),
             AvailableStores = stores.Select(s => new StorePickupOptionViewModel
             {
@@ -301,7 +301,7 @@ public class CheckoutController : Controller
         vm.DeliveryPricingJson = await BuildDeliveryPricingJsonAsync();
         vm.NigerianStates      = SterlingLams.Web.Services.DeliveryZoneService.NigerianStates;
         vm.LagosLGAs           = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs;
-        vm.PaystackPublicKey   = _config["Payment:Paystack:PublicKey"];
+        vm.PaystackPublicKey   = await _settings.GetAsync("payment.paystack.public_key", _config["Payment:Paystack:PublicKey"] ?? "");
         vm.PickupAvailable     = await _settings.GetBoolAsync("store.pickup_available", true);
         vm.AvailableStores     = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
             .Select(s => new StorePickupOptionViewModel

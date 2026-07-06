@@ -18,24 +18,32 @@ public class FlutterwaveSettings
 public class FlutterwavePaymentService : IPaymentService
 {
     private readonly HttpClient _http;
-    private readonly FlutterwaveSettings _settings;
+    private readonly PaymentCredentials _creds;
     private readonly ILogger<FlutterwavePaymentService> _logger;
 
     public string ProviderName => "Flutterwave";
 
-    public FlutterwavePaymentService(HttpClient http, FlutterwaveSettings settings, ILogger<FlutterwavePaymentService> logger)
+    public FlutterwavePaymentService(HttpClient http, PaymentCredentials creds, IConfiguration config,
+        ILogger<FlutterwavePaymentService> logger)
     {
         _http = http;
-        _http.BaseAddress = new Uri(settings.BaseUrl);
-        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", settings.SecretKey);
-        _settings = settings;
+        _http.BaseAddress = new Uri(config["Payment:Flutterwave:BaseUrl"] ?? "https://api.flutterwave.com/v3");
+        _creds = creds;
         _logger = logger;
+    }
+
+    /// <summary>Applies the current Flutterwave secret key (settings → config fallback) to the client.</summary>
+    private async Task ApplyAuthAsync()
+    {
+        var s = await _creds.FlutterwaveAsync();
+        _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", s.SecretKey);
     }
 
     public async Task<InitiatePaymentResult> InitiatePaymentAsync(InitiatePaymentRequest request)
     {
         try
         {
+            await ApplyAuthAsync();
             var txRef = $"SL-{request.OrderNumber}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
 
             var payload = new
@@ -88,6 +96,7 @@ public class FlutterwavePaymentService : IPaymentService
     {
         try
         {
+            await ApplyAuthAsync();
             // Flutterwave uses transaction_id (numeric) for verify; reference is tx_ref
             // First search by tx_ref
             var response = await _http.GetAsync($"/transactions?tx_ref={Uri.EscapeDataString(reference)}");
@@ -130,12 +139,13 @@ public class FlutterwavePaymentService : IPaymentService
             ErrorMessage = "Automated Flutterwave refunds are not configured — refund via the Flutterwave dashboard."
         });
 
-    public Task<bool> ValidateWebhookAsync(string payload, string signature)
+    public async Task<bool> ValidateWebhookAsync(string payload, string signature)
     {
         // Flutterwave uses SHA256 HMAC with the secret hash header
-        var hash = HMACSHA256.HashData(Encoding.UTF8.GetBytes(_settings.SecretKey), Encoding.UTF8.GetBytes(payload));
+        var s = await _creds.FlutterwaveAsync();
+        var hash = HMACSHA256.HashData(Encoding.UTF8.GetBytes(s.SecretKey), Encoding.UTF8.GetBytes(payload));
         var computed = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
-        return Task.FromResult(string.Equals(computed, signature, StringComparison.OrdinalIgnoreCase));
+        return string.Equals(computed, signature, StringComparison.OrdinalIgnoreCase);
     }
 
     // ─── Flutterwave response DTOs ────────────────────────────────────────────

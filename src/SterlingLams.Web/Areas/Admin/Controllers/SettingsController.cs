@@ -33,8 +33,11 @@ public class SettingsController : AdminBaseController
             .ToListAsync();
         // POS receipt settings live in the Inventory System; email settings live in the Email
         // Customizer — hide both groups here so each has a single home.
+        // Payment keys + SMTP credentials live in the full-admin-only Integrations screen — never
+        // expose them here (any staff with the Settings section could otherwise read/edit them).
         var all = (await _settings.GetAllAsync())
-            .Where(s => s.Group != "POS / Till" && s.Group != "Emails").ToList();
+            .Where(s => s.Group != "POS / Till" && s.Group != "Emails"
+                     && s.Group != "Payments" && s.Group != "SMTP").ToList();
         return View(all);
     }
 

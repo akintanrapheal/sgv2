@@ -58,6 +58,28 @@ public class SmtpEmailService : IEmailService
     /// <summary>Admin-customizable email branding (Settings → Emails), resolved per send.</summary>
     private sealed record Branding(string FromName, string ReplyTo, string HeaderColor, string FooterText, string? LogoUrl, int LogoHeight);
 
+    /// <summary>Resolves live SMTP config: values entered in Admin → Integrations (SMTP password
+    /// decrypted transparently) take precedence, falling back to appsettings/env config. An untouched
+    /// install keeps behaving exactly as before.</summary>
+    private async Task<EmailOptions> GetSmtpAsync()
+    {
+        return new EmailOptions
+        {
+            Enabled     = await _settings.GetBoolAsync("email.smtp.enabled", _opt.Enabled),
+            Host        = Nz(await _settings.GetAsync("email.smtp.host"), _opt.Host),
+            Port        = await _settings.GetIntAsync("email.smtp.port", _opt.Port <= 0 ? 587 : _opt.Port),
+            Username    = Nz(await _settings.GetAsync("email.smtp.username"), _opt.Username),
+            Password    = Nz(await _settings.GetAsync("email.smtp.password"), _opt.Password),
+            FromAddress = Nz(await _settings.GetAsync("email.smtp.from_address"), _opt.FromAddress),
+            FromName    = Nz(await _settings.GetAsync("email.smtp.from_name"), _opt.FromName),
+            EnableSsl   = await _settings.GetBoolAsync("email.smtp.ssl", _opt.EnableSsl),
+            PickupDirectory = _opt.PickupDirectory,
+        };
+    }
+
+    private static string Nz(string? primary, string fallback)
+        => string.IsNullOrWhiteSpace(primary) ? fallback : primary.Trim();
+
     private async Task<Branding> GetBrandingAsync()
     {
         var fromName = await _settings.GetAsync("email.from_name", _opt.FromName);
@@ -89,12 +111,13 @@ public class SmtpEmailService : IEmailService
             return false;
 
         var brand = await GetBrandingAsync();
+        var smtp = await GetSmtpAsync();
 
-        var smtpConfigured = _opt.Enabled && !string.IsNullOrWhiteSpace(_opt.Host) && !string.IsNullOrWhiteSpace(_opt.FromAddress);
+        var smtpConfigured = smtp.Enabled && !string.IsNullOrWhiteSpace(smtp.Host) && !string.IsNullOrWhiteSpace(smtp.FromAddress);
         if (!smtpConfigured)
         {
             // No SMTP: write to a pickup folder if one's set or we're in Development; otherwise skip.
-            var pickupDir = _opt.PickupDirectory;
+            var pickupDir = smtp.PickupDirectory;
             if (string.IsNullOrWhiteSpace(pickupDir) && _env.IsDevelopment())
                 pickupDir = "App_Data/sent-emails";
 
@@ -111,7 +134,7 @@ public class SmtpEmailService : IEmailService
         {
             using var msg = new MailMessage
             {
-                From = new MailAddress(_opt.FromAddress, brand.FromName),
+                From = new MailAddress(smtp.FromAddress, brand.FromName),
                 Subject = subject,
                 Body = Wrap(subject, innerHtml, brand),
                 IsBodyHtml = true,
@@ -120,10 +143,10 @@ public class SmtpEmailService : IEmailService
             if (!string.IsNullOrWhiteSpace(brand.ReplyTo))
                 msg.ReplyToList.Add(new MailAddress(brand.ReplyTo));
 
-            using var client = new SmtpClient(_opt.Host, _opt.Port)
+            using var client = new SmtpClient(smtp.Host, smtp.Port)
             {
-                EnableSsl = _opt.EnableSsl,
-                Credentials = new NetworkCredential(_opt.Username, _opt.Password),
+                EnableSsl = smtp.EnableSsl,
+                Credentials = new NetworkCredential(smtp.Username, smtp.Password),
             };
             await client.SendMailAsync(msg, ct);
             _log.LogInformation("Email sent to {To}: \"{Subject}\"", toEmail, subject);

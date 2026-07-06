@@ -57,37 +57,15 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IDiscountService, DiscountService>();
 
         // ─── Payment ─────────────────────────────────────────────────────────
-        var paymentProvider = configuration["Payment:Provider"] ?? "Paystack";
-
-        switch (paymentProvider.ToLowerInvariant())
-        {
-            case "paystack":
-                var paystackSettings = configuration.GetSection("Payment:Paystack").Get<PaystackSettings>()
-                    ?? new PaystackSettings();
-                services.AddSingleton(paystackSettings);
-                services.AddHttpClient<IPaymentService, PaystackPaymentService>();
-                break;
-
-            case "stripe":
-                var stripeSettings = configuration.GetSection("Payment:Stripe").Get<StripeSettings>()
-                    ?? new StripeSettings();
-                services.AddSingleton(stripeSettings);
-                services.AddScoped<IPaymentService, StripePaymentService>();
-                break;
-
-            case "flutterwave":
-                var flwSettings = configuration.GetSection("Payment:Flutterwave").Get<FlutterwaveSettings>()
-                    ?? new FlutterwaveSettings();
-                services.AddSingleton(flwSettings);
-                services.AddHttpClient<IPaymentService, FlutterwavePaymentService>(client =>
-                {
-                    client.BaseAddress = new Uri(flwSettings.BaseUrl);
-                });
-                break;
-
-            default:
-                throw new InvalidOperationException($"Unknown payment provider: {paymentProvider}");
-        }
+        // Keys and the active provider are read at request time from Settings (Admin → Integrations),
+        // falling back to config. PaymentRouter picks the provider per call and each provider service
+        // applies its current key per call, so entering keys in the admin takes effect immediately —
+        // no redeploy, no restart. All three providers are registered; the router selects one.
+        services.AddScoped<PaymentCredentials>();
+        services.AddHttpClient<PaystackPaymentService>();
+        services.AddHttpClient<FlutterwavePaymentService>();
+        services.AddScoped<StripePaymentService>();
+        services.AddScoped<IPaymentService, PaymentRouter>();
 
         return services;
     }

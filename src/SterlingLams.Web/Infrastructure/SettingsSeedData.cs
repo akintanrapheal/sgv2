@@ -210,5 +210,28 @@ public static class SettingsSeedData
         new() { Key = "home.feature.b2.text",      Group = "Homepage Feature", Label = "Block 2 — Description",  Type = "textarea", Value = "",                Description = "Optional short line shown under the title.",                                             SortOrder = 9 },
         new() { Key = "home.feature.b2.category",  Group = "Homepage Feature", Label = "Block 2 — Links To",     Type = "category", Value = "",                Description = "Required — the image becomes clickable and the button appears only once you pick a category here.",                         SortOrder = 10 },
         new() { Key = "home.feature.b2.link_text", Group = "Homepage Feature", Label = "Block 2 — Button Text",  Type = "text",     Value = "Shop the Collection", Description = "Button label. Only shows when 'Links To' (category) is set.",                                    SortOrder = 11 },
+
+        // ── Payments (Admin → Integrations, full-admin only) ─────────────────
+        // Secrets (Type = "secret") are encrypted at rest. The generic Settings screen hides the
+        // "Payments" and "SMTP" groups; they live only in the full-admin Integrations screen.
+        new() { Key = "payment.provider",                    Group = "Payments", Label = "Active Provider",           Type = "text",   Value = "", Description = "Which gateway processes checkout: paystack, stripe or flutterwave.", SortOrder = 0 },
+        new() { Key = "payment.paystack.public_key",         Group = "Payments", Label = "Paystack Public Key",       Type = "text",   Value = "", Description = "pk_live_… (safe to expose in the browser).",         SortOrder = 1 },
+        new() { Key = "payment.paystack.secret_key",         Group = "Payments", Label = "Paystack Secret Key",       Type = "secret", Value = "", Description = "sk_live_… Also used to verify Paystack webhooks.",  SortOrder = 2 },
+        new() { Key = "payment.stripe.publishable_key",      Group = "Payments", Label = "Stripe Publishable Key",    Type = "text",   Value = "", Description = "pk_live_…",                                          SortOrder = 3 },
+        new() { Key = "payment.stripe.secret_key",           Group = "Payments", Label = "Stripe Secret Key",         Type = "secret", Value = "", Description = "sk_live_…",                                          SortOrder = 4 },
+        new() { Key = "payment.stripe.webhook_secret",       Group = "Payments", Label = "Stripe Webhook Secret",     Type = "secret", Value = "", Description = "whsec_… From the Stripe dashboard webhook.",       SortOrder = 5 },
+        new() { Key = "payment.flutterwave.public_key",      Group = "Payments", Label = "Flutterwave Public Key",    Type = "text",   Value = "", Description = "FLWPUBK-…",                                          SortOrder = 6 },
+        new() { Key = "payment.flutterwave.secret_key",      Group = "Payments", Label = "Flutterwave Secret Key",    Type = "secret", Value = "", Description = "FLWSECK-… Also used to verify webhooks (secret hash).", SortOrder = 7 },
+        new() { Key = "payment.flutterwave.encryption_key",  Group = "Payments", Label = "Flutterwave Encryption Key", Type = "secret", Value = "", Description = "Flutterwave encryption key.",                       SortOrder = 8 },
+
+        // ── Email / SMTP (Admin → Integrations, full-admin only) ─────────────
+        new() { Key = "email.smtp.enabled",      Group = "SMTP", Label = "Enable SMTP Sending", Type = "boolean", Value = "false", Description = "When off, emails are logged/previewed but not sent.",      SortOrder = 0 },
+        new() { Key = "email.smtp.host",          Group = "SMTP", Label = "SMTP Host",           Type = "text",    Value = "",      Description = "e.g. smtp.zoho.com, smtp.gmail.com, smtp.sendgrid.net.",  SortOrder = 1 },
+        new() { Key = "email.smtp.port",          Group = "SMTP", Label = "SMTP Port",           Type = "number",  Value = "587",   Description = "Usually 587 (STARTTLS) or 465 (SSL).",                    SortOrder = 2 },
+        new() { Key = "email.smtp.username",      Group = "SMTP", Label = "SMTP Username",        Type = "text",    Value = "",      Description = "Login for the mail server (often the full email address).", SortOrder = 3 },
+        new() { Key = "email.smtp.password",      Group = "SMTP", Label = "SMTP Password",        Type = "secret",  Value = "",      Description = "Mailbox password or app-specific password. Stored encrypted.", SortOrder = 4 },
+        new() { Key = "email.smtp.from_address",  Group = "SMTP", Label = "From Address",         Type = "email",   Value = "",      Description = "The address customers see mail come from, e.g. hello@sterlinglams.com.", SortOrder = 5 },
+        new() { Key = "email.smtp.from_name",     Group = "SMTP", Label = "From Name",            Type = "text",    Value = "Sterlin Glams", Description = "Sender display name.",                            SortOrder = 6 },
+        new() { Key = "email.smtp.ssl",           Group = "SMTP", Label = "Use SSL/TLS",         Type = "boolean", Value = "true",  Description = "Enable TLS. Leave on for ports 587 and 465.",             SortOrder = 7 },
     };
 }

@@ -16,22 +16,29 @@ public class StripeSettings
 
 public class StripePaymentService : IPaymentService
 {
-    private readonly StripeSettings _settings;
+    private readonly PaymentCredentials _creds;
     private readonly ILogger<StripePaymentService> _logger;
 
     public string ProviderName => "Stripe";
 
-    public StripePaymentService(StripeSettings settings, ILogger<StripePaymentService> logger)
+    public StripePaymentService(PaymentCredentials creds, ILogger<StripePaymentService> logger)
     {
-        _settings = settings;
+        _creds = creds;
         _logger = logger;
-        StripeConfiguration.ApiKey = settings.SecretKey;
+    }
+
+    /// <summary>Applies the current Stripe secret key (settings → config fallback) to the SDK.</summary>
+    private async Task ApplyKeyAsync()
+    {
+        var s = await _creds.StripeAsync();
+        StripeConfiguration.ApiKey = s.SecretKey;
     }
 
     public async Task<InitiatePaymentResult> InitiatePaymentAsync(InitiatePaymentRequest request)
     {
         try
         {
+            await ApplyKeyAsync();
             // Convert to lowest denomination (kobo for NGN, cents for USD)
             var amountInKobo = (long)(request.Amount * 100);
 
@@ -81,6 +88,7 @@ public class StripePaymentService : IPaymentService
     {
         try
         {
+            await ApplyKeyAsync();
             var options = new Stripe.Checkout.SessionCreateOptions
             {
                 PaymentMethodTypes = new List<string> { "card" },
@@ -131,6 +139,7 @@ public class StripePaymentService : IPaymentService
     {
         try
         {
+            await ApplyKeyAsync();
             // reference may be a session ID (cs_...) or payment intent ID (pi_...)
             if (reference.StartsWith("cs_"))
             {
@@ -176,18 +185,19 @@ public class StripePaymentService : IPaymentService
             ErrorMessage = "Automated Stripe refunds are not configured — refund via the Stripe dashboard."
         });
 
-    public Task<bool> ValidateWebhookAsync(string payload, string signature)
+    public async Task<bool> ValidateWebhookAsync(string payload, string signature)
     {
         try
         {
+            var s = await _creds.StripeAsync();
             // Stripe uses its own signature validation via EventUtility
-            var stripeEvent = EventUtility.ConstructEvent(payload, signature, _settings.WebhookSecret);
-            return Task.FromResult(stripeEvent != null);
+            var stripeEvent = EventUtility.ConstructEvent(payload, signature, s.WebhookSecret);
+            return stripeEvent != null;
         }
         catch (StripeException ex)
         {
             _logger.LogWarning(ex, "Stripe webhook validation failed");
-            return Task.FromResult(false);
+            return false;
         }
     }
 }

@@ -21,13 +21,15 @@ public class SettingsService : ISettingsService
 {
     private readonly ApplicationDbContext _db;
     private readonly IMemoryCache _cache;
+    private readonly ISettingsSecretProtector _secrets;
     private const string CacheKey = "site_settings_all";
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(10);
 
-    public SettingsService(ApplicationDbContext db, IMemoryCache cache)
+    public SettingsService(ApplicationDbContext db, IMemoryCache cache, ISettingsSecretProtector secrets)
     {
         _db = db;
         _cache = cache;
+        _secrets = secrets;
     }
 
     public async Task<string> GetAsync(string key, string defaultValue = "")
@@ -91,7 +93,9 @@ public class SettingsService : ISettingsService
             return cached;
 
         var settings = await _db.SiteSettings.ToListAsync();
-        var dict = settings.ToDictionary(s => s.Key, s => s.Value);
+        // Reveal (decrypt) any secret values stored with the enc: sentinel, so all runtime reads
+        // (payment keys, SMTP password) get plaintext. Non-secret values pass through unchanged.
+        var dict = settings.ToDictionary(s => s.Key, s => _secrets.Reveal(s.Value));
         _cache.Set(CacheKey, dict, CacheTtl);
         return dict;
     }

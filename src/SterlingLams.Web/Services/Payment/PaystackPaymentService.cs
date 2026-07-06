@@ -17,24 +17,36 @@ public class PaystackSettings
 public class PaystackPaymentService : IPaymentService
 {
     private readonly HttpClient _http;
-    private readonly PaystackSettings _settings;
+    private readonly PaymentCredentials _creds;
     private readonly ILogger<PaystackPaymentService> _logger;
 
     public string ProviderName => "Paystack";
 
-    public PaystackPaymentService(HttpClient http, PaystackSettings settings, ILogger<PaystackPaymentService> logger)
+    public PaystackPaymentService(HttpClient http, PaymentCredentials creds, IConfiguration config,
+        ILogger<PaystackPaymentService> logger)
     {
         _http = http;
-        _http.BaseAddress = new Uri(settings.BaseUrl);
-        _http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", settings.SecretKey);
-        _settings = settings;
+        // Base URL isn't secret and rarely changes, so it's fixed for the instance's lifetime
+        // (HttpClient.BaseAddress can't be changed after the first request). The secret key is
+        // applied per-call from current settings so key changes take effect without a redeploy.
+        _http.BaseAddress = new Uri(config["Payment:Paystack:BaseUrl"] ?? "https://api.paystack.co");
+        _creds = creds;
         _logger = logger;
+    }
+
+    /// <summary>Applies the current Paystack secret key (settings → config fallback) to the client.</summary>
+    private async Task ApplyAuthAsync()
+    {
+        var s = await _creds.PaystackAsync();
+        _http.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", s.SecretKey);
     }
 
     public async Task<InitiatePaymentResult> InitiatePaymentAsync(InitiatePaymentRequest request)
     {
         try
         {
+            await ApplyAuthAsync();
             var payload = new
             {
                 email = request.CustomerEmail,
@@ -77,6 +89,7 @@ public class PaystackPaymentService : IPaymentService
     {
         try
         {
+            await ApplyAuthAsync();
             var response = await _http.GetAsync($"/transaction/verify/{reference}");
             var content = await response.Content.ReadAsStringAsync();
             var result = JsonSerializer.Deserialize<PaystackVerifyResponse>(content, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
@@ -106,6 +119,7 @@ public class PaystackPaymentService : IPaymentService
     {
         try
         {
+            await ApplyAuthAsync();
             // Paystack: POST /refund { transaction, amount(kobo, optional → full refund), merchant_note }
             var payload = new
             {
@@ -129,11 +143,12 @@ public class PaystackPaymentService : IPaymentService
         }
     }
 
-    public Task<bool> ValidateWebhookAsync(string payload, string signature)
+    public async Task<bool> ValidateWebhookAsync(string payload, string signature)
     {
-        var hash = HMACSHA512.HashData(Encoding.UTF8.GetBytes(_settings.SecretKey), Encoding.UTF8.GetBytes(payload));
+        var s = await _creds.PaystackAsync();
+        var hash = HMACSHA512.HashData(Encoding.UTF8.GetBytes(s.SecretKey), Encoding.UTF8.GetBytes(payload));
         var computed = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
-        return Task.FromResult(string.Equals(computed, signature, StringComparison.OrdinalIgnoreCase));
+        return string.Equals(computed, signature, StringComparison.OrdinalIgnoreCase);
     }
 
     // ─── Paystack response DTOs ───────────────────────────────────────────────
