@@ -96,8 +96,12 @@
 
 <div class="flex h-screen overflow-hidden">
 
-    <!-- ─── Sidebar ──────────────────────────────────────────────────────── -->
-    <aside class="w-60 bg-neutral-900 text-white flex flex-col flex-shrink-0 overflow-y-auto">
+    <div id="sb-backdrop" class="hidden fixed inset-0 bg-black/50 z-40 md:hidden"></div>
+
+    <!-- ─── Sidebar (slide-in drawer on mobile) ──────────────────────────── -->
+    <aside id="sb" class="w-60 bg-neutral-900 text-white flex flex-col flex-shrink-0 overflow-y-auto
+                          fixed inset-y-0 left-0 z-50 -translate-x-full transition-transform duration-200
+                          md:static md:translate-x-0">
         <div class="px-6 py-6 border-b border-neutral-800">
             <span class="font-cormorant text-lg font-light tracking-[0.2em] uppercase">Sterlin Glams</span>
             <p class="text-[10px] text-emerald-400 tracking-widest uppercase mt-1 font-medium">Inventory System</p>
@@ -174,8 +178,13 @@
 
     <!-- ─── Main ─────────────────────────────────────────────────────────── -->
     <div class="flex-1 flex flex-col overflow-hidden">
-        <header class="bg-white border-b border-neutral-100 px-8 py-4 flex items-center justify-between flex-shrink-0">
-            <h1 class="text-sm font-medium text-neutral-800">@ViewData["Title"]</h1>
+        <header class="bg-white border-b border-neutral-100 px-4 md:px-8 py-4 flex items-center justify-between flex-shrink-0">
+            <div class="flex items-center gap-3 min-w-0">
+                <button id="sb-toggle" type="button" class="md:hidden text-neutral-700 -ml-1" aria-label="Menu">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <h1 class="text-sm font-medium text-neutral-800 truncate">@ViewData["Title"]</h1>
+            </div>
             <div class="flex items-center gap-3">
                 @if (TempData["Success"] != null) { <span class="text-xs text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full">✓ @TempData["Success"]</span> }
                 @if (TempData["Error"] != null) { <span class="text-xs text-red-700 bg-red-50 px-3 py-1.5 rounded-full">@TempData["Error"]</span> }
@@ -183,7 +192,7 @@
             </div>
             
         </header>
-        <main class="flex-1 overflow-y-auto p-8">
+        <main class="flex-1 overflow-y-auto overflow-x-auto p-4 md:p-8">
             @RenderBody()
             <partial name="_DevCredit" />
         </main>
@@ -192,5 +201,18 @@
 
 <script src="~/js/app.js" asp-append-version="true"></script>
 @await RenderSectionAsync("Scripts", required: false)
+<script>
+// Mobile sidebar drawer (toggle via inline transform, not a purgeable class).
+(function () {
+    var sb = document.getElementById('sb'), bd = document.getElementById('sb-backdrop'), t = document.getElementById('sb-toggle');
+    if (!sb || !t) return;
+    var open = false;
+    function set(v) { open = v; sb.style.transform = v ? 'translateX(0)' : ''; bd.classList.toggle('hidden', !v); }
+    t.addEventListener('click', function () { set(!open); });
+    bd.addEventListener('click', function () { set(false); });
+    sb.addEventListener('click', function (e) { if (e.target.closest('a')) set(false); });
+    window.matchMedia('(min-width: 768px)').addEventListener('change', function (e) { if (e.matches) set(false); });
+})();
+</script>
 </body>
 </html>
