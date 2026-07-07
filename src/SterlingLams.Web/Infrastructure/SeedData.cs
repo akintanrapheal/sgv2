@@ -43,7 +43,7 @@ public static class SeedData
                 new { Name = "Watches",      Slug = "watches",      Description = "Luxury timepieces and watch collections" },
                 new { Name = "Bracelet Watches", Slug = "bracelet-watches", Description = "Watches with a metal bracelet band" },
                 new { Name = "Strap Watches",    Slug = "strap-watches",    Description = "Watches with a leather or fabric strap" },
-                new { Name = "Men's Bracelets",  Slug = "mens-bracelets",   Description = "Bracelets for men" },
+                new { Name = "Bracelet",         Slug = "mens-bracelets",   Description = "Wrist bracelets" },
                 new { Name = "Sets",         Slug = "sets",         Description = "Matching jewellery sets and gift collections" },
                 new { Name = "Clutches",     Slug = "clutches",     Description = "Evening clutches and stoned bags" },
                 new { Name = "Sunglasses",   Slug = "sunglasses",   Description = "Fashion and crystal sunglasses" },
@@ -83,7 +83,46 @@ public static class SeedData
                 if (sub != null && !sub.IsActive) { sub.IsActive = true; }
             }
 
+            // The Mens menu shows this category as "Bracelet"; name it to match (page title + admin).
+            var mensBracelet = await db.Categories.FirstOrDefaultAsync(c => c.Slug == "mens-bracelets");
+            if (mensBracelet != null && mensBracelet.Name == "Men's Bracelets")
+            {
+                mensBracelet.Name = "Bracelet";
+                logger.LogInformation("Renamed 'Men's Bracelets' category to 'Bracelet'.");
+            }
+
+            // One-time: file the known men's-bracelet SKUs under the "Bracelet" category. Guarded to
+            // only pull items out of the two bracelet-family categories (so a later deliberate move to
+            // an unrelated category isn't undone), and it's a no-op once they're already filed there.
+            if (mensBracelet != null)
+            {
+                var braceletSkus = new[]
+                {
+                    "SGK02", "SGK29", "SGK18", "SGK13", "SGK32", "SGK21", "SGK12", "SGK31", "SGK01", "SGK28"
+                };
+                var toFile = await db.Products
+                    .Include(p => p.Category)
+                    .Where(p => p.Sku != null && braceletSkus.Contains(p.Sku)
+                                && p.Category != null
+                                && (p.Category.Slug == "bracelets" || p.Category.Slug == "bracelets-bangles"))
+                    .ToListAsync();
+                foreach (var p in toFile) p.CategoryId = mensBracelet.Id;
+                if (toFile.Count > 0)
+                    logger.LogInformation("Filed {Count} product(s) under the 'Bracelet' category by SKU.", toFile.Count);
+            }
+
             await db.SaveChangesAsync();
+
+            // Remove the empty, redundant "Bracelets & Bangles" leftover (the near-duplicate of
+            // "Bracelet & Bangle"). Checked AFTER the SKU moves above are saved, so if SGK02 was
+            // parked here it's already gone — deleted only once truly empty (no product orphaned).
+            var dupBangles = await db.Categories.FirstOrDefaultAsync(c => c.Slug == "bracelets-bangles");
+            if (dupBangles != null && !await db.Products.AnyAsync(p => p.CategoryId == dupBangles.Id))
+            {
+                db.Categories.Remove(dupBangles);
+                logger.LogInformation("Removed empty duplicate category 'bracelets-bangles'.");
+                await db.SaveChangesAsync();
+            }
 
             // â”€â”€â”€ Stores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             var stores = new[]
