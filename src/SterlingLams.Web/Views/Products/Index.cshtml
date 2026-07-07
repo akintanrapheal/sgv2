@@ -67,7 +67,7 @@
                 @if (Model.Filters.Categories.Any())
                 {
                     <div class="mb-8">
-                        <h3 class="text-xs tracking-[0.2em] uppercase text-neutral-400 mb-4">Category</h3>
+                        <h3 class="text-xs tracking-[0.2em] uppercase text-neutral-600 font-semibold mb-4">Category</h3>
                         <ul class="space-y-2">
                             @foreach (var cat in Model.Filters.Categories)
                             {
@@ -87,7 +87,7 @@
                 @if (Model.Filters.AvailableMetals.Any())
                 {
                     <div class="mb-8">
-                        <h3 class="text-xs tracking-[0.2em] uppercase text-neutral-400 mb-4">Metal</h3>
+                        <h3 class="text-xs tracking-[0.2em] uppercase text-neutral-600 font-semibold mb-4">Metal</h3>
                         <ul class="space-y-2">
                             @foreach (var metal in Model.Filters.AvailableMetals)
                             {
@@ -106,7 +106,7 @@
 
                 <!-- Price Range -->
                 <div class="mb-8">
-                    <h3 class="text-xs tracking-[0.2em] uppercase text-neutral-400 mb-4">Price</h3>
+                    <h3 class="text-xs tracking-[0.2em] uppercase text-neutral-600 font-semibold mb-4">Price</h3>
                     <div class="space-y-2">
                         <input type="number" name="minPrice" value="@Model.Filters.MinPrice" placeholder="Min ₦"
                                class="w-full border border-neutral-200 text-sm px-3 py-2 focus:outline-none focus:border-neutral-900" />
