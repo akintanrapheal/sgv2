@@ -77,7 +77,7 @@
                 @for (var i = 0; i < heroImages.Count; i++)
                 {
                     @* First slide is the LCP element: load eagerly + high priority; the rest are lazy. *@
-                    <img src="@heroImages[i]" alt="Campaign" decoding="async"
+                    <img src="@Img.Cld(heroImages[i], 1920)" alt="Campaign" decoding="async"
                          loading="@(i == 0 ? "eager" : "lazy")" fetchpriority="@(i == 0 ? "high" : "low")"
                          class="hero-slide absolute inset-0 w-full h-full object-cover object-center transition-opacity duration-700 @(i == 0 ? "opacity-100" : "opacity-0")"
                          data-index="@i" />
@@ -203,7 +203,7 @@
                         <div class="aspect-square overflow-hidden bg-neutral-100 mb-4">
                             @if (!string.IsNullOrWhiteSpace(cat.ImageUrl))
                             {
-                                <img src="@cat.ImageUrl" alt="@cat.Name" loading="lazy"
+                                <img src="@Img.Cld(cat.ImageUrl, 700)" alt="@cat.Name" loading="lazy"
                                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                             }
                             else
@@ -262,14 +262,14 @@
                         {
                             <a asp-controller="Products" asp-action="Index" asp-route-category="@blk.Category"
                                class="block aspect-[4/5] overflow-hidden bg-neutral-100 mb-6 group">
-                                <img src="@blk.Image" alt="@blk.Title" loading="lazy"
+                                <img src="@Img.Cld(blk.Image, 800)" alt="@blk.Title" loading="lazy"
                                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                             </a>
                         }
                         else
                         {
                             <div class="aspect-[4/5] overflow-hidden bg-neutral-100 mb-6 group">
-                                <img src="@blk.Image" alt="@blk.Title" loading="lazy"
+                                <img src="@Img.Cld(blk.Image, 800)" alt="@blk.Title" loading="lazy"
                                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                             </div>
                         }
@@ -321,7 +321,7 @@
                         <div class="group snap-start shrink-0 w-[calc(50%-12px)] md:w-[calc(25%-18px)]">
                             <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="block">
                                 <div class="aspect-square bg-neutral-100 mb-4 overflow-hidden relative">
-                                    <img src="@p.PrimaryImageUrl" alt="@p.Name"
+                                    <img src="@Img.Cld(p.PrimaryImageUrl, 600, 600)" alt="@p.Name"
                                          loading="lazy"
                                          class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
                                     <partial name="_DiscountBadge" model="p.DiscountPercent" />

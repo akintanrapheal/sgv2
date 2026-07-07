@@ -10,12 +10,12 @@
         <!-- Image -->
         <a asp-controller="Products" asp-action="Detail" asp-route-slug="@product.Slug"
            class="block aspect-square bg-neutral-50 overflow-hidden relative mb-4">
-            <img src="@product.PrimaryImageUrl" alt="@product.Name"
+            <img src="@Img.Cld(product.PrimaryImageUrl, 600, 600)" alt="@product.Name"
                  loading="lazy" width="600" height="600"
                  class="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 @(product.SecondaryImageUrl != null ? "group-hover:opacity-0" : "")" />
             @if (product.SecondaryImageUrl != null)
             {
-                <img src="@product.SecondaryImageUrl" alt="@product.Name" loading="lazy" width="600" height="600"
+                <img src="@Img.Cld(product.SecondaryImageUrl, 600, 600)" alt="@product.Name" loading="lazy" width="600" height="600"
                      class="absolute inset-0 w-full h-full object-cover opacity-0 transition-all duration-700 group-hover:opacity-100 group-hover:scale-105" />
             }
 

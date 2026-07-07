@@ -31,7 +31,7 @@
                    class="group relative overflow-hidden @(hasImg ? "bg-neutral-200" : "bg-stone-50") aspect-[4/3] flex items-end">
                     @if (hasImg)
                     {
-                        <img src="@img" alt="@title" loading="lazy"
+                        <img src="@Img.Cld(img, 800)" alt="@title" loading="lazy"
                              class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
                         <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/70 via-neutral-900/20 to-transparent"></div>
                     }

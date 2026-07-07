@@ -161,7 +161,7 @@
                     @foreach (var item in Model.SavedItems)
                     {
                         <div class="flex gap-6 py-4 border-b border-neutral-100 items-center">
-                            <img src="@item.ImageUrl" alt="@item.ProductName" loading="lazy" class="w-20 h-20 object-cover flex-shrink-0" />
+                            <img src="@Img.Cld(item.ImageUrl, 160, 160)" alt="@item.ProductName" loading="lazy" class="w-20 h-20 object-cover flex-shrink-0" />
                             <div class="flex-1 min-w-0">
                                 <h3 class="font-light text-neutral-800">@item.ProductName</h3>
                                 @if (!string.IsNullOrEmpty(item.VariantName))
