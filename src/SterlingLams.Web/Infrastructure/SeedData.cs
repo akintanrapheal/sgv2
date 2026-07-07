@@ -38,9 +38,12 @@ public static class SeedData
                 new { Name = "Rings",        Slug = "rings",        Description = "Engagement, wedding, and fashion rings" },
                 new { Name = "Necklaces",    Slug = "necklaces",    Description = "Pendants, chains, and statement necklaces" },
                 new { Name = "Earrings",     Slug = "earrings",     Description = "Studs, hoops, and drop earrings" },
-                new { Name = "Bracelets",    Slug = "bracelets",    Description = "Bangles, cuffs, and tennis bracelets" },
+                new { Name = "Bracelet & Bangle", Slug = "bracelets", Description = "Bangles, cuffs, and tennis bracelets" },
                 new { Name = "Brooches",     Slug = "brooches",     Description = "Lapel pins and decorative brooches" },
                 new { Name = "Watches",      Slug = "watches",      Description = "Luxury timepieces and watch collections" },
+                new { Name = "Bracelet Watches", Slug = "bracelet-watches", Description = "Watches with a metal bracelet band" },
+                new { Name = "Strap Watches",    Slug = "strap-watches",    Description = "Watches with a leather or fabric strap" },
+                new { Name = "Men's Bracelets",  Slug = "mens-bracelets",   Description = "Bracelets for men" },
                 new { Name = "Sets",         Slug = "sets",         Description = "Matching jewellery sets and gift collections" },
                 new { Name = "Clutches",     Slug = "clutches",     Description = "Evening clutches and stoned bags" },
                 new { Name = "Sunglasses",   Slug = "sunglasses",   Description = "Fashion and crystal sunglasses" },
@@ -59,6 +62,25 @@ public static class SeedData
                         IsActive = true
                     });
                 }
+            }
+
+            await db.SaveChangesAsync();
+
+            // ─── One-time category structure fixes (idempotent) ──────────────────
+            // The loop above only inserts MISSING categories, so it never touches the
+            // long-standing "Bracelets" category. Rename it to "Bracelet & Bangle" here
+            // (keeping its slug so all existing product URLs keep working), and make sure
+            // the watch/men sub-categories the nav links to are active.
+            var braceletCat = await db.Categories.FirstOrDefaultAsync(c => c.Slug == "bracelets");
+            if (braceletCat != null && braceletCat.Name == "Bracelets")
+            {
+                braceletCat.Name = "Bracelet & Bangle";
+                logger.LogInformation("Renamed 'Bracelets' category to 'Bracelet & Bangle'.");
+            }
+            foreach (var slug in new[] { "bracelet-watches", "strap-watches", "mens-bracelets" })
+            {
+                var sub = await db.Categories.FirstOrDefaultAsync(c => c.Slug == slug);
+                if (sub != null && !sub.IsActive) { sub.IsActive = true; }
             }
 
             await db.SaveChangesAsync();
