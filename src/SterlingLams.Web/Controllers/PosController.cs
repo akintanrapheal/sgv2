@@ -396,12 +396,16 @@ public class PosController : Controller
             var qty = Math.Min(l.Quantity, oi.Quantity - Done(l.ProductId, l.VariantId));
             if (qty <= 0) continue;
 
-            amount += oi.UnitPrice * qty;
+            // Refund what the customer actually PAID: unit price minus this line's discount, spread
+            // across the quantity sold (the discount applied to the whole line, not per unit). Using
+            // the gross unit price here over-refunded every discounted item.
+            var netUnit = oi.Quantity > 0 ? Math.Round(oi.UnitPrice - oi.DiscountAmount / oi.Quantity, 2) : oi.UnitPrice;
+            amount += netUnit * qty;
             refund.Items.Add(new RefundItem
             {
                 ProductId = oi.ProductId, ProductVariantId = oi.ProductVariantId,
                 ProductName = oi.ProductName, VariantName = oi.VariantName,
-                Quantity = qty, UnitPrice = oi.UnitPrice
+                Quantity = qty, UnitPrice = netUnit
             });
             if (storeId > 0)
                 await _stock.ApplyAsync(oi.ProductId, oi.ProductVariantId, storeId, qty,

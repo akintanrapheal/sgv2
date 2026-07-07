@@ -509,7 +509,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 int q = Math.Min(want, oi.Quantity - Done(pid, vid));
                 if (q <= 0) continue;
 
-                amount += oi.UnitPrice * q;
+                // Refund what the customer actually PAID: unit price minus this line's discount,
+                // spread across the quantity sold (gross price over-refunded discounted items).
+                var netUnit = oi.Quantity > 0 ? Math.Round(oi.UnitPrice - oi.DiscountAmount / oi.Quantity, 2) : oi.UnitPrice;
+                amount += netUnit * q;
                 refund.Items.Add(new RefundItem
                 {
                     ProductId = oi.ProductId,
@@ -517,7 +520,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     ProductName = oi.ProductName,
                     VariantName = oi.VariantName,
                     Quantity = q,
-                    UnitPrice = oi.UnitPrice
+                    UnitPrice = netUnit
                 });
 
                 if (restock && storeId > 0)
