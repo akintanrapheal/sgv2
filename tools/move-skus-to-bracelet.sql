@@ -13,8 +13,8 @@ WHERE "Sku" IN (
     -- add more SKUs here, comma-separated
 );
 
--- NOTE: these 10 SKUs are also filed automatically by SeedData on every deploy, so you normally
--- don't need to run this — it's here for ad-hoc moves / extra SKUs.
+-- NOTE: this is a manual, ad-hoc tool — it does NOT run automatically. The initial 10 SKUs were
+-- already filed by an earlier deploy; use this only if you want to bulk-move more products by SKU.
 
 -- Confirm what's now in the Bracelet category:
 SELECT p."Sku", p."Name", c."Name" AS category, p."IsActive"

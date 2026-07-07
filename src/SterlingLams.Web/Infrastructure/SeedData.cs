@@ -91,25 +91,9 @@ public static class SeedData
                 logger.LogInformation("Renamed 'Men's Bracelets' category to 'Bracelet'.");
             }
 
-            // One-time: file the known men's-bracelet SKUs under the "Bracelet" category. Guarded to
-            // only pull items out of the two bracelet-family categories (so a later deliberate move to
-            // an unrelated category isn't undone), and it's a no-op once they're already filed there.
-            if (mensBracelet != null)
-            {
-                var braceletSkus = new[]
-                {
-                    "SGK02", "SGK29", "SGK18", "SGK13", "SGK32", "SGK21", "SGK12", "SGK31", "SGK01", "SGK28"
-                };
-                var toFile = await db.Products
-                    .Include(p => p.Category)
-                    .Where(p => p.Sku != null && braceletSkus.Contains(p.Sku)
-                                && p.Category != null
-                                && (p.Category.Slug == "bracelets" || p.Category.Slug == "bracelets-bangles"))
-                    .ToListAsync();
-                foreach (var p in toFile) p.CategoryId = mensBracelet.Id;
-                if (toFile.Count > 0)
-                    logger.LogInformation("Filed {Count} product(s) under the 'Bracelet' category by SKU.", toFile.Count);
-            }
+            // NOTE: the initial men's-bracelet SKUs were filed under "Bracelet" by an earlier deploy
+            // (see git history / tools/move-skus-to-bracelet.sql). That one-off move has been removed
+            // so products can be freely re-categorised in the admin without a deploy undoing it.
 
             await db.SaveChangesAsync();
 
