@@ -577,6 +577,17 @@ public class PosController : Controller
         return Json(matches);
     }
 
+    /// <summary>Loyalty balance for the attached customer, so the till can offer point redemption.</summary>
+    [Authorize, HttpGet]
+    public async Task<IActionResult> CustomerLoyalty(string? userId)
+    {
+        if (string.IsNullOrWhiteSpace(userId) || !await _loyalty.RedemptionEnabledAsync())
+            return Json(new { enabled = false, balance = 0, pointValue = 0m });
+        var balance = await _loyalty.GetBalanceAsync(userId);
+        var pointValue = await _loyalty.PointValueAsync();
+        return Json(new { enabled = true, balance, pointValue });
+    }
+
     public class QuickAddCustomer
     {
         public string FirstName { get; set; } = "";
@@ -1133,6 +1144,9 @@ public class PosController : Controller
         /// <summary>Optional split/mixed tenders. When present, each part's Amount is the money applied
         /// to the sale via that method; the parts must cover the total. Single-method sales omit this.</summary>
         public List<PaymentPart>? Payments { get; set; }
+        /// <summary>Loyalty points the attached customer wants to redeem on this sale (server clamps to
+        /// their balance and to the sale value). 0 = none.</summary>
+        public int LoyaltyPointsToRedeem { get; set; }
     }
     public class TillCashier { public string Id { get; set; } = ""; public string Name { get; set; } = ""; }
 
@@ -1292,6 +1306,24 @@ public class PosController : Controller
         order.DiscountAmount = totalDiscount;
         order.Total = subtotal - totalDiscount;
 
+        // Loyalty redemption — the attached customer spends points as a discount on this sale. Points
+        // are earmarked on the order now and actually deducted after commit (RedeemForOrderAsync,
+        // idempotent + clamps to live balance); a later full refund returns them (ReverseForOrderAsync).
+        if (req.LoyaltyPointsToRedeem > 0 && await _loyalty.RedemptionEnabledAsync())
+        {
+            var balance = await _loyalty.GetBalanceAsync(customerId);
+            var pointValue = await _loyalty.PointValueAsync();
+            var pts = Math.Min(req.LoyaltyPointsToRedeem, balance);
+            if (pointValue > 0) pts = Math.Min(pts, (int)Math.Floor(order.Total / pointValue)); // never exceed the sale value
+            if (pts > 0)
+            {
+                var loyaltyDiscount = pts * pointValue;
+                order.LoyaltyPointsRedeemed = pts;
+                order.DiscountAmount += loyaltyDiscount;
+                order.Total -= loyaltyDiscount;
+            }
+        }
+
         // Resolve tenders (single or split). A split must cover the total — returning here rolls
         // back the uncommitted stock deductions above (tx is disposed without a commit).
         if (req.Payments != null && req.Payments.Any(p => p.Amount > 0)
@@ -1327,6 +1359,8 @@ public class PosController : Controller
 
         // Award loyalty points to the attached customer (no-op for walk-ins with no customer).
         await _loyalty.AccrueForOrderAsync(order.Id);
+        // Deduct any points the customer redeemed on this sale (idempotent; no-op when none redeemed).
+        await _loyalty.RedeemForOrderAsync(order.Id);
 
         try { await _audit.LogAsync("Sale", "Order", order.Id.ToString(), $"POS sale {orderNumber} — ₦{order.Total:N0} ({req.PaymentMethod}) at {register.Name}"); } catch { }
 

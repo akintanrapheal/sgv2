@@ -219,6 +219,13 @@
                             <span>TOTAL DISCOUNT</span>
                             <span id="cart-total-discount" class="font-medium text-emerald-600">₦0</span>
                         </div>
+                        <div id="till-loyalty-row" class="hidden flex justify-between items-center">
+                            <span>LOYALTY <span id="till-loyalty-bal" class="text-neutral-400"></span></span>
+                            <span class="flex items-center gap-2">
+                                <span id="till-loyalty-disc" class="font-medium text-emerald-600"></span>
+                                <button type="button" id="till-loyalty-btn" class="text-[11px] px-2 py-0.5 rounded border transition-colors"></button>
+                            </span>
+                        </div>
                         <div class="flex justify-between text-sm font-semibold text-neutral-900 border-t border-neutral-200 pt-1.5 mt-1.5">
                             <span>TOTAL</span>
                             <span id="till-total">₦0</span>
@@ -968,6 +975,7 @@
     const payBtn = document.getElementById('till-pay');
     const voidBtn = document.getElementById('till-void-btn');
     let cart = [], method = 'Cash', customer = null, splitPayments = null;
+    let loyalty = { enabled: false, balance: 0, pointValue: 0, redeem: 0 };
 
     // ── Cart persistence ────────────────────────────────────────────────────────
     function saveCart() {
@@ -1010,7 +1018,46 @@
             customerBanner.classList.remove('flex');
         }
     }
-    function setCustomer(c) { customer = c; renderCustomerBanner(); updatePayState(); saveCart(); }
+    function setCustomer(c) { customer = c; loyalty.redeem = 0; renderCustomerBanner(); updatePayState(); saveCart(); fetchLoyalty(); }
+
+    // ── Loyalty redemption ──────────────────────────────────────────────────────
+    async function fetchLoyalty() {
+        loyalty.enabled = false; loyalty.balance = 0; loyalty.pointValue = 0; loyalty.redeem = 0;
+        if (customer && customer.id) {
+            try {
+                const r = await fetch('/Pos/CustomerLoyalty?userId=' + encodeURIComponent(customer.id));
+                const d = await r.json();
+                if (d.enabled) { loyalty.enabled = true; loyalty.balance = d.balance || 0; loyalty.pointValue = d.pointValue || 0; }
+            } catch { /* offline / error → no redemption offered */ }
+        }
+        renderCart();
+    }
+    function grossTotal() { return cart.reduce((s, c) => s + c.unitPrice * c.qty - (c.discountAmount || 0), 0); }
+    function maxRedeemPoints() {
+        if (!loyalty.enabled || loyalty.pointValue <= 0) return 0;
+        return Math.min(loyalty.balance, Math.floor(grossTotal() / loyalty.pointValue));
+    }
+    function loyaltyDiscount() { return (loyalty.redeem || 0) * loyalty.pointValue; }
+    function renderLoyalty() {
+        const row = document.getElementById('till-loyalty-row');
+        if (!row) return;
+        const maxPts = maxRedeemPoints();
+        if (loyalty.redeem > maxPts) loyalty.redeem = maxPts;   // cart changed → re-clamp
+        if (!loyalty.enabled || loyalty.balance <= 0 || !cart.length) { row.classList.add('hidden'); return; }
+        row.classList.remove('hidden');
+        document.getElementById('till-loyalty-bal').textContent = '(' + loyalty.balance + ' pts)';
+        const on = loyalty.redeem > 0;
+        document.getElementById('till-loyalty-disc').textContent = on ? '-' + fmt(loyaltyDiscount()) : '';
+        const btn = document.getElementById('till-loyalty-btn');
+        btn.textContent = on ? 'Remove' : ('Redeem ' + maxPts + ' pts');
+        btn.className = 'text-[11px] px-2 py-0.5 rounded border transition-colors ' +
+            (on ? 'border-emerald-300 bg-emerald-50 text-emerald-600' : 'border-brand-300 text-brand-600 hover:bg-brand-50');
+        btn.disabled = maxPts <= 0 && !on;
+    }
+    document.getElementById('till-loyalty-btn')?.addEventListener('click', () => {
+        loyalty.redeem = loyalty.redeem > 0 ? 0 : maxRedeemPoints();
+        renderCart();
+    });
     document.getElementById('customer-remove').addEventListener('click', () => setCustomer(null));
 
     function gotoTab(name) { document.querySelector(`.till-tab[data-tab="${name}"]`)?.click(); }
@@ -1092,7 +1139,8 @@
 
     function renderCart() {
         const totalDiscount = cart.reduce((s, c) => s + (c.discountAmount || 0), 0);
-        const total = cart.reduce((s, c) => s + c.unitPrice * c.qty - (c.discountAmount || 0), 0);
+        renderLoyalty();                    // clamps loyalty.redeem to the current cart, toggles the row
+        const total = cartTotal();          // gross − line discounts − loyalty redemption
         const count = cart.reduce((s, c) => s + c.qty, 0);
 
         if (!cart.length) {
@@ -1154,7 +1202,7 @@
     }
 
     // Pay is only enabled once there's a cart AND an attached customer (mandatory on POS).
-    function cartTotal() { return cart.reduce((s, c) => s + c.unitPrice * c.qty - (c.discountAmount || 0), 0); }
+    function cartTotal() { return Math.max(0, grossTotal() - loyaltyDiscount()); }
     function splitOk() {
         if (!splitPayments) return false;
         const paid = splitPayments.reduce((s, p) => s + p.amount, 0);
@@ -1394,6 +1442,7 @@
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
                 body: JSON.stringify({ paymentMethod: method, amountTendered: parseFloat(tenderedEl.value) || 0,
                     customerUserId: customer?.id || null,
+                    loyaltyPointsToRedeem: loyalty.redeem || 0,
                     payments: (method === 'Split' && splitPayments) ? splitPayments : null,
                     items: cart.map(c => ({ productId: c.productId, variantId: c.variantId, quantity: c.qty, note: c.note || null, discountAmount: c.discountAmount || 0, discountReason: c.discountReason || null, discountType: c.discountType || null, custom: c.custom || false, name: c.custom ? c.name : null, unitPrice: c.custom ? c.unitPrice : null })) })
             });
