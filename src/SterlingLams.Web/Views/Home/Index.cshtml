@@ -32,19 +32,36 @@
     var storeBannerText = await SettingsService.GetAsync("homepage.store_banner_text",
         "Experience our jewellery in person at any of our three Lagos boutiques. Our consultants are ready to help you find the perfect piece.");
 
-    // Scrolling trust bar (editable labels + fixed icons).
+    // Scrolling trust bar. Labels are editable in Settings → Homepage (Items 1–6). Items 4–6 are
+    // optional — leave a label blank to hide it. Each label pairs with the fixed icon at its index.
     var trustPaths = new[]
     {
         "M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z",
         "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z",
-        "M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z"
+        "M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z",
+        "M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 12V8m0 0V5.5A2.5 2.5 0 109.5 8H12z",
+        "M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z",
+        "M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.196-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.783-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
     };
-    var trustItems = new[]
+    var trustLabels = new[]
     {
         await SettingsService.GetAsync("homepage.trust_1", "Certified Authentic"),
         await SettingsService.GetAsync("homepage.trust_2", "Secure Checkout"),
-        await SettingsService.GetAsync("homepage.trust_3", "Easy Returns")
+        await SettingsService.GetAsync("homepage.trust_3", "Easy Returns"),
+        await SettingsService.GetAsync("homepage.trust_4", ""),
+        await SettingsService.GetAsync("homepage.trust_5", ""),
+        await SettingsService.GetAsync("homepage.trust_6", "")
     };
+    // Pair each non-blank label with its icon; blanks are skipped so the admin can add up to six.
+    // Each item may also have an uploaded icon image (Settings → Homepage) that overrides the
+    // built-in one — shown white to match the bar. Falls back to the default icon when unset.
+    var trustItems = new List<(string Label, string Svg, string Img)>();
+    for (var ti = 0; ti < trustLabels.Length; ti++)
+    {
+        if (string.IsNullOrWhiteSpace(trustLabels[ti])) continue;
+        var trustImg = await SettingsService.GetAsync($"homepage.trust_{ti + 1}_icon", "");
+        trustItems.Add((trustLabels[ti].Trim(), trustPaths[ti], trustImg));
+    }
 }
 
 <partial name="_QuickViewModal" />
@@ -136,14 +153,21 @@
             <div class="flex shrink-0">
                 @for (var r = 0; r < TrustReps; r++)
                 {
-                    @for (var i = 0; i < trustItems.Length; i++)
+                    @for (var i = 0; i < trustItems.Count; i++)
                     {
                         <div class="flex items-center justify-center gap-3 text-white px-12"
                              aria-hidden="@((g == 1 || r > 0) ? "true" : "false")">
-                            <svg class="w-5 h-5 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="@trustPaths[i]" />
-                            </svg>
-                            <span class="text-xs tracking-[0.2em] uppercase font-light whitespace-nowrap">@trustItems[i]</span>
+                            @if (!string.IsNullOrWhiteSpace(trustItems[i].Img))
+                            {
+                                <img src="@trustItems[i].Img" alt="" class="w-5 h-5 flex-shrink-0 object-contain opacity-90" style="filter: brightness(0) invert(1);" />
+                            }
+                            else
+                            {
+                                <svg class="w-5 h-5 flex-shrink-0 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="@trustItems[i].Svg" />
+                                </svg>
+                            }
+                            <span class="text-xs tracking-[0.2em] uppercase font-light whitespace-nowrap">@trustItems[i].Label</span>
                         </div>
                     }
                 }
