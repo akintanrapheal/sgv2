@@ -10,39 +10,8 @@
     var announcementBg      = await SettingsService.GetAsync("announcement.bg_color", "bg-brand-500");
     if (string.IsNullOrWhiteSpace(announcementBg)) { announcementBg = "bg-brand-500"; }
 
-    // Top-bar mega-menu: heading → category sub-items (slug). Empty Items = a direct link.
-    var megaMenu = new (string Label, string? Href, (string Label, string Slug)[] Items)[]
-    {
-        ("New In", "/Products?sortBy=newest", System.Array.Empty<(string, string)>()),
-        ("Jewelry", null, new (string, string)[]
-        {
-            ("Sets", "sets"), ("Earrings", "earrings"), ("Rings", "rings"),
-            ("Bracelet & Bangle", "bracelets"), ("Necklaces", "necklaces"),
-        }),
-        ("Accessories", null, new (string, string)[]
-        {
-            ("Anklets", "anklets"), ("Waist Chains", "waist-chains"), ("Key Rings", "key-rings"),
-            ("Hair Accessories", "hair-accessories"), ("Scarfs & Caps", "scarfs-caps"), ("Belts", "belts"),
-            ("Sunglasses", "sunglasses"), ("Brooches", "brooches"), ("Extenders", "extenders"),
-        }),
-        ("Watches", null, new (string, string)[]
-        {
-            ("Bracelet Watches", "bracelet-watches"), ("Strap Watches", "strap-watches"),
-        }),
-        ("Gifts", null, new (string, string)[]
-        {
-            ("Gift Boxes", "gift-boxes"), ("Gifts Combo Packages", "gifts-combo-packages"),
-        }),
-        ("Mens", null, new (string, string)[]
-        {
-            ("Bracelet", "mens-bracelets"), ("Cufflinks", "cufflinks"), ("Unisex Brooches", "unisex-brooches"),
-            ("Trouser Chains", "trouser-chains"), ("MenKind", "menkind"),
-        }),
-        ("Clutches", null, new (string, string)[]
-        {
-            ("Stoned Clutches", "stoned-clutches"), ("None Stone Clutches", "none-stone-clutches"),
-        }),
-    };
+    // Top-bar mega-menu grouping lives in StoreMenu so the shop-page sidebar accordion stays in sync.
+    var megaMenu = SterlingLams.Web.Infrastructure.StoreMenu.Entries;
 }
 
 <header class="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-neutral-100">
@@ -128,7 +97,7 @@
     <nav class="hidden md:flex items-center justify-center gap-7 lg:gap-9 border-t border-neutral-100 py-3">
         @foreach (var m in megaMenu)
         {
-            if (m.Items.Length == 0)
+            if (m.Items.Count == 0)
             {
                 <a href="@m.Href" class="relative text-xs tracking-widest uppercase text-neutral-600 hover:text-brand-500 transition-colors">
                     @if (m.Label == "New In")
@@ -164,7 +133,7 @@
     <div id="mobile-menu" class="md:hidden hidden border-t border-neutral-100 bg-white px-6 py-2 flex flex-col max-h-[70vh] overflow-y-auto">
         @foreach (var m in megaMenu)
         {
-            if (m.Items.Length == 0)
+            if (m.Items.Count == 0)
             {
                 <a href="@m.Href" class="py-3.5 text-sm tracking-[0.15em] uppercase text-neutral-700 border-b border-neutral-100">@m.Label</a>
             }

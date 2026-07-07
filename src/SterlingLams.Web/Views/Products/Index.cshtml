@@ -15,6 +15,10 @@
     var loadMoreBaseUrl = "/products" + (qsParts.Count > 0 ? "?" + string.Join("&", qsParts) : "");
     var shownNow = Math.Min(Model.Page * Model.PageSize, Model.TotalCount);
 
+    // Grouped "Shop Categories" tree (old-site style), built from the categories that have products.
+    var sidebarNodes = SterlingLams.Web.Infrastructure.StoreMenu.BuildSidebar(
+        Model.Filters.Categories.Select(c => (c.Slug, c.Name)));
+
     // Self-canonical that keeps the category but drops page/sort/filter noise (avoids duplicates).
     var canonBase = $"{Context.Request.Scheme}://{Context.Request.Host}/products";
     ViewData["Canonical"] = string.IsNullOrWhiteSpace(Model.Filters.Category)
@@ -63,23 +67,12 @@
         <!-- ─── Sidebar Filters ────────────────────────────────────────────── -->
         <aside class="hidden lg:block w-56 flex-shrink-0">
             <form method="get" id="filter-form">
-                <!-- Category -->
-                @if (Model.Filters.Categories.Any())
+                <!-- Shop Categories (grouped accordion) -->
+                @if (sidebarNodes.Count > 0)
                 {
                     <div class="mb-8">
-                        <h3 class="text-xs tracking-[0.2em] uppercase text-neutral-600 font-semibold mb-4">Category</h3>
-                        <ul class="space-y-2">
-                            @foreach (var cat in Model.Filters.Categories)
-                            {
-                                <li>
-                                    <a asp-action="Index" asp-route-category="@cat.Slug"
-                                       class="text-sm @(Model.Filters.Category == cat.Slug ? "text-neutral-900 font-semibold" : "text-neutral-700 font-medium") hover:text-neutral-900 transition-colors flex justify-between">
-                                        <span>@cat.Name</span>
-                                        <span class="text-neutral-500 font-semibold">@cat.Count</span>
-                                    </a>
-                                </li>
-                            }
-                        </ul>
+                        <h3 class="text-xs tracking-[0.2em] uppercase text-neutral-600 font-semibold mb-4">Shop Categories</h3>
+                        <partial name="_CategorySidebar" model="@((sidebarNodes, Model.Filters.Category))" />
                     </div>
                 }
 
@@ -142,35 +135,21 @@
         <div class="flex-1 min-w-0">
 
             <!-- Mobile category nav (the sidebar is hidden on phones/tablets) -->
-            @if (Model.Filters.Categories.Any())
+            @if (sidebarNodes.Count > 0)
             {
-                @* Collapsed by default on mobile — taps to open (never auto-expands, even within a category). *@
+                @* Collapsed by default on mobile — taps to open the grouped "Shop Categories" list. *@
                 <details class="lg:hidden mb-6 border border-neutral-200 rounded-sm group">
                     <summary class="cursor-pointer list-none px-4 py-3 flex items-center justify-between">
                         <span class="text-xs tracking-[0.2em] uppercase text-neutral-500">
-                            Category@(string.IsNullOrEmpty(Model.Filters.Category) ? "" : ": " + (Model.Filters.Categories.FirstOrDefault(c => c.Slug == Model.Filters.Category)?.Name ?? ""))
+                            @(string.IsNullOrEmpty(Model.Filters.Category) ? "Shop Categories" : (Model.Filters.Categories.FirstOrDefault(c => c.Slug == Model.Filters.Category)?.Name ?? "Shop Categories"))
                         </span>
-                        <svg class="w-4 h-4 text-neutral-400 transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg class="accordion-chevron w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 9l-7 7-7-7" />
                         </svg>
                     </summary>
-                    <ul class="px-4 pb-3 pt-1 space-y-2.5 max-h-72 overflow-y-auto border-t border-neutral-100">
-                        <li>
-                            <a asp-action="Index" class="flex justify-between text-sm @(string.IsNullOrEmpty(Model.Filters.Category) ? "text-neutral-900 font-semibold" : "text-neutral-700 font-medium") hover:text-neutral-900 transition-colors">
-                                <span class="font-medium">All Pieces</span>
-                            </a>
-                        </li>
-                        @foreach (var cat in Model.Filters.Categories)
-                        {
-                            <li>
-                                <a asp-action="Index" asp-route-category="@cat.Slug"
-                                   class="flex justify-between text-sm @(Model.Filters.Category == cat.Slug ? "text-neutral-900 font-semibold" : "text-neutral-700 font-medium") hover:text-neutral-900 transition-colors">
-                                    <span>@cat.Name</span>
-                                    <span class="text-neutral-500 font-semibold">@cat.Count</span>
-                                </a>
-                            </li>
-                        }
-                    </ul>
+                    <div class="px-4 pb-3 pt-1 max-h-80 overflow-y-auto border-t border-neutral-100">
+                        <partial name="_CategorySidebar" model="@((sidebarNodes, Model.Filters.Category))" />
+                    </div>
                 </details>
             }
 

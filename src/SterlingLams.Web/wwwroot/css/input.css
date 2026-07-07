@@ -108,6 +108,12 @@
     max-width: 1.75rem;
   }
 
+  /* Shop-categories accordion chevron. Plain CSS (not a Tailwind variant) so it survives the
+     prod purge and works when the accordion is nested inside the mobile filter drawer — the
+     `> summary` scopes each rotation to its own <details>, not ancestor/descendant ones. */
+  .accordion-chevron { transition: transform .2s ease; }
+  details[open] > summary .accordion-chevron { transform: rotate(180deg); }
+
   /* Image zoom */
   .zoom-container {
     @apply relative overflow-hidden cursor-zoom-in;

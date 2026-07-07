@@ -1,0 +1,39 @@
+@model (IReadOnlyList<SterlingLams.Web.Infrastructure.StoreMenu.SidebarNode> Nodes, string? Current)
+@* Grouped, collapsible "Shop Categories" list (old-site style). Groups auto-open when they contain
+   the category being viewed. Chevron rotation is handled by the .accordion-chevron CSS rule so it
+   works even when this partial is nested inside the mobile filter drawer. *@
+<ul class="space-y-0.5">
+    @foreach (var node in Model.Nodes)
+    {
+        if (node.Children.Count > 0)
+        {
+            string? openAttr = node.Children.Any(ch => ch.Slug == Model.Current) ? "open" : null;
+            <li>
+                <details class="group" open="@openAttr">
+                    <summary class="cursor-pointer list-none flex items-center justify-between py-1.5 text-sm text-neutral-700 hover:text-neutral-900 transition-colors">
+                        <span>@node.Label</span>
+                        <svg class="accordion-chevron w-4 h-4 text-neutral-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </summary>
+                    <ul class="pl-3 pb-1 space-y-0.5">
+                        @foreach (var (label, slug) in node.Children)
+                        {
+                            <li>
+                                <a asp-controller="Products" asp-action="Index" asp-route-category="@slug"
+                                   class="block py-1 text-sm @(Model.Current == slug ? "text-neutral-900 font-semibold" : "text-neutral-500 hover:text-neutral-900") transition-colors">@label</a>
+                            </li>
+                        }
+                    </ul>
+                </details>
+            </li>
+        }
+        else
+        {
+            <li>
+                <a asp-controller="Products" asp-action="Index" asp-route-category="@node.Slug"
+                   class="block py-1.5 text-sm @(Model.Current == node.Slug ? "text-neutral-900 font-semibold" : "text-neutral-700 hover:text-neutral-900") transition-colors">@node.Label</a>
+            </li>
+        }
+    }
+</ul>
