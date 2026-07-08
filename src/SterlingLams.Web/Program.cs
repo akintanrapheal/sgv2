@@ -165,6 +165,7 @@ builder.Services.AddSession(options =>
 // ─── Application Services ───────────────────────────────────────────────────
 // Encrypts sensitive site-settings (payment keys, SMTP password) at rest via Data Protection.
 builder.Services.AddSingleton<SterlingLams.Web.Services.ISettingsSecretProtector, SterlingLams.Web.Services.SettingsSecretProtector>();
+builder.Services.AddScoped<SterlingLams.Web.Services.BackofficeChrome>();
 builder.Services.AddSterlingLamsServices(builder.Configuration);
 
 // ─── Email (SMTP) ─────────────────────────────────────────────────────────────

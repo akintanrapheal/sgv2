@@ -1,0 +1,31 @@
+@model SterlingLams.Web.Models.ViewModels.TwoFactorSetupViewModel
+@{
+    Layout = "_BackofficeLayout";
+    ViewData["Title"] = "Set up two-factor";
+}
+
+<h1 class="font-cormorant text-3xl font-light mb-1">Set up two-factor</h1>
+<p class="text-sm text-neutral-500 mb-8">Add a one-time code from an authenticator app to your sign-in.</p>
+
+<div class="bg-white border border-neutral-200 rounded-xl p-6 space-y-6">
+    <div>
+        <p class="text-sm font-medium text-neutral-800 mb-1">1. Scan this QR code</p>
+        <p class="text-[11px] text-neutral-400 mb-3">Use Google Authenticator, Microsoft Authenticator, Authy, or any TOTP app.</p>
+        <img src="@Model.QrDataUri" alt="Two-factor QR code" class="w-44 h-44 border border-neutral-100 rounded-lg" />
+        <p class="text-[11px] text-neutral-500 mt-3">Can't scan? Enter this key manually:</p>
+        <p class="font-mono text-sm bg-neutral-50 border border-neutral-200 rounded px-3 py-2 mt-1 inline-block tracking-wider">@Model.SharedKey</p>
+    </div>
+
+    <div class="border-t border-neutral-100 pt-6">
+        <p class="text-sm font-medium text-neutral-800 mb-3">2. Enter the 6-digit code from your app</p>
+        <form asp-controller="MyAccount" asp-action="EnableTwoFactor" method="post" class="flex flex-wrap items-start gap-3">
+            <div>
+                <input name="code" value="@Model.Code" inputmode="numeric" autocomplete="one-time-code" placeholder="123456"
+                       class="w-40 border border-neutral-200 rounded-lg px-3 py-2 text-sm tracking-[0.3em] text-center focus:outline-none focus:border-brand-500" />
+                <div asp-validation-summary="All" class="text-xs text-red-600 mt-1"></div>
+            </div>
+            <button type="submit" class="bg-brand-500 text-white text-sm px-5 py-2 rounded-lg hover:bg-brand-600 transition-colors">Verify &amp; turn on</button>
+            <a asp-controller="MyAccount" asp-action="Index" class="text-sm text-neutral-500 hover:text-neutral-800 px-2 py-2">Cancel</a>
+        </form>
+    </div>
+</div>

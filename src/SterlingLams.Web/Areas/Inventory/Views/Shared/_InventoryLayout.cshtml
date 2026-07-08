@@ -89,6 +89,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="~/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="~/favicon-16.png" />
     <link rel="apple-touch-icon" href="~/apple-touch-icon.png" />
+    <partial name="_AccentStyle" />
 </head>
 <body class="bg-neutral-50 text-neutral-900 font-inter antialiased">
     @* Secret-URL-aware base for this area so inline fetch()/link JS resolves to the configured prefix. *@
@@ -188,7 +189,7 @@
             <div class="flex items-center gap-3">
                 @if (TempData["Success"] != null) { <span class="text-xs text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full">✓ @TempData["Success"]</span> }
                 @if (TempData["Error"] != null) { <span class="text-xs text-red-700 bg-red-50 px-3 py-1.5 rounded-full">@TempData["Error"]</span> }
-                <span class="text-xs text-neutral-400">@User.Identity?.Name</span>
+                <partial name="_UserChip" />
             </div>
             
         </header>

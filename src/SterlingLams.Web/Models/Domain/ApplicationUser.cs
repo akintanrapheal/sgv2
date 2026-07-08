@@ -22,6 +22,12 @@ public class ApplicationUser : IdentityUser
     /// signing in (front or back office) until an admin restores it.</summary>
     public bool AccessRevoked { get; set; }
 
+    /// <summary>Profile picture URL (Cloudinary or local). Shown in the back-office user menu. Null = initials.</summary>
+    public string? AvatarUrl { get; set; }
+
+    /// <summary>Per-user back-office accent colour (hex, e.g. "#3b82f6"). Null = the default brand pink.</summary>
+    public string? ThemeAccent { get; set; }
+
     /// <summary>Free-text admin tags (comma-separated), e.g. "vip, wholesale". For CRM filtering only.</summary>
     public string? Tags { get; set; }
 

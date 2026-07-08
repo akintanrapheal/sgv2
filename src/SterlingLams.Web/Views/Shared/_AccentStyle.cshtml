@@ -1,0 +1,18 @@
+@inject SterlingLams.Web.Services.BackofficeChrome Chrome
+@{ var accent = await Chrome.AccentAsync(); }
+@* Applies the signed-in staff member's personal accent colour by overriding the brand utilities.
+   Only emitted when they've chosen one — otherwise the default brand pink is kept. The value is a
+   validated hex, so it's safe to inline. *@
+@if (!string.IsNullOrEmpty(accent))
+{
+    <style>
+        :root { --sg-accent: @accent; }
+        .bg-brand-500, .hover\:bg-brand-500:hover { background-color: var(--sg-accent) !important; }
+        .bg-brand-600, .hover\:bg-brand-600:hover { background-color: var(--sg-accent) !important; filter: brightness(.9); }
+        .text-brand-500, .text-brand-400, .text-pink-400, .text-pink-500,
+        .hover\:text-brand-500:hover, .group-hover\:text-brand-500 { color: var(--sg-accent) !important; }
+        .border-brand-500, .focus\:border-brand-500:focus, .hover\:border-brand-500:hover { border-color: var(--sg-accent) !important; }
+        .ring-brand-500 { --tw-ring-color: var(--sg-accent) !important; }
+        .accent-neutral-900, .accent-brand-500 { accent-color: var(--sg-accent) !important; }
+    </style>
+}
