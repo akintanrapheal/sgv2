@@ -26,6 +26,31 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             _stock = stock;
         }
 
+        /// <summary>
+        /// Section grants VIEW access; but only a full administrator may CHANGE stock here. Every
+        /// mutating request (POST) requires the Admin role — other staff with the Inventory section
+        /// can look but not touch. Read (GET) still flows through the base section check.
+        /// </summary>
+        public override async Task OnActionExecutionAsync(
+            Microsoft.AspNetCore.Mvc.Filters.ActionExecutingContext context,
+            Microsoft.AspNetCore.Mvc.Filters.ActionExecutionDelegate next)
+        {
+            if (HttpContext.Request.Method == HttpMethods.Post
+                && !User.IsInRole(SterlingLams.Web.Areas.Admin.AdminSections.AdminRole))
+            {
+                // AJAX callers get a clean JSON refusal; form posts get Access Denied.
+                var accepts = Request.Headers["Accept"].ToString();
+                var isAjax = Request.Headers["X-Requested-With"] == "XMLHttpRequest"
+                             || (Request.ContentType?.Contains("application/json", StringComparison.OrdinalIgnoreCase) ?? false)
+                             || accepts.Contains("application/json", StringComparison.OrdinalIgnoreCase);
+                context.Result = isAjax
+                    ? new JsonResult(new { success = false, message = "Only the administrator can edit inventory." }) { StatusCode = 403 }
+                    : new ForbidResult();
+                return;
+            }
+            await base.OnActionExecutionAsync(context, next);
+        }
+
         // ── Index: product-centric view (all stores as columns) ───────────────────
         public async Task<IActionResult> Index(
             string q = "", string category = "", string stock = "", int page = 1)

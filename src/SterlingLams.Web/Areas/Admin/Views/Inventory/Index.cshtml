@@ -1,6 +1,8 @@
 @model SterlingLams.Web.Areas.Admin.ViewModels.AdminInventoryViewModel
 @{
     ViewData["Title"] = "Inventory";
+    // Only a full administrator may edit stock here; other staff with the Inventory section view only.
+    var canEdit = ViewData["IsFullAdmin"] as bool? == true;
 }
 
 <!-- Header bar -->
@@ -17,14 +19,17 @@
             🔒 Stock holds
         </a>
         <!-- Ensure all products have inventory rows -->
-        <form asp-area="Admin" asp-controller="Inventory" asp-action="EnsureInventoryRecords" method="post">
-            @Html.AntiForgeryToken()
-            <button type="submit"
-                    class="px-4 py-2 border border-blue-300 text-blue-700 text-xs rounded-sm hover:bg-blue-50 transition-colors">
-                ⊕ Create Missing Records
-            </button>
-        </form>
-        @if (ViewData["IsFullAdmin"] as bool? == true)
+        @if (canEdit)
+        {
+            <form asp-area="Admin" asp-controller="Inventory" asp-action="EnsureInventoryRecords" method="post">
+                @Html.AntiForgeryToken()
+                <button type="submit"
+                        class="px-4 py-2 border border-blue-300 text-blue-700 text-xs rounded-sm hover:bg-blue-50 transition-colors">
+                    ⊕ Create Missing Records
+                </button>
+            </form>
+        }
+        @if (canEdit)
         {
             <form asp-area="Admin" asp-controller="Inventory" asp-action="BackfillOpeningStock" method="post"
                   onsubmit="return confirm('Write one-time &quot;Opening balance&quot; ledger entries for stock that has no history? This does not change any quantities — it only makes stock history reconstruct current on-hand. Safe to run once.');">
@@ -165,28 +170,38 @@
 }
 else
 {
-    <!-- Hidden save forms — one per product row (outside the table to stay valid HTML) -->
-    @foreach (var row in Model.Products)
+    @if (canEdit)
     {
-        <form id="inv-@row.ProductId"
-              asp-area="Admin" asp-controller="Inventory" asp-action="SetProductStock"
-              method="post" style="display:none">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="productId" value="@row.ProductId" />
-            <input type="hidden" name="q"        value="@Model.SearchQuery" />
-            <input type="hidden" name="category" value="@Model.CategoryFilter" />
-            <input type="hidden" name="stock"    value="@Model.StockFilter" />
-            <input type="hidden" name="page"     value="@Model.CurrentPage" />
-        </form>
+        <!-- Hidden save forms — one per product row (outside the table to stay valid HTML) -->
+        foreach (var row in Model.Products)
+        {
+            <form id="inv-@row.ProductId"
+                  asp-area="Admin" asp-controller="Inventory" asp-action="SetProductStock"
+                  method="post" style="display:none">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="productId" value="@row.ProductId" />
+                <input type="hidden" name="q"        value="@Model.SearchQuery" />
+                <input type="hidden" name="category" value="@Model.CategoryFilter" />
+                <input type="hidden" name="stock"    value="@Model.StockFilter" />
+                <input type="hidden" name="page"     value="@Model.CurrentPage" />
+            </form>
+        }
     }
 
     <!-- Bulk save bar -->
     <div class="flex items-center justify-between mb-3">
-        <p class="text-[11px] text-neutral-400">Type quantities across the page, then save them all at once — or use the per-row Save.</p>
-        <button type="button" id="save-all-stock"
-                class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
-            Save all changes<span id="stock-change-count"></span>
-        </button>
+        @if (canEdit)
+        {
+            <p class="text-[11px] text-neutral-400">Type quantities across the page, then save them all at once — or use the per-row Save.</p>
+            <button type="button" id="save-all-stock"
+                    class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+                Save all changes<span id="stock-change-count"></span>
+            </button>
+        }
+        else
+        {
+            <p class="text-[11px] text-neutral-400">View only — stock changes are restricted to the administrator.</p>
+        }
     </div>
 
     <!-- Inventory grid -->
@@ -252,7 +267,7 @@ else
                             var qty = row.StockByStore.TryGetValue(store.Id, out var q2) ? q2 : -1;
                             var cellBg = qty == -1 ? "bg-neutral-50" : qty == 0 ? "bg-red-50" : qty < row.LowStockThreshold ? "bg-amber-50" : "";
                             <td class="px-3 py-2 text-center @cellBg">
-                                @if (qty == -1)
+                                @if (canEdit && qty == -1)
                                 {
                                     <!-- No record exists — show dash, still let admin enter a value -->
                                     <input form="inv-@row.ProductId"
@@ -261,7 +276,7 @@ else
                                            data-pid="@row.ProductId" data-sid="@store.Id" data-orig=""
                                            class="stock-cell w-16 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-neutral-400 bg-white" />
                                 }
-                                else
+                                else if (canEdit)
                                 {
                                     <input form="inv-@row.ProductId"
                                            type="number" name="store_@store.Id"
@@ -270,15 +285,26 @@ else
                                            class="stock-cell w-16 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-neutral-400 bg-white
                                                   @(qty == 0 ? "text-red-600 border-red-200" : qty < row.LowStockThreshold ? "text-amber-600 border-amber-200" : "")" />
                                 }
+                                else
+                                {
+                                    <span class="text-xs @(qty == -1 ? "text-neutral-300" : qty == 0 ? "text-red-600" : qty < row.LowStockThreshold ? "text-amber-600" : "text-neutral-700")">@(qty == -1 ? "—" : qty.ToString())</span>
+                                }
                             </td>
                         }
 
-                        <!-- Save button -->
+                        <!-- Save button (full admin only) -->
                         <td class="px-4 py-2 text-center">
-                            <button form="inv-@row.ProductId" type="submit" data-no-loading="1"
-                                    class="px-4 py-1.5 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
-                                Save
-                            </button>
+                            @if (canEdit)
+                            {
+                                <button form="inv-@row.ProductId" type="submit" data-no-loading="1"
+                                        class="px-4 py-1.5 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+                                    Save
+                                </button>
+                            }
+                            else
+                            {
+                                <span class="text-neutral-300 text-xs">—</span>
+                            }
                         </td>
                     </tr>
                 }
