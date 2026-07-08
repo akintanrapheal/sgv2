@@ -534,6 +534,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 return RedirectToAction(nameof(Detail), new { id });
             }
 
+            // Subtract the proportional share of any order-level discount (loyalty redemption), which
+            // isn't attached to a line — otherwise a redeemed order refunds more than was tendered.
+            var lineDiscountTotal = order.Items.Sum(i => i.DiscountAmount);
+            var orderLevelDiscount = Math.Max(0, order.DiscountAmount - lineDiscountTotal);
+            var totalNet = order.Items.Sum(i => i.UnitPrice * i.Quantity - i.DiscountAmount);
+            if (orderLevelDiscount > 0 && totalNet > 0)
+                amount -= Math.Round(orderLevelDiscount * amount / totalNet, 2);
+
             refund.Amount = amount;
             _db.Refunds.Add(refund);
 

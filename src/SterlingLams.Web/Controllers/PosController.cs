@@ -440,6 +440,15 @@ public class PosController : Controller
 
         if (refund.Items.Count == 0) return Json(new { success = false, message = "Nothing left to refund on this sale." });
 
+        // Order-level discounts (loyalty redemption) aren't on any line, so subtract their share of
+        // this refund proportionally — otherwise a loyalty-redeemed sale refunds more cash than the
+        // customer tendered (they also get the points back via ReverseForOrderAsync on a full refund).
+        var lineDiscountTotal = order.Items.Sum(i => i.DiscountAmount);
+        var orderLevelDiscount = Math.Max(0, order.DiscountAmount - lineDiscountTotal);
+        var totalNet = order.Items.Sum(i => i.UnitPrice * i.Quantity - i.DiscountAmount);
+        if (orderLevelDiscount > 0 && totalNet > 0)
+            amount -= Math.Round(orderLevelDiscount * amount / totalNet, 2);
+
         refund.Amount = amount;
         _db.Refunds.Add(refund);
 
