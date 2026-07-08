@@ -1,5 +1,10 @@
 # Sterlin Glams — E-commerce + Inventory/POS Platform
 
+> **© 2026 Sterlin Glams. All rights reserved. Proprietary and confidential.**
+> This software is proprietary. No use, copying, modification, or distribution is
+> permitted without the prior written permission of the Owner. Access to this repository
+> does not grant any licence. See [`LICENSE`](LICENSE). Contact: rapheal@sterlinglamslogistics.com
+
 A self-contained jewellery & accessories platform: a customer storefront, an admin
 back office, and an in-house multi-branch **inventory system with a point-of-sale till**.
 Stock, orders, payments and reporting all live in one PostgreSQL database — there is no
