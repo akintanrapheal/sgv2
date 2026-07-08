@@ -1,8 +1,8 @@
 using CloudinaryDotNet;
 using CloudinaryDotNet.Actions;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using QRCoder;
 using SterlingLams.Web.Models.Domain;
 using SterlingLams.Web.Models.ViewModels;
@@ -15,7 +15,6 @@ namespace SterlingLams.Web.Controllers;
 /// colour, and two-factor. Reachable from every staff backend (Admin, Inventory, Marketing) via the
 /// top-right user menu; rendered with the minimal back-office account layout, not the storefront.
 /// </summary>
-[Authorize]
 [Route("me")]
 public class MyAccountController : Controller
 {
@@ -40,15 +39,26 @@ public class MyAccountController : Controller
     private async Task<bool> IsStaffAsync(ApplicationUser u) =>
         (await _users.GetRolesAsync(u)).Any(r => StaffRoles.Contains(r));
 
+    // Gate the whole controller: anyone who isn't a signed-in staff member gets a plain 404 — the page
+    // simply doesn't exist to outsiders (same as the secret-prefixed backends), rather than a login
+    // redirect that would advertise a staff account area.
+    public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    {
+        var user = User.Identity?.IsAuthenticated == true ? await _users.GetUserAsync(User) : null;
+        if (user == null || !await IsStaffAsync(user))
+        {
+            context.Result = NotFound();
+            return;
+        }
+        await next();
+    }
+
     // ── My Account page ────────────────────────────────────────────────────────
     [HttpGet("")]
     public async Task<IActionResult> Index()
     {
-        var user = await _users.GetUserAsync(User);
-        if (user == null) return Challenge();
-        // Only staff use the back-office account; a plain customer is sent to their storefront profile.
-        if (!await IsStaffAsync(user)) return Redirect("/Account/Profile");
-
+        var user = await _users.GetUserAsync(User); // guaranteed non-null staff by OnActionExecutionAsync
+        if (user == null) return NotFound();
         ViewData["Title"] = "My Account";
         return View(await BuildVmAsync(user));
     }
