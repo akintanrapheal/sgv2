@@ -14,5 +14,10 @@
         .border-brand-500, .focus\:border-brand-500:focus, .hover\:border-brand-500:hover { border-color: var(--sg-accent) !important; }
         .ring-brand-500 { --tw-ring-color: var(--sg-accent) !important; }
         .accent-neutral-900, .accent-brand-500 { accent-color: var(--sg-accent) !important; }
+        /* Active sidebar item — Admin/Marketing use bg-neutral-800, Inventory uses bg-emerald-600.
+           Scoped to the sidebar (#sb) and to items that also carry text-white, so hover states and
+           content-area buttons are untouched. */
+        #sb a.bg-neutral-800.text-white,
+        #sb a.bg-emerald-600.text-white { background-color: var(--sg-accent) !important; }
     </style>
 }

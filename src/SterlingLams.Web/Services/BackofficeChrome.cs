@@ -49,6 +49,19 @@ public class BackofficeChrome
 
     public async Task<string> EmailAsync() => (await UserAsync())?.Email ?? "";
 
+    /// <summary>The staff member's back-office home (used by the "Back" link so it never falls to the
+    /// storefront): Admins → Admin, inventory staff → Inventory, marketing staff → Marketing.</summary>
+    public async Task<string> HomeAsync()
+    {
+        var u = await UserAsync();
+        if (u == null) return "/";
+        var roles = await _users.GetRolesAsync(u);
+        if (roles.Contains("Admin")) return "/Admin";
+        if (roles.Contains("Inventory")) return "/Inventory";
+        if (roles.Contains("Social Media")) return "/Marketing";
+        return roles.Any() ? "/Admin" : "/";
+    }
+
     public async Task<string> InitialsAsync()
     {
         var u = await UserAsync();
