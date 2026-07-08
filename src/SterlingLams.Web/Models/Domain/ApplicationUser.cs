@@ -18,6 +18,10 @@ public class ApplicationUser : IdentityUser
     /// but never attaches an order to a real registered account it doesn't own.</summary>
     public bool IsGuest { get; set; }
 
+    /// <summary>When true, an administrator has revoked this account's access — it is blocked from
+    /// signing in (front or back office) until an admin restores it.</summary>
+    public bool AccessRevoked { get; set; }
+
     /// <summary>Free-text admin tags (comma-separated), e.g. "vip, wholesale". For CRM filtering only.</summary>
     public string? Tags { get; set; }
 

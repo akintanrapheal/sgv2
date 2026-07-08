@@ -151,7 +151,11 @@
                         }
                     </td>
                     <td class="px-4 py-3">
-                        @if (u.IsLocked)
+                        @if (u.IsRevoked)
+                        {
+                            <span class="text-[10px] bg-neutral-800 text-white px-2 py-0.5 rounded-full">Revoked</span>
+                        }
+                        else if (u.IsLocked)
                         {
                             <span class="text-[10px] bg-red-50 text-red-700 px-2 py-0.5 rounded-full">Locked</span>
                         }
@@ -187,6 +191,14 @@
                                     @Html.AntiForgeryToken()
                                     <button data-no-loading="1" class="text-xs @(u.IsLocked ? "text-emerald-500 hover:text-emerald-800" : "text-red-400 hover:text-red-700") transition-colors">
                                         @(u.IsLocked ? "Unlock" : "Lock")
+                                    </button>
+                                </form>
+                                <form asp-area="Admin" asp-controller="Users" asp-action="@(u.IsRevoked ? "Restore" : "Revoke")" asp-route-id="@u.Id"
+                                      method="post" class="inline"
+                                      onsubmit="return confirm('@(u.IsRevoked ? "Restore access for" : "Revoke access for — they will be signed out and blocked from signing in:") @u.Email?')">
+                                    @Html.AntiForgeryToken()
+                                    <button data-no-loading="1" class="text-xs font-medium @(u.IsRevoked ? "text-emerald-600 hover:text-emerald-800" : "text-red-500 hover:text-red-700") transition-colors">
+                                        @(u.IsRevoked ? "Restore" : "Revoke")
                                     </button>
                                 </form>
                             </div>

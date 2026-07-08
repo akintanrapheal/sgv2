@@ -73,6 +73,16 @@ public class AccountController : Controller
     {
         if (!ModelState.IsValid) return View(model);
 
+        // Accounts whose access an admin has revoked are blocked from signing in — tell them clearly
+        // to reach out to the administrator (checked before the password path, so it also covers 2FA).
+        var blocked = await _userManager.FindByNameAsync(model.Email)
+                      ?? await _userManager.Users.FirstOrDefaultAsync(u => u.NormalizedEmail == _userManager.NormalizeEmail(model.Email));
+        if (blocked != null && blocked.AccessRevoked)
+        {
+            ModelState.AddModelError(string.Empty, "Your access has been revoked. Please contact the administrator.");
+            return View(model);
+        }
+
         var result = await _signInManager.PasswordSignInAsync(
             model.Email, model.Password, model.RememberMe, lockoutOnFailure: true);
 

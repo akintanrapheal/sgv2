@@ -455,6 +455,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string RoleName { get; set; } = "Customer";
         public bool IsAdmin { get; set; }
         public bool IsLocked { get; set; }
+        public bool IsRevoked { get; set; }
         public bool EmailConfirmed { get; set; }
         public int OrderCount { get; set; }
         public decimal TotalSpend { get; set; }

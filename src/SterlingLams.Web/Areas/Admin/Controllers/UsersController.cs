@@ -109,6 +109,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     RoleName       = PrimaryRole(userRoles),
                     IsAdmin        = adminIds.Contains(u.Id),
                     IsLocked       = u.LockoutEnd.HasValue && u.LockoutEnd > now,
+                    IsRevoked      = u.AccessRevoked,
                     EmailConfirmed = u.EmailConfirmed,
                     OrderCount     = stat?.Count ?? 0,
                     TotalSpend     = stat?.Spend ?? 0,
@@ -307,6 +308,37 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             await LogAsync("Update", "User", user.Id, $"Set role of {user.Email} to {role}");
             TempData["Success"] = $"{user.Email} is now {role}.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        // ── Revoke / restore access ───────────────────────────────────────────
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> Revoke(string id)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null) return NotFound();
+            if (user.Email == User.Identity?.Name)
+            {
+                TempData["Error"] = "You cannot revoke your own access.";
+                return RedirectToAction(nameof(Index));
+            }
+            user.AccessRevoked = true;
+            await _userManager.UpdateAsync(user);
+            await _userManager.UpdateSecurityStampAsync(user); // kicks out any live session
+            await LogAsync("Update", "User", user.Id, $"Revoked access for {user.Email}");
+            TempData["Success"] = $"{user.Email}'s access has been revoked — they can no longer sign in.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> Restore(string id)
+        {
+            var user = await _userManager.FindByIdAsync(id);
+            if (user == null) return NotFound();
+            user.AccessRevoked = false;
+            await _userManager.UpdateAsync(user);
+            await LogAsync("Update", "User", user.Id, $"Restored access for {user.Email}");
+            TempData["Success"] = $"{user.Email}'s access has been restored.";
             return RedirectToAction(nameof(Index));
         }
 
