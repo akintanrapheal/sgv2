@@ -2,6 +2,9 @@
     ViewData["Title"] = "POS Settings";
     var header = ViewBag.ReceiptHeader as string ?? "";
     var footer = ViewBag.ReceiptFooter as string ?? "";
+    var apprRefunds = ViewBag.ApprovalRefunds as bool? ?? false;
+    var apprDiscounts = ViewBag.ApprovalDiscounts as bool? ?? false;
+    var apprPct = ViewBag.ApprovalDiscountMinPct as int? ?? 0;
 }
 
 <div class="mb-5">
@@ -28,6 +31,30 @@
             <p class="text-[11px] text-neutral-400 mb-1.5">Message printed at the bottom of POS receipts.</p>
             <textarea name="receiptFooter" rows="3"
                       class="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 resize-none">@footer</textarea>
+        </div>
+        <div class="border-t border-neutral-100 pt-5">
+            <h2 class="text-sm font-semibold text-neutral-800 mb-1">Manager approval</h2>
+            <p class="text-[11px] text-neutral-400 mb-3">Require a manager's PIN (any Admin with a PIN set) before sensitive actions. Off by default.</p>
+            <label class="flex items-start gap-2.5 cursor-pointer mb-3">
+                <input type="checkbox" name="approvalRefunds" value="true" @(apprRefunds ? "checked" : "") class="mt-0.5 rounded border-neutral-300 accent-neutral-900 w-4 h-4" />
+                <span>
+                    <span class="block text-sm text-neutral-800">Require approval for refunds</span>
+                    <span class="block text-[11px] text-neutral-400">A refund needs a manager PIN before it's processed.</span>
+                </span>
+            </label>
+            <label class="flex items-start gap-2.5 cursor-pointer mb-3">
+                <input type="checkbox" name="approvalDiscounts" value="true" @(apprDiscounts ? "checked" : "") class="mt-0.5 rounded border-neutral-300 accent-neutral-900 w-4 h-4" />
+                <span>
+                    <span class="block text-sm text-neutral-800">Require approval for discounts</span>
+                    <span class="block text-[11px] text-neutral-400">A sale whose line discounts meet the threshold needs a manager PIN at payment.</span>
+                </span>
+            </label>
+            <div>
+                <label class="block text-xs font-medium text-neutral-700 mb-1">Discount approval threshold (%)</label>
+                <input type="number" name="approvalDiscountMinPct" value="@apprPct" min="0" max="100"
+                       class="w-32 border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500" />
+                <p class="text-[11px] text-neutral-400 mt-1">Line discounts at or above this % of the sale need approval. 0 = every discount.</p>
+            </div>
         </div>
         <div class="flex items-center gap-3">
             <button type="submit" class="px-6 py-2.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 transition-colors">Save settings</button>

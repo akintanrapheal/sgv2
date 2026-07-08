@@ -1437,16 +1437,27 @@
         if (method === 'Split' && window.SGPOS && !SGPOS.isOnline()) { showError('Split payment needs a connection.'); return; }
         payBtn.disabled = true; payBtn.querySelector('span').textContent = '…';
         try {
-            const res = await fetch('/Pos/Checkout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
-                body: JSON.stringify({ paymentMethod: method, amountTendered: parseFloat(tenderedEl.value) || 0,
-                    customerUserId: customer?.id || null,
-                    loyaltyPointsToRedeem: loyalty.redeem || 0,
-                    payments: (method === 'Split' && splitPayments) ? splitPayments : null,
-                    items: cart.map(c => ({ productId: c.productId, variantId: c.variantId, quantity: c.qty, note: c.note || null, discountAmount: c.discountAmount || 0, discountReason: c.discountReason || null, discountType: c.discountType || null, custom: c.custom || false, name: c.custom ? c.name : null, unitPrice: c.custom ? c.unitPrice : null })) })
-            });
-            const data = await res.json();
+            let managerPin = null, res, data;
+            while (true) {
+                res = await fetch('/Pos/Checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                    body: JSON.stringify({ paymentMethod: method, amountTendered: parseFloat(tenderedEl.value) || 0,
+                        customerUserId: customer?.id || null,
+                        loyaltyPointsToRedeem: loyalty.redeem || 0,
+                        managerPin: managerPin,
+                        payments: (method === 'Split' && splitPayments) ? splitPayments : null,
+                        items: cart.map(c => ({ productId: c.productId, variantId: c.variantId, quantity: c.qty, note: c.note || null, discountAmount: c.discountAmount || 0, discountReason: c.discountReason || null, discountType: c.discountType || null, custom: c.custom || false, name: c.custom ? c.name : null, unitPrice: c.custom ? c.unitPrice : null })) })
+                });
+                data = await res.json();
+                // Server asks for a manager PIN (discount over threshold) — prompt once and retry.
+                if (data.needsApproval && !managerPin) {
+                    managerPin = prompt('Manager PIN to approve this discount:');
+                    if (!managerPin) { showError('Approval cancelled — sale not completed.'); return; }
+                    continue;
+                }
+                break;
+            }
             if (data.success) {
                 const receiptBtn = document.getElementById('till-receipt');
                 const emailBtn = document.getElementById('till-email');
@@ -1855,12 +1866,22 @@
         if (!items.length) return;
         confirmBtn.disabled = true; confirmBtn.textContent = 'Processing…';
         try {
-            const res = await fetch('/Pos/RefundProcess', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
-                body: JSON.stringify({ orderId, method, reason: document.getElementById('refund-reason').value, items })
-            });
-            const data = await res.json();
+            let managerPin = null, res, data;
+            while (true) {
+                res = await fetch('/Pos/RefundProcess', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                    body: JSON.stringify({ orderId, method, reason: document.getElementById('refund-reason').value, items, managerPin })
+                });
+                data = await res.json();
+                // Server asks for a manager PIN (refund approval on) — prompt once and retry.
+                if (data.needsApproval && !managerPin) {
+                    managerPin = prompt('Manager PIN to approve this refund:');
+                    if (!managerPin) { msgEl.textContent = 'Approval cancelled.'; return; } // finally resets the button
+                    continue;
+                }
+                break;
+            }
             if (data.success) {
                 searchState.classList.add('hidden');
                 document.getElementById('refund-success-detail').textContent = fmt(data.amount) + ' refunded · ' + data.refundNumber;

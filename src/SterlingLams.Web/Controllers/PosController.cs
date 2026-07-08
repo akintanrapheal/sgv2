@@ -95,6 +95,20 @@ public class PosController : Controller
         return null;
     }
 
+    /// <summary>Validates a manager-override PIN. A "manager" is any Admin-role user with a PIN set;
+    /// the PIN is checked against each (there are only a handful of admins). Returns the approver, or
+    /// null when the PIN doesn't match any manager. Used to gate refunds / large discounts.</summary>
+    private async Task<ApplicationUser?> ValidateManagerPinAsync(string? pin)
+    {
+        if (string.IsNullOrWhiteSpace(pin)) return null;
+        var admins = await _userManager.GetUsersInRoleAsync("Admin");
+        foreach (var m in admins)
+            if (!string.IsNullOrEmpty(m.PinHash)
+                && _hasher.VerifyHashedPassword(m, m.PinHash, pin) != PasswordVerificationResult.Failed)
+                return m;
+        return null;
+    }
+
     private Task<TillSession?> OpenSessionAsync(int registerId) =>
         _db.TillSessions.FirstOrDefaultAsync(s => s.RegisterId == registerId && s.ClosedAt == null);
 
@@ -341,6 +355,8 @@ public class PosController : Controller
         public string Method { get; set; } = "Cash";
         public string? Reason { get; set; }
         public List<RefundLine> Items { get; set; } = new();
+        /// <summary>Manager PIN, supplied when refund approval is required (pos.approval_refunds).</summary>
+        public string? ManagerPin { get; set; }
     }
 
     [Authorize, HttpPost, ValidateAntiForgeryToken]
@@ -353,6 +369,16 @@ public class PosController : Controller
 
         var lines = (req.Items ?? new()).Where(l => l.Quantity > 0).ToList();
         if (lines.Count == 0) return Json(new { success = false, message = "Choose at least one item to return." });
+
+        // Manager approval for refunds (loss prevention), when enabled in POS settings.
+        string refundApprovalNote = "";
+        if (await _settings.GetBoolAsync("pos.approval_refunds", false))
+        {
+            var mgr = await ValidateManagerPinAsync(req.ManagerPin);
+            if (mgr == null)
+                return Json(new { success = false, needsApproval = "refund", message = "Manager approval required to process a refund." });
+            refundApprovalNote = $" [approved by {mgr.FullName}]";
+        }
 
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         var now = DateTime.UtcNow;
@@ -438,7 +464,7 @@ public class PosController : Controller
         if (fullyRefunded)
             await _loyalty.ReverseForOrderAsync(order.Id);
 
-        try { await _audit.LogAsync("Refund", "Order", order.Id.ToString(), $"POS refund {refundNumber} — ₦{amount:N0} on {order.OrderNumber}{(fullyRefunded ? " (full)" : " (partial)")}"); } catch { }
+        try { await _audit.LogAsync("Refund", "Order", order.Id.ToString(), $"POS refund {refundNumber} — ₦{amount:N0} on {order.OrderNumber}{(fullyRefunded ? " (full)" : " (partial)")}{refundApprovalNote}"); } catch { }
 
         return Json(new { success = true, refundNumber, amount });
     }
@@ -1147,6 +1173,8 @@ public class PosController : Controller
         /// <summary>Loyalty points the attached customer wants to redeem on this sale (server clamps to
         /// their balance and to the sale value). 0 = none.</summary>
         public int LoyaltyPointsToRedeem { get; set; }
+        /// <summary>Manager PIN, supplied when discount approval is required (pos.approval_discounts).</summary>
+        public string? ManagerPin { get; set; }
     }
     public class TillCashier { public string Id { get; set; } = ""; public string Name { get; set; } = ""; }
 
@@ -1306,6 +1334,22 @@ public class PosController : Controller
         order.DiscountAmount = totalDiscount;
         order.Total = subtotal - totalDiscount;
 
+        // Manager approval for line discounts over the configured threshold (loss prevention), when
+        // enabled. Returning here rolls back the staged stock deductions (tx disposed uncommitted).
+        string discountApprovalNote = "";
+        if (totalDiscount > 0 && await _settings.GetBoolAsync("pos.approval_discounts", false))
+        {
+            var minPct = await _settings.GetDecimalAsync("pos.approval_discount_min_pct", 0);
+            var pct = subtotal > 0 ? totalDiscount / subtotal * 100m : 0m;
+            if (pct >= minPct)
+            {
+                var mgr = await ValidateManagerPinAsync(req.ManagerPin);
+                if (mgr == null)
+                    return Json(new { success = false, needsApproval = "discount", message = "Manager approval required for this discount." });
+                discountApprovalNote = $" [discount approved by {mgr.FullName}]";
+            }
+        }
+
         // Loyalty redemption — the attached customer spends points as a discount on this sale. Points
         // are earmarked on the order now and actually deducted after commit (RedeemForOrderAsync,
         // idempotent + clamps to live balance); a later full refund returns them (ReverseForOrderAsync).
@@ -1362,7 +1406,7 @@ public class PosController : Controller
         // Deduct any points the customer redeemed on this sale (idempotent; no-op when none redeemed).
         await _loyalty.RedeemForOrderAsync(order.Id);
 
-        try { await _audit.LogAsync("Sale", "Order", order.Id.ToString(), $"POS sale {orderNumber} — ₦{order.Total:N0} ({req.PaymentMethod}) at {register.Name}"); } catch { }
+        try { await _audit.LogAsync("Sale", "Order", order.Id.ToString(), $"POS sale {orderNumber} — ₦{order.Total:N0} ({req.PaymentMethod}) at {register.Name}{discountApprovalNote}"); } catch { }
 
         return Json(new { success = true, orderId = order.Id, orderNumber, total = order.Total, change = order.ChangeGiven });
     }

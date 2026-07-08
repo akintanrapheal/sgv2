@@ -190,18 +190,25 @@ public class TillController : InventoryAreaController
         ViewData["Title"] = "POS Settings";
         ViewBag.ReceiptHeader = await _settings.GetAsync("pos.receipt_header", "");
         ViewBag.ReceiptFooter = await _settings.GetAsync("pos.receipt_footer", "Thank you for shopping with us!");
+        ViewBag.ApprovalRefunds = await _settings.GetBoolAsync("pos.approval_refunds", false);
+        ViewBag.ApprovalDiscounts = await _settings.GetBoolAsync("pos.approval_discounts", false);
+        ViewBag.ApprovalDiscountMinPct = await _settings.GetIntAsync("pos.approval_discount_min_pct", 0);
         return View();
     }
 
     [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> SaveSettings(string? receiptHeader, string? receiptFooter)
+    public async Task<IActionResult> SaveSettings(string? receiptHeader, string? receiptFooter,
+        bool approvalRefunds, bool approvalDiscounts, int approvalDiscountMinPct)
     {
         await _settings.SaveManyAsync(new Dictionary<string, string>
         {
             ["pos.receipt_header"] = receiptHeader?.Trim() ?? "",
-            ["pos.receipt_footer"] = receiptFooter?.Trim() ?? ""
+            ["pos.receipt_footer"] = receiptFooter?.Trim() ?? "",
+            ["pos.approval_refunds"] = approvalRefunds ? "true" : "false",
+            ["pos.approval_discounts"] = approvalDiscounts ? "true" : "false",
+            ["pos.approval_discount_min_pct"] = Math.Clamp(approvalDiscountMinPct, 0, 100).ToString()
         });
-        await LogAsync("Update", "Setting", null, "Updated POS receipt settings");
+        await LogAsync("Update", "Setting", null, "Updated POS settings");
         TempData["Success"] = "POS settings saved.";
         return RedirectToAction(nameof(Settings));
     }
