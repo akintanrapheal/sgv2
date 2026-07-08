@@ -173,6 +173,16 @@ public class HomeController : Controller
         return View();
     }
 
+    // Branded page for bare 4xx status codes (route misses, NotFound(), a wrong secret staff path).
+    // Wired via UseStatusCodePagesWithReExecute; the view adapts its wording to the code.
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+    public IActionResult PageNotFound(int? code)
+    {
+        Response.StatusCode = code ?? 404;
+        ViewData["StatusCode"] = code ?? 404;
+        return View("NotFound");
+    }
+
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public IActionResult Error()
     {

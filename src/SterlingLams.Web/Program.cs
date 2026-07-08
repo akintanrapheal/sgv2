@@ -260,6 +260,10 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
+// Bare 4xx responses (route misses, NotFound(), a wrong secret staff path) render the branded
+// error page instead of an empty body. Runs in all environments so it's testable locally too.
+app.UseStatusCodePagesWithReExecute("/Home/PageNotFound", "?code={0}");
+
 app.UseHttpsRedirection();
 
 // ─── Security headers ───────────────────────────────────────────────────────

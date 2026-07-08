@@ -1,17 +1,54 @@
 @{
-    ViewData["Title"] = "Page Not Found";
-    Context.Response.StatusCode = 404;
+    var code = (ViewData["StatusCode"] as int?) ?? 404;
+    Context.Response.StatusCode = code;
+    var is404 = code == 404;
+    ViewData["Title"] = is404 ? "Page Not Found" : $"Something went wrong ({code})";
+    ViewData["Robots"] = "noindex, nofollow";
+    var kicker  = is404 ? "Error 404" : $"Error {code}";
+    var heading = is404 ? "This page has slipped away" : "Something isn't quite right";
+    var sub = is404
+        ? "The page you're looking for may have been moved, renamed, or is no longer with us — but the collection is right where you left it."
+        : "We hit a small snag loading that. Please try again in a moment, or head back to explore the collection.";
 }
 
-<div class="max-w-xl mx-auto px-6 py-32 text-center">
-    <p class="font-cormorant text-9xl font-light text-neutral-100 leading-none select-none">404</p>
-    <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-4 -mt-4">Page not found</p>
-    <h1 class="font-cormorant text-4xl font-light text-neutral-900 mb-6">We couldn't find that page</h1>
-    <p class="text-sm text-neutral-400 font-light mb-10">
-        The page you're looking for may have been moved or no longer exists.
-    </p>
-    <div class="flex gap-4 justify-center">
-        <a asp-controller="Home" asp-action="Index" class="btn-primary">Go Home</a>
-        <a asp-controller="Products" asp-action="Index" class="btn-outline">Browse Collections</a>
+<section class="bg-[#faf8f6]">
+    <div class="max-w-2xl mx-auto px-6 py-24 md:py-32 text-center">
+
+        <!-- Faceted diamond -->
+        <div class="flex justify-center mb-9">
+            <svg viewBox="0 0 24 24" class="w-16 h-16 md:w-20 md:h-20" fill="none" stroke="#ed028b"
+                 stroke-width="0.9" stroke-linejoin="round" stroke-linecap="round"
+                 style="filter: drop-shadow(0 6px 14px rgba(237,2,139,.25));">
+                <path d="M5.5 3h13l3.5 5.5L12 21 3 8.5 5.5 3z" />
+                <path d="M3 8.5h18" />
+                <path d="M8.5 3 6 8.5M15.5 3 18 8.5" />
+                <path d="M6 8.5 12 21M18 8.5 12 21" />
+                <path d="M8.5 3 12 8.5 15.5 3" />
+            </svg>
+        </div>
+
+        <p class="text-[11px] tracking-[0.4em] uppercase text-brand-500 mb-4">@kicker</p>
+        <p class="font-cormorant text-[6.5rem] md:text-[9rem] font-light text-neutral-200 leading-[0.85] select-none" aria-hidden="true">@code</p>
+        <h1 class="font-cormorant text-3xl md:text-5xl font-light text-neutral-900 mt-2 mb-5">@heading</h1>
+        <p class="text-sm md:text-base text-neutral-400 font-light leading-relaxed mb-10 max-w-md mx-auto">@sub</p>
+
+        <div class="flex flex-col sm:flex-row gap-4 justify-center">
+            <a asp-controller="Home" asp-action="Index" class="btn-primary">Return Home</a>
+            <a asp-controller="Products" asp-action="Index" class="btn-outline">Explore the Collection</a>
+        </div>
+
+        @if (is404)
+        {
+            <div class="mt-14 pt-8 border-t border-neutral-200/70">
+                <p class="text-[11px] tracking-[0.3em] uppercase text-neutral-400 mb-4">Popular</p>
+                <div class="flex flex-wrap gap-2 justify-center">
+                    @foreach (var (label, slug) in new[] { ("Rings", "rings"), ("Necklaces", "necklaces"), ("Earrings", "earrings"), ("Bracelet & Bangle", "bracelets"), ("Watches", "bracelet-watches") })
+                    {
+                        <a asp-controller="Products" asp-action="Index" asp-route-category="@slug"
+                           class="text-xs tracking-widest uppercase border border-neutral-200 px-4 py-2 text-neutral-500 hover:border-neutral-900 hover:text-neutral-900 transition-colors">@label</a>
+                    }
+                </div>
+            </div>
+        }
     </div>
-</div>
+</section>
