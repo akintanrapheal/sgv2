@@ -50,16 +50,18 @@ public class BackofficeChrome
     public async Task<string> EmailAsync() => (await UserAsync())?.Email ?? "";
 
     /// <summary>The staff member's back-office home (used by the "Back" link so it never falls to the
-    /// storefront): Admins → Admin, inventory staff → Inventory, marketing staff → Marketing.</summary>
+    /// storefront). Uses the configured secret <see cref="Infrastructure.StaffPaths"/> prefix + that
+    /// backend's landing controller, so it resolves correctly even when the areas are hidden behind
+    /// unguessable paths in production.</summary>
     public async Task<string> HomeAsync()
     {
         var u = await UserAsync();
         if (u == null) return "/";
         var roles = await _users.GetRolesAsync(u);
-        if (roles.Contains("Admin")) return "/Admin";
-        if (roles.Contains("Inventory")) return "/Inventory";
-        if (roles.Contains("Social Media")) return "/Marketing";
-        return roles.Any() ? "/Admin" : "/";
+        if (roles.Contains("Admin")) return $"/{Infrastructure.StaffPaths.Admin}/Dashboard";
+        if (roles.Contains("Inventory")) return $"/{Infrastructure.StaffPaths.Inventory}/Overview";
+        if (roles.Contains("Social Media")) return $"/{Infrastructure.StaffPaths.Marketing}/Dashboard";
+        return roles.Any() ? $"/{Infrastructure.StaffPaths.Admin}/Dashboard" : "/";
     }
 
     public async Task<string> InitialsAsync()
