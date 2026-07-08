@@ -39,14 +39,21 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             var adminIds = (await _userManager.GetUsersInRoleAsync("Admin")).Select(u => u.Id).ToHashSet();
 
-            // Backend roles (everything except the implicit Customer role) for the dropdown
+            // Backend (staff) roles — everything except the implicit Customer role.
             var staffRoles = await _roleManager.Roles
                 .Where(r => r.Name != "Customer")
                 .OrderBy(r => r.Name == "Admin" ? 0 : 1).ThenBy(r => r.Name)
                 .Select(r => r.Name!)
                 .ToListAsync();
 
-            var query = _db.Users.AsQueryable();
+            // This screen lists STAFF & ADMINS only — customers live in the Customers tab. Build the
+            // set of everyone holding any backend role and restrict the whole page to them.
+            var staffIds = new HashSet<string>();
+            foreach (var r in staffRoles)
+                foreach (var u in await _userManager.GetUsersInRoleAsync(r))
+                    staffIds.Add(u.Id);
+
+            var query = _db.Users.Where(u => staffIds.Contains(u.Id));
 
             if (!string.IsNullOrWhiteSpace(q))
                 query = query.Where(u =>
@@ -54,23 +61,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     EF.Functions.ILike(u.Email!, $"%{q}%") ||
                     EF.Functions.ILike(u.PhoneNumber ?? "", $"%{q}%"));
 
-            // Role filter: resolve to user-id set
+            // Role filter narrows within staff (e.g. only "Sales" or only "Admin").
             if (!string.IsNullOrWhiteSpace(role))
             {
-                if (role == "Customer")
-                {
-                    // Users not in any backend (staff) role
-                    var staffIds = new HashSet<string>();
-                    foreach (var r in staffRoles)
-                        foreach (var u in await _userManager.GetUsersInRoleAsync(r))
-                            staffIds.Add(u.Id);
-                    query = query.Where(u => !staffIds.Contains(u.Id));
-                }
-                else
-                {
-                    var inRole = (await _userManager.GetUsersInRoleAsync(role)).Select(u => u.Id).ToHashSet();
-                    query = query.Where(u => inRole.Contains(u.Id));
-                }
+                var inRole = (await _userManager.GetUsersInRoleAsync(role)).Select(u => u.Id).ToHashSet();
+                query = query.Where(u => inRole.Contains(u.Id));
             }
 
             var now = DateTimeOffset.UtcNow;
@@ -130,15 +125,15 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 SearchQuery    = q,
                 RoleFilter     = role,
                 StatusFilter   = status,
-                AvailableRoles = new List<string> { "Customer" }.Concat(staffRoles).ToList(),
+                AvailableRoles = staffRoles,
                 CurrentPage    = page,
                 TotalPages     = (int)Math.Ceiling(total / (double)PageSize),
                 TotalCount     = total,
-                TotalUsers     = await _db.Users.CountAsync(),
+                TotalUsers     = staffIds.Count,
                 AdminCount     = adminIds.Count,
-                CustomerCount  = await _db.Users.CountAsync() - adminIds.Count,
-                LockedCount    = await _db.Users.CountAsync(u => u.LockoutEnd != null && u.LockoutEnd > now),
-                NewThisMonth   = await _db.Users.CountAsync(u => u.CreatedAt >= monthStart),
+                CustomerCount  = staffIds.Count - adminIds.Count,   // repurposed → non-admin staff ("Staff" card)
+                LockedCount    = await _db.Users.CountAsync(u => u.LockoutEnd != null && u.LockoutEnd > now && staffIds.Contains(u.Id)),
+                NewThisMonth   = await _db.Users.CountAsync(u => u.CreatedAt >= monthStart && staffIds.Contains(u.Id)),
             };
 
             return View(vm);
