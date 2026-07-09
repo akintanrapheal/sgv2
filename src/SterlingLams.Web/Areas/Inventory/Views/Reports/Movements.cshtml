@@ -81,6 +81,7 @@
                 <th class="text-left px-4 py-3 font-medium">Product</th>
                 <th class="text-left px-4 py-3 font-medium">Branch</th>
                 <th class="text-left px-4 py-3 font-medium">Type</th>
+                <th class="text-right px-4 py-3 font-medium">Before</th>
                 <th class="text-right px-4 py-3 font-medium">Change</th>
                 <th class="text-right px-4 py-3 font-medium">Balance</th>
                 <th class="text-left px-4 py-3 font-medium">Reason / ref</th>
@@ -88,7 +89,7 @@
             </tr>
         </thead>
         <tbody class="divide-y divide-neutral-50">
-            @if (!Model.Any()) { <tr><td colspan="8" class="px-4 py-12 text-center text-neutral-400">No movements for these filters.</td></tr> }
+            @if (!Model.Any()) { <tr><td colspan="9" class="px-4 py-12 text-center text-neutral-400">No movements for these filters.</td></tr> }
             @foreach (var m in Model)
             {
                 <tr class="hover:bg-neutral-50">
@@ -99,6 +100,7 @@
                     </td>
                     <td class="px-4 py-2.5 text-xs text-neutral-600">@m.Store</td>
                     <td class="px-4 py-2.5"><span class="text-[10px] px-2 py-0.5 rounded-full @Badge(m.Type)">@m.Type</span></td>
+                    <td class="px-4 py-2.5 text-right text-xs text-neutral-400">@(m.BalanceAfter - m.Change)</td>
                     <td class="px-4 py-2.5 text-right text-xs font-medium @(m.Change < 0 ? "text-red-600" : "text-emerald-700")">@(m.Change > 0 ? "+" : "")@m.Change</td>
                     <td class="px-4 py-2.5 text-right text-xs text-neutral-500">@m.BalanceAfter</td>
                     <td class="px-4 py-2.5 text-xs text-neutral-500">@m.Reference</td>
