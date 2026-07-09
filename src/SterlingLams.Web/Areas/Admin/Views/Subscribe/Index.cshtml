@@ -1,0 +1,211 @@
+@using SterlingLams.Web.Models.Domain
+@{
+    ViewData["Title"] = "Subscribe";
+    Layout = "_AdminLayout";
+    var stores = ViewBag.Stores as List<Store> ?? new();
+    var keys = ViewBag.Keys as Dictionary<int, string> ?? new();
+    bool subscribed = ViewBag.Subscribed ?? false;
+    string plan = ViewBag.Plan ?? "monthly";
+    string renewsOn = ViewBag.RenewsOn ?? "";
+    string trialEnds = ViewBag.TrialEnds ?? "";
+    decimal perMonthly = ViewBag.PerStoreMonthly ?? 50m;
+    decimal perYearly = ViewBag.PerStoreYearly ?? 500m;
+    decimal monthlyTotal = ViewBag.MonthlyTotal ?? 0m;
+    decimal yearlyTotal = ViewBag.YearlyTotal ?? 0m;
+
+    string Nice(string d) => DateTime.TryParse(d, out var dt) ? dt.ToString("d MMMM yyyy") : d;
+}
+@Html.AntiForgeryToken()
+
+<div class="max-w-4xl">
+    <div class="mb-6">
+        <h1 class="font-cormorant text-3xl font-light text-neutral-900">Store Sync &amp; API Connector</h1>
+        <p class="text-sm text-neutral-500 mt-1 max-w-2xl">The connector keeps inventory, prices and orders synchronised in real time across all your stores. Keep your subscription active to avoid synchronisation errors between branches.</p>
+    </div>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="mb-5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm px-4 py-3 rounded-sm">@TempData["Success"]</div>
+    }
+
+    @* ── Status card ─────────────────────────────────────────────────────── *@
+    @if (subscribed)
+    {
+        <div class="mb-6 flex items-start gap-3 bg-emerald-50 border border-emerald-200 rounded-sm px-5 py-4">
+            <svg class="w-6 h-6 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <div class="flex-1">
+                <p class="text-sm font-semibold text-emerald-900">Subscription active — all stores synchronising.</p>
+                <p class="text-xs text-emerald-700 mt-0.5">@(plan == "yearly" ? "Yearly" : "Monthly") plan · @stores.Count store@(stores.Count == 1 ? "" : "s") @(string.IsNullOrWhiteSpace(renewsOn) ? "" : $"· renews {Nice(renewsOn)}")</p>
+            </div>
+            <form asp-action="Cancel" method="post" onsubmit="return confirm('Cancel the connector subscription? Your stores will return to the trial connector.');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="text-xs text-neutral-500 hover:text-red-600 border border-neutral-200 rounded-sm px-3 py-1.5">Cancel</button>
+            </form>
+        </div>
+    }
+    else
+    {
+        <div class="mb-6 flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-sm px-5 py-4">
+            <svg class="w-6 h-6 flex-shrink-0" style="color:#d97706" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+            <div class="flex-1">
+                <p class="text-sm font-semibold text-amber-900">You're on the free trial connector.</p>
+                <p class="text-xs text-amber-700 mt-0.5">It expires on @Nice(trialEnds). Subscribe below to keep your stores in sync after that date.</p>
+            </div>
+        </div>
+    }
+
+    @* ── Stores + fake keys ─────────────────────────────────────────────── *@
+    <div class="bg-white border border-neutral-200 rounded-sm overflow-x-auto mb-6">
+        <table class="w-full text-sm min-w-[640px]">
+            <thead class="bg-neutral-50 text-neutral-500 text-xs">
+                <tr>
+                    <th class="text-left font-semibold px-4 py-3">Store</th>
+                    <th class="text-left font-semibold px-4 py-3">API key</th>
+                    <th class="text-left font-semibold px-4 py-3">Status</th>
+                    <th class="text-right font-semibold px-4 py-3">Fee</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-100">
+                @if (!stores.Any())
+                {
+                    <tr><td colspan="4" class="px-4 py-10 text-center text-neutral-400">No active stores yet — add a store to connect it.</td></tr>
+                }
+                @foreach (var s in stores)
+                {
+                    var key = keys.TryGetValue(s.Id, out var k) ? k : "";
+                    var masked = key.Length > 18 ? key.Substring(0, 18) + "••••••" : key;
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-3">
+                            <div class="text-neutral-800 font-medium">@s.Name.Replace("Sterlin Glams ", "")</div>
+                            <div class="text-xs text-neutral-400">@($"{s.City} {s.State}".Trim())</div>
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="flex items-center gap-2">
+                                <code class="text-xs text-neutral-600 font-mono">@masked</code>
+                                <button type="button" class="key-copy text-[11px] text-neutral-400 hover:text-neutral-700" data-key="@key" title="Copy key">Copy</button>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3">
+                            @if (subscribed)
+                            {
+                                <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Active</span>
+                            }
+                            else
+                            {
+                                <span class="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">Trial</span>
+                            }
+                        </td>
+                        <td class="px-4 py-3 text-right whitespace-nowrap text-neutral-600">$@perMonthly.ToString("0") <span class="text-xs text-neutral-400">/ mo</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @* ── Plan + checkout ────────────────────────────────────────────────── *@
+    @if (stores.Any() && !subscribed)
+    {
+        <form asp-action="Pay" method="post" class="bg-white border border-neutral-200 rounded-sm p-5">
+            @Html.AntiForgeryToken()
+            <h2 class="text-sm font-semibold text-neutral-800 mb-3">Choose a plan</h2>
+            <div class="grid sm:grid-cols-2 gap-3 mb-5">
+                <label class="plan-opt cursor-pointer border rounded-sm px-4 py-3 flex items-start gap-3 border-brand-500" data-plan="monthly">
+                    <input type="radio" name="plan" value="monthly" checked class="mt-1 accent-pink-600" />
+                    <div>
+                        <div class="text-sm font-medium text-neutral-800">Monthly</div>
+                        <div class="text-xs text-neutral-500">$@perMonthly.ToString("0") per store, billed monthly</div>
+                    </div>
+                </label>
+                <label class="plan-opt cursor-pointer border rounded-sm px-4 py-3 flex items-start gap-3 border-neutral-200" data-plan="yearly">
+                    <input type="radio" name="plan" value="yearly" class="mt-1 accent-pink-600" />
+                    <div>
+                        <div class="text-sm font-medium text-neutral-800">Yearly <span class="text-[10px] bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded-full ml-1">2 months free</span></div>
+                        <div class="text-xs text-neutral-500">$@perYearly.ToString("0") per store, billed yearly</div>
+                    </div>
+                </label>
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-4 border-t border-neutral-100 pt-4">
+                <div class="text-sm text-neutral-600">
+                    <span class="font-medium text-neutral-900">@stores.Count</span> store@(stores.Count == 1 ? "" : "s")
+                    &times; <span id="per-amt">$@perMonthly.ToString("0")</span>
+                    = <span class="font-semibold text-neutral-900" id="total-amt">$@monthlyTotal.ToString("0")</span><span id="period-lbl" class="text-neutral-400"> / month</span>
+                </div>
+                <button type="submit" class="px-5 py-2.5 text-sm bg-brand-500 text-white rounded-sm font-medium">
+                    Subscribe &mdash; <span id="btn-amt">$@monthlyTotal.ToString("0")</span><span id="btn-period">/month</span>
+                </button>
+            </div>
+            <p class="text-[11px] text-neutral-400 mt-3">Secure checkout. No card is charged in this environment — activation is instant.</p>
+        </form>
+    }
+
+    @* ── Backend notice (owner only) ────────────────────────────────────── *@
+    @{
+        bool noticeEnabled = ViewBag.NoticeEnabled ?? true;
+        string noticeMessage = ViewBag.NoticeMessage ?? "";
+        string noticeDate = DateTime.TryParse(trialEnds, out var _ndt) ? _ndt.ToString("yyyy-MM-dd") : trialEnds;
+    }
+    <details class="mt-6 bg-white border border-neutral-200 rounded-sm">
+        <summary class="cursor-pointer list-none px-5 py-4 flex items-center justify-between">
+            <span class="text-sm font-semibold text-neutral-800">Backend reminder banner</span>
+            <span class="text-xs text-neutral-400">Only you can edit this &middot; it shows to all staff</span>
+        </summary>
+        <form asp-action="SaveNotice" method="post" class="px-5 pb-5 border-t border-neutral-100 pt-4 space-y-4">
+            @Html.AntiForgeryToken()
+            <label class="flex items-center gap-2 text-sm text-neutral-700">
+                <input type="checkbox" name="enabled" value="true" @(noticeEnabled ? "checked" : "") class="accent-pink-600" />
+                Show the amber “trial connector expiring” reminder across the staff backend
+            </label>
+            <div class="grid sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Expiry date</label>
+                    <input type="date" name="date" value="@noticeDate" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white w-full" />
+                </div>
+            </div>
+            <div>
+                <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Custom message (optional)</label>
+                <textarea name="message" rows="2" placeholder="Leave blank to use the default wording about avoiding synchronisation errors between stores." class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white w-full">@noticeMessage</textarea>
+            </div>
+            <button type="submit" class="px-4 py-2 text-sm bg-neutral-900 text-white rounded-sm hover:bg-neutral-700">Save notice</button>
+        </form>
+    </details>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    // Copy fake API keys.
+    document.querySelectorAll('.key-copy').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var k = btn.getAttribute('data-key') || '';
+            navigator.clipboard.writeText(k).then(function () {
+                var t = btn.textContent; btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = t; }, 1200);
+            });
+        });
+    });
+
+    // Plan toggle → update totals + button.
+    var monthly = { per: @perMonthly.ToString("0"), total: @monthlyTotal.ToString("0"), period: ' / month', btnPeriod: '/month' };
+    var yearly  = { per: @perYearly.ToString("0"),  total: @yearlyTotal.ToString("0"),  period: ' / year',  btnPeriod: '/year'  };
+    function set(p) {
+        var d = p === 'yearly' ? yearly : monthly;
+        var perAmt = document.getElementById('per-amt'), totalAmt = document.getElementById('total-amt'),
+            periodLbl = document.getElementById('period-lbl'), btnAmt = document.getElementById('btn-amt'), btnPeriod = document.getElementById('btn-period');
+        if (!perAmt) return;
+        perAmt.textContent = '$' + d.per;
+        totalAmt.textContent = '$' + d.total;
+        periodLbl.textContent = d.period;
+        btnAmt.textContent = '$' + d.total;
+        btnPeriod.textContent = d.btnPeriod;
+        document.querySelectorAll('.plan-opt').forEach(function (el) {
+            var on = el.getAttribute('data-plan') === p;
+            el.classList.toggle('border-brand-500', on);
+            el.classList.toggle('border-neutral-200', !on);
+        });
+    }
+    document.querySelectorAll('input[name="plan"]').forEach(function (r) {
+        r.addEventListener('change', function () { set(r.value); });
+    });
+})();
+</script>
+}

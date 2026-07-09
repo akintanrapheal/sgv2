@@ -1,0 +1,67 @@
+@using SterlingLams.Web.Services
+@inject ISettingsService Settings
+@*
+    Amber "trial connector expiring" notice shown across the staff backend (Admin / Inventory /
+    Marketing). Driven by settings so it can be updated or switched off after renewal without a code
+    change: general.trial_notice_enabled / _date / _message. Dismissible for the session (reappears
+    on the next sign-in) so the reminder isn't lost for good.
+*@
+@{
+    // Once the (mock) API-connector subscription is active, drop the trial warning entirely.
+    var subscribed = await Settings.GetBoolAsync("subscription.active", false);
+    var trialEnabled = !subscribed && await Settings.GetBoolAsync("general.trial_notice_enabled", true);
+    string? trialMsg = null;
+    if (trialEnabled)
+    {
+        var raw = await Settings.GetAsync("general.trial_notice_date", "2026-07-30");
+        var custom = await Settings.GetAsync("general.trial_notice_message", "");
+        string dateStr;
+        var expired = false;
+        if (DateTime.TryParse(raw, out var dt))
+        {
+            dateStr = dt.ToString("d MMMM yyyy");
+            expired = dt.Date < DateTime.UtcNow.Date;
+        }
+        else { dateStr = raw; }
+
+        if (!string.IsNullOrWhiteSpace(custom))
+            trialMsg = custom;
+        else if (expired)
+            trialMsg = $"Your trial API connector expired on {dateStr}. Renew it now to restore synchronisation between your stores.";
+        else
+            trialMsg = $"Your trial API connector expires on {dateStr}. Renew it before then to avoid synchronisation errors between your stores.";
+    }
+}
+@if (trialEnabled && trialMsg != null)
+{
+    <div id="trial-notice" class="mb-5 flex items-start gap-3 bg-amber-50 border border-amber-200 text-amber-800 text-sm px-4 py-3 rounded-sm">
+        <svg class="w-5 h-5 flex-shrink-0 mt-0.5" style="color:#d97706" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+        <p class="flex-1">
+            <span class="font-semibold">Action needed —</span> @trialMsg
+            @if (User.IsInRole("Admin"))
+            {
+                <a href="/@SterlingLams.Web.Infrastructure.StaffPaths.Admin/Subscribe" class="font-semibold underline whitespace-nowrap ml-1">Renew now &rarr;</a>
+            }
+        </p>
+        <button type="button" id="trial-notice-x" class="text-amber-700 flex-shrink-0" aria-label="Dismiss">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    </div>
+    <script>
+    (function () {
+        var el = document.getElementById('trial-notice');
+        if (!el) return;
+        // Hide via inline style (not a purgeable class). Dismissal lasts the session only.
+        try { if (sessionStorage.getItem('trialNoticeDismissed') === '1') el.style.display = 'none'; } catch (e) {}
+        var x = document.getElementById('trial-notice-x');
+        if (x) x.addEventListener('click', function () {
+            el.style.display = 'none';
+            try { sessionStorage.setItem('trialNoticeDismissed', '1'); } catch (e) {}
+        });
+    }());
+    </script>
+}

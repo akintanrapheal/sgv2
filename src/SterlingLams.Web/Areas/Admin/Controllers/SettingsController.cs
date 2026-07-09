@@ -35,9 +35,10 @@ public class SettingsController : AdminBaseController
         // Customizer — hide both groups here so each has a single home.
         // Payment keys + SMTP credentials live in the full-admin-only Integrations screen — never
         // expose them here (any staff with the Settings section could otherwise read/edit them).
+        // Billing / API-connector settings are owner-only and managed on the full-admin Subscribe page.
         var all = (await _settings.GetAllAsync())
             .Where(s => s.Group != "POS / Pos" && s.Group != "Emails"
-                     && s.Group != "Payments" && s.Group != "SMTP").ToList();
+                     && s.Group != "Payments" && s.Group != "SMTP" && s.Group != "Billing").ToList();
         return View(all);
     }
 
