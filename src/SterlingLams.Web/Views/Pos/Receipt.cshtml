@@ -51,6 +51,7 @@
         .row span:last-child { text-align:right; }
         table { width:100%; border-collapse:collapse; }
         th { font-size:11px; text-align:left; padding:0 0 3px; border-bottom:1px solid #000; }
+        .tender th { border-bottom:none; padding-bottom:0; }
         td { padding:3px 0; vertical-align:top; font-size:11px; }
         .num { text-align:right; white-space:nowrap; padding-left:10px; }
         .qty { text-align:center; white-space:nowrap; padding-left:10px; }
@@ -128,7 +129,7 @@
         }
         <hr />
 
-        <table>
+        <table class="tender">
             <thead><tr><th>PAYMENT BY TENDER</th><th class="num">AMOUNT</th></tr></thead>
             <tbody>
                 @foreach (var pp in payParts)
@@ -141,9 +142,6 @@
 
         <table>
             <thead><tr><th>TAX RATE</th><th class="qty">PERCENTAGE</th><th class="num">TAX</th></tr></thead>
-            <tbody>
-                <tr><td>Inclusive</td><td class="qty">0%</td><td class="num">@N(0)</td></tr>
-            </tbody>
         </table>
         <hr />
 
@@ -152,7 +150,7 @@
         {
             <p class="foot b" style="white-space:pre-line;">@receiptFooter</p>
         }
-        <svg id="barcode" style="display:block;margin:8px auto 0;max-width:100%;height:auto;"></svg>
+        <div class="c" style="margin-top:8px;"><svg id="barcode" style="display:inline-block;max-width:100%;height:auto;"></svg></div>
     </div>
 
     <div class="btns"><button onclick="window.print()">Print</button><button id="email-btn" type="button">Email</button><a href="/Pos">Next sale</a></div>
