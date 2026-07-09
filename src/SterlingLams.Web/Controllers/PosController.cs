@@ -1575,7 +1575,7 @@ public class PosController : Controller
     public async Task<IActionResult> Receipt(int id)
     {
         var order = await _db.Orders.Include(o => o.Items).Include(o => o.PickupStore)
-            .Include(o => o.Customer).Include(o => o.User)
+            .Include(o => o.Customer).Include(o => o.User).Include(o => o.Register)
             .FirstOrDefaultAsync(o => o.Id == id && o.Channel == OrderChannel.Pos);
         if (order == null) return NotFound();
         // Split-payment breakdown for the receipt (empty for single-tender sales).

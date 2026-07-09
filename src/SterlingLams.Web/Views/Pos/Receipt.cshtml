@@ -3,11 +3,32 @@
 @inject ISettingsService Settings
 @{
     Layout = null;
-    var siteName = await Settings.GetAsync("general.site_name", "Sterlin Glams");
+    var siteName     = await Settings.GetAsync("general.site_name", "Sterlin Glams");
     var receiptHeader = await Settings.GetAsync("pos.receipt_header", "");
-    var receiptFooter = await Settings.GetAsync("pos.receipt_footer", "Thank you for shopping with us!");
-    var logoUrl = await Settings.GetAsync("general.logo_url", "");
+    var receiptFooter = await Settings.GetAsync("pos.receipt_footer", "NO EXCHANGE OF GOODS, NO REFUND OF CASH");
+    var contactEmail  = await Settings.GetAsync("general.contact_email", "");
+    var contactPhone  = await Settings.GetAsync("general.contact_phone", "");
+    var logoUrl       = await Settings.GetAsync("general.logo_url", "");
     if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = "/images/sg-logo.png";
+
+    var store = Model.PickupStore;
+    // Break a comma-separated store address into one line per part.
+    var addressLines = (store?.Address ?? "")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    var phone = string.IsNullOrWhiteSpace(store?.Phone) ? contactPhone : store!.Phone;
+    // Derive a display website from the contact email domain (info@sterlinglams.com → www.sterlinglams.com).
+    var website = "";
+    if (contactEmail.Contains('@')) website = "www." + contactEmail.Split('@')[1];
+
+    // "Change the till there to Pos" — the register/device name shows "Till"; display it as "Pos".
+    var deviceName = (Model.Register?.Name ?? "POS").Replace("Till", "Pos").Replace("till", "pos");
+
+    var payParts = ViewBag.Payments as List<KeyValuePair<string, decimal>> ?? new();
+    if (payParts.Count == 0)
+        payParts.Add(new(string.IsNullOrWhiteSpace(Model.PaymentProvider) ? "CASH" : Model.PaymentProvider, Model.Total));
+
+    var totalQty = Model.Items.Sum(i => i.Quantity);
+    string N(decimal v) => "₦" + v.ToString("0.00"); // receipt money: 2 dp, no thousands separator
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -16,14 +37,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Receipt @Model.OrderNumber</title>
     <style>
-        body { font-family: 'Courier New', monospace; color:#111; margin:0; padding:16px; }
+        * { box-sizing: border-box; }
+        body { font-family: Arial, Helvetica, sans-serif; color:#000; margin:0; padding:16px; font-size:12px; line-height:1.35; }
         .r { width:300px; margin:0 auto; }
-        h1 { font-size:16px; text-align:center; margin:0 0 2px; letter-spacing:2px; }
-        .c { text-align:center; } .muted { color:#555; }
-        .row { display:flex; justify-content:space-between; font-size:12px; margin:2px 0; }
-        hr { border:none; border-top:1px dashed #999; margin:10px 0; }
-        table { width:100%; border-collapse:collapse; font-size:12px; } td { padding:2px 0; }
-        .right { text-align:right; } .total { font-size:14px; font-weight:bold; }
+        .c { text-align:center; }
+        .b { font-weight:bold; }
+        .muted { color:#333; }
+        .logo { display:block; margin:0 auto 4px; max-width:190px; max-height:70px; object-fit:contain; }
+        .biz { text-align:center; font-size:15px; font-weight:bold; margin:0 0 4px; }
+        .addr { text-align:center; font-size:11px; margin:0; }
+        hr { border:none; border-top:1px solid #000; margin:8px 0; }
+        .row { display:flex; justify-content:space-between; gap:8px; margin:2px 0; }
+        .row span:last-child { text-align:right; }
+        table { width:100%; border-collapse:collapse; }
+        th { font-size:11px; text-align:left; padding:0 0 3px; border-bottom:1px solid #000; }
+        td { padding:3px 0; vertical-align:top; font-size:11px; }
+        .num { text-align:right; white-space:nowrap; padding-left:10px; }
+        .qty { text-align:center; white-space:nowrap; padding-left:10px; }
+        .tot-line { font-size:12px; }
+        .grand { font-size:18px; font-weight:bold; }
+        .foot { text-align:center; font-size:11px; margin:3px 0; }
         .btns { width:300px; margin:16px auto 0; display:flex; gap:8px; }
         .btns button, .btns a { flex:1; padding:8px; font-size:12px; text-align:center; border:1px solid #ccc; background:#fff; cursor:pointer; text-decoration:none; color:#111; border-radius:3px; }
         @@media print { .btns { display:none; } body { padding:0; } }
@@ -31,51 +64,97 @@
 </head>
 <body onload="window.print()">
     <div class="r">
-        <img src="@logoUrl" alt="" style="max-width:200px;max-height:80px;display:block;margin:0 auto 6px;object-fit:contain;" onerror="this.style.display='none'" />
-        <h1>@siteName.ToUpper()</h1>
-        <p class="c muted" style="font-size:12px;margin:0 0 8px;">@(Model.PickupStore?.Name ?? "Store")</p>
+        <img src="@logoUrl" alt="" class="logo" onerror="this.style.display='none'" />
+        <p class="biz">@siteName Ltd</p>
+        <div class="addr">
+            @if (store != null) { <div>@store.Name</div> }
+            @foreach (var ln in addressLines) { <div>@ln</div> }
+            @if (store != null && (!string.IsNullOrWhiteSpace(store.City) || !string.IsNullOrWhiteSpace(store.State)))
+            {
+                <div>@($"{store.City} {store.State}".Trim())</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(phone)) { <div>Tel : @phone</div> }
+            @if (!string.IsNullOrWhiteSpace(website) || !string.IsNullOrWhiteSpace(contactEmail))
+            {
+                <div>@website @(string.IsNullOrWhiteSpace(website) ? "" : "|") @contactEmail</div>
+            }
+        </div>
         @if (!string.IsNullOrWhiteSpace(receiptHeader))
         {
-            <p class="c muted" style="font-size:11px;margin:0 0 8px;">@receiptHeader</p>
+            <p class="c muted" style="font-size:11px;margin:6px 0 0;white-space:pre-line;">@receiptHeader</p>
         }
         <hr />
-        <div class="row"><span>Receipt</span><span>@Model.OrderNumber</span></div>
-        <div class="row"><span>Date</span><span>@Model.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span></div>
-        <div class="row"><span>Payment</span><span>@Model.PaymentProvider</span></div>
-        @{ var payParts = ViewBag.Payments as List<KeyValuePair<string, decimal>> ?? new(); }
-        @if (payParts.Count > 1)
-        {
-            foreach (var pp in payParts)
-            {
-                <div class="row"><span class="muted" style="padding-left:10px;">· @pp.Key</span><span class="muted">₦@pp.Value.ToString("N0")</span></div>
-            }
-        }
-        @if (Model.User != null && !string.IsNullOrWhiteSpace(Model.User.FullName))
-        {
-            <div class="row"><span>Served by</span><span>@Model.User.FullName</span></div>
-        }
+
+        <div class="row"><span class="b">Receipt of Purchase (inc Tax)</span><span>@Model.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</span></div>
+        <div class="row"><span>Staff</span><span>@(Model.User?.FullName ?? "—")</span></div>
+        <div class="row"><span>Device</span><span>@deviceName</span></div>
         @if (Model.Customer != null)
         {
-            <div class="row"><span>Customer</span><span>@Model.Customer.FullName@(string.IsNullOrEmpty(Model.Customer.PhoneNumber) ? "" : $" · {Model.Customer.PhoneNumber}")</span></div>
+            <div class="row"><span>Customer</span><span>@Model.Customer.FullName@(string.IsNullOrWhiteSpace(Model.Customer.PhoneNumber) ? "" : $" / {Model.Customer.PhoneNumber}")</span></div>
         }
         <hr />
+
         <table>
-            @foreach (var item in Model.Items)
-            {
-                <tr><td>@item.Quantity× @item.ProductName@(item.VariantName != null ? $" ({item.VariantName})" : "")</td><td class="right">₦@item.LineTotal.ToString("N0")</td></tr>
-            }
+            <thead>
+                <tr><th>PRODUCT</th><th class="num">PRICE</th><th class="qty">QTY</th><th class="num">TOTAL</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model.Items)
+                {
+                    var desc = item.ProductName + (item.VariantName != null ? " " + item.VariantName : "");
+                    var label = string.IsNullOrWhiteSpace(item.ProductSku) ? desc : $"{item.ProductSku} ({desc})";
+                    <tr>
+                        <td>@label</td>
+                        <td class="num">@N(item.UnitPrice)</td>
+                        <td class="qty">@item.Quantity</td>
+                        <td class="num">@N(item.LineTotal)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <div class="row" style="margin-top:4px;"><span class="b">Total Qty</span><span class="b">@totalQty</span></div>
+        <hr />
+
+        <div class="row tot-line"><span>Sub Total</span><span>@N(Model.Subtotal)</span></div>
+        @if (Model.DiscountAmount > 0)
+        {
+            <div class="row tot-line"><span>Discount</span><span>-@N(Model.DiscountAmount)</span></div>
+        }
+        <div class="row grand"><span>Total</span><span>@N(Model.Total)</span></div>
+        @if (Model.AmountTendered.HasValue && (Model.ChangeGiven ?? 0) > 0)
+        {
+            <div class="row tot-line"><span>Tendered</span><span>@N(Model.AmountTendered.Value)</span></div>
+            <div class="row tot-line"><span>Change</span><span>@N(Model.ChangeGiven ?? 0)</span></div>
+        }
+        <hr />
+
+        <table>
+            <thead><tr><th>PAYMENT BY TENDER</th><th class="num">AMOUNT</th></tr></thead>
+            <tbody>
+                @foreach (var pp in payParts)
+                {
+                    <tr><td>@pp.Key.ToUpper()</td><td class="num">@N(pp.Value)</td></tr>
+                }
+            </tbody>
         </table>
         <hr />
-        <div class="row total"><span>TOTAL</span><span>₦@Model.Total.ToString("N0")</span></div>
-        @if (Model.AmountTendered.HasValue)
-        {
-            <div class="row"><span>Tendered</span><span>₦@Model.AmountTendered.Value.ToString("N0")</span></div>
-            <div class="row"><span>Change</span><span>₦@((Model.ChangeGiven ?? 0).ToString("N0"))</span></div>
-        }
+
+        <table>
+            <thead><tr><th>TAX RATE</th><th class="qty">PERCENTAGE</th><th class="num">TAX</th></tr></thead>
+            <tbody>
+                <tr><td>Inclusive</td><td class="qty">0%</td><td class="num">@N(0)</td></tr>
+            </tbody>
+        </table>
         <hr />
-        <p class="c muted" style="font-size:11px;white-space:pre-line;">@receiptFooter</p>
+
+        <p class="foot">Thanks for shopping with @siteName</p>
+        @if (!string.IsNullOrWhiteSpace(receiptFooter))
+        {
+            <p class="foot b" style="white-space:pre-line;">@receiptFooter</p>
+        }
         <svg id="barcode" style="display:block;margin:8px auto 0;max-width:100%;height:auto;"></svg>
     </div>
+
     <div class="btns"><button onclick="window.print()">Print</button><button id="email-btn" type="button">Email</button><a href="/Pos">Next sale</a></div>
     @Html.AntiForgeryToken()
     <script src="/js/jsbarcode.min.js"></script>

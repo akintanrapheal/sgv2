@@ -114,7 +114,7 @@ public static class SettingsSeedData
 
         // ── POS / Till ────────────────────────────────────────────────────────
         new() { Key = "pos.receipt_header", Group = "POS / Till", Label = "Receipt Header Line", Type = "text",     Value = "",                                  Description = "Extra line printed at the top of POS receipts (e.g. a slogan or address). Blank = none.", SortOrder = 1 },
-        new() { Key = "pos.receipt_footer", Group = "POS / Till", Label = "Receipt Footer Line", Type = "textarea", Value = "Thank you for shopping with us!",    Description = "Message printed at the bottom of POS receipts.", SortOrder = 2 },
+        new() { Key = "pos.receipt_footer", Group = "POS / Till", Label = "Receipt Footer Line", Type = "textarea", Value = "NO EXCHANGE OF GOODS, NO REFUND OF CASH",    Description = "Policy line printed below \"Thanks for shopping with …\" at the bottom of POS receipts.", SortOrder = 2 },
         new() { Key = "pos.approval_refunds",           Group = "POS / Till", Label = "Require manager approval for refunds",  Type = "boolean", Value = "false", Description = "When on, a refund needs a manager PIN before it's processed.", SortOrder = 3 },
         new() { Key = "pos.approval_discounts",         Group = "POS / Till", Label = "Require manager approval for discounts", Type = "boolean", Value = "false", Description = "When on, a sale whose line discounts meet the threshold below needs a manager PIN at payment.", SortOrder = 4 },
         new() { Key = "pos.approval_discount_min_pct",  Group = "POS / Till", Label = "Discount approval threshold (%)",       Type = "number",  Value = "0",     Description = "Line discounts at or above this % of the sale need approval. 0 = every discount.", SortOrder = 5 },
