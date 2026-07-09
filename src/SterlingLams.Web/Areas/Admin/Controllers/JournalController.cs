@@ -13,7 +13,12 @@ public class JournalController : AdminBaseController
     protected override string? Section => "Journal";
 
     private readonly ApplicationDbContext _db;
-    public JournalController(ApplicationDbContext db) => _db = db;
+    private readonly JournalPostGenerator _gen;
+    public JournalController(ApplicationDbContext db, JournalPostGenerator gen)
+    {
+        _db = db;
+        _gen = gen;
+    }
 
     public async Task<IActionResult> Index(string filter = "all")
     {
@@ -36,6 +41,93 @@ public class JournalController : AdminBaseController
     {
         ViewData["Title"] = "New Journal Post";
         return View("Edit", new BlogPost());
+    }
+
+    // ─── Auto-generate a post from real products (preview → create draft) ─────────
+    // Template-based and deterministic per seed, so the preview and the created draft match exactly.
+    // Runs against whatever database the app is on, so it works on the live site (like the SEO tool).
+
+    private async Task<(int Seed, List<JournalPostGenerator.Featured> Featured)> BuildFeaturedAsync(int? seed)
+    {
+        var actualSeed = seed ?? Random.Shared.Next(1, int.MaxValue);
+        var candidates = await _db.Products
+            .Where(p => p.IsActive && p.Images.Any())
+            .Select(p => new
+            {
+                p.Name,
+                Price = p.EffectivePrice,
+                Cover = p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault(),
+                Category = p.Category.Name
+            })
+            .ToListAsync();
+
+        // Deterministic spread of up to 6 products for this seed (same seed ⇒ same picks).
+        var rng = new Random(actualSeed);
+        var featured = candidates
+            .OrderBy(_ => rng.Next())
+            .Take(6)
+            .Select(p => new JournalPostGenerator.Featured(p.Name, p.Price, p.Cover, p.Category))
+            .ToList();
+        return (actualSeed, featured);
+    }
+
+    /// <summary>Preview a generated post (no DB writes) for the review step.</summary>
+    [HttpGet]
+    public async Task<IActionResult> Generate(string? theme, int? seed)
+    {
+        var (actualSeed, featured) = await BuildFeaturedAsync(seed);
+        if (featured.Count == 0)
+            return Json(new { ok = false, error = "Add at least one active product with an image first." });
+
+        var r = _gen.Generate(actualSeed, featured, theme);
+        return Json(new
+        {
+            ok = true,
+            seed = actualSeed,
+            title = r.Title,
+            excerpt = r.Excerpt,
+            coverImageUrl = r.CoverImageUrl,
+            bodyHtml = ProductHtml.Sanitize(r.BodyHtml),
+            featured = featured.Select(f => f.Name)
+        });
+    }
+
+    /// <summary>Create the generated post (draft by default) and open it in the editor to review.</summary>
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> GenerateCreate(string? theme, int? seed, bool publish = false)
+    {
+        var (actualSeed, featured) = await BuildFeaturedAsync(seed);
+        if (featured.Count == 0)
+        {
+            TempData["Error"] = "Add at least one active product with an image before generating a post.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var r = _gen.Generate(actualSeed, featured, theme);
+        var now = DateTime.UtcNow;
+        var post = new BlogPost
+        {
+            Title = r.Title,
+            Slug = await UniqueSlugAsync(r.Slug, 0),
+            Excerpt = r.Excerpt,
+            Body = ProductHtml.Sanitize(r.BodyHtml),
+            CoverImageUrl = r.CoverImageUrl,
+            AuthorName = r.AuthorName,
+            MetaTitle = r.MetaTitle,
+            MetaDescription = r.MetaDescription,
+            IsPublished = publish,
+            PublishedAt = publish ? now : null,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        _db.BlogPosts.Add(post);
+        await _db.SaveChangesAsync();
+        await LogAsync("Create", "BlogPost", post.Id.ToString(),
+            $"Auto-generated journal post '{post.Title}'{(publish ? " (published)" : " (draft)")}");
+        TempData["Success"] = publish
+            ? $"Generated and published '{post.Title}'."
+            : $"Draft '{post.Title}' generated — review and publish when you're ready.";
+        return RedirectToAction(nameof(Edit), new { id = post.Id });
     }
 
     public async Task<IActionResult> Edit(int id)
