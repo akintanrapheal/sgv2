@@ -43,7 +43,11 @@
                 // Owner-only entries (Roles, Integrations, SEO) show to full admins; everything else
                 // shows if the role has been granted that section.
                 bool Visible(SterlingLams.Web.Areas.Admin.AdminSection s)
-                    => s.OwnerOnly ? isFullAdmin : allowedSections.Contains(s.Key);
+                {
+                    // Subscribe (billing) is Admin + Developer only — hidden from Owner.
+                    if (s.Key == "Subscribe") return SterlingLams.Web.Areas.Admin.AdminSections.IsSystemManager(User);
+                    return s.OwnerOnly ? isFullAdmin : allowedSections.Contains(s.Key);
+                }
             }
 
             @foreach (var group in SterlingLams.Web.Areas.Admin.AdminSections.GroupOrder)

@@ -1,6 +1,8 @@
 @model SterlingLams.Web.Areas.Admin.ViewModels.AdminRoleListViewModel
 @{
     ViewData["Title"] = "Roles & Permissions";
+    // Owner is view-only here; only Admin + Developer can create/edit/delete roles.
+    var canManage = SterlingLams.Web.Areas.Admin.AdminSections.IsSystemManager(User);
 }
 
 <div class="flex items-center justify-between mb-6">
@@ -8,10 +10,13 @@
         Roles control which sections of the admin a staff member can access. Assign roles to users
         on the <a asp-area="Admin" asp-controller="Users" asp-action="Index" class="underline hover:text-neutral-700">Users</a> page.
     </p>
-    <a asp-area="Admin" asp-controller="Roles" asp-action="Create"
-       class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors whitespace-nowrap">
-        + New Role
-    </a>
+    @if (canManage)
+    {
+        <a asp-area="Admin" asp-controller="Roles" asp-action="Create"
+           class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors whitespace-nowrap">
+            + New Role
+        </a>
+    }
 </div>
 
 <div class="space-y-3">
@@ -31,7 +36,7 @@
                     }
                     <span class="text-[10px] text-neutral-400">@role.UserCount user@(role.UserCount == 1 ? "" : "s")</span>
                 </div>
-                @if (!role.IsSystem)
+                @if (!role.IsSystem && canManage)
                 {
                     <div class="flex items-center gap-3">
                         <a asp-area="Admin" asp-controller="Roles" asp-action="Edit" asp-route-id="@role.Name"

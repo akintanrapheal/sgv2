@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Areas.Admin.ViewModels;
 using SterlingLams.Web.Data;
@@ -16,6 +17,19 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
     {
         // Section == null → full administrators only. User & role management is owner-only.
         protected override string? Section => null;
+
+        // Owner is view-only here: only Admin + Developer may create/edit users or change roles.
+        public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+        {
+            var m = context.HttpContext.Request.Method;
+            var isWrite = m == "POST" || m == "PUT" || m == "DELETE" || m == "PATCH";
+            if (isWrite && !AdminSections.IsSystemManager(User))
+            {
+                context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
+                return;
+            }
+            await base.OnActionExecutionAsync(context, next);
+        }
 
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;

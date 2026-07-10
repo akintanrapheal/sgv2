@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.Domain;
@@ -10,9 +11,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers;
 
 /// <summary>
 /// Mock "API connector" subscription / billing page. Presents each store with a (deterministic,
-/// fake) API key and a per-store fee, and lets the owner "subscribe" monthly or yearly. No real
-/// payment is taken and no schema is touched — state lives entirely in site settings, so it can
-/// never break anything. Full administrators only (Section == null).
+/// fake) API key and a per-store fee, and lets you "subscribe" monthly or yearly. No real payment is
+/// taken and no schema is touched — state lives entirely in site settings, so it can never break
+/// anything. Restricted to Admin and Developer only (Owner, though full-access, is excluded).
 /// </summary>
 public class SubscribeController : AdminBaseController
 {
@@ -23,6 +24,17 @@ public class SubscribeController : AdminBaseController
     {
         _db = db;
         _settings = settings;
+    }
+
+    // Billing is limited to Admin + Developer — Owner is excluded even though it's a full-access role.
+    public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    {
+        if (!AdminSections.IsSystemManager(User))
+        {
+            context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
+            return;
+        }
+        await base.OnActionExecutionAsync(context, next);
     }
 
     /// <summary>Per-store price (USD). Yearly gives two months free.</summary>

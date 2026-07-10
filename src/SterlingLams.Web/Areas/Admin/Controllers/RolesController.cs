@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Areas.Admin.ViewModels;
 using SterlingLams.Web.Data;
@@ -13,6 +14,19 @@ public class RolesController : AdminBaseController
 {
     // Section == null → only full Administrators can manage roles (privilege-escalation guard)
     protected override string? Section => null;
+
+    // Owner is view-only here: only Admin + Developer may create/edit/delete roles.
+    public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    {
+        var m = context.HttpContext.Request.Method;
+        var isWrite = m == "POST" || m == "PUT" || m == "DELETE" || m == "PATCH";
+        if (isWrite && !AdminSections.IsSystemManager(User))
+        {
+            context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
+            return;
+        }
+        await base.OnActionExecutionAsync(context, next);
+    }
 
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly UserManager<ApplicationUser> _userManager;

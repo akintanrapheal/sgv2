@@ -73,6 +73,10 @@ public static class AdminSections
         return false;
     }
 
+    /// <summary>Admin + Developer — the roles that manage billing, users and roles. Owner is a view-only
+    /// full-access role, so it is deliberately excluded from these management actions.</summary>
+    public static bool IsSystemManager(ClaimsPrincipal user) => user.IsInRole("Admin") || user.IsInRole("Developer");
+
     /// <summary>Roles that ship by default (besides Admin and Customer).</summary>
     public static readonly string[] DefaultStaffRoles = { "Owner", "Developer", "Operations", "Sales", "Inventory", "Social Media" };
 

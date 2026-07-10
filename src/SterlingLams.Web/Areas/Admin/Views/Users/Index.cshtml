@@ -4,6 +4,8 @@
     bool hasFilters = !string.IsNullOrEmpty(Model.SearchQuery) ||
                       !string.IsNullOrEmpty(Model.RoleFilter) ||
                       !string.IsNullOrEmpty(Model.StatusFilter);
+    // Owner is view-only here; only Admin + Developer can create users / change roles.
+    var canManage = SterlingLams.Web.Areas.Admin.AdminSections.IsSystemManager(User);
 }
 
 <!-- Stat cards -->
@@ -33,10 +35,13 @@
        class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:border-neutral-500 transition-colors">
         ↓ Export CSV
     </a>
-    <a asp-area="Admin" asp-controller="Users" asp-action="Create"
-       class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
-        + New User
-    </a>
+    @if (canManage)
+    {
+        <a asp-area="Admin" asp-controller="Users" asp-action="Create"
+           class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+            + New User
+        </a>
+    }
 </div>
 
 <!-- Filters -->
@@ -130,9 +135,9 @@
                     </td>
                     <td class="px-4 py-3 text-xs text-neutral-500">@(string.IsNullOrEmpty(u.Phone) ? "—" : u.Phone)</td>
                     <td class="px-4 py-3">
-                        @if (isSelf || u.IsAdmin)
+                        @if (isSelf || u.IsAdmin || !canManage)
                         {
-                            @* Own account and full administrators aren't editable from this list. *@
+                            @* Own account, full administrators, and view-only (Owner) see a read-only badge. *@
                             <span class="text-[10px] bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full">@u.RoleName</span>
                         }
                         else
@@ -173,7 +178,7 @@
                         @(u.LastLoginAt.HasValue ? u.LastLoginAt.Value.ToLocalTime().ToString("dd MMM yy") : "Never")
                     </td>
                     <td class="px-6 py-3 text-right">
-                        @if (!isSelf)
+                        @if (!isSelf && canManage)
                         {
                             <div class="flex items-center justify-end gap-3 whitespace-nowrap">
                                 <button type="button" data-no-loading="1"
