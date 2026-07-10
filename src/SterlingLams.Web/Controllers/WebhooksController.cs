@@ -89,7 +89,7 @@ public class WebhooksController : ControllerBase
             if (ok && paid)
             {
                 var renews = await _subPay.ActivateAsync(plan ?? "monthly");
-                try { await _audit.LogAsync("Update", "Subscription", null, $"Subscription activated via webhook ({reference}); renews {renews}"); } catch { }
+                try { await _audit.LogAsync("Update", "Subscription", null, $"Subscription activated via webhook ({reference}); renews {renews}", performedBy: "API System"); } catch { }
                 _logger.LogInformation("Subscription activated via webhook: {Reference}", reference);
             }
         }

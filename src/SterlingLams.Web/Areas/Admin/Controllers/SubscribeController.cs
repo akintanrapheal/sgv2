@@ -146,7 +146,7 @@ public class SubscribeController : AdminBaseController
         }
 
         var renews = await _pay.ActivateAsync(plan ?? "monthly");
-        await LogAsync("Update", "Subscription", null, $"Paystack payment {reference} verified — active, renews {renews}");
+        await LogAsync("Update", "Subscription", null, $"Paystack payment {reference} verified — active, renews {renews}", performedBy: "API System");
         TempData["Success"] = $"Payment received — your API connector is active until {renews}.";
         return RedirectToAction(nameof(Index));
     }
@@ -167,7 +167,7 @@ public class SubscribeController : AdminBaseController
             updates["subscription.paystack_secret"] = _secrets.Protect(paystackSecret.Trim());
 
         await _settings.SaveManyAsync(updates);
-        await LogAsync("Update", "Subscription", null, "Updated subscription billing settings");
+        await LogAsync("Update", "Subscription", null, "Updated subscription billing settings", performedBy: "API System");
         TempData["Success"] = "Billing settings saved.";
         return RedirectToAction(nameof(Index));
     }
@@ -185,7 +185,7 @@ public class SubscribeController : AdminBaseController
             ["general.trial_notice_date"] = d,
             ["general.trial_notice_message"] = (message ?? "").Trim(),
         });
-        await LogAsync("Update", "Subscription", null, $"Updated trial connector notice (enabled={enabled}, expires {d})");
+        await LogAsync("Update", "Subscription", null, $"Updated trial connector notice (enabled={enabled}, expires {d})", performedBy: "API System");
         TempData["Success"] = "Notice updated.";
         return RedirectToAction(nameof(Index));
     }
@@ -199,7 +199,7 @@ public class SubscribeController : AdminBaseController
             ["subscription.active"] = "false",
             ["general.trial_notice_enabled"] = "true", // bring the trial warning back
         });
-        await LogAsync("Update", "Subscription", null, "Cancelled API connector subscription");
+        await LogAsync("Update", "Subscription", null, "Cancelled API connector subscription", performedBy: "API System");
         TempData["Success"] = "Subscription cancelled — your stores are back on the trial connector.";
         return RedirectToAction(nameof(Index));
     }

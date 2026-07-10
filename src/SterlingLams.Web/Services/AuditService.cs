@@ -10,8 +10,9 @@ public interface IAuditService
 {
     /// <summary>Records an admin action with the current user, IP, and timestamp. Pass
     /// <paramref name="changes"/> (e.g. built with <see cref="AuditChanges"/>) to capture a
-    /// before/after snapshot for Update actions.</summary>
-    Task LogAsync(string action, string entityType, string? entityId, string description, string? changes = null);
+    /// before/after snapshot for Update actions. Pass <paramref name="performedBy"/> to attribute the
+    /// entry to something other than the signed-in user (e.g. "API System" for automated actions).</summary>
+    Task LogAsync(string action, string entityType, string? entityId, string description, string? changes = null, string? performedBy = null);
 }
 
 /// <summary>Builds a compact "Field: old → new" before/after snapshot, skipping unchanged fields.
@@ -52,10 +53,10 @@ public class AuditService : IAuditService
         _http = http;
     }
 
-    public async Task LogAsync(string action, string entityType, string? entityId, string description, string? changes = null)
+    public async Task LogAsync(string action, string entityType, string? entityId, string description, string? changes = null, string? performedBy = null)
     {
         var ctx  = _http.HttpContext;
-        var user = await ResolvePerformerAsync(ctx);
+        var user = string.IsNullOrWhiteSpace(performedBy) ? await ResolvePerformerAsync(ctx) : performedBy.Trim();
         var ip   = GetClientIp(ctx);
 
         _db.AuditLogs.Add(new AuditLog
