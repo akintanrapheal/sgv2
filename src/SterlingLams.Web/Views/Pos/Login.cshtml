@@ -148,7 +148,7 @@
             body: `userId=${encodeURIComponent(userId)}&pin=${encodeURIComponent(pin)}`
         });
         const data = await res.json();
-        if (data.success) { location.href = '/Pos'; }
+        if (data.success) { location.href = window.__posBase || '/Pos'; }
         else {
             errEl.textContent = data.message || 'Wrong PIN.';
             pin = ''; renderDots();

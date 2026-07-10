@@ -7,8 +7,9 @@
     <title>@ViewData["Title"] · POS</title>
     <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
 
-    @* Installable, offline-capable POS app (PWA). *@
-    <link rel="manifest" href="~/pos.webmanifest" />
+    @* Installable, offline-capable POS app (PWA). Manifest is served dynamically so start_url/scope
+       follow the (possibly secret) POS prefix. *@
+    <link rel="manifest" href="@($"/{SterlingLams.Web.Infrastructure.StaffPaths.Pos}/Manifest")" />
     <meta name="theme-color" content="#ed028b" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -21,6 +22,22 @@
 </head>
 <body class="bg-neutral-100 text-neutral-800 antialiased h-full">
     @RenderBody()
+    @* POS base = the configurable (possibly secret) prefix. This shim rewrites every "/Pos/..." fetch
+       to that prefix and loads FIRST, so it sits innermost — pos-offline.js still matches the original
+       "/Pos/..." URLs for its offline logic, and the real network request goes to the prefix. *@
+    <script>
+        window.__posBase = '@($"/{SterlingLams.Web.Infrastructure.StaffPaths.Pos}")';
+        (function () {
+            var base = window.__posBase;
+            if (base === '/Pos') return; // default prefix — nothing to rewrite
+            var real = window.fetch.bind(window);
+            window.fetch = function (input, init) {
+                if (typeof input === 'string' && (input === '/Pos' || input.indexOf('/Pos/') === 0))
+                    input = base + input.slice(4);
+                return real(input, init);
+            };
+        })();
+    </script>
     @* Offline data layer must load before the page's inline script so its fetch shim is active first. *@
     <script src="~/js/jsbarcode.min.js" asp-append-version="true"></script>
     <script src="~/js/pos-offline.js" asp-append-version="true"></script>

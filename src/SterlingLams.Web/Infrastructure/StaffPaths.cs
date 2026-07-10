@@ -15,13 +15,18 @@ public static class StaffPaths
     public static string Admin { get; private set; } = "Admin";
     public static string Inventory { get; private set; } = "Inventory";
     public static string Marketing { get; private set; } = "Marketing";
+    public static string Pos { get; private set; } = "Pos";
 
     public static void Init(IConfiguration config)
     {
         Admin     = Clean(config["StaffPaths:Admin"],     "Admin");
         Inventory = Clean(config["StaffPaths:Inventory"], "Inventory");
         Marketing = Clean(config["StaffPaths:Marketing"], "Marketing");
+        Pos       = Clean(config["StaffPaths:Pos"],       "Pos");
     }
+
+    /// <summary>True when POS has been moved behind a secret prefix (a custom StaffPaths:Pos is set).</summary>
+    public static bool PosIsSecret => !Pos.Equals("Pos", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Normalises a configured prefix to a single clean path segment (no slashes/spaces).</summary>
     private static string Clean(string? value, string fallback)
@@ -31,8 +36,8 @@ public static class StaffPaths
         return string.IsNullOrWhiteSpace(seg) ? fallback : seg;
     }
 
-    // Staff paths that are never secret-prefixed (POS PWA, legacy till, the /me account page).
-    private static readonly string[] FixedStaffSegments = { "Pos", "Till", "me" };
+    // Staff paths that are never secret-prefixed (legacy till, the /me account page).
+    private static readonly string[] FixedStaffSegments = { "Till", "me" };
 
     /// <summary>
     /// True if a path (e.g. a login ReturnUrl) targets a staff backend — respecting the configured
@@ -44,7 +49,7 @@ public static class StaffPaths
     {
         var seg = FirstSegment(path);
         if (seg.Length == 0) return false;
-        if (Eq(seg, Admin) || Eq(seg, Inventory) || Eq(seg, Marketing)) return true;
+        if (Eq(seg, Admin) || Eq(seg, Inventory) || Eq(seg, Marketing) || Eq(seg, Pos)) return true;
         foreach (var f in FixedStaffSegments) if (Eq(seg, f)) return true;
         return false;
     }
@@ -55,6 +60,7 @@ public static class StaffPaths
         var seg = FirstSegment(path);
         if (Eq(seg, Marketing)) return "Marketing Hub";
         if (Eq(seg, Inventory)) return "Inventory System";
+        if (Eq(seg, Pos)) return "Point of Sale";
         return "Staff Workspace";
     }
 

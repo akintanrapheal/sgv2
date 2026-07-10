@@ -153,7 +153,7 @@
         <div class="c" style="margin-top:8px;"><svg id="barcode" style="display:inline-block;max-width:100%;height:auto;"></svg></div>
     </div>
 
-    <div class="btns"><button onclick="window.print()">Print</button><button id="email-btn" type="button">Email</button><a href="/Pos">Next sale</a></div>
+    <div class="btns"><button onclick="window.print()">Print</button><button id="email-btn" type="button">Email</button><a href="@($"/{SterlingLams.Web.Infrastructure.StaffPaths.Pos}")">Next sale</a></div>
     @Html.AntiForgeryToken()
     <script src="/js/jsbarcode.min.js"></script>
     <script>

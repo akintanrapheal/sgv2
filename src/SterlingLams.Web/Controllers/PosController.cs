@@ -112,6 +112,33 @@ public class PosController : Controller
     private Task<TillSession?> OpenSessionAsync(int registerId) =>
         _db.TillSessions.FirstOrDefaultAsync(s => s.RegisterId == registerId && s.ClosedAt == null);
 
+    /// <summary>PWA manifest served dynamically so start_url/scope/id track the (possibly secret) POS prefix.</summary>
+    [AllowAnonymous, HttpGet]
+    public IActionResult Manifest()
+    {
+        var basePath = "/" + SterlingLams.Web.Infrastructure.StaffPaths.Pos;
+        var manifest = new
+        {
+            name = "Sterlin Glams POS",
+            short_name = "SG POS",
+            description = "Sterlin Glams point of sale — works offline.",
+            id = basePath,
+            start_url = basePath,
+            scope = basePath,
+            display = "standalone",
+            orientation = "any",
+            background_color = "#ffffff",
+            theme_color = "#ed028b",
+            icons = new object[]
+            {
+                new { src = "/icons/pos-192.png", sizes = "192x192", type = "image/png", purpose = "any" },
+                new { src = "/icons/pos-512.png", sizes = "512x512", type = "image/png", purpose = "any" },
+                new { src = "/icons/pos-maskable-512.png", sizes = "512x512", type = "image/png", purpose = "maskable" }
+            }
+        };
+        return Json(manifest, new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = null });
+    }
+
     [AllowAnonymous]
     public async Task<IActionResult> Index()
     {

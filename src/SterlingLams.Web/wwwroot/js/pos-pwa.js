@@ -7,7 +7,7 @@
   if (!('serviceWorker' in navigator)) return;
   window.addEventListener('load', function () {
     navigator.serviceWorker
-      .register('/pos-sw.js', { scope: '/Pos', updateViaCache: 'none' })
+      .register('/pos-sw.js', { scope: (window.__posBase || '/Pos'), updateViaCache: 'none' })
       .catch(function (err) { console.warn('POS service worker registration failed:', err); });
   });
 })();

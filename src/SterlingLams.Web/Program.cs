@@ -293,7 +293,7 @@ app.Use(async (context, next) =>
     // /Inventory, /Till) still rely on inline handlers, so they keep 'unsafe-inline' for now.
     // style-src keeps 'unsafe-inline' (inline style attributes are pervasive + low-risk) + Google Fonts.
     var p = context.Request.Path;
-    var staffArea = p.StartsWithSegments($"/{StaffPaths.Admin}") || p.StartsWithSegments($"/{StaffPaths.Inventory}") || p.StartsWithSegments("/Till") || p.StartsWithSegments("/Pos") || p.StartsWithSegments($"/{StaffPaths.Marketing}");
+    var staffArea = p.StartsWithSegments($"/{StaffPaths.Admin}") || p.StartsWithSegments($"/{StaffPaths.Inventory}") || p.StartsWithSegments("/Till") || p.StartsWithSegments($"/{StaffPaths.Pos}") || p.StartsWithSegments($"/{StaffPaths.Marketing}");
     var scriptSrc = staffArea ? "script-src 'self' 'unsafe-inline'" : $"script-src 'self' 'nonce-{nonce}'";
 
     context.Response.Headers["Content-Security-Policy"] =
@@ -326,8 +326,28 @@ app.UseStaticFiles(new StaticFileOptions
         ctx.Context.Response.Headers.CacheControl = contentAddressed
             ? "public,max-age=31536000,immutable"
             : "public,max-age=86400"; // other/unversioned assets (e.g. favicon) — revalidate daily
+        // The POS service worker lives at the site root but must control the (possibly secret) POS
+        // scope, so it needs an explicit Service-Worker-Allowed header for that path.
+        if (req.Path.Equals("/pos-sw.js", StringComparison.OrdinalIgnoreCase))
+            ctx.Context.Response.Headers["Service-Worker-Allowed"] = $"/{StaffPaths.Pos}";
     }
 });
+
+// Once POS is behind a secret prefix, the guessable "/Pos" must not resolve (it would otherwise
+// still hit PosController via the default route and leak the register/cashier picker). 404 it.
+if (StaffPaths.PosIsSecret)
+{
+    app.Use(async (ctx, next) =>
+    {
+        if (ctx.Request.Path.StartsWithSegments("/Pos", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+        await next();
+    });
+}
+
 app.UseRouting();
 app.UseRateLimiter();
 app.UseSession();
@@ -355,6 +375,12 @@ app.MapGet($"/{StaffPaths.Marketing}", () => Results.Redirect($"/{StaffPaths.Mar
 app.MapAreaControllerRoute(name: "admin_area",     areaName: "Admin",     pattern: $"{StaffPaths.Admin}/{{controller=Home}}/{{action=Index}}/{{id?}}");
 app.MapAreaControllerRoute(name: "inventory_area", areaName: "Inventory", pattern: $"{StaffPaths.Inventory}/{{controller=Home}}/{{action=Index}}/{{id?}}");
 app.MapAreaControllerRoute(name: "marketing_area", areaName: "Marketing", pattern: $"{StaffPaths.Marketing}/{{controller=Home}}/{{action=Index}}/{{id?}}");
+
+// POS (a single non-area controller) behind the configurable secret prefix. Placed before the
+// default route so asp-action links + ambient URL generation resolve to the prefix, and "/Pos"
+// (the guessable default) is blocked above once a secret prefix is configured.
+app.MapControllerRoute(name: "pos", pattern: $"{StaffPaths.Pos}/{{action=Index}}/{{id?}}",
+    defaults: new { controller = "Pos" });
 
 app.MapControllerRoute(
     name: "default",

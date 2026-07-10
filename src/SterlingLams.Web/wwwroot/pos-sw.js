@@ -8,8 +8,12 @@
  *
  * Bump CACHE when shell assets change; IMG_CACHE persists across shell updates.
  */
-const CACHE = 'sgpos-shell-v9';
+const CACHE = 'sgpos-shell-v10';
 const IMG_CACHE = 'sgpos-img-v1';
+
+// The POS shell lives at the registration scope (default "/Pos", or a secret prefix). Derive it so
+// the offline navigation fallback matches whatever prefix this service worker was registered for.
+const POS_BASE = (new URL(self.registration.scope).pathname).replace(/\/+$/, '') || '/Pos';
 
 const PRECACHE = [
   '/css/app.css',
@@ -60,7 +64,7 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(req)
         .then((res) => { cachePut(req, res.clone()); return res; })
-        .catch(() => caches.match(req).then((c) => c || caches.match('/Pos')))
+        .catch(() => caches.match(req).then((c) => c || caches.match(POS_BASE)))
     );
     return;
   }
