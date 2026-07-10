@@ -36,13 +36,12 @@ public class SubscribeController : AdminBaseController
     private IActionResult? RequireManager() =>
         AdminSections.IsSystemManager(User) ? null : RedirectToAction("AccessDenied", "Account", new { area = "" });
 
-    /// <summary>Per-store price + currency, from settings (falling back to the built-in defaults).</summary>
-    private async Task<(decimal monthly, decimal yearly, string currency)> PricingAsync()
+    /// <summary>Per-store prices in USD (shown to the admin; charged in NGN at the current rate).</summary>
+    private async Task<(decimal monthly, decimal yearly)> PricingAsync()
     {
-        var cur = await _settings.GetAsync("subscription.currency", "NGN");
-        var m = decimal.TryParse(await _settings.GetAsync("subscription.price_monthly", PerStoreMonthly.ToString()), out var mm) ? mm : PerStoreMonthly;
-        var y = decimal.TryParse(await _settings.GetAsync("subscription.price_yearly", PerStoreYearly.ToString()), out var yy) ? yy : PerStoreYearly;
-        return (m, y, string.IsNullOrWhiteSpace(cur) ? "NGN" : cur.Trim().ToUpperInvariant());
+        var m = decimal.TryParse(await _settings.GetAsync("subscription.price_monthly", "50"), out var mm) ? mm : 50m;
+        var y = decimal.TryParse(await _settings.GetAsync("subscription.price_yearly", "550"), out var yy) ? yy : 550m;
+        return (m, y);
     }
 
     // Owner may view the page and pay (Index/Pay/PaymentCallback); only Admin + Developer may change the
@@ -65,16 +64,20 @@ public class SubscribeController : AdminBaseController
         ViewData["Title"] = "Subscribe";
         var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
 
-        var (perMonthly, perYearly, currency) = await PricingAsync();
+        var (perMonthly, perYearly) = await PricingAsync();
+        var rate = await _pay.GetUsdToNgnAsync();
         ViewBag.Stores = stores;
-        ViewBag.PerStoreMonthly = perMonthly;
-        ViewBag.PerStoreYearly = perYearly;
+        ViewBag.PerStoreMonthly = perMonthly; // USD
+        ViewBag.PerStoreYearly = perYearly;   // USD
         ViewBag.MonthlyTotal = stores.Count * perMonthly;
         ViewBag.YearlyTotal = stores.Count * perYearly;
-        ViewBag.Currency = currency;
+        ViewBag.Rate = rate;                                            // USD → NGN
+        ViewBag.MonthlyTotalNgn = Math.Round(stores.Count * perMonthly * rate);
+        ViewBag.YearlyTotalNgn = Math.Round(stores.Count * perYearly * rate);
         ViewBag.PayConfigured = await _pay.IsConfiguredAsync();
         ViewBag.CanManage = AdminSections.IsSystemManager(User); // Owner can pay but not configure
         ViewBag.PaystackSecretSet = !string.IsNullOrWhiteSpace(await _settings.GetAsync("subscription.paystack_secret"));
+        ViewBag.RateOverride = await _settings.GetAsync("subscription.usd_to_ngn", "");
         ViewBag.Keys = stores.ToDictionary(s => s.Id, s => FakeKey(s.Id, s.Name));
 
         ViewBag.Subscribed = await _settings.GetBoolAsync("subscription.active", false);
@@ -92,21 +95,26 @@ public class SubscribeController : AdminBaseController
     {
         plan = plan == "yearly" ? "yearly" : "monthly";
         var storeCount = await _db.Stores.CountAsync(s => s.IsActive);
-        var (perMonthly, perYearly, currency) = await PricingAsync();
-        var amount = storeCount * (plan == "yearly" ? perYearly : perMonthly);
-        if (amount <= 0)
+        var (perMonthly, perYearly) = await PricingAsync();
+        var usdTotal = storeCount * (plan == "yearly" ? perYearly : perMonthly);
+        if (usdTotal <= 0)
         {
             TempData["Error"] = "Nothing to charge — add an active store and set a per-store price first.";
             return RedirectToAction(nameof(Index));
         }
+
+        // Prices are shown in USD but the merchant's Paystack only supports NGN — convert at the
+        // current rate and charge in Naira.
+        var rate = await _pay.GetUsdToNgnAsync();
+        var nairaAmount = Math.Round(usdTotal * rate, MidpointRounding.AwayFromZero);
 
         var email = User.Identity?.Name ?? await _settings.GetAsync("general.contact_email", "");
         var reference = "SGSUB-" + Guid.NewGuid().ToString("N")[..16].ToUpperInvariant();
         var callback = Url.Action(nameof(PaymentCallback), "Subscribe",
             new { area = "Admin", reference, plan }, Request.Scheme)!;
 
-        var (ok, url, _, error) = await _pay.InitializeAsync(email, amount, currency, callback, reference,
-            $"API connector subscription — {plan}, {storeCount} store(s)");
+        var (ok, url, _, error) = await _pay.InitializeAsync(email, nairaAmount, "NGN", callback, reference,
+            $"API connector subscription — {plan}, {storeCount} store(s), ${usdTotal:0.##} @ ₦{rate:0.##}/$", plan);
         if (!ok || string.IsNullOrEmpty(url))
         {
             TempData["Error"] = error ?? "Could not start the payment.";
@@ -137,30 +145,22 @@ public class SubscribeController : AdminBaseController
             return RedirectToAction(nameof(Index));
         }
 
-        plan = plan == "yearly" ? "yearly" : "monthly";
-        var renews = (plan == "yearly" ? DateTime.UtcNow.AddYears(1) : DateTime.UtcNow.AddMonths(1)).ToString("yyyy-MM-dd");
-        await _settings.SaveManyAsync(new Dictionary<string, string>
-        {
-            ["subscription.active"] = "true",
-            ["subscription.plan"] = plan,
-            ["subscription.renews_on"] = renews,
-            ["general.trial_notice_enabled"] = "false", // clear the staff-wide reminder until renewal
-        });
-        await LogAsync("Update", "Subscription", null, $"Paystack payment {reference} verified — {plan} active, renews {renews}");
+        var renews = await _pay.ActivateAsync(plan ?? "monthly");
+        await LogAsync("Update", "Subscription", null, $"Paystack payment {reference} verified — active, renews {renews}");
         TempData["Success"] = $"Payment received — your API connector is active until {renews}.";
         return RedirectToAction(nameof(Index));
     }
 
     // Save the developer Paystack key (encrypted), currency and per-store prices.
     [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> SaveBilling(string? paystackSecret, string? currency, decimal priceMonthly, decimal priceYearly)
+    public async Task<IActionResult> SaveBilling(string? paystackSecret, decimal priceMonthly, decimal priceYearly, decimal? usdToNgn)
     {
         if (RequireManager() is IActionResult deny) return deny;
         var updates = new Dictionary<string, string>
         {
-            ["subscription.currency"] = string.IsNullOrWhiteSpace(currency) ? "NGN" : currency.Trim().ToUpperInvariant(),
             ["subscription.price_monthly"] = (priceMonthly < 0 ? 0 : priceMonthly).ToString("0.##"),
             ["subscription.price_yearly"] = (priceYearly < 0 ? 0 : priceYearly).ToString("0.##"),
+            ["subscription.usd_to_ngn"] = usdToNgn is > 0 ? usdToNgn.Value.ToString("0.##") : "",
         };
         // Only replace the key when a new one is entered (blank = keep the existing encrypted value).
         if (!string.IsNullOrWhiteSpace(paystackSecret))

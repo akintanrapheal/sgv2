@@ -18,6 +18,7 @@ public class WebhooksController : ControllerBase
     private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
     private readonly SterlingLams.Web.Services.IGiftCardService _giftCards;
     private readonly SterlingLams.Web.Services.Logistics.ILogisticsDispatchService _logistics;
+    private readonly ISubscriptionPaymentService _subPay;
     private readonly ILogger<WebhooksController> _logger;
 
     private readonly SterlingLams.Web.Services.IAuditService _audit;
@@ -29,6 +30,7 @@ public class WebhooksController : ControllerBase
         SterlingLams.Web.Services.ILoyaltyService loyalty,
         SterlingLams.Web.Services.IGiftCardService giftCards,
         SterlingLams.Web.Services.Logistics.ILogisticsDispatchService logistics,
+        ISubscriptionPaymentService subPay,
         SterlingLams.Web.Services.IAuditService audit,
         ILogger<WebhooksController> logger)
     {
@@ -38,8 +40,65 @@ public class WebhooksController : ControllerBase
         _loyalty = loyalty;
         _giftCards = giftCards;
         _logistics = logistics;
+        _subPay = subPay;
         _audit = audit;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Paystack webhook for the API-connector SUBSCRIPTION (developer's Paystack account). Validated
+    /// with the developer key. On a verified charge.success for a subscription reference, activates the
+    /// subscription — so activation still happens even if the admin closed the tab before the redirect.
+    /// Idempotent. Configure this URL (/webhooks/subscription) in the DEVELOPER's Paystack dashboard.
+    /// </summary>
+    [HttpPost("subscription")]
+    public async Task<IActionResult> SubscriptionWebhook()
+    {
+        using var reader = new StreamReader(Request.Body, Encoding.UTF8);
+        var payload = await reader.ReadToEndAsync();
+        var signature = Request.Headers["x-paystack-signature"].FirstOrDefault() ?? string.Empty;
+
+        if (!await _subPay.ValidateWebhookAsync(payload, signature))
+        {
+            _logger.LogWarning("Invalid subscription Paystack webhook signature");
+            return Unauthorized();
+        }
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(payload);
+            var root = doc.RootElement;
+            var eventType = root.TryGetProperty("event", out var evtProp) ? evtProp.GetString() : null;
+            if (eventType != "charge.success") return Ok();
+
+            var data = root.GetProperty("data");
+            var reference = data.TryGetProperty("reference", out var refProp) ? refProp.GetString() : null;
+
+            // Only handle our subscription charges (metadata.purpose stamped at initiation).
+            string? purpose = null, plan = null;
+            if (data.TryGetProperty("metadata", out var meta) && meta.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                if (meta.TryGetProperty("purpose", out var p)) purpose = p.GetString();
+                if (meta.TryGetProperty("plan", out var pl)) plan = pl.GetString();
+            }
+            if (purpose != "api_connector_subscription" || string.IsNullOrEmpty(reference))
+                return Ok(); // not ours / nothing to do — ack so Paystack stops retrying
+
+            // Re-verify against the API before activating (defence in depth), then activate idempotently.
+            var (ok, paid, _) = await _subPay.VerifyAsync(reference);
+            if (ok && paid)
+            {
+                var renews = await _subPay.ActivateAsync(plan ?? "monthly");
+                try { await _audit.LogAsync("Update", "Subscription", null, $"Subscription activated via webhook ({reference}); renews {renews}"); } catch { }
+                _logger.LogInformation("Subscription activated via webhook: {Reference}", reference);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Subscription webhook processing failed");
+            // Still ack — a 500 would make Paystack retry indefinitely; the browser callback is the backup.
+        }
+        return Ok();
     }
 
     [HttpPost("paystack")]

@@ -10,17 +10,19 @@
     string trialEnds = ViewBag.TrialEnds ?? "";
     decimal perMonthly = ViewBag.PerStoreMonthly ?? 50m;
     decimal perYearly = ViewBag.PerStoreYearly ?? 500m;
-    decimal monthlyTotal = ViewBag.MonthlyTotal ?? 0m;
-    decimal yearlyTotal = ViewBag.YearlyTotal ?? 0m;
-    string cur = ViewBag.Currency ?? "NGN";
+    decimal monthlyTotal = ViewBag.MonthlyTotal ?? 0m;   // USD
+    decimal yearlyTotal = ViewBag.YearlyTotal ?? 0m;     // USD
+    decimal rate = ViewBag.Rate ?? 1600m;                // USD → NGN
+    decimal monthlyTotalNgn = ViewBag.MonthlyTotalNgn ?? 0m;
+    decimal yearlyTotalNgn = ViewBag.YearlyTotalNgn ?? 0m;
     bool canManage = ViewBag.CanManage ?? false;       // Owner can pay but not configure
     bool payConfigured = ViewBag.PayConfigured ?? false;
     bool secretSet = ViewBag.PaystackSecretSet ?? false;
+    string rateOverride = ViewBag.RateOverride ?? "";
 
     string Nice(string d) => DateTime.TryParse(d, out var dt) ? dt.ToString("d MMMM yyyy") : d;
-    string Sym(string c) => c switch { "NGN" => "₦", "USD" => "$", "GHS" => "₵", "ZAR" => "R", "KES" => "KSh", _ => c + " " };
-    var cs = Sym(cur);
-    string Money(decimal a) => cs + a.ToString("N0");
+    string Money(decimal a) => "$" + a.ToString("N0");   // prices shown in USD
+    string Ngn(decimal a) => "₦" + a.ToString("N0");
 
     var renewCurrent = DateTime.TryParse(renewsOn, out var rr) && rr.Date >= DateTime.UtcNow.Date;
     var activeNow = subscribed && renewCurrent; // active AND within the paid period
@@ -144,7 +146,7 @@
                 <label class="plan-opt cursor-pointer border rounded-sm px-4 py-3 flex items-start gap-3 border-neutral-200" data-plan="yearly">
                     <input type="radio" name="plan" value="yearly" class="mt-1 accent-pink-600" />
                     <div>
-                        <div class="text-sm font-medium text-neutral-800">Yearly <span class="text-[10px] bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded-full ml-1">2 months free</span></div>
+                        <div class="text-sm font-medium text-neutral-800">Yearly <span class="text-[10px] bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded-full ml-1">1 month free</span></div>
                         <div class="text-xs text-neutral-500">@Money(perYearly) per store, billed yearly</div>
                     </div>
                 </label>
@@ -155,13 +157,14 @@
                     <span class="font-medium text-neutral-900">@stores.Count</span> store@(stores.Count == 1 ? "" : "s")
                     &times; <span id="per-amt">@Money(perMonthly)</span>
                     = <span class="font-semibold text-neutral-900" id="total-amt">@Money(monthlyTotal)</span><span id="period-lbl" class="text-neutral-400"> / month</span>
+                    <div class="text-xs text-neutral-400 mt-1">Charged in Naira: <span id="ngn-amt" class="font-medium text-neutral-600">@Ngn(monthlyTotalNgn)</span> <span class="text-neutral-400">(at ₦@rate.ToString("N0")/$1)</span></div>
                 </div>
                 <button type="submit" class="px-5 py-2.5 text-sm bg-brand-500 text-white rounded-sm font-medium">
                     Pay &amp; subscribe &mdash; <span id="btn-amt">@Money(monthlyTotal)</span><span id="btn-period">/month</span>
                 </button>
             </div>
             <p class="text-[11px] text-neutral-400 mt-3">
-                You'll be taken to Paystack's secure checkout to pay. Your subscription activates automatically once payment is confirmed.
+                Prices are in US dollars; you'll be charged the equivalent in Naira at today's rate on Paystack's secure checkout. Your subscription activates automatically once payment is confirmed.
                 @if (!payConfigured && canManage)
                 {
                     <span class="text-amber-600">Add your Paystack secret key below to accept payments.</span>
@@ -199,18 +202,19 @@
                 </div>
                 <div class="grid sm:grid-cols-3 gap-4">
                     <div>
-                        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Currency</label>
-                        <input type="text" name="currency" value="@cur" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white w-full" />
-                    </div>
-                    <div>
-                        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Price / store / month</label>
+                        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Price / store / month ($)</label>
                         <input type="number" step="0.01" min="0" name="priceMonthly" value="@perMonthly.ToString("0.##")" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white w-full" />
                     </div>
                     <div>
-                        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Price / store / year</label>
+                        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Price / store / year ($)</label>
                         <input type="number" step="0.01" min="0" name="priceYearly" value="@perYearly.ToString("0.##")" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white w-full" />
                     </div>
+                    <div>
+                        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">USD → NGN rate</label>
+                        <input type="number" step="0.01" min="0" name="usdToNgn" value="@rateOverride" placeholder="live (@rate.ToString("N0"))" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white w-full" />
+                    </div>
                 </div>
+                <p class="text-[11px] text-neutral-400">Prices are in USD. Cards are charged in Naira — leave the rate blank to use the live rate (currently ₦@rate.ToString("N0")/$1), or pin your own.</p>
                 <button type="submit" class="px-4 py-2 text-sm bg-neutral-900 text-white rounded-sm hover:bg-neutral-700">Save payment settings</button>
             </form>
         </details>
@@ -255,21 +259,23 @@
         });
     });
 
-    // Plan toggle → update totals + button (money formatted with the store currency).
-    var sym = '@cs';
-    var fmt = function (n) { return sym + Number(n).toLocaleString(); };
-    var monthly = { per: @perMonthly.ToString("0.##"), total: @monthlyTotal.ToString("0.##"), period: ' / month', btnPeriod: '/month' };
-    var yearly  = { per: @perYearly.ToString("0.##"),  total: @yearlyTotal.ToString("0.##"),  period: ' / year',  btnPeriod: '/year'  };
+    // Plan toggle → update USD totals + button + the Naira equivalent.
+    var usd = function (n) { return '$' + Number(n).toLocaleString(); };
+    var ngn = function (n) { return '₦' + Number(n).toLocaleString(); };
+    var monthly = { per: @perMonthly.ToString("0.##"), total: @monthlyTotal.ToString("0.##"), ngn: @monthlyTotalNgn.ToString("0"), period: ' / month', btnPeriod: '/month' };
+    var yearly  = { per: @perYearly.ToString("0.##"),  total: @yearlyTotal.ToString("0.##"),  ngn: @yearlyTotalNgn.ToString("0"),  period: ' / year',  btnPeriod: '/year'  };
     function set(p) {
         var d = p === 'yearly' ? yearly : monthly;
         var perAmt = document.getElementById('per-amt'), totalAmt = document.getElementById('total-amt'),
-            periodLbl = document.getElementById('period-lbl'), btnAmt = document.getElementById('btn-amt'), btnPeriod = document.getElementById('btn-period');
+            periodLbl = document.getElementById('period-lbl'), btnAmt = document.getElementById('btn-amt'),
+            btnPeriod = document.getElementById('btn-period'), ngnAmt = document.getElementById('ngn-amt');
         if (!perAmt) return;
-        perAmt.textContent = fmt(d.per);
-        totalAmt.textContent = fmt(d.total);
+        perAmt.textContent = usd(d.per);
+        totalAmt.textContent = usd(d.total);
         periodLbl.textContent = d.period;
-        btnAmt.textContent = fmt(d.total);
+        btnAmt.textContent = usd(d.total);
         btnPeriod.textContent = d.btnPeriod;
+        if (ngnAmt) ngnAmt.textContent = ngn(d.ngn);
         document.querySelectorAll('.plan-opt').forEach(function (el) {
             var on = el.getAttribute('data-plan') === p;
             el.classList.toggle('border-brand-500', on);
