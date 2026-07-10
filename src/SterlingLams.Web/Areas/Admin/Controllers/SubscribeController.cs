@@ -6,36 +6,48 @@ using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.Domain;
 using SterlingLams.Web.Services;
+using SterlingLams.Web.Services.Payment;
 
 namespace SterlingLams.Web.Areas.Admin.Controllers;
 
 /// <summary>
-/// Mock "API connector" subscription / billing page. Presents each store with a (deterministic,
-/// fake) API key and a per-store fee, and lets you "subscribe" monthly or yearly. No real payment is
-/// taken and no schema is touched — state lives entirely in site settings, so it can never break
-/// anything. Restricted to Admin and Developer only (Owner, though full-access, is excluded).
+/// "API connector" subscription / billing page. Each active store carries a per-store fee; the admin
+/// pays via Paystack (credited to the DEVELOPER's account, separate from the storefront checkout).
+/// On a verified payment the subscription is activated until the next billing date and the staff-wide
+/// trial banner is switched off. Restricted to Admin and Developer only (Owner is excluded).
 /// </summary>
 public class SubscribeController : AdminBaseController
 {
     private readonly ApplicationDbContext _db;
     private readonly ISettingsService _settings;
+    private readonly ISettingsSecretProtector _secrets;
+    private readonly ISubscriptionPaymentService _pay;
 
-    public SubscribeController(ApplicationDbContext db, ISettingsService settings)
+    public SubscribeController(ApplicationDbContext db, ISettingsService settings,
+        ISettingsSecretProtector secrets, ISubscriptionPaymentService pay)
     {
         _db = db;
         _settings = settings;
+        _secrets = secrets;
+        _pay = pay;
     }
 
-    // Billing is limited to Admin + Developer — Owner is excluded even though it's a full-access role.
-    public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    /// <summary>Config actions (notice + billing settings) are Admin/Developer only; Owner may pay but not configure.</summary>
+    private IActionResult? RequireManager() =>
+        AdminSections.IsSystemManager(User) ? null : RedirectToAction("AccessDenied", "Account", new { area = "" });
+
+    /// <summary>Per-store price + currency, from settings (falling back to the built-in defaults).</summary>
+    private async Task<(decimal monthly, decimal yearly, string currency)> PricingAsync()
     {
-        if (!AdminSections.IsSystemManager(User))
-        {
-            context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
-            return;
-        }
-        await base.OnActionExecutionAsync(context, next);
+        var cur = await _settings.GetAsync("subscription.currency", "NGN");
+        var m = decimal.TryParse(await _settings.GetAsync("subscription.price_monthly", PerStoreMonthly.ToString()), out var mm) ? mm : PerStoreMonthly;
+        var y = decimal.TryParse(await _settings.GetAsync("subscription.price_yearly", PerStoreYearly.ToString()), out var yy) ? yy : PerStoreYearly;
+        return (m, y, string.IsNullOrWhiteSpace(cur) ? "NGN" : cur.Trim().ToUpperInvariant());
     }
+
+    // Owner may view the page and pay (Index/Pay/PaymentCallback); only Admin + Developer may change the
+    // billing config or the notice (guarded per-action below). The base controller already limits the
+    // whole controller to full-access roles.
 
     /// <summary>Per-store price (USD). Yearly gives two months free.</summary>
     public const decimal PerStoreMonthly = 50m;
@@ -53,11 +65,16 @@ public class SubscribeController : AdminBaseController
         ViewData["Title"] = "Subscribe";
         var stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
 
+        var (perMonthly, perYearly, currency) = await PricingAsync();
         ViewBag.Stores = stores;
-        ViewBag.PerStoreMonthly = PerStoreMonthly;
-        ViewBag.PerStoreYearly = PerStoreYearly;
-        ViewBag.MonthlyTotal = stores.Count * PerStoreMonthly;
-        ViewBag.YearlyTotal = stores.Count * PerStoreYearly;
+        ViewBag.PerStoreMonthly = perMonthly;
+        ViewBag.PerStoreYearly = perYearly;
+        ViewBag.MonthlyTotal = stores.Count * perMonthly;
+        ViewBag.YearlyTotal = stores.Count * perYearly;
+        ViewBag.Currency = currency;
+        ViewBag.PayConfigured = await _pay.IsConfiguredAsync();
+        ViewBag.CanManage = AdminSections.IsSystemManager(User); // Owner can pay but not configure
+        ViewBag.PaystackSecretSet = !string.IsNullOrWhiteSpace(await _settings.GetAsync("subscription.paystack_secret"));
         ViewBag.Keys = stores.ToDictionary(s => s.Id, s => FakeKey(s.Id, s.Name));
 
         ViewBag.Subscribed = await _settings.GetBoolAsync("subscription.active", false);
@@ -69,21 +86,89 @@ public class SubscribeController : AdminBaseController
         return View();
     }
 
+    // Start a real Paystack payment for the subscription, then redirect the admin to Paystack.
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Pay(string plan)
     {
         plan = plan == "yearly" ? "yearly" : "monthly";
-        var renews = (plan == "yearly" ? DateTime.UtcNow.AddYears(1) : DateTime.UtcNow.AddMonths(1)).ToString("yyyy-MM-dd");
+        var storeCount = await _db.Stores.CountAsync(s => s.IsActive);
+        var (perMonthly, perYearly, currency) = await PricingAsync();
+        var amount = storeCount * (plan == "yearly" ? perYearly : perMonthly);
+        if (amount <= 0)
+        {
+            TempData["Error"] = "Nothing to charge — add an active store and set a per-store price first.";
+            return RedirectToAction(nameof(Index));
+        }
 
+        var email = User.Identity?.Name ?? await _settings.GetAsync("general.contact_email", "");
+        var reference = "SGSUB-" + Guid.NewGuid().ToString("N")[..16].ToUpperInvariant();
+        var callback = Url.Action(nameof(PaymentCallback), "Subscribe",
+            new { area = "Admin", reference, plan }, Request.Scheme)!;
+
+        var (ok, url, _, error) = await _pay.InitializeAsync(email, amount, currency, callback, reference,
+            $"API connector subscription — {plan}, {storeCount} store(s)");
+        if (!ok || string.IsNullOrEmpty(url))
+        {
+            TempData["Error"] = error ?? "Could not start the payment.";
+            return RedirectToAction(nameof(Index));
+        }
+        return Redirect(url); // off to Paystack's hosted checkout
+    }
+
+    // Paystack redirects the admin back here after payment — verify, then activate on success.
+    [HttpGet]
+    public async Task<IActionResult> PaymentCallback(string? reference, string? plan)
+    {
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            TempData["Error"] = "Payment reference was missing — nothing was charged.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var (ok, paid, error) = await _pay.VerifyAsync(reference);
+        if (!ok)
+        {
+            TempData["Error"] = "Could not verify the payment: " + (error ?? "unknown error") + ". If you were charged, contact support.";
+            return RedirectToAction(nameof(Index));
+        }
+        if (!paid)
+        {
+            TempData["Error"] = "Payment was not completed. You can try again.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        plan = plan == "yearly" ? "yearly" : "monthly";
+        var renews = (plan == "yearly" ? DateTime.UtcNow.AddYears(1) : DateTime.UtcNow.AddMonths(1)).ToString("yyyy-MM-dd");
         await _settings.SaveManyAsync(new Dictionary<string, string>
         {
             ["subscription.active"] = "true",
             ["subscription.plan"] = plan,
             ["subscription.renews_on"] = renews,
-            ["general.trial_notice_enabled"] = "false", // stop the amber trial warning
+            ["general.trial_notice_enabled"] = "false", // clear the staff-wide reminder until renewal
         });
-        await LogAsync("Update", "Subscription", null, $"Activated API connector subscription ({plan}); renews {renews}");
-        TempData["Success"] = "Payment successful — your API connector is active and all stores are synchronising.";
+        await LogAsync("Update", "Subscription", null, $"Paystack payment {reference} verified — {plan} active, renews {renews}");
+        TempData["Success"] = $"Payment received — your API connector is active until {renews}.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // Save the developer Paystack key (encrypted), currency and per-store prices.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveBilling(string? paystackSecret, string? currency, decimal priceMonthly, decimal priceYearly)
+    {
+        if (RequireManager() is IActionResult deny) return deny;
+        var updates = new Dictionary<string, string>
+        {
+            ["subscription.currency"] = string.IsNullOrWhiteSpace(currency) ? "NGN" : currency.Trim().ToUpperInvariant(),
+            ["subscription.price_monthly"] = (priceMonthly < 0 ? 0 : priceMonthly).ToString("0.##"),
+            ["subscription.price_yearly"] = (priceYearly < 0 ? 0 : priceYearly).ToString("0.##"),
+        };
+        // Only replace the key when a new one is entered (blank = keep the existing encrypted value).
+        if (!string.IsNullOrWhiteSpace(paystackSecret))
+            updates["subscription.paystack_secret"] = _secrets.Protect(paystackSecret.Trim());
+
+        await _settings.SaveManyAsync(updates);
+        await LogAsync("Update", "Subscription", null, "Updated subscription billing settings");
+        TempData["Success"] = "Billing settings saved.";
         return RedirectToAction(nameof(Index));
     }
 
@@ -91,6 +176,7 @@ public class SubscribeController : AdminBaseController
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveNotice(bool enabled, string? date, string? message)
     {
+        if (RequireManager() is IActionResult deny) return deny;
         var d = DateTime.TryParse(date, out var dt) ? dt.ToString("yyyy-MM-dd")
                                                     : (string.IsNullOrWhiteSpace(date) ? "2026-07-30" : date.Trim());
         await _settings.SaveManyAsync(new Dictionary<string, string>
@@ -107,6 +193,7 @@ public class SubscribeController : AdminBaseController
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Cancel()
     {
+        if (RequireManager() is IActionResult deny) return deny;
         await _settings.SaveManyAsync(new Dictionary<string, string>
         {
             ["subscription.active"] = "false",

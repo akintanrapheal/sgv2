@@ -7,9 +7,12 @@
     on the next sign-in) so the reminder isn't lost for good.
 *@
 @{
-    // Once the (mock) API-connector subscription is active, drop the trial warning entirely.
-    var subscribed = await Settings.GetBoolAsync("subscription.active", false);
-    var trialEnabled = !subscribed && await Settings.GetBoolAsync("general.trial_notice_enabled", true);
+    // While the subscription is active AND still within the paid period, drop the warning. Once the
+    // renewal date passes, the subscription has lapsed → show the reminder again so it can be renewed.
+    var subActive = await Settings.GetBoolAsync("subscription.active", false);
+    var renewsRaw = await Settings.GetAsync("subscription.renews_on", "");
+    var subCurrent = subActive && DateTime.TryParse(renewsRaw, out var rd) && rd.Date >= DateTime.UtcNow.Date;
+    var trialEnabled = !subCurrent && await Settings.GetBoolAsync("general.trial_notice_enabled", true);
     string? trialMsg = null;
     if (trialEnabled)
     {
@@ -40,7 +43,7 @@
         </svg>
         <p class="flex-1">
             <span class="font-semibold">Action needed —</span> @trialMsg
-            @if (SterlingLams.Web.Areas.Admin.AdminSections.IsSystemManager(User))
+            @if (SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User))
             {
                 <a href="/@SterlingLams.Web.Infrastructure.StaffPaths.Admin/Subscribe" class="font-semibold underline whitespace-nowrap ml-1">Renew now &rarr;</a>
             }

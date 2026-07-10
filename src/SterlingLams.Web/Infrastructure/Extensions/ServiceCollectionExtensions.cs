@@ -67,6 +67,8 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<FlutterwavePaymentService>();
         services.AddScoped<StripePaymentService>();
         services.AddScoped<IPaymentService, PaymentRouter>();
+        // Subscription (API-connector) billing — the developer's own Paystack account.
+        services.AddHttpClient<ISubscriptionPaymentService, SubscriptionPaymentService>();
 
         return services;
     }
