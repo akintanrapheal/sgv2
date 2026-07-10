@@ -30,4 +30,42 @@ public static class StaffPaths
         var seg = value.Trim().Trim('/').Trim();
         return string.IsNullOrWhiteSpace(seg) ? fallback : seg;
     }
+
+    // Staff paths that are never secret-prefixed (POS PWA, legacy till, the /me account page).
+    private static readonly string[] FixedStaffSegments = { "Pos", "Till", "me" };
+
+    /// <summary>
+    /// True if a path (e.g. a login ReturnUrl) targets a staff backend — respecting the configured
+    /// secret prefixes, so it works whether or not custom StaffPaths are set. Staff sign-in must use
+    /// this instead of hard-coded "/Admin" checks: once the areas move behind secret prefixes a literal
+    /// check fails and the login falls back to the storefront chrome.
+    /// </summary>
+    public static bool IsStaffPath(string? path)
+    {
+        var seg = FirstSegment(path);
+        if (seg.Length == 0) return false;
+        if (Eq(seg, Admin) || Eq(seg, Inventory) || Eq(seg, Marketing)) return true;
+        foreach (var f in FixedStaffSegments) if (Eq(seg, f)) return true;
+        return false;
+    }
+
+    /// <summary>Friendly workspace label for the staff sign-in chrome, based on the target path.</summary>
+    public static string WorkspaceLabel(string? path)
+    {
+        var seg = FirstSegment(path);
+        if (Eq(seg, Marketing)) return "Marketing Hub";
+        if (Eq(seg, Inventory)) return "Inventory System";
+        return "Staff Workspace";
+    }
+
+    /// <summary>First path segment, ignoring the leading slash and any query/fragment.</summary>
+    private static string FirstSegment(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return "";
+        var p = path.TrimStart('/');
+        var end = p.IndexOfAny(new[] { '/', '?', '#' });
+        return end < 0 ? p : p[..end];
+    }
+
+    private static bool Eq(string a, string b) => a.Equals(b, StringComparison.OrdinalIgnoreCase);
 }

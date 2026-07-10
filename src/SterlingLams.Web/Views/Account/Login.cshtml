@@ -1,18 +1,14 @@
 @model SterlingLams.Web.Models.ViewModels.LoginViewModel
 @{
-    // Staff heading into /Admin or /Inventory get a back-office sign-in (own minimal layout,
-    // no storefront chrome). Same form + POST handler — only the presentation differs.
+    // Staff heading into a backend area get a back-office sign-in (own minimal layout, no storefront
+    // chrome). Same form + POST handler — only the presentation differs. Detection goes through
+    // StaffPaths so it respects the configured *secret* prefixes: a hard-coded "/Admin" check fails
+    // on the live site (where the areas live behind unguessable paths), and the login would otherwise
+    // fall back to the storefront.
     var ru = Model.ReturnUrl ?? "";
-    var staff = ru.StartsWith("/Admin", StringComparison.OrdinalIgnoreCase)
-             || ru.StartsWith("/Inventory", StringComparison.OrdinalIgnoreCase)
-             || ru.StartsWith("/Marketing", StringComparison.OrdinalIgnoreCase)
-             || ru.StartsWith("/Till", StringComparison.OrdinalIgnoreCase)
-             || ru.StartsWith("/Pos", StringComparison.OrdinalIgnoreCase);
+    var staff = SterlingLams.Web.Infrastructure.StaffPaths.IsStaffPath(ru);
     if (staff) { Layout = "_StaffAuthLayout"; }
-    // Workspace label shown on the staff sign-in chrome.
-    ViewData["Workspace"] = ru.StartsWith("/Marketing", StringComparison.OrdinalIgnoreCase) ? "Marketing Hub"
-        : ru.StartsWith("/Inventory", StringComparison.OrdinalIgnoreCase) ? "Inventory System"
-        : "Staff Workspace";
+    ViewData["Workspace"] = SterlingLams.Web.Infrastructure.StaffPaths.WorkspaceLabel(ru);
     ViewData["Title"] = staff ? "Staff Sign In" : "Sign In";
 }
 
