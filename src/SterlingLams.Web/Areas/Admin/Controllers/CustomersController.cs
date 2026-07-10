@@ -78,7 +78,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> Delete(string id)
         {
-            if (!User.IsInRole("Admin")) return Forbid();
+            if (!AdminSections.IsFullAccess(User)) return Forbid();
 
             var user = await _userManager.FindByIdAsync(id);
             if (user == null) return NotFound();

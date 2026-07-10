@@ -40,7 +40,7 @@
         </svg>
         <p class="flex-1">
             <span class="font-semibold">Action needed —</span> @trialMsg
-            @if (User.IsInRole("Admin"))
+            @if (SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User))
             {
                 <a href="/@SterlingLams.Web.Infrastructure.StaffPaths.Admin/Subscribe" class="font-semibold underline whitespace-nowrap ml-1">Renew now &rarr;</a>
             }

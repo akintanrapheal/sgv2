@@ -1,7 +1,7 @@
 @{
     var cc = ViewContext.RouteData.Values["controller"]?.ToString();
     var ca = ViewContext.RouteData.Values["action"]?.ToString();
-    var isFullAdmin = User.IsInRole("Admin");
+    var isFullAdmin = SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User);
     var pendingTransfers = ViewData["PendingTransfersCount"] as int? ?? 0;
 
     // Icons (heroicons paths)

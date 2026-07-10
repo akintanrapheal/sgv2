@@ -36,7 +36,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             Microsoft.AspNetCore.Mvc.Filters.ActionExecutionDelegate next)
         {
             if (HttpContext.Request.Method == HttpMethods.Post
-                && !User.IsInRole(SterlingLams.Web.Areas.Admin.AdminSections.AdminRole))
+                && !SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User))
             {
                 // AJAX callers get a clean JSON refusal; form posts get Access Denied.
                 var accepts = Request.Headers["Accept"].ToString();
@@ -313,7 +313,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> BackfillOpeningStock()
         {
-            if (!User.IsInRole(AdminSections.AdminRole)) return Forbid();
+            if (!AdminSections.IsFullAccess(User)) return Forbid();
             var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             var now = DateTime.UtcNow;
 

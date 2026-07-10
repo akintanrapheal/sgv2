@@ -35,17 +35,17 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             // Expose allowed sections to the shared layout (sidebar)
             var allowed = await perms.GetAllowedSectionsAsync(User);
             ViewData["AllowedSections"] = allowed;
-            ViewData["IsFullAdmin"] = User.IsInRole(AdminSections.AdminRole);
+            ViewData["IsFullAdmin"] = AdminSections.IsFullAccess(User);
 
             // Inventory-team staff operate in the dedicated Inventory System, not the website admin.
-            if (!User.IsInRole(AdminSections.AdminRole) && User.IsInRole("Inventory"))
+            if (!AdminSections.IsFullAccess(User) && User.IsInRole("Inventory"))
             {
                 context.Result = RedirectToAction("Index", "Overview", new { area = "Inventory" });
                 return;
             }
 
             // Social Media / Marketing staff operate in the dedicated Marketing Hub.
-            if (!User.IsInRole(AdminSections.AdminRole) && User.IsInRole("Social Media"))
+            if (!AdminSections.IsFullAccess(User) && User.IsInRole("Social Media"))
             {
                 context.Result = RedirectToAction("Index", "Dashboard", new { area = "Marketing" });
                 return;
@@ -56,7 +56,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             // Admin-only controllers (Section == null): only full admins pass
             if (section == null)
             {
-                if (!User.IsInRole(AdminSections.AdminRole))
+                if (!AdminSections.IsFullAccess(User))
                 {
                     context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
                     return;

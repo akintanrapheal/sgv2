@@ -44,7 +44,7 @@ public class PermissionService : IPermissionService
 
     public async Task<bool> CanAccessAsync(ClaimsPrincipal user, string section)
     {
-        if (user.IsInRole(AdminSections.AdminRole)) return true;   // full access
+        if (AdminSections.IsFullAccess(user)) return true;   // full access
         var raw = await GetRawGrantsAsync(user);
         // View if granted the section, its :manage, or any sub-permission (e.g. a Settings group).
         return raw.Contains(section)
@@ -54,14 +54,14 @@ public class PermissionService : IPermissionService
 
     public async Task<bool> CanManageAsync(ClaimsPrincipal user, string section)
     {
-        if (user.IsInRole(AdminSections.AdminRole)) return true;
+        if (AdminSections.IsFullAccess(user)) return true;
         var raw = await GetRawGrantsAsync(user);
         return raw.Contains(section + ":manage");
     }
 
     public async Task<HashSet<string>?> GetAllowedSettingsGroupsAsync(ClaimsPrincipal user)
     {
-        if (user.IsInRole(AdminSections.AdminRole)) return null; // all
+        if (AdminSections.IsFullAccess(user)) return null; // all
         var raw = await GetRawGrantsAsync(user);
         if (raw.Contains("Settings") || raw.Contains("Settings:manage")) return null; // all groups
         var groups = new HashSet<string>(StringComparer.Ordinal);
@@ -78,7 +78,7 @@ public class PermissionService : IPermissionService
     public async Task<HashSet<string>> GetAllowedSectionsAsync(ClaimsPrincipal user)
     {
         // Admin sees everything
-        if (user.IsInRole(AdminSections.AdminRole))
+        if (AdminSections.IsFullAccess(user))
             return AdminSections.All.Select(s => s.Key).ToHashSet();
 
         // Base section keys the user can view (strip any ":manage" / ":group" suffix).

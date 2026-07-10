@@ -238,7 +238,7 @@
         </div>
 
         <!-- Actions -->
-        @if (Model.Status == TransferStatus.PendingApproval && User.IsInRole("Admin"))
+        @if (Model.Status == TransferStatus.PendingApproval && SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User))
         {
             <div class="bg-white border border-neutral-100 rounded-sm p-4">
                 <h2 class="text-sm font-medium text-neutral-800 mb-1">Approve request</h2>

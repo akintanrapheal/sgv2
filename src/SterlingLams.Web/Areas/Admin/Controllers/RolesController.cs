@@ -19,8 +19,8 @@ public class RolesController : AdminBaseController
     private readonly IPermissionService _perms;
     private readonly ApplicationDbContext _db;
 
-    // Roles that cannot be edited or deleted
-    private static readonly string[] SystemRoles = { "Admin", "Customer" };
+    // Roles that cannot be edited or deleted (built-in full-access roles + the Customer role).
+    private static readonly string[] SystemRoles = { "Admin", "Owner", "Developer", "Customer" };
 
     public RolesController(
         RoleManager<IdentityRole> roleManager,
@@ -49,7 +49,7 @@ public class RolesController : AdminBaseController
             var usersInRole = await _userManager.GetUsersInRoleAsync(name);
             // Collapse granular grants ("Orders", "Orders:manage", "Settings:General") to distinct
             // base-section labels for the summary column.
-            var sections = name == "Admin"
+            var sections = AdminSections.FullAccessRoles.Contains(name)
                 ? AdminSections.All.Select(s => s.Label).ToList()
                 : (await _perms.GetRoleSectionsAsync(name))
                     .Select(key => { var i = key.IndexOf(':'); return i < 0 ? key : key[..i]; })
@@ -61,7 +61,7 @@ public class RolesController : AdminBaseController
             {
                 Name = name,
                 IsSystem = SystemRoles.Contains(name),
-                IsFullAccess = name == "Admin",
+                IsFullAccess = AdminSections.FullAccessRoles.Contains(name),
                 UserCount = usersInRole.Count,
                 Sections = sections,
             });

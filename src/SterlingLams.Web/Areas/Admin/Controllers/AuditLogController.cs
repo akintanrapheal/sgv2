@@ -109,7 +109,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         public async Task<IActionResult> DeleteSelected(int[] ids, string act = "", string entity = "",
             string dateFrom = "", string dateTo = "", string q = "", int page = 1)
         {
-            if (!User.IsInRole(AdminSections.AdminRole)) return Forbid();
+            if (!AdminSections.IsFullAccess(User)) return Forbid();
             var back = new { act, entity, dateFrom, dateTo, q, page };
             if (ids == null || ids.Length == 0)
             {
@@ -125,7 +125,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> ClearAll()
         {
-            if (!User.IsInRole(AdminSections.AdminRole)) return Forbid();
+            if (!AdminSections.IsFullAccess(User)) return Forbid();
             var deleted = await _db.AuditLogs.ExecuteDeleteAsync();
             // Leave a single record that a clear happened (accountability).
             await LogAsync("Delete", "AuditLog", null, $"Cleared all audit logs ({deleted} entries)");

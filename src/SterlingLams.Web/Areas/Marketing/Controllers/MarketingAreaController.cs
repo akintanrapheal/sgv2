@@ -12,7 +12,7 @@ namespace SterlingLams.Web.Areas.Marketing.Controllers;
 /// backends. Restricted to the Social Media team and full Administrators.
 /// </summary>
 [Area("Marketing")]
-[Authorize(Roles = "Admin,Social Media")]
+[Authorize(Roles = "Admin,Owner,Developer,Social Media")]
 public abstract class MarketingAreaController : Controller
 {
     /// <summary>Records an action to the audit log. Best-effort — never throws.</summary>

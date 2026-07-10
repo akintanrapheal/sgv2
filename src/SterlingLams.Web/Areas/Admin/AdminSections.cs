@@ -1,3 +1,5 @@
+using System.Security.Claims;
+
 namespace SterlingLams.Web.Areas.Admin;
 
 /// <summary>
@@ -59,6 +61,17 @@ public static class AdminSections
 
     /// <summary>The built-in full-access role. Always sees everything; cannot be edited/deleted.</summary>
     public const string AdminRole = "Admin";
+
+    /// <summary>Roles with unrestricted access to the whole system (all backends, all sections, POS,
+    /// user &amp; role management). Section permissions are bypassed for these — they behave like Admin.</summary>
+    public static readonly string[] FullAccessRoles = { AdminRole, "Owner", "Developer" };
+
+    /// <summary>True if the user holds any full-access role (Admin/Owner/Developer).</summary>
+    public static bool IsFullAccess(ClaimsPrincipal user)
+    {
+        foreach (var r in FullAccessRoles) if (user.IsInRole(r)) return true;
+        return false;
+    }
 
     /// <summary>Roles that ship by default (besides Admin and Customer).</summary>
     public static readonly string[] DefaultStaffRoles = { "Owner", "Developer", "Operations", "Sales", "Inventory", "Social Media" };

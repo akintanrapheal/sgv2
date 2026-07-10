@@ -152,7 +152,7 @@ public class TransfersController : InventoryAreaController
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Approve(int id, [FromBody] ItemsRequest req)
     {
-        if (!User.IsInRole(AdminRole)) return Json(new { success = false, message = "Only an administrator can approve transfers." });
+        if (!SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User)) return Json(new { success = false, message = "Only an administrator can approve transfers." });
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var deny = await DenyIfNoStoreAccessAsync(id, from: true, to: false); if (deny != null) return deny;
         var result = await _workflow.ApproveAsync(id, req.Items, userId);
@@ -164,7 +164,7 @@ public class TransfersController : InventoryAreaController
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Reject(int id, [FromBody] ReasonRequest req)
     {
-        if (!User.IsInRole(AdminRole)) return Json(new { success = false, message = "Only an administrator can reject transfers." });
+        if (!SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User)) return Json(new { success = false, message = "Only an administrator can reject transfers." });
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var deny = await DenyIfNoStoreAccessAsync(id, from: true, to: false); if (deny != null) return deny;
         var result = await _workflow.RejectAsync(id, req.Reason, userId);

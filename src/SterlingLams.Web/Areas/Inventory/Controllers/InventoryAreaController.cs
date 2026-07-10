@@ -15,7 +15,7 @@ namespace SterlingLams.Web.Areas.Inventory.Controllers;
 /// workspace (stock, transfers, till, stock-take) separate from the website admin.
 /// </summary>
 [Area("Inventory")]
-[Authorize(Roles = "Admin,Inventory")]
+[Authorize(Roles = "Admin,Owner,Developer,Inventory")]
 public abstract class InventoryAreaController : Controller
 {
     /// <summary>Staff members for "Staff member" pickers — users in any backend role (i.e. NOT just

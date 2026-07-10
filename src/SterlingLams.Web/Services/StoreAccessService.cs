@@ -25,7 +25,7 @@ public class StoreAccessService : IStoreAccessService
     {
         var allActive = await _db.Stores.Where(s => s.IsActive).Select(s => s.Id).ToListAsync();
 
-        if (user.IsInRole(AdminSections.AdminRole)) return allActive.ToHashSet();
+        if (AdminSections.IsFullAccess(user)) return allActive.ToHashSet();
 
         var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId)) return new HashSet<int>();

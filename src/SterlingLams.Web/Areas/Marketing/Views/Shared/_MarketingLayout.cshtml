@@ -62,7 +62,7 @@
             }
         </nav>
         <div class="px-3 py-4 border-t border-neutral-800 space-y-1">
-            @if (User.IsInRole("Admin"))
+            @if (SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User))
             {
                 <a asp-area="Admin" asp-controller="Dashboard" asp-action="Index" class="flex items-center gap-3 px-3 py-2.5 text-xs text-neutral-500 hover:text-white transition-colors">← Website Admin</a>
             }
