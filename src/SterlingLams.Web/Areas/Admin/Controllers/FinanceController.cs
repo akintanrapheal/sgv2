@@ -66,6 +66,29 @@ public class FinanceController : AdminBaseController
         public int OverShortCount => Rows.Count(r => r.Variance != 0);
     }
 
+    public record NameAmount(string Label, int Count, decimal Amount);
+    public record RefundProductRow(string Product, int Qty, decimal Amount);
+    public record RefundListRow(string Number, DateTime When, string Order, decimal Amount, string Method, string Reason, string Cashier);
+
+    public class RefundVm
+    {
+        public DateTime From { get; set; }
+        public DateTime To { get; set; }
+        public int? StoreId { get; set; }
+        public List<Store> Stores { get; set; } = new();
+        public decimal GrossSales { get; set; }
+        public decimal TotalRefunds { get; set; }
+        public int RefundCount { get; set; }
+        public int OrdersRefunded { get; set; }
+        public decimal Rate => GrossSales > 0 ? TotalRefunds / GrossSales : 0;
+        public decimal Avg => RefundCount > 0 ? TotalRefunds / RefundCount : 0;
+        public List<NameAmount> ByReason { get; set; } = new();
+        public List<NameAmount> ByMethod { get; set; } = new();
+        public List<NameAmount> ByCashier { get; set; } = new();
+        public List<RefundProductRow> ByProduct { get; set; } = new();
+        public List<RefundListRow> Recent { get; set; } = new();
+    }
+
     private static readonly string[] Periods = { "day", "week", "month", "quarter", "year" };
 
     // Buckets a calendar day into the chosen reporting period (start date + display label).
@@ -308,6 +331,69 @@ public class FinanceController : AdminBaseController
         }).ToList();
 
         return View(new CashVm { From = f, To = t.AddDays(-1), StoreId = storeId, Stores = stores, Rows = rows });
+    }
+
+    // ── Refund analytics ───────────────────────────────────────────────────────
+    public async Task<IActionResult> Refunds(string? from, string? to, int? storeId)
+    {
+        ViewData["Title"] = "Finance — Refunds";
+        var (f, t) = Range(from, to);
+        var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
+
+        var refq = _db.Refunds.Where(r => r.CreatedAt >= f && r.CreatedAt < t);
+        if (storeId.HasValue) refq = refq.Where(r => r.OriginalOrder.PickupStoreId == storeId || r.OriginalOrder.FulfillingStoreId == storeId);
+
+        var totals = await refq.GroupBy(_ => 1)
+            .Select(g => new { Count = g.Count(), Amt = g.Sum(r => r.Amount), Orders = g.Select(r => r.OriginalOrderId).Distinct().Count() })
+            .FirstOrDefaultAsync();
+
+        var byReason = (await refq.GroupBy(r => r.Reason)
+                .Select(g => new { g.Key, Count = g.Count(), Amt = g.Sum(r => r.Amount) }).ToListAsync())
+            .Select(x => new NameAmount(string.IsNullOrWhiteSpace(x.Key) ? "Unspecified" : x.Key!.Trim(), x.Count, x.Amt))
+            .OrderByDescending(x => x.Amount).ToList();
+        var byMethod = (await refq.GroupBy(r => r.RefundMethod)
+                .Select(g => new { g.Key, Count = g.Count(), Amt = g.Sum(r => r.Amount) }).ToListAsync())
+            .Select(x => new NameAmount(string.IsNullOrWhiteSpace(x.Key) ? "—" : x.Key, x.Count, x.Amt))
+            .OrderByDescending(x => x.Amount).ToList();
+
+        var cashierRaw = await refq.GroupBy(r => r.CashierUserId)
+            .Select(g => new { g.Key, Count = g.Count(), Amt = g.Sum(r => r.Amount) }).ToListAsync();
+        var cIds = cashierRaw.Select(c => c.Key).Distinct().ToList();
+        var cNames = (await _db.Users.Where(u => cIds.Contains(u.Id))
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.UserName }).ToListAsync())
+            .ToDictionary(u => u.Id, u =>
+            {
+                var n = $"{u.FirstName} {u.LastName}".Trim();
+                return string.IsNullOrWhiteSpace(n) ? (u.UserName ?? "—") : n;
+            });
+        var byCashier = cashierRaw
+            .Select(c => new NameAmount(string.IsNullOrWhiteSpace(c.Key) ? "—" : cNames.GetValueOrDefault(c.Key, "Unknown"), c.Count, c.Amt))
+            .OrderByDescending(x => x.Amount).ToList();
+
+        var itemsQ = _db.RefundItems.Where(i => i.Refund.CreatedAt >= f && i.Refund.CreatedAt < t);
+        if (storeId.HasValue) itemsQ = itemsQ.Where(i => i.Refund.OriginalOrder.PickupStoreId == storeId || i.Refund.OriginalOrder.FulfillingStoreId == storeId);
+        var byProduct = (await itemsQ.GroupBy(i => i.ProductName)
+                .Select(g => new { g.Key, Qty = g.Sum(x => x.Quantity), Amt = g.Sum(x => x.Quantity * x.UnitPrice) })
+                .OrderByDescending(x => x.Amt).Take(15).ToListAsync())
+            .Select(x => new RefundProductRow(x.Key, x.Qty, x.Amt)).ToList();
+
+        var recentRaw = await refq.OrderByDescending(r => r.CreatedAt).Take(50)
+            .Select(r => new { r.RefundNumber, r.CreatedAt, Order = r.OriginalOrder.OrderNumber, r.Amount, r.RefundMethod, r.Reason, r.CashierUserId })
+            .ToListAsync();
+        var recent = recentRaw.Select(r => new RefundListRow(r.RefundNumber, r.CreatedAt, r.Order, r.Amount,
+            r.RefundMethod, string.IsNullOrWhiteSpace(r.Reason) ? "—" : r.Reason!, cNames.GetValueOrDefault(r.CashierUserId ?? "", "—"))).ToList();
+
+        var gross = await PaidOrders(f, t, storeId, "").SumAsync(o => (decimal?)o.Total) ?? 0;
+
+        return View(new RefundVm
+        {
+            From = f, To = t.AddDays(-1), StoreId = storeId, Stores = stores,
+            GrossSales = gross,
+            TotalRefunds = totals?.Amt ?? 0,
+            RefundCount = totals?.Count ?? 0,
+            OrdersRefunded = totals?.Orders ?? 0,
+            ByReason = byReason, ByMethod = byMethod, ByCashier = byCashier, ByProduct = byProduct, Recent = recent
+        });
     }
 
     private async Task<FinanceVm> BuildAsync(string? from, string? to, int? storeId, string? channel, string? period)

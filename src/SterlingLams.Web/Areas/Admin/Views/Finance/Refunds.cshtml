@@ -1,0 +1,163 @@
+@using System.Text.Json
+@model SterlingLams.Web.Areas.Admin.Controllers.FinanceController.RefundVm
+@{
+    ViewData["Title"] = "Finance — Refunds";
+    string J(object o) => JsonSerializer.Serialize(o);
+    string Money(decimal v) => "₦" + v.ToString("N0");
+}
+
+<partial name="_FinanceTabs" model="@("Refunds")" />
+
+<div class="flex items-center justify-between mb-5">
+    <p class="text-xs text-neutral-400">Refunds by reason, method, cashier and product — plus the refund rate against sales.</p>
+</div>
+
+<form method="get" class="flex flex-wrap items-end gap-3 mb-6">
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">From</label>
+        <input type="date" name="from" value="@Model.From.ToString("yyyy-MM-dd")" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+    </div>
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">To</label>
+        <input type="date" name="to" value="@Model.To.ToString("yyyy-MM-dd")" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+    </div>
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">Branch</label>
+        <select name="storeId" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm">
+            <option value="">All branches</option>
+            @foreach (var s in Model.Stores)
+            {
+                <option value="@s.Id" selected="@(Model.StoreId == s.Id)">@s.Name</option>
+            }
+        </select>
+    </div>
+    <button class="px-4 py-1.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Apply</button>
+</form>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Total refunds</p><p class="text-xl font-light text-red-600 mt-1">@Money(Model.TotalRefunds)</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Refund rate</p><p class="text-xl font-light mt-1 @(Model.Rate >= 0.15m ? "text-amber-600" : "text-neutral-900")">@Model.Rate.ToString("P1") <span class="text-xs text-neutral-400">of sales</span></p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Refunds</p><p class="text-xl font-light text-neutral-900 mt-1">@Model.RefundCount <span class="text-xs text-neutral-400">· @Model.OrdersRefunded order(s)</span></p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Average refund</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.Avg)</p>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+    <partial name="_ChartCard" model='new ChartCard { Id = "refByReason", Title = "By reason", Subtitle = "share of refund value", Height = 150, Empty = !Model.ByReason.Any(), EmptyText = "No refunds in range." }' />
+    <partial name="_ChartCard" model='new ChartCard { Id = "refByMethod", Title = "By method", Subtitle = "how refunds were paid out", Height = 150, Empty = !Model.ByMethod.Any(), EmptyText = "No refunds in range." }' />
+</div>
+
+@{
+    (string Title, List<SterlingLams.Web.Areas.Admin.Controllers.FinanceController.NameAmount> Rows, string Col)[] tables =
+    {
+        ("By reason", Model.ByReason, "Reason"),
+        ("By cashier", Model.ByCashier, "Cashier"),
+    };
+}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+    @foreach (var tb in tables)
+    {
+        <div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
+            <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">@tb.Title</div>
+            <table class="w-full text-sm">
+                <thead><tr class="text-xs text-neutral-400">
+                    <th class="px-4 py-2 text-left font-medium">@tb.Col</th>
+                    <th class="px-4 py-2 text-right font-medium">Count</th>
+                    <th class="px-4 py-2 text-right font-medium">Amount</th>
+                </tr></thead>
+                <tbody class="divide-y divide-neutral-100">
+                    @if (!tb.Rows.Any()) { <tr><td colspan="3" class="px-4 py-8 text-center text-neutral-400">No refunds in range.</td></tr> }
+                    @foreach (var r in tb.Rows)
+                    {
+                        <tr class="hover:bg-neutral-50">
+                            <td class="px-4 py-2.5 text-neutral-700">@r.Label</td>
+                            <td class="px-4 py-2.5 text-right text-neutral-500">@r.Count</td>
+                            <td class="px-4 py-2.5 text-right text-neutral-800">@Money(r.Amount)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-hidden mb-6">
+    <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Most-refunded products</div>
+    <table class="w-full text-sm">
+        <thead><tr class="text-xs text-neutral-400">
+            <th class="px-4 py-2 text-left font-medium">Product</th>
+            <th class="px-4 py-2 text-right font-medium">Units returned</th>
+            <th class="px-4 py-2 text-right font-medium">Value</th>
+        </tr></thead>
+        <tbody class="divide-y divide-neutral-100">
+            @if (!Model.ByProduct.Any()) { <tr><td colspan="3" class="px-4 py-8 text-center text-neutral-400">No refunded items in range.</td></tr> }
+            @foreach (var p in Model.ByProduct)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-2.5 text-neutral-700">@p.Product</td>
+                    <td class="px-4 py-2.5 text-right text-neutral-500">@p.Qty</td>
+                    <td class="px-4 py-2.5 text-right text-neutral-800">@Money(p.Amount)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
+    <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Recent refunds</div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+            <thead><tr class="text-xs text-neutral-400">
+                <th class="px-4 py-2 text-left font-medium">Ref #</th>
+                <th class="px-4 py-2 text-left font-medium">Date</th>
+                <th class="px-4 py-2 text-left font-medium">Order</th>
+                <th class="px-4 py-2 text-left font-medium">Method</th>
+                <th class="px-4 py-2 text-left font-medium">Reason</th>
+                <th class="px-4 py-2 text-left font-medium">Cashier</th>
+                <th class="px-4 py-2 text-right font-medium">Amount</th>
+            </tr></thead>
+            <tbody class="divide-y divide-neutral-100">
+                @if (!Model.Recent.Any()) { <tr><td colspan="7" class="px-4 py-8 text-center text-neutral-400">No refunds in range.</td></tr> }
+                @foreach (var r in Model.Recent)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5 text-neutral-600">@r.Number</td>
+                        <td class="px-4 py-2.5 text-neutral-500">@r.When.ToString("dd MMM yy HH:mm")</td>
+                        <td class="px-4 py-2.5 text-neutral-700">@r.Order</td>
+                        <td class="px-4 py-2.5 text-neutral-600">@r.Method</td>
+                        <td class="px-4 py-2.5 text-neutral-600">@r.Reason</td>
+                        <td class="px-4 py-2.5 text-neutral-600">@r.Cashier</td>
+                        <td class="px-4 py-2.5 text-right text-red-600">@Money(r.Amount)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ChartScripts" />
+    <script>
+        @if (Model.ByReason.Any())
+        {
+            <text>
+            SLCharts.doughnut('refByReason', @Html.Raw(J(Model.ByReason.Select(r => r.Label))),
+                @Html.Raw(J(Model.ByReason.Select(r => r.Amount))), { money: true });
+            </text>
+        }
+        @if (Model.ByMethod.Any())
+        {
+            <text>
+            SLCharts.doughnut('refByMethod', @Html.Raw(J(Model.ByMethod.Select(r => r.Label))),
+                @Html.Raw(J(Model.ByMethod.Select(r => r.Amount))), { money: true });
+            </text>
+        }
+    </script>
+}
