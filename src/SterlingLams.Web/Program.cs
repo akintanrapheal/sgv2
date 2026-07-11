@@ -206,6 +206,8 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.AutomationSwee
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.ReferralRewardService>();
 // Publishes due scheduled social posts (dormant until accounts are connected: Social:Enabled).
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.SocialPublisherService>();
+builder.Services.AddScoped<SterlingLams.Web.Infrastructure.IFinanceReportService, SterlingLams.Web.Infrastructure.FinanceReportService>();
+builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.FinanceReportScheduler>();
 
 // ─── MVC ────────────────────────────────────────────────────────────────────
 builder.Services.AddControllersWithViews()

@@ -177,6 +177,12 @@ public static class SettingsSeedData
         new() { Key = "email.order_delivered.subject",  Group = "Emails", Label = "Delivered — Subject",         Type = "text",     Value = "Your order has been delivered", Description = "Sent when an order moves to Delivered (also the heading).", SortOrder = 26 },
         new() { Key = "email.order_delivered.intro",    Group = "Emails", Label = "Delivered — Intro",           Type = "textarea", Value = "Your order {order} has been delivered. We hope you love it — thank you for shopping with us!", Description = "Opening line above the order summary. Placeholders: {order}, {date}, {name}.", SortOrder = 27 },
 
+        // Scheduled finance summary email (managed from the Finance dashboard)
+        new() { Key = "finance.report_email_enabled", Group = "Emails", Label = "Finance summary email",   Type = "boolean",  Value = "false",   Description = "Email a periodic finance summary to the finance team.", SortOrder = 40 },
+        new() { Key = "finance.report_email_to",      Group = "Emails", Label = "Finance summary recipients", Type = "text",   Value = "",        Description = "Comma-separated email addresses that receive the finance summary.", SortOrder = 41 },
+        new() { Key = "finance.report_email_freq",    Group = "Emails", Label = "Finance summary frequency", Type = "text",    Value = "weekly",  Description = "weekly or monthly.", SortOrder = 42 },
+        new() { Key = "finance.report_last_sent",     Group = "Emails", Label = "Finance summary last sent", Type = "text",    Value = "",        Description = "Timestamp of the last finance summary email (managed automatically).", SortOrder = 43 },
+
         // ── Store Operations ──────────────────────────────────────────────────
         new() { Key = "store.accepting_orders",    Group = "Store", Label = "Accepting Orders",         Type = "boolean", Value = "true",  Description = "Turn off to temporarily stop customers from placing orders.",          SortOrder = 1 },
         new() { Key = "store.maintenance_mode",    Group = "Store", Label = "Maintenance Mode",         Type = "boolean", Value = "false", Description = "Shows a maintenance page to all visitors (admin still works).",        SortOrder = 2 },

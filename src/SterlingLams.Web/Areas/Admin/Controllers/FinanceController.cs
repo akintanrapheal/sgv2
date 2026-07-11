@@ -18,10 +18,15 @@ public class FinanceController : AdminBaseController
 
     private readonly ApplicationDbContext _db;
     private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
-    public FinanceController(ApplicationDbContext db, SterlingLams.Web.Services.ILoyaltyService loyalty)
+    private readonly SterlingLams.Web.Services.ISettingsService _settings;
+    private readonly SterlingLams.Web.Infrastructure.IFinanceReportService _report;
+    public FinanceController(ApplicationDbContext db, SterlingLams.Web.Services.ILoyaltyService loyalty,
+        SterlingLams.Web.Services.ISettingsService settings, SterlingLams.Web.Infrastructure.IFinanceReportService report)
     {
         _db = db;
         _loyalty = loyalty;
+        _settings = settings;
+        _report = report;
     }
 
     // Inclusive from/to (days). Defaults to the last 30 days.
@@ -217,7 +222,34 @@ public class FinanceController : AdminBaseController
     {
         ViewData["Title"] = "Finance";
         var vm = await BuildAsync(from, to, storeId, channel, period);
+        ViewBag.CanManage = AdminSections.IsSystemManager(User);
+        ViewBag.ReportEnabled = await _settings.GetBoolAsync("finance.report_email_enabled", false);
+        ViewBag.ReportTo = await _settings.GetAsync("finance.report_email_to", "");
+        ViewBag.ReportFreq = await _settings.GetAsync("finance.report_email_freq", "weekly");
         return View(vm);
+    }
+
+    // ── Scheduled finance summary email (config + test) ────────────────────────
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveReportSettings(bool enabled, string? recipients, string? frequency)
+    {
+        await _settings.SaveManyAsync(new Dictionary<string, string>
+        {
+            ["finance.report_email_enabled"] = enabled ? "true" : "false",
+            ["finance.report_email_to"] = (recipients ?? "").Trim(),
+            ["finance.report_email_freq"] = frequency == "monthly" ? "monthly" : "weekly",
+        });
+        await LogAsync("Update", "Setting", null, $"Updated scheduled finance report (enabled={enabled}, {frequency})");
+        TempData["Success"] = "Scheduled report settings saved.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SendReportNow(string? recipients)
+    {
+        var (ok, msg) = await _report.SendAsync(string.IsNullOrWhiteSpace(recipients) ? null : recipients.Trim());
+        TempData[ok ? "Success" : "Error"] = ok ? $"Finance summary sent. {msg}" : $"Not sent: {msg}";
+        return RedirectToAction(nameof(Index));
     }
 
     // CSV export of the same figures the dashboard shows — finance always wants the numbers in a sheet.
