@@ -9,6 +9,15 @@
     string Money(decimal v) => "₦" + v.ToString("N0");
     var periodLabel = Model.Period switch { "week" => "Weekly", "month" => "Monthly", "quarter" => "Quarterly", "year" => "Yearly", _ => "Daily" };
     var topStates = Model.ByState.Take(12).ToList();
+    // ▲/▼ % chip comparing this period to the previous equal-length one.
+    string Delta(decimal cur, decimal prev)
+    {
+        if (prev <= 0) return "";
+        var d = (cur - prev) / prev;
+        var up = d >= 0;
+        var cls = up ? "text-emerald-600" : "text-red-600";
+        return $"<span class=\"text-[11px] {cls}\">{(up ? "▲" : "▼")} {Math.Abs(d):P0} vs prev</span>";
+    }
 }
 
 <div class="flex items-center justify-between mb-6">
@@ -61,27 +70,54 @@
     <button class="px-4 py-1.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Apply</button>
 </form>
 
+<div class="flex flex-wrap gap-1.5 mb-5">
+    @foreach (var p in Model.Presets)
+    {
+        <a asp-action="Index" asp-route-from="@p.From" asp-route-to="@p.To" asp-route-storeId="@Model.StoreId" asp-route-channel="@Model.Channel" asp-route-period="@Model.Period"
+           class="px-3 py-1 text-xs border border-neutral-200 rounded-full text-neutral-600 hover:border-neutral-400 hover:text-neutral-900 transition-colors">@p.Label</a>
+    }
+</div>
+
+@if (Model.Alerts.Any())
+{
+    <div class="mb-5 rounded-sm border border-amber-200 bg-amber-50 px-4 py-3">
+        <p class="text-xs font-medium text-amber-800 mb-1">⚠ Worth a look</p>
+        <ul class="text-xs text-amber-700 space-y-0.5 list-disc list-inside">
+            @foreach (var a in Model.Alerts)
+            {
+                <li>@Html.Raw(a)</li>
+            }
+        </ul>
+    </div>
+}
+
 <!-- Revenue streams -->
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Order revenue</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.OrderRevenue)</p>
+        <p class="mt-1">@Html.Raw(Delta(Model.OrderRevenue, Model.PrevOrderRevenue))</p>
     </div>
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Logistics revenue</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.LogisticsRevenue)</p>
+        <p class="mt-1">@Html.Raw(Delta(Model.LogisticsRevenue, Model.PrevLogistics))</p>
     </div>
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Total revenue</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.Gross)</p>
+        <p class="mt-1">@Html.Raw(Delta(Model.Gross, Model.PrevGross))</p>
     </div>
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Net (after refunds)</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.Net)</p>
+        <p class="mt-1">@Html.Raw(Delta(Model.Net, Model.PrevNet))</p>
     </div>
 </div>
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Refunds</p><p class="text-xl font-light text-red-600 mt-1">@Money(Model.Refunds)</p>
+        <p class="mt-1 text-[11px] text-neutral-400">₦@Model.Giveaway.ToString("N0") given away (discounts/loyalty/gift)</p>
     </div>
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Transactions</p><p class="text-xl font-light text-neutral-900 mt-1">@Model.Count <span class="text-xs text-neutral-400">· avg @Money(Model.Avg)</span></p>
+        <p class="mt-1">@Html.Raw(Delta(Model.Count, Model.PrevCount))</p>
     </div>
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Online sales</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.OnlineGross) <span class="text-xs text-neutral-400">· @Model.OnlineCount</span></p>

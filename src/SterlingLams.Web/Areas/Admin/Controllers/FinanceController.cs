@@ -94,6 +94,23 @@ public class FinanceController : AdminBaseController
         public int OnlineCount { get; set; }
         public int PosCount { get; set; }
 
+        // Money given away (discounts / loyalty redemptions / gift-card spend) — revenue leakage.
+        public decimal DiscountTotal { get; set; }
+        public decimal LoyaltyTotal { get; set; }
+        public decimal GiftCardTotal { get; set; }
+        public decimal Giveaway => DiscountTotal + LoyaltyTotal + GiftCardTotal;
+
+        // Previous equal-length period, for period-over-period comparison chips.
+        public int PrevCount { get; set; }
+        public decimal PrevGross { get; set; }
+        public decimal PrevLogistics { get; set; }
+        public decimal PrevRefunds { get; set; }
+        public decimal PrevOrderRevenue => PrevGross - PrevLogistics;
+        public decimal PrevNet => PrevGross - PrevRefunds;
+
+        public List<(string Label, string From, string To)> Presets { get; set; } = new();
+        public List<string> Alerts { get; set; } = new();
+
         public List<PeriodPoint> ByPeriod { get; set; } = new();
         public List<StatePoint> ByState { get; set; } = new();
         public List<DeliveryTypePoint> ByDeliveryType { get; set; } = new();
@@ -109,6 +126,39 @@ public class FinanceController : AdminBaseController
         if (channel == "Online") q = q.Where(o => o.Channel == OrderChannel.Online);
         else if (channel == "Pos") q = q.Where(o => o.Channel == OrderChannel.Pos);
         return q;
+    }
+
+    // Lightweight totals for a window — used for the previous-period comparison.
+    private async Task<(int Count, decimal Gross, decimal Logistics, decimal Refunds)> SnapshotAsync(
+        DateTime f, DateTime t, int? storeId, string channel)
+    {
+        var g = await PaidOrders(f, t, storeId, channel).GroupBy(_ => 1)
+            .Select(x => new { Count = x.Count(), Gross = x.Sum(o => o.Total), Logistics = x.Sum(o => o.DeliveryFee) })
+            .FirstOrDefaultAsync();
+        var refq = _db.Refunds.Where(r => r.CreatedAt >= f && r.CreatedAt < t);
+        if (storeId.HasValue) refq = refq.Where(r => r.OriginalOrder.PickupStoreId == storeId || r.OriginalOrder.FulfillingStoreId == storeId);
+        if (channel == "Online") refq = refq.Where(r => r.OriginalOrder.Channel == OrderChannel.Online);
+        else if (channel == "Pos") refq = refq.Where(r => r.OriginalOrder.Channel == OrderChannel.Pos);
+        var refunds = await refq.SumAsync(r => (decimal?)r.Amount) ?? 0;
+        return (g?.Count ?? 0, g?.Gross ?? 0, g?.Logistics ?? 0, refunds);
+    }
+
+    // Date-range quick presets (This month, Last month, QTD, YTD, last 30 days).
+    private static List<(string Label, string From, string To)> BuildPresets()
+    {
+        var today = DateTime.UtcNow.Date;
+        string S(DateTime d) => d.ToString("yyyy-MM-dd");
+        var thisMonth = new DateTime(today.Year, today.Month, 1);
+        var lastMonth = thisMonth.AddMonths(-1);
+        var qStart = new DateTime(today.Year, (today.Month - 1) / 3 * 3 + 1, 1);
+        return new()
+        {
+            ("Last 30 days", S(today.AddDays(-29)), S(today)),
+            ("This month",   S(thisMonth),          S(today)),
+            ("Last month",   S(lastMonth),          S(thisMonth.AddDays(-1))),
+            ("This quarter", S(qStart),             S(today)),
+            ("Year to date", S(new DateTime(today.Year, 1, 1)), S(today)),
+        };
     }
 
     public async Task<IActionResult> Index(string? from, string? to, int? storeId, string? channel, string? period)
@@ -189,9 +239,18 @@ public class FinanceController : AdminBaseController
 
         var paid = PaidOrders(f, t, storeId, channel);
 
-        // Headline + online/POS split in one grouped query.
+        // Headline + online/POS split + giveaways (discounts/loyalty/gift cards) in one grouped query.
         var chan = await paid.GroupBy(o => o.Channel)
-            .Select(g => new { g.Key, Count = g.Count(), Gross = g.Sum(o => o.Total), Delivery = g.Sum(o => o.DeliveryFee) })
+            .Select(g => new
+            {
+                g.Key,
+                Count = g.Count(),
+                Gross = g.Sum(o => o.Total),
+                Delivery = g.Sum(o => o.DeliveryFee),
+                Disc = g.Sum(o => o.DiscountAmount),
+                Loy = g.Sum(o => o.LoyaltyDiscount),
+                Gift = g.Sum(o => o.GiftCardAmount)
+            })
             .ToListAsync();
         var posGross = chan.Where(c => c.Key == OrderChannel.Pos).Sum(c => c.Gross);
         var posCount = chan.Where(c => c.Key == OrderChannel.Pos).Sum(c => c.Count);
@@ -292,6 +351,25 @@ public class FinanceController : AdminBaseController
             .Select(kv => new ChannelPoint(kv.Key, kv.Value.Amount, kv.Value.Count))
             .OrderByDescending(c => c.Amount).ToList();
 
+        var gross = chan.Sum(c => c.Gross);
+        var discountTotal = chan.Sum(c => c.Disc);
+        var loyaltyTotal = chan.Sum(c => c.Loy);
+        var giftCardTotal = chan.Sum(c => c.Gift);
+
+        // Previous equal-length window immediately before this one (for comparison chips).
+        var prev = await SnapshotAsync(f - (t - f), f, storeId, channel);
+
+        // Anomaly flags — quick things finance should look at.
+        var alerts = new List<string>();
+        if (gross > 0 && refundTotal / gross >= 0.15m)
+            alerts.Add($"Refunds are {refundTotal / gross:P0} of gross revenue (₦{refundTotal:N0}) — worth reviewing returns.");
+        var negPeriods = byPeriod.Count(p => p.Net < 0);
+        if (negPeriods > 0)
+            alerts.Add($"{negPeriods} {period}(s) closed with negative net — refunds exceeded sales.");
+        var giveaway = discountTotal + loyaltyTotal + giftCardTotal;
+        if (gross > 0 && giveaway / gross >= 0.15m)
+            alerts.Add($"Discounts &amp; giveaways are {giveaway / gross:P0} of gross (₦{giveaway:N0}).");
+
         return new FinanceVm
         {
             From = f,
@@ -301,13 +379,22 @@ public class FinanceController : AdminBaseController
             Period = period,
             Stores = stores,
             Count = chan.Sum(c => c.Count),
-            Gross = chan.Sum(c => c.Gross),
+            Gross = gross,
             Refunds = refundTotal,
             DeliveryFees = chan.Sum(c => c.Delivery),
             OnlineGross = onlineGross,
             PosGross = posGross,
             OnlineCount = onlineCount,
             PosCount = posCount,
+            DiscountTotal = discountTotal,
+            LoyaltyTotal = loyaltyTotal,
+            GiftCardTotal = giftCardTotal,
+            PrevCount = prev.Count,
+            PrevGross = prev.Gross,
+            PrevLogistics = prev.Logistics,
+            PrevRefunds = prev.Refunds,
+            Presets = BuildPresets(),
+            Alerts = alerts,
             ByPeriod = byPeriod,
             ByState = byState,
             ByDeliveryType = byDeliveryType,
