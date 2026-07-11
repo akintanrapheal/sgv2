@@ -74,6 +74,9 @@ public class Order
 
     public decimal Subtotal { get; set; }
     public decimal DeliveryFee { get; set; }
+    /// <summary>The delivery speed chosen at checkout ("Express" | "Standard"), or null for
+    /// pickup / POS / legacy orders. Lets finance break logistics revenue down by speed.</summary>
+    public string? DeliveryType { get; set; }
     public decimal Tax { get; set; }
     public decimal Total { get; set; }
     public string Currency { get; set; } = "NGN";

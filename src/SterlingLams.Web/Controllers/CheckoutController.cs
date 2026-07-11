@@ -546,6 +546,8 @@ public class CheckoutController : Controller
             SessionPageViews = HttpContext.Session.GetInt32(SterlingLams.Web.Infrastructure.OrderAttributionMiddleware.PageViewsKey),
             Subtotal = cart.Subtotal,
             DeliveryFee = deliveryFee,
+            DeliveryType = vm.FulfillmentType == FulfillmentChoice.Delivery && !string.IsNullOrWhiteSpace(vm.SelectedDeliveryType)
+                ? vm.SelectedDeliveryType.Trim() : null,
             DiscountCode = discountCode,
             DiscountAmount = discountAmount,
             LoyaltyPointsRedeemed = loyaltyPoints,
