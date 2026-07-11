@@ -247,6 +247,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string? Description { get; set; }
         public string? ShortDescription { get; set; }
         public decimal Price { get; set; }
+        public decimal? CostPrice { get; set; }
         public decimal? SalePrice { get; set; }
         /// <summary>Optional sale schedule (local datetime from the form; stored as UTC). Null = the
         /// sale price is live as soon as it's set / runs until cleared.</summary>

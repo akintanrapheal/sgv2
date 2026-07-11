@@ -14,6 +14,10 @@ public class Product
 
     public decimal Price { get; set; }
 
+    /// <summary>Optional unit cost price (what we pay for the item). Used for gross-profit / margin
+    /// reporting. Null = cost not recorded yet, so the item is excluded from margin figures.</summary>
+    public decimal? CostPrice { get; set; }
+
     /// <summary>Optional promotional/sale price. When set and below <see cref="Price"/>, this is the
     /// price actually charged, and the storefront shows the regular Price struck-through next to it.
     /// Null (or not below Price) = not on sale.</summary>

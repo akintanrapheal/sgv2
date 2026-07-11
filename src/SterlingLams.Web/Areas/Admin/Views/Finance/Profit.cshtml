@@ -1,0 +1,86 @@
+@model SterlingLams.Web.Areas.Admin.Controllers.FinanceController.ProfitVm
+@{
+    ViewData["Title"] = "Finance — Profit";
+    string Money(decimal v) => "₦" + v.ToString("N0");
+    string MgnCls(decimal m) => m < 0 ? "text-red-600" : (m < 0.15m ? "text-amber-600" : "text-emerald-600");
+}
+
+<partial name="_FinanceTabs" model="@("Profit")" />
+
+<div class="flex items-center justify-between mb-5">
+    <p class="text-xs text-neutral-400">Gross profit &amp; margin — merchandise revenue minus cost of goods (from product cost prices).</p>
+</div>
+
+<form method="get" class="flex flex-wrap items-end gap-3 mb-6">
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">From</label>
+        <input type="date" name="from" value="@Model.From.ToString("yyyy-MM-dd")" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+    </div>
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">To</label>
+        <input type="date" name="to" value="@Model.To.ToString("yyyy-MM-dd")" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+    </div>
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">Branch</label>
+        <select name="storeId" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm">
+            <option value="">All branches</option>
+            @foreach (var s in Model.Stores)
+            {
+                <option value="@s.Id" selected="@(Model.StoreId == s.Id)">@s.Name</option>
+            }
+        </select>
+    </div>
+    <button class="px-4 py-1.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Apply</button>
+</form>
+
+@if (Model.Coverage < 0.999m)
+{
+    <div class="mb-5 rounded-sm border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+        Cost prices cover <strong>@Model.Coverage.ToString("P0")</strong> of sales revenue in this range. Add cost prices on the remaining products (Products → edit → Cost price) for a complete margin picture.
+    </div>
+}
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Revenue (costed)</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.Revenue)</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Cost of goods</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.Cost)</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Gross profit</p><p class="text-xl font-light mt-1 @MgnCls(Model.Margin)">@Money(Model.Profit)</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Gross margin</p><p class="text-xl font-light mt-1 @MgnCls(Model.Margin)">@Model.Margin.ToString("P1")</p>
+    </div>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
+    <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Profit by product</div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+            <thead><tr class="text-xs text-neutral-400">
+                <th class="px-4 py-2 text-left font-medium">Product</th>
+                <th class="px-4 py-2 text-right font-medium">Units</th>
+                <th class="px-4 py-2 text-right font-medium">Revenue</th>
+                <th class="px-4 py-2 text-right font-medium">Cost</th>
+                <th class="px-4 py-2 text-right font-medium">Profit</th>
+                <th class="px-4 py-2 text-right font-medium">Margin</th>
+            </tr></thead>
+            <tbody class="divide-y divide-neutral-100">
+                @if (!Model.Rows.Any()) { <tr><td colspan="6" class="px-4 py-8 text-center text-neutral-400">No sales in range.</td></tr> }
+                @foreach (var r in Model.Rows)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5 text-neutral-700">@r.Product</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-500">@r.Units</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-800">@Money(r.Revenue)</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-500">@(r.HasCost ? Money(r.Cost) : "—")</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-800">@(r.HasCost ? Money(r.Profit) : "—")</td>
+                        <td class="px-4 py-2.5 text-right @(r.HasCost ? MgnCls(r.Margin) : "text-neutral-300")">@(r.HasCost ? r.Margin.ToString("P0") : "no cost")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

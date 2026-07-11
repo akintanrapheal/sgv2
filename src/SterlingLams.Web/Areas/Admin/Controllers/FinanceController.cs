@@ -637,6 +637,66 @@ public class FinanceController : AdminBaseController
         });
     }
 
+    // ── Profit & margin (needs product cost prices) ────────────────────────────
+    public record ProfitRow(string Product, int Units, decimal Revenue, decimal Cost, bool HasCost)
+    {
+        public decimal Profit => Revenue - Cost;
+        public decimal Margin => Revenue > 0 ? Profit / Revenue : 0;
+    }
+
+    public class ProfitVm
+    {
+        public DateTime From { get; set; }
+        public DateTime To { get; set; }
+        public int? StoreId { get; set; }
+        public List<Store> Stores { get; set; } = new();
+        public decimal Revenue { get; set; }          // merchandise revenue with known cost
+        public decimal Cost { get; set; }
+        public decimal RevenueAll { get; set; }        // all merchandise revenue (incl. no-cost items)
+        public decimal Profit => Revenue - Cost;
+        public decimal Margin => Revenue > 0 ? Profit / Revenue : 0;
+        public decimal Coverage => RevenueAll > 0 ? Revenue / RevenueAll : 0; // % of revenue with cost data
+        public List<ProfitRow> Rows { get; set; } = new();
+    }
+
+    public async Task<IActionResult> Profit(string? from, string? to, int? storeId)
+    {
+        ViewData["Title"] = "Finance — Profit";
+        var (f, t) = Range(from, to);
+        var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
+
+        // Paid order items in range, joined to the product's current cost price.
+        var itemsQ = _db.OrderItems.Where(i => i.Order.IsPaid && i.Order.CreatedAt >= f && i.Order.CreatedAt < t);
+        if (storeId.HasValue) itemsQ = itemsQ.Where(i => i.Order.PickupStoreId == storeId || i.Order.FulfillingStoreId == storeId);
+
+        var grouped = await itemsQ
+            .GroupBy(i => new { i.ProductId, i.ProductName })
+            .Select(g => new
+            {
+                g.Key.ProductName,
+                Units = g.Sum(x => x.Quantity),
+                Revenue = g.Sum(x => x.Quantity * x.UnitPrice),
+                Cost = g.Sum(x => x.Quantity * (x.Product.CostPrice ?? 0m)),
+                HasCost = g.Max(x => x.Product.CostPrice) != null
+            })
+            .ToListAsync();
+
+        var rows = grouped
+            .Select(x => new ProfitRow(x.ProductName, x.Units, x.Revenue, x.HasCost ? x.Cost : 0m, x.HasCost))
+            .OrderByDescending(r => r.Profit).ToList();
+
+        var withCost = rows.Where(r => r.HasCost).ToList();
+
+        return View(new ProfitVm
+        {
+            From = f, To = t.AddDays(-1), StoreId = storeId, Stores = stores,
+            Revenue = withCost.Sum(r => r.Revenue),
+            Cost = withCost.Sum(r => r.Cost),
+            RevenueAll = rows.Sum(r => r.Revenue),
+            Rows = rows
+        });
+    }
+
     private async Task<FinanceVm> BuildAsync(string? from, string? to, int? storeId, string? channel, string? period)
     {
         var (f, t) = Range(from, to);

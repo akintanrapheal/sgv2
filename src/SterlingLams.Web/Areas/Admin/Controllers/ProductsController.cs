@@ -172,6 +172,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 Description      = product.Description ?? "",
                 ShortDescription = product.ShortDescription,
                 Price            = product.Price,
+                CostPrice        = product.CostPrice,
                 SalePrice        = product.SalePrice,
                 SaleStartsAt     = product.SaleStartsAt,
                 SaleEndsAt       = product.SaleEndsAt,
@@ -420,6 +421,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             product.Description = SterlingLams.Web.Services.ProductHtml.Sanitize(vm.Description);
             product.ShortDescription = vm.ShortDescription;
             product.Price = vm.Price;
+            product.CostPrice = vm.CostPrice is decimal c && c >= 0m ? c : null;
             // Sale price only applies when it's a positive number below the regular price.
             product.SalePrice = vm.SalePrice is decimal sp && sp > 0m && sp < vm.Price ? sp : null;
             // Sale schedule (UTC). Cleared with the sale price; null on either side = open-ended.
