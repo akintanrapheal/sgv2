@@ -539,6 +539,104 @@ public class FinanceController : AdminBaseController
         });
     }
 
+    // ── Customer finance (new vs repeat, top spenders) ─────────────────────────
+    public record CustomerRow(string Name, string Email, int Orders, decimal Revenue, DateTime Last);
+
+    public class CustomersVm
+    {
+        public DateTime From { get; set; }
+        public DateTime To { get; set; }
+        public decimal NewRevenue { get; set; }
+        public decimal RepeatRevenue { get; set; }
+        public int NewCustomers { get; set; }
+        public int RepeatCustomers { get; set; }
+        public decimal Total => NewRevenue + RepeatRevenue;
+        public int Customers => NewCustomers + RepeatCustomers;
+        public List<CustomerRow> Top { get; set; } = new();
+    }
+
+    public async Task<IActionResult> Customers(string? from, string? to)
+    {
+        ViewData["Title"] = "Finance — Customers";
+        var (f, t) = Range(from, to);
+
+        // Online orders carry the customer on UserId; a customer is "new" if their first paid online
+        // order falls in range, otherwise "repeat".
+        var onlinePaid = _db.Orders.Where(o => o.IsPaid && o.Channel == OrderChannel.Online && o.UserId != "");
+        var inRange = await onlinePaid.Where(o => o.CreatedAt >= f && o.CreatedAt < t)
+            .GroupBy(o => o.UserId)
+            .Select(g => new { Uid = g.Key, Rev = g.Sum(o => o.Total), Cnt = g.Count(), Last = g.Max(o => o.CreatedAt) })
+            .ToListAsync();
+        var priorIds = (await onlinePaid.Where(o => o.CreatedAt < f).Select(o => o.UserId).Distinct().ToListAsync()).ToHashSet();
+
+        var uids = inRange.Select(x => x.Uid).ToList();
+        var users = (await _db.Users.Where(u => uids.Contains(u.Id))
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email }).ToListAsync())
+            .ToDictionary(u => u.Id, u => (Name: $"{u.FirstName} {u.LastName}".Trim(), Email: u.Email ?? ""));
+
+        var top = inRange.OrderByDescending(x => x.Rev).Take(25)
+            .Select(x =>
+            {
+                var u = users.GetValueOrDefault(x.Uid, (Name: "", Email: ""));
+                return new CustomerRow(string.IsNullOrWhiteSpace(u.Name) ? "Guest / unknown" : u.Name, u.Email, x.Cnt, x.Rev, x.Last);
+            }).ToList();
+
+        return View(new CustomersVm
+        {
+            From = f, To = t.AddDays(-1),
+            NewRevenue = inRange.Where(x => !priorIds.Contains(x.Uid)).Sum(x => x.Rev),
+            RepeatRevenue = inRange.Where(x => priorIds.Contains(x.Uid)).Sum(x => x.Rev),
+            NewCustomers = inRange.Count(x => !priorIds.Contains(x.Uid)),
+            RepeatCustomers = inRange.Count(x => priorIds.Contains(x.Uid)),
+            Top = top
+        });
+    }
+
+    // ── Paystack settlement & gateway-fee estimate ─────────────────────────────
+    public record SettleDay(DateTime Day, int Count, decimal Gross, decimal Fee)
+    { public decimal Net => Gross - Fee; }
+
+    public class SettlementVm
+    {
+        public DateTime From { get; set; }
+        public DateTime To { get; set; }
+        public int Count { get; set; }
+        public decimal Gross { get; set; }
+        public decimal EstFees { get; set; }
+        public decimal NetSettled => Gross - EstFees;
+        public List<SettleDay> ByDay { get; set; } = new();
+    }
+
+    // Standard Paystack Nigeria pricing: 1.5% + ₦100 (₦100 waived below ₦2,500), capped at ₦2,000.
+    private static decimal PaystackFee(decimal amount)
+    {
+        var fee = amount * 0.015m + (amount >= 2500m ? 100m : 0m);
+        return Math.Min(fee, 2000m);
+    }
+
+    public async Task<IActionResult> Settlement(string? from, string? to)
+    {
+        ViewData["Title"] = "Finance — Settlement";
+        var (f, t) = Range(from, to);
+
+        var orders = await _db.Orders
+            .Where(o => o.IsPaid && o.Channel == OrderChannel.Online && o.CreatedAt >= f && o.CreatedAt < t)
+            .Select(o => new { o.Total, o.CreatedAt }).ToListAsync();
+
+        var byDay = orders.GroupBy(o => o.CreatedAt.Date)
+            .Select(g => new SettleDay(g.Key, g.Count(), g.Sum(o => o.Total), g.Sum(o => PaystackFee(o.Total))))
+            .OrderByDescending(d => d.Day).ToList();
+
+        return View(new SettlementVm
+        {
+            From = f, To = t.AddDays(-1),
+            Count = orders.Count,
+            Gross = orders.Sum(o => o.Total),
+            EstFees = orders.Sum(o => PaystackFee(o.Total)),
+            ByDay = byDay
+        });
+    }
+
     private async Task<FinanceVm> BuildAsync(string? from, string? to, int? storeId, string? channel, string? period)
     {
         var (f, t) = Range(from, to);

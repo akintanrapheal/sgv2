@@ -1,0 +1,91 @@
+@using System.Text.Json
+@model SterlingLams.Web.Areas.Admin.Controllers.FinanceController.CustomersVm
+@{
+    ViewData["Title"] = "Finance — Customers";
+    string J(object o) => JsonSerializer.Serialize(o);
+    string Money(decimal v) => "₦" + v.ToString("N0");
+}
+
+<partial name="_FinanceTabs" model="@("Customers")" />
+
+<div class="flex items-center justify-between mb-5">
+    <p class="text-xs text-neutral-400">Online revenue split by new vs returning customers, plus your top spenders.</p>
+</div>
+
+<form method="get" class="flex flex-wrap items-end gap-3 mb-6">
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">From</label>
+        <input type="date" name="from" value="@Model.From.ToString("yyyy-MM-dd")" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+    </div>
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">To</label>
+        <input type="date" name="to" value="@Model.To.ToString("yyyy-MM-dd")" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+    </div>
+    <button class="px-4 py-1.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Apply</button>
+</form>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Customers</p><p class="text-xl font-light text-neutral-900 mt-1">@Model.Customers</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">New-customer revenue</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.NewRevenue)</p>
+        <p class="mt-1 text-[11px] text-neutral-400">@Model.NewCustomers new</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Repeat-customer revenue</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.RepeatRevenue)</p>
+        <p class="mt-1 text-[11px] text-neutral-400">@Model.RepeatCustomers returning</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Repeat share</p><p class="text-xl font-light text-neutral-900 mt-1">@((Model.Total > 0 ? Model.RepeatRevenue / Model.Total : 0).ToString("P0"))</p>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+    <partial name="_ChartCard" model='new ChartCard { Id = "custMix", Title = "New vs repeat revenue", Subtitle = "online", Height = 150, Empty = Model.Total == 0, EmptyText = "No online sales in range." }' />
+    <div class="bg-white border border-neutral-100 rounded-sm p-4 flex flex-col justify-center">
+        <p class="text-xs text-neutral-400 mb-2">Notes</p>
+        <p class="text-sm text-neutral-600 leading-relaxed">A customer counts as <strong>new</strong> when their first paid online order lands in this range, otherwise <strong>returning</strong>. POS walk-ins aren't attributed to a customer account, so they're excluded here.</p>
+    </div>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
+    <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Top customers</div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+            <thead><tr class="text-xs text-neutral-400">
+                <th class="px-4 py-2 text-left font-medium">Customer</th>
+                <th class="px-4 py-2 text-left font-medium">Email</th>
+                <th class="px-4 py-2 text-right font-medium">Orders</th>
+                <th class="px-4 py-2 text-right font-medium">Revenue</th>
+                <th class="px-4 py-2 text-left font-medium">Last order</th>
+            </tr></thead>
+            <tbody class="divide-y divide-neutral-100">
+                @if (!Model.Top.Any()) { <tr><td colspan="5" class="px-4 py-8 text-center text-neutral-400">No online customers in range.</td></tr> }
+                @foreach (var c in Model.Top)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5 text-neutral-700">@c.Name</td>
+                        <td class="px-4 py-2.5 text-neutral-500">@(string.IsNullOrWhiteSpace(c.Email) ? "—" : c.Email)</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-500">@c.Orders</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-800">@Money(c.Revenue)</td>
+                        <td class="px-4 py-2.5 text-neutral-500">@c.Last.ToString("dd MMM yy")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ChartScripts" />
+    <script>
+        @if (Model.Total > 0)
+        {
+            <text>
+            SLCharts.doughnut('custMix', @Html.Raw(J(new[] { "New", "Repeat" })),
+                @Html.Raw(J(new[] { Model.NewRevenue, Model.RepeatRevenue })), { money: true });
+            </text>
+        }
+    </script>
+}
