@@ -1,0 +1,86 @@
+@model SterlingLams.Web.Areas.Admin.Controllers.FinanceController.CashVm
+@{
+    ViewData["Title"] = "Finance — Cash-up";
+    string Money(decimal v) => "₦" + v.ToString("N0");
+    string VarCls(decimal v) => v == 0 ? "text-neutral-400" : (v < 0 ? "text-red-600" : "text-amber-600");
+    string VarText(decimal v) => v == 0 ? "✓ balanced" : (v < 0 ? $"−{Money(Math.Abs(v))} short" : $"+{Money(v)} over");
+}
+
+<partial name="_FinanceTabs" model="@("Cash")" />
+
+<div class="flex items-center justify-between mb-5">
+    <p class="text-xs text-neutral-400">Every closed cash-up: counted cash vs what the drawer should hold. Over/short flags drawer discrepancies.</p>
+</div>
+
+<form method="get" class="flex flex-wrap items-end gap-3 mb-6">
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">From</label>
+        <input type="date" name="from" value="@Model.From.ToString("yyyy-MM-dd")" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+    </div>
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">To</label>
+        <input type="date" name="to" value="@Model.To.ToString("yyyy-MM-dd")" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+    </div>
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">Branch</label>
+        <select name="storeId" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm">
+            <option value="">All branches</option>
+            @foreach (var s in Model.Stores)
+            {
+                <option value="@s.Id" selected="@(Model.StoreId == s.Id)">@s.Name</option>
+            }
+        </select>
+    </div>
+    <button class="px-4 py-1.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Apply</button>
+</form>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Cash-ups</p><p class="text-xl font-light text-neutral-900 mt-1">@Model.Rows.Count</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Cash sales</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.TotalCashSales)</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Net variance</p><p class="text-xl font-light mt-1 @VarCls(Model.TotalVariance)">@Money(Model.TotalVariance)</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Over / short cash-ups</p><p class="text-xl font-light mt-1 @(Model.OverShortCount > 0 ? "text-amber-600" : "text-neutral-900")">@Model.OverShortCount</p>
+    </div>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
+    <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Cash-up sessions</div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+            <thead><tr class="text-xs text-neutral-400">
+                <th class="px-4 py-2 text-left font-medium">Closed</th>
+                <th class="px-4 py-2 text-left font-medium">Branch · Register</th>
+                <th class="px-4 py-2 text-left font-medium">Cashier</th>
+                <th class="px-4 py-2 text-right font-medium">Float</th>
+                <th class="px-4 py-2 text-right font-medium">Cash sales</th>
+                <th class="px-4 py-2 text-right font-medium">In / Out</th>
+                <th class="px-4 py-2 text-right font-medium">Expected</th>
+                <th class="px-4 py-2 text-right font-medium">Counted</th>
+                <th class="px-4 py-2 text-right font-medium">Variance</th>
+            </tr></thead>
+            <tbody class="divide-y divide-neutral-100">
+                @if (!Model.Rows.Any()) { <tr><td colspan="9" class="px-4 py-8 text-center text-neutral-400">No cash-ups in range.</td></tr> }
+                @foreach (var r in Model.Rows)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5 text-neutral-600">@(r.Closed?.ToString("dd MMM yy HH:mm") ?? "—")</td>
+                        <td class="px-4 py-2.5 text-neutral-700">@r.Store <span class="text-neutral-400">· @r.Register</span></td>
+                        <td class="px-4 py-2.5 text-neutral-600">@r.Cashier</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-500">@Money(r.OpeningFloat)</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-800">@Money(r.CashSales)</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-500">@Money(r.CashIn) / @Money(r.CashOut)</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-600">@Money(r.Expected)</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-800">@Money(r.Counted)</td>
+                        <td class="px-4 py-2.5 text-right font-medium @VarCls(r.Variance)">@VarText(r.Variance)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

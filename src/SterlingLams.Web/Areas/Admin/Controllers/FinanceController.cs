@@ -43,6 +43,29 @@ public class FinanceController : AdminBaseController
     public record DeliveryTypePoint(string Type, int Count, decimal Logistics)
     { public decimal AvgFee => Count > 0 ? Logistics / Count : 0; }
 
+    // One closed till session's cash reconciliation. Expected = float + cash sales − cash refunds
+    // + cash paid in − cash paid out; variance = counted − expected (positive = over, negative = short).
+    public record CashSessionRow(int Id, DateTime Opened, DateTime? Closed, string Register, string Store,
+        string Cashier, decimal OpeningFloat, decimal CashSales, decimal CashRefunds, decimal CashIn, decimal CashOut, decimal Counted)
+    {
+        public decimal Expected => OpeningFloat + CashSales - CashRefunds + CashIn - CashOut;
+        public decimal Variance => Counted - Expected;
+    }
+
+    public class CashVm
+    {
+        public DateTime From { get; set; }
+        public DateTime To { get; set; }
+        public int? StoreId { get; set; }
+        public List<Store> Stores { get; set; } = new();
+        public List<CashSessionRow> Rows { get; set; } = new();
+        public decimal TotalCashSales => Rows.Sum(r => r.CashSales);
+        public decimal TotalExpected => Rows.Sum(r => r.Expected);
+        public decimal TotalCounted => Rows.Sum(r => r.Counted);
+        public decimal TotalVariance => Rows.Sum(r => r.Variance);
+        public int OverShortCount => Rows.Count(r => r.Variance != 0);
+    }
+
     private static readonly string[] Periods = { "day", "week", "month", "quarter", "year" };
 
     // Buckets a calendar day into the chosen reporting period (start date + display label).
@@ -226,6 +249,65 @@ public class FinanceController : AdminBaseController
 
         var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
         return File(bytes, "text/csv", $"finance_{vm.From:yyyyMMdd}-{vm.To:yyyyMMdd}.csv");
+    }
+
+    // ── Cash reconciliation ────────────────────────────────────────────────────
+    // Every closed till session's counted cash vs what the drawer should hold — surfaces
+    // over/short so finance can chase drawer discrepancies.
+    public async Task<IActionResult> Cash(string? from, string? to, int? storeId)
+    {
+        ViewData["Title"] = "Finance — Cash-up";
+        var (f, t) = Range(from, to);
+
+        var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
+
+        var sessQ = _db.TillSessions.Include(s => s.Register).ThenInclude(r => r.Store)
+            .Where(s => s.ClosedAt != null && s.ClosedAt >= f && s.ClosedAt < t);
+        if (storeId.HasValue) sessQ = sessQ.Where(s => s.Register.StoreId == storeId);
+        var sessions = await sessQ.OrderByDescending(s => s.ClosedAt).ToListAsync();
+        var ids = sessions.Select(s => s.Id).ToList();
+
+        // Cash figures per session, aggregated in SQL (no per-session round trips).
+        var cashSales = (await _db.OrderPayments
+                .Where(p => p.Method == "Cash" && p.Order.TillSessionId != null && ids.Contains(p.Order.TillSessionId!.Value))
+                .GroupBy(p => p.Order.TillSessionId!.Value)
+                .Select(g => new { Sid = g.Key, Amt = g.Sum(x => x.Amount) }).ToListAsync())
+            .ToDictionary(x => x.Sid, x => x.Amt);
+        var cashRefunds = (await _db.Refunds
+                .Where(r => r.RefundMethod == "Cash" && r.OriginalOrder.TillSessionId != null && ids.Contains(r.OriginalOrder.TillSessionId!.Value))
+                .GroupBy(r => r.OriginalOrder.TillSessionId!.Value)
+                .Select(g => new { Sid = g.Key, Amt = g.Sum(x => x.Amount) }).ToListAsync())
+            .ToDictionary(x => x.Sid, x => x.Amt);
+        var moves = (await _db.CashMovements
+                .Where(m => ids.Contains(m.TillSessionId))
+                .GroupBy(m => m.TillSessionId)
+                .Select(g => new
+                {
+                    Sid = g.Key,
+                    In = g.Where(x => x.Amount > 0).Sum(x => x.Amount),
+                    Out = g.Where(x => x.Amount < 0).Sum(x => x.Amount)
+                }).ToListAsync())
+            .ToDictionary(x => x.Sid, x => (x.In, x.Out));
+
+        var userIds = sessions.Select(s => s.OpenedByUserId).Distinct().ToList();
+        var names = (await _db.Users.Where(u => userIds.Contains(u.Id))
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.UserName }).ToListAsync())
+            .ToDictionary(u => u.Id, u =>
+            {
+                var n = $"{u.FirstName} {u.LastName}".Trim();
+                return string.IsNullOrWhiteSpace(n) ? (u.UserName ?? "—") : n;
+            });
+
+        var rows = sessions.Select(s =>
+        {
+            var mv = moves.GetValueOrDefault(s.Id);
+            return new CashSessionRow(s.Id, s.OpenedAt, s.ClosedAt, s.Register.Name, s.Register.Store.Name,
+                names.GetValueOrDefault(s.OpenedByUserId, "—"), s.OpeningFloat,
+                cashSales.GetValueOrDefault(s.Id), cashRefunds.GetValueOrDefault(s.Id),
+                mv.In, -mv.Out, s.CountedCash ?? 0);
+        }).ToList();
+
+        return View(new CashVm { From = f, To = t.AddDays(-1), StoreId = storeId, Stores = stores, Rows = rows });
     }
 
     private async Task<FinanceVm> BuildAsync(string? from, string? to, int? storeId, string? channel, string? period)

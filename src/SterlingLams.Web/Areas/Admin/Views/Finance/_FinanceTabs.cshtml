@@ -1,0 +1,23 @@
+@model string
+@{
+    // (Key, Action, Label) — Key matches the value each view passes as the model.
+    // Tabs are added here as each report lands (keeps every tab a live link).
+    var tabs = new (string Key, string Action, string Label)[]
+    {
+        ("Overview",    "Index",        "Overview"),
+        ("Cash",        "Cash",         "Cash-up"),
+    };
+    string Cls(string key) => key == Model
+        ? "border-neutral-900 text-neutral-900"
+        : "border-transparent text-neutral-400 hover:text-neutral-700";
+}
+<div class="flex items-center justify-between mb-2">
+    <h1 class="text-lg font-medium text-neutral-800">Finance</h1>
+</div>
+<div class="flex gap-1 border-b border-neutral-200 mb-6 overflow-x-auto">
+    @foreach (var (key, action, label) in tabs)
+    {
+        <a asp-area="Admin" asp-controller="Finance" asp-action="@action"
+           class="px-4 py-2.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors @Cls(key)">@label</a>
+    }
+</div>
