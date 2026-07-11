@@ -280,6 +280,59 @@ public class FinanceController : AdminBaseController
         return File(bytes, "text/csv", $"finance_{vm.From:yyyyMMdd}-{vm.To:yyyyMMdd}.csv");
     }
 
+    // Print-friendly branded finance statement (browser Print → PDF). Reuses the overview figures.
+    public async Task<IActionResult> Statement(string? from, string? to, int? storeId, string? channel, string? period)
+    {
+        var vm = await BuildAsync(from, to, storeId, channel, period);
+        return View(vm);
+    }
+
+    // ── Accounting export (balanced general journal, QuickBooks/Xero-friendly) ──
+    public async Task<IActionResult> Journal(string? from, string? to, int? storeId, string? channel)
+    {
+        var (f, t) = Range(from, to);
+        channel = channel is "Online" or "Pos" ? channel : "";
+        var paid = PaidOrders(f, t, storeId, channel);
+
+        var sales = await paid.GroupBy(o => o.CreatedAt.Date)
+            .Select(g => new { Day = g.Key, Gross = g.Sum(o => o.Total), Delivery = g.Sum(o => o.DeliveryFee) })
+            .ToListAsync();
+
+        var refq = _db.Refunds.Where(r => r.CreatedAt >= f && r.CreatedAt < t);
+        if (storeId.HasValue) refq = refq.Where(r => r.OriginalOrder.PickupStoreId == storeId || r.OriginalOrder.FulfillingStoreId == storeId);
+        if (channel == "Online") refq = refq.Where(r => r.OriginalOrder.Channel == OrderChannel.Online);
+        else if (channel == "Pos") refq = refq.Where(r => r.OriginalOrder.Channel == OrderChannel.Pos);
+        var refunds = await refq.GroupBy(r => r.CreatedAt.Date)
+            .Select(g => new { Day = g.Key, Amt = g.Sum(x => x.Amount) }).ToListAsync();
+
+        var sb = new StringBuilder();
+        static string Q(string s) => s.Contains(',') || s.Contains('"') ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
+        void Row(string date, string reference, string account, decimal debit, decimal credit, string memo)
+            => sb.AppendLine(string.Join(",", new[] { date, reference, account, debit.ToString("0.##"), credit.ToString("0.##"), memo }.Select(Q)));
+
+        sb.AppendLine("Date,Reference,Account,Debit,Credit,Description");
+        foreach (var d in sales.OrderBy(x => x.Day))
+        {
+            var date = d.Day.ToString("yyyy-MM-dd");
+            var reference = "SG-" + d.Day.ToString("yyyyMMdd");
+            var merch = d.Gross - d.Delivery;
+            Row(date, reference, "Bank", d.Gross, 0, "Daily takings");
+            if (merch != 0) Row(date, reference, "Sales revenue", 0, merch, "Merchandise sales");
+            if (d.Delivery != 0) Row(date, reference, "Delivery income", 0, d.Delivery, "Delivery / logistics fees");
+        }
+        foreach (var r in refunds.OrderBy(x => x.Day))
+        {
+            if (r.Amt == 0) continue;
+            var date = r.Day.ToString("yyyy-MM-dd");
+            var reference = "SGR-" + r.Day.ToString("yyyyMMdd");
+            Row(date, reference, "Sales returns", r.Amt, 0, "Refunds");
+            Row(date, reference, "Bank", 0, r.Amt, "Refunds paid out");
+        }
+
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        return File(bytes, "text/csv", $"journal_{f:yyyyMMdd}-{t.AddDays(-1):yyyyMMdd}.csv");
+    }
+
     // ── Cash reconciliation ────────────────────────────────────────────────────
     // Every closed till session's counted cash vs what the drawer should hold — surfaces
     // over/short so finance can chase drawer discrepancies.

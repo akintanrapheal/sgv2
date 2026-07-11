@@ -22,12 +22,22 @@
 
 <partial name="_FinanceTabs" model="@("Overview")" />
 
-<div class="flex items-center justify-between mb-5">
+<div class="flex items-center justify-between mb-5 gap-3">
     <p class="text-xs text-neutral-400">Order &amp; logistics revenue, refunds, net — by period, channel, branch, cashier, state &amp; delivery speed.</p>
-    <a asp-area="Admin" asp-controller="Finance" asp-action="Export"
-       asp-route-from="@Model.From.ToString("yyyy-MM-dd")" asp-route-to="@Model.To.ToString("yyyy-MM-dd")"
-       asp-route-storeId="@Model.StoreId" asp-route-channel="@Model.Channel" asp-route-period="@Model.Period"
-       class="px-4 py-1.5 border border-neutral-200 text-sm rounded-sm hover:border-neutral-400 transition-colors">↓ Export CSV</a>
+    <div class="flex items-center gap-2 shrink-0">
+        <a asp-area="Admin" asp-controller="Finance" asp-action="Statement" target="_blank"
+           asp-route-from="@Model.From.ToString("yyyy-MM-dd")" asp-route-to="@Model.To.ToString("yyyy-MM-dd")"
+           asp-route-storeId="@Model.StoreId" asp-route-channel="@Model.Channel" asp-route-period="@Model.Period"
+           class="px-4 py-1.5 border border-neutral-200 text-sm rounded-sm hover:border-neutral-400 transition-colors">🖨 Statement</a>
+        <a asp-area="Admin" asp-controller="Finance" asp-action="Journal"
+           asp-route-from="@Model.From.ToString("yyyy-MM-dd")" asp-route-to="@Model.To.ToString("yyyy-MM-dd")"
+           asp-route-storeId="@Model.StoreId" asp-route-channel="@Model.Channel"
+           class="px-4 py-1.5 border border-neutral-200 text-sm rounded-sm hover:border-neutral-400 transition-colors">↓ Accounting journal</a>
+        <a asp-area="Admin" asp-controller="Finance" asp-action="Export"
+           asp-route-from="@Model.From.ToString("yyyy-MM-dd")" asp-route-to="@Model.To.ToString("yyyy-MM-dd")"
+           asp-route-storeId="@Model.StoreId" asp-route-channel="@Model.Channel" asp-route-period="@Model.Period"
+           class="px-4 py-1.5 border border-neutral-200 text-sm rounded-sm hover:border-neutral-400 transition-colors">↓ Export CSV</a>
+    </div>
 </div>
 
 <form method="get" class="flex flex-wrap items-end gap-3 mb-6">

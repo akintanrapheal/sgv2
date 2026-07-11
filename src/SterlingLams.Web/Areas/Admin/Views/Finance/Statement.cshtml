@@ -1,0 +1,105 @@
+@model SterlingLams.Web.Areas.Admin.Controllers.FinanceController.FinanceVm
+@using SterlingLams.Web.Services
+@inject ISettingsService Settings
+@{
+    Layout = null;
+    var siteName = await Settings.GetAsync("general.site_name", "Sterlin Glams");
+    var logoUrl = await Settings.GetAsync("general.logo_url", "");
+    if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = "/images/sg-logo.png";
+    string Money(decimal v) => "₦" + v.ToString("N0");
+    var storeName = Model.StoreId.HasValue ? Model.Stores.FirstOrDefault(s => s.Id == Model.StoreId)?.Name ?? "All branches" : "All branches";
+    var channelName = Model.Channel switch { "Online" => "Online", "Pos" => "POS / in-store", _ => "All channels" };
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Finance Statement @Model.From.ToString("yyyy-MM-dd") — @Model.To.ToString("yyyy-MM-dd")</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; color:#1c1917; margin:0; padding:32px; font-size:13px; }
+        .sheet { max-width:760px; margin:0 auto; }
+        .top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; }
+        .brand img { height:44px; }
+        .brand .name { font-size:18px; font-weight:600; letter-spacing:.5px; }
+        h1 { font-size:20px; margin:18px 0 2px; }
+        .muted { color:#78716c; }
+        .meta { font-size:12px; color:#57534e; margin-bottom:20px; }
+        table { width:100%; border-collapse:collapse; }
+        .kpis td { padding:12px 14px; border:1px solid #e7e5e4; }
+        .kpis .lbl { font-size:11px; color:#78716c; text-transform:uppercase; letter-spacing:.5px; }
+        .kpis .val { font-size:18px; font-weight:600; }
+        h2 { font-size:13px; text-transform:uppercase; letter-spacing:.5px; color:#78716c; margin:26px 0 8px; border-bottom:1px solid #e7e5e4; padding-bottom:6px; }
+        .data th { text-align:left; font-size:11px; color:#78716c; text-transform:uppercase; padding:6px 8px; border-bottom:1px solid #e7e5e4; }
+        .data td { padding:7px 8px; border-bottom:1px solid #f5f5f4; }
+        .data td.r, .data th.r { text-align:right; }
+        .foot { margin-top:28px; font-size:11px; color:#a8a29e; text-align:center; }
+        .noprint { text-align:center; margin-bottom:18px; }
+        .btn { background:#111; color:#fff; border:0; padding:9px 20px; border-radius:4px; font-size:13px; cursor:pointer; }
+        @@media print { .noprint { display:none; } body { padding:0; } }
+    </style>
+</head>
+<body>
+    <div class="noprint">
+        <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+    </div>
+    <div class="sheet">
+        <div class="top">
+            <div class="brand">
+                <img src="@logoUrl" alt="@siteName" onerror="this.style.display='none'" />
+                <div class="name">@siteName</div>
+            </div>
+            <div style="text-align:right;">
+                <h1>Finance Statement</h1>
+                <div class="muted">@Model.From.ToString("dd MMM yyyy") – @Model.To.ToString("dd MMM yyyy")</div>
+            </div>
+        </div>
+        <div class="meta">Branch: @storeName &nbsp;·&nbsp; Channel: @channelName &nbsp;·&nbsp; Generated @DateTime.UtcNow.ToString("dd MMM yyyy HH:mm") UTC</div>
+
+        <table class="kpis">
+            <tr>
+                <td><div class="lbl">Order revenue</div><div class="val">@Money(Model.OrderRevenue)</div></td>
+                <td><div class="lbl">Logistics revenue</div><div class="val">@Money(Model.LogisticsRevenue)</div></td>
+                <td><div class="lbl">Total revenue</div><div class="val">@Money(Model.Gross)</div></td>
+            </tr>
+            <tr>
+                <td><div class="lbl">Refunds</div><div class="val">@Money(Model.Refunds)</div></td>
+                <td><div class="lbl">Net revenue</div><div class="val">@Money(Model.Net)</div></td>
+                <td><div class="lbl">Transactions</div><div class="val">@Model.Count</div></td>
+            </tr>
+        </table>
+
+        <h2>Payment channels</h2>
+        <table class="data">
+            <tr><th>Channel</th><th class="r">Amount</th><th class="r">Transactions</th></tr>
+            @foreach (var c in Model.ByChannel)
+            {
+                <tr><td>@c.Channel</td><td class="r">@Money(c.Amount)</td><td class="r">@c.Count</td></tr>
+            }
+        </table>
+
+        <h2>Performance by branch</h2>
+        <table class="data">
+            <tr><th>Branch</th><th class="r">Gross</th><th class="r">Refunds</th><th class="r">Net</th></tr>
+            @foreach (var s in Model.ByStore)
+            {
+                <tr><td>@s.Label</td><td class="r">@Money(s.Gross)</td><td class="r">@Money(s.Refunds)</td><td class="r">@Money(s.Net)</td></tr>
+            }
+        </table>
+
+        @if (Model.ByDeliveryType.Any())
+        {
+            <h2>Logistics by delivery speed</h2>
+            <table class="data">
+                <tr><th>Speed</th><th class="r">Orders</th><th class="r">Logistics revenue</th></tr>
+                @foreach (var d in Model.ByDeliveryType)
+                {
+                    <tr><td>@d.Type</td><td class="r">@d.Count</td><td class="r">@Money(d.Logistics)</td></tr>
+                }
+            </table>
+        }
+
+        <div class="foot">@siteName — generated by the Finance module. Figures cover paid orders in the period shown.</div>
+    </div>
+</body>
+</html>
