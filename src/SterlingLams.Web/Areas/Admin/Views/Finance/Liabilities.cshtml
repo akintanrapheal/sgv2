@@ -1,0 +1,57 @@
+@model SterlingLams.Web.Areas.Admin.Controllers.FinanceController.LiabilitiesVm
+@{
+    ViewData["Title"] = "Finance — Liabilities";
+    string Money(decimal v) => "₦" + v.ToString("N0");
+}
+
+<partial name="_FinanceTabs" model="@("Liabilities")" />
+
+<div class="flex items-center justify-between mb-5">
+    <p class="text-xs text-neutral-400">Money owed to customers — unredeemed gift cards and outstanding loyalty points (a balance-sheet liability). Live snapshot.</p>
+</div>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Total liability</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.Total)</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Gift cards outstanding</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.GiftCardOutstanding)</p>
+        <p class="mt-1 text-[11px] text-neutral-400">@Model.GiftCardCount active card(s)</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Loyalty liability</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.LoyaltyValue)</p>
+        <p class="mt-1 text-[11px] text-neutral-400">@Model.LoyaltyPoints.ToString("N0") pts · @Model.LoyaltyAccounts account(s)</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Gift cards redeemed</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.GiftCardRedeemed)</p>
+        <p class="mt-1 text-[11px] text-neutral-400">of @Money(Model.GiftCardIssued) issued</p>
+    </div>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
+    <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Gift cards with a balance</div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+            <thead><tr class="text-xs text-neutral-400">
+                <th class="px-4 py-2 text-left font-medium">Code</th>
+                <th class="px-4 py-2 text-left font-medium">Recipient</th>
+                <th class="px-4 py-2 text-right font-medium">Issued</th>
+                <th class="px-4 py-2 text-right font-medium">Balance</th>
+                <th class="px-4 py-2 text-left font-medium">Expires</th>
+            </tr></thead>
+            <tbody class="divide-y divide-neutral-100">
+                @if (!Model.TopCards.Any()) { <tr><td colspan="5" class="px-4 py-8 text-center text-neutral-400">No gift cards with a balance.</td></tr> }
+                @foreach (var c in Model.TopCards)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5 text-neutral-700 font-mono text-xs">@c.Code</td>
+                        <td class="px-4 py-2.5 text-neutral-600">@(string.IsNullOrWhiteSpace(c.Recipient) ? "—" : c.Recipient)</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-500">@Money(c.Initial)</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-800">@Money(c.Balance)</td>
+                        <td class="px-4 py-2.5 text-neutral-500">@(c.Expires?.ToString("dd MMM yyyy") ?? "Never")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

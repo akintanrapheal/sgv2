@@ -1,0 +1,79 @@
+@model SterlingLams.Web.Areas.Admin.Controllers.FinanceController.ReceivablesVm
+@{
+    ViewData["Title"] = "Finance — Receivables";
+    string Money(decimal v) => "₦" + v.ToString("N0");
+    string AgeCls(int d) => d > 60 ? "text-red-600" : (d > 30 ? "text-amber-600" : "text-neutral-500");
+}
+
+<partial name="_FinanceTabs" model="@("Receivables")" />
+
+<div class="flex items-center justify-between mb-5">
+    <p class="text-xs text-neutral-400">Orders placed but not yet paid (e.g. bank transfer pending) — money owed to the business, aged. Live snapshot.</p>
+</div>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Total owed</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.TotalOwed)</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Unpaid orders</p><p class="text-xl font-light text-neutral-900 mt-1">@Model.Count</p>
+    </div>
+    @foreach (var b in Model.Buckets.Skip(2))
+    {
+        <div class="bg-white border border-neutral-100 rounded-sm p-4">
+            <p class="text-xs text-neutral-400">@b.Label</p><p class="text-xl font-light mt-1 @(b.Label.StartsWith("60") ? "text-red-600" : "text-amber-600")">@Money(b.Amount)</p>
+            <p class="mt-1 text-[11px] text-neutral-400">@b.Count order(s)</p>
+        </div>
+    }
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-hidden mb-6">
+    <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Aging</div>
+    <table class="w-full text-sm">
+        <thead><tr class="text-xs text-neutral-400">
+            <th class="px-4 py-2 text-left font-medium">Age bucket</th>
+            <th class="px-4 py-2 text-right font-medium">Orders</th>
+            <th class="px-4 py-2 text-right font-medium">Amount</th>
+        </tr></thead>
+        <tbody class="divide-y divide-neutral-100">
+            @foreach (var b in Model.Buckets)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-2.5 text-neutral-700">@b.Label</td>
+                    <td class="px-4 py-2.5 text-right text-neutral-500">@b.Count</td>
+                    <td class="px-4 py-2.5 text-right text-neutral-800">@Money(b.Amount)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
+    <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Unpaid orders</div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+            <thead><tr class="text-xs text-neutral-400">
+                <th class="px-4 py-2 text-left font-medium">Order</th>
+                <th class="px-4 py-2 text-left font-medium">Placed</th>
+                <th class="px-4 py-2 text-left font-medium">Customer</th>
+                <th class="px-4 py-2 text-left font-medium">Status</th>
+                <th class="px-4 py-2 text-right font-medium">Age</th>
+                <th class="px-4 py-2 text-right font-medium">Amount</th>
+            </tr></thead>
+            <tbody class="divide-y divide-neutral-100">
+                @if (!Model.Orders.Any()) { <tr><td colspan="6" class="px-4 py-8 text-center text-neutral-400">No unpaid orders — nothing outstanding.</td></tr> }
+                @foreach (var o in Model.Orders)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5 text-neutral-700">@o.Order</td>
+                        <td class="px-4 py-2.5 text-neutral-500">@o.When.ToString("dd MMM yy")</td>
+                        <td class="px-4 py-2.5 text-neutral-600">@o.Customer</td>
+                        <td class="px-4 py-2.5 text-neutral-500">@o.Status</td>
+                        <td class="px-4 py-2.5 text-right @AgeCls(o.AgeDays)">@o.AgeDays d</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-800">@Money(o.Amount)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>

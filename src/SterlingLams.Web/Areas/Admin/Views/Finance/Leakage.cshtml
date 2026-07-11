@@ -1,0 +1,91 @@
+@using System.Text.Json
+@model SterlingLams.Web.Areas.Admin.Controllers.FinanceController.LeakageVm
+@{
+    ViewData["Title"] = "Finance — Leakage";
+    string J(object o) => JsonSerializer.Serialize(o);
+    string Money(decimal v) => "₦" + v.ToString("N0");
+    var splitLabels = new[] { "Discounts", "Loyalty", "Gift cards" };
+    var splitData = new[] { Model.Discounts, Model.Loyalty, Model.GiftCards };
+}
+
+<partial name="_FinanceTabs" model="@("Leakage")" />
+
+<div class="flex items-center justify-between mb-5">
+    <p class="text-xs text-neutral-400">Revenue given away through discounts, loyalty redemptions and gift-card spend.</p>
+</div>
+
+<form method="get" class="flex flex-wrap items-end gap-3 mb-6">
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">From</label>
+        <input type="date" name="from" value="@Model.From.ToString("yyyy-MM-dd")" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+    </div>
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">To</label>
+        <input type="date" name="to" value="@Model.To.ToString("yyyy-MM-dd")" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+    </div>
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">Branch</label>
+        <select name="storeId" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm">
+            <option value="">All branches</option>
+            @foreach (var s in Model.Stores)
+            {
+                <option value="@s.Id" selected="@(Model.StoreId == s.Id)">@s.Name</option>
+            }
+        </select>
+    </div>
+    <button class="px-4 py-1.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Apply</button>
+</form>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Total given away</p><p class="text-xl font-light mt-1 @(Model.Pct >= 0.15m ? "text-amber-600" : "text-neutral-900")">@Money(Model.Total)</p>
+        <p class="mt-1 text-[11px] text-neutral-400">@Model.Pct.ToString("P1") of gross</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Discounts</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.Discounts)</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Loyalty redeemed</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.Loyalty)</p>
+        <p class="mt-1 text-[11px] text-neutral-400">@Model.PointsRedeemed.ToString("N0") pts</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Gift cards spent</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.GiftCards)</p>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+    <partial name="_ChartCard" model='new ChartCard { Id = "leakSplit", Title = "Where it goes", Subtitle = "discounts vs loyalty vs gift cards", Height = 150, Empty = Model.Total == 0, EmptyText = "Nothing given away in range." }' />
+    <div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
+        <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Top discount codes</div>
+        <table class="w-full text-sm">
+            <thead><tr class="text-xs text-neutral-400">
+                <th class="px-4 py-2 text-left font-medium">Code</th>
+                <th class="px-4 py-2 text-right font-medium">Uses</th>
+                <th class="px-4 py-2 text-right font-medium">Given away</th>
+            </tr></thead>
+            <tbody class="divide-y divide-neutral-100">
+                @if (!Model.ByCode.Any()) { <tr><td colspan="3" class="px-4 py-8 text-center text-neutral-400">No coded discounts in range.</td></tr> }
+                @foreach (var c in Model.ByCode)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5 text-neutral-700 font-mono text-xs">@c.Label</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-500">@c.Count</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-800">@Money(c.Amount)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ChartScripts" />
+    <script>
+        @if (Model.Total > 0)
+        {
+            <text>
+            SLCharts.doughnut('leakSplit', @Html.Raw(J(splitLabels)), @Html.Raw(J(splitData)), { money: true });
+            </text>
+        }
+    </script>
+}

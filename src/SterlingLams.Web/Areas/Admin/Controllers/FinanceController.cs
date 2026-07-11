@@ -16,7 +16,12 @@ public class FinanceController : AdminBaseController
     protected override string Section => "Finance";
 
     private readonly ApplicationDbContext _db;
-    public FinanceController(ApplicationDbContext db) => _db = db;
+    private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
+    public FinanceController(ApplicationDbContext db, SterlingLams.Web.Services.ILoyaltyService loyalty)
+    {
+        _db = db;
+        _loyalty = loyalty;
+    }
 
     // Inclusive from/to (days). Defaults to the last 30 days.
     private static (DateTime From, DateTime ToExclusive) Range(string? from, string? to)
@@ -393,6 +398,144 @@ public class FinanceController : AdminBaseController
             RefundCount = totals?.Count ?? 0,
             OrdersRefunded = totals?.Orders ?? 0,
             ByReason = byReason, ByMethod = byMethod, ByCashier = byCashier, ByProduct = byProduct, Recent = recent
+        });
+    }
+
+    // ── Discount & giveaway leakage ────────────────────────────────────────────
+    public class LeakageVm
+    {
+        public DateTime From { get; set; }
+        public DateTime To { get; set; }
+        public int? StoreId { get; set; }
+        public List<Store> Stores { get; set; } = new();
+        public decimal Gross { get; set; }
+        public decimal Discounts { get; set; }
+        public decimal Loyalty { get; set; }
+        public decimal GiftCards { get; set; }
+        public int PointsRedeemed { get; set; }
+        public decimal Total => Discounts + Loyalty + GiftCards;
+        public decimal Pct => Gross > 0 ? Total / Gross : 0;
+        public List<NameAmount> ByCode { get; set; } = new();
+    }
+
+    public async Task<IActionResult> Leakage(string? from, string? to, int? storeId)
+    {
+        ViewData["Title"] = "Finance — Leakage";
+        var (f, t) = Range(from, to);
+        var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
+        var paid = PaidOrders(f, t, storeId, "");
+
+        var tot = await paid.GroupBy(_ => 1).Select(g => new
+        {
+            Gross = g.Sum(o => o.Total),
+            Disc = g.Sum(o => o.DiscountAmount),
+            Loy = g.Sum(o => o.LoyaltyDiscount),
+            Gift = g.Sum(o => o.GiftCardAmount),
+            Pts = g.Sum(o => o.LoyaltyPointsRedeemed)
+        }).FirstOrDefaultAsync();
+
+        var byCode = (await paid.Where(o => o.DiscountAmount > 0 && o.DiscountCode != null)
+                .GroupBy(o => o.DiscountCode!)
+                .Select(g => new { Code = g.Key, Uses = g.Count(), Amt = g.Sum(o => o.DiscountAmount) })
+                .OrderByDescending(x => x.Amt).ToListAsync())
+            .Select(x => new NameAmount(x.Code, x.Uses, x.Amt)).ToList();
+
+        return View(new LeakageVm
+        {
+            From = f, To = t.AddDays(-1), StoreId = storeId, Stores = stores,
+            Gross = tot?.Gross ?? 0, Discounts = tot?.Disc ?? 0, Loyalty = tot?.Loy ?? 0,
+            GiftCards = tot?.Gift ?? 0, PointsRedeemed = tot?.Pts ?? 0, ByCode = byCode
+        });
+    }
+
+    // ── Outstanding liabilities (money we owe customers) ───────────────────────
+    public record GiftCardRow(string Code, decimal Initial, decimal Balance, DateTime? Expires, string? Recipient);
+
+    public class LiabilitiesVm
+    {
+        public decimal GiftCardOutstanding { get; set; }
+        public decimal GiftCardIssued { get; set; }
+        public int GiftCardCount { get; set; }
+        public int LoyaltyPoints { get; set; }
+        public decimal PointValue { get; set; }
+        public decimal LoyaltyValue => LoyaltyPoints * PointValue;
+        public int LoyaltyAccounts { get; set; }
+        public decimal Total => GiftCardOutstanding + LoyaltyValue;
+        public decimal GiftCardRedeemed => GiftCardIssued - GiftCardOutstanding;
+        public List<GiftCardRow> TopCards { get; set; } = new();
+    }
+
+    public async Task<IActionResult> Liabilities()
+    {
+        ViewData["Title"] = "Finance — Liabilities";
+        var now = DateTime.UtcNow;
+
+        // Live gift cards still carrying a balance = money we owe.
+        var liveCards = _db.GiftCards.Where(g => g.IsActive && g.Balance > 0 && (g.ExpiresAt == null || g.ExpiresAt > now));
+        var gcOutstanding = await liveCards.SumAsync(g => (decimal?)g.Balance) ?? 0;
+        var gcCount = await liveCards.CountAsync();
+        var gcIssued = await _db.GiftCards.Where(g => g.IsActive).SumAsync(g => (decimal?)g.InitialAmount) ?? 0;
+        var topCards = (await liveCards.OrderByDescending(g => g.Balance).Take(20)
+                .Select(g => new { g.Code, g.InitialAmount, g.Balance, g.ExpiresAt, g.RecipientName }).ToListAsync())
+            .Select(g => new GiftCardRow(g.Code, g.InitialAmount, g.Balance, g.ExpiresAt, g.RecipientName)).ToList();
+
+        var points = await _db.Set<LoyaltyAccount>().SumAsync(a => (int?)a.PointsBalance) ?? 0;
+        var accounts = await _db.Set<LoyaltyAccount>().CountAsync(a => a.PointsBalance > 0);
+        var pointValue = await _loyalty.PointValueAsync();
+
+        return View(new LiabilitiesVm
+        {
+            GiftCardOutstanding = gcOutstanding, GiftCardIssued = gcIssued, GiftCardCount = gcCount,
+            LoyaltyPoints = points, PointValue = pointValue, LoyaltyAccounts = accounts, TopCards = topCards
+        });
+    }
+
+    // ── Accounts receivable (unpaid orders, aged) ──────────────────────────────
+    public record AgingBucket(string Label, int Count, decimal Amount);
+    public record UnpaidRow(string Order, DateTime When, string Customer, decimal Amount, int AgeDays, string Status);
+
+    public class ReceivablesVm
+    {
+        public decimal TotalOwed { get; set; }
+        public int Count { get; set; }
+        public List<AgingBucket> Buckets { get; set; } = new();
+        public List<UnpaidRow> Orders { get; set; } = new();
+    }
+
+    public async Task<IActionResult> Receivables()
+    {
+        ViewData["Title"] = "Finance — Receivables";
+        var now = DateTime.UtcNow;
+
+        // Placed but unpaid, and not in a terminal (cancelled/refunded) state = money owed to us.
+        var unpaidQ = _db.Orders.Include(o => o.User)
+            .Where(o => !o.IsPaid && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded);
+
+        var raw = await unpaidQ.OrderBy(o => o.CreatedAt)
+            .Select(o => new { o.OrderNumber, o.CreatedAt, o.Total, o.Status,
+                Customer = o.User != null ? (o.User.FirstName + " " + o.User.LastName) : "Guest" })
+            .ToListAsync();
+
+        var orders = raw.Select(o => new UnpaidRow(o.OrderNumber, o.CreatedAt,
+            string.IsNullOrWhiteSpace(o.Customer?.Trim()) ? "Guest" : o.Customer!.Trim(),
+            o.Total, (int)(now - o.CreatedAt).TotalDays, o.Status.ToString())).ToList();
+
+        (string Label, Func<int, bool> In)[] defs =
+        {
+            ("0–7 days",   d => d <= 7),
+            ("8–30 days",  d => d > 7 && d <= 30),
+            ("31–60 days", d => d > 30 && d <= 60),
+            ("60+ days",   d => d > 60),
+        };
+        var buckets = defs.Select(b => new AgingBucket(b.Label,
+            orders.Count(o => b.In(o.AgeDays)), orders.Where(o => b.In(o.AgeDays)).Sum(o => o.Amount))).ToList();
+
+        return View(new ReceivablesVm
+        {
+            TotalOwed = orders.Sum(o => o.Amount),
+            Count = orders.Count,
+            Buckets = buckets,
+            Orders = orders.OrderByDescending(o => o.AgeDays).Take(100).ToList()
         });
     }
 
