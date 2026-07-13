@@ -35,7 +35,8 @@ jobs:
           languages: csharp
           # No compile needed — avoids the Tailwind/npm build step; CodeQL analyzes the source directly.
           build-mode: none
-          queries: security-and-quality
+          # Default suite = curated *security* rules (high signal). "security-and-quality" was
+          # dropped — it layered a large code-quality ruleset on top and buried real findings.
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
