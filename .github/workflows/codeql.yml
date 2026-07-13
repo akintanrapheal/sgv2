@@ -1,0 +1,43 @@
+name: CodeQL
+
+# Static application security testing (SAST): scans the C# source for security
+# vulnerabilities on every push/PR to the main branches, plus a weekly sweep so newly
+# published CodeQL rules re-check existing code. Findings surface under the repo's
+# Security → Code scanning tab.
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    - cron: '27 3 * * 1'   # 03:27 UTC every Monday
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (C#)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          # No compile needed — avoids the Tailwind/npm build step; CodeQL analyzes the source directly.
+          build-mode: none
+          queries: security-and-quality
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:csharp"

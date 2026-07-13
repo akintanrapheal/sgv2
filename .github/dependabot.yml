@@ -1,0 +1,27 @@
+# Dependabot keeps dependencies patched automatically: it opens PRs for out-of-date /
+# vulnerable NuGet packages and GitHub Actions. Combined with Dependabot *alerts* +
+# *security updates* (enable those in the repo's Settings → Code security), this scans
+# for vulnerable dependencies continuously — no manual runs needed.
+version: 2
+updates:
+  # .NET / NuGet packages (discovers the projects via SterlingLams.sln at the repo root)
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    # Roll the many Microsoft/System servicing bumps into a single PR to cut noise.
+    groups:
+      dotnet-runtime:
+        patterns:
+          - "Microsoft.*"
+          - "System.*"
+
+  # The GitHub Actions used by the CI / CodeQL workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
