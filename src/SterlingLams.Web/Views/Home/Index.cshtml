@@ -26,6 +26,11 @@
     var showTrending     = await SettingsService.GetBoolAsync("homepage.show_trending", true);
     var showRecentlyView = await SettingsService.GetBoolAsync("homepage.show_recently_viewed", true);
     var featuredHeading = await SettingsService.GetAsync("homepage.featured_heading", "Featured Pieces");
+    // Low-stock threshold for the "Only N left" card badge (0 = off) — shared by every product
+    // card on the page (featured carousel + merchandising rows) via ViewData.
+    ViewData["CardLowThreshold"] = await SettingsService.GetBoolAsync("inventory.show_low_stock_nudge", true)
+        ? (int)await SettingsService.GetDecimalAsync("inventory.low_stock_threshold", 5)
+        : 0;
     // Slider speeds (seconds → ms), clamped to a sane minimum.
     var heroSlideMs     = Math.Max(2, await SettingsService.GetIntAsync("homepage.hero_slide_seconds", 5)) * 1000;
     var featuredSlideMs = Math.Max(2, await SettingsService.GetIntAsync("homepage.featured_slide_seconds", 3)) * 1000;
@@ -318,36 +323,8 @@
                 <div id="feat-track" class="flex gap-6 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-2 [&::-webkit-scrollbar]:hidden" style="scrollbar-width:none;">
                     @foreach (var p in featuredProducts)
                     {
-                        <div class="group snap-start shrink-0 w-[calc(50%-12px)] md:w-[calc(25%-18px)]">
-                            <a asp-controller="Products" asp-action="Detail" asp-route-slug="@p.Slug" class="block">
-                                <div class="aspect-square bg-neutral-100 mb-4 overflow-hidden relative">
-                                    <img src="@Img.Cld(p.PrimaryImageUrl, 600, 600)" alt="@p.Name"
-                                         loading="lazy"
-                                         class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
-                                    <partial name="_DiscountBadge" model="p.DiscountPercent" />
-                                    <partial name="_ProductHoverActions" model="p" />
-                                    <div class="absolute inset-0 flex items-end justify-center pb-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                                        <span class="bg-white text-neutral-900 text-xs tracking-widest uppercase px-6 py-2 shadow-lg">Quick View</span>
-                                    </div>
-                                </div>
-                                <h3 class="font-light text-sm text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
-                                @if (p.ReviewCount > 0)
-                                {
-                                    <p class="flex items-center gap-1 mt-1 text-xs leading-none">
-                                        <span>@for (int i = 1; i <= 5; i++) { <span class="@(i <= Math.Round(p.AverageRating) ? "text-brand-500" : "text-neutral-300")">★</span> }</span>
-                                        <span class="text-neutral-400">(@p.ReviewCount)</span>
-                                    </p>
-                                }
-                                @if (p.IsOnSale)
-                                {
-                                    <p class="text-xs mt-1"><span class="text-neutral-400 line-through">@p.FormattedRegularPrice</span> <span class="text-brand-600 ml-1">@p.FormattedPrice</span></p>
-                                }
-                                else
-                                {
-                                    <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
-                                }
-                            </a>
-                            <partial name="_ProductCardCta" model="p" />
+                        <div class="snap-start shrink-0 w-[calc(50%-12px)] md:w-[calc(25%-18px)]">
+                            <partial name="_ProductCard" model="p" />
                         </div>
                     }
                 </div>

@@ -53,6 +53,7 @@ public class HomeController : Controller
             SecondaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
                 .Select(i => i.Url).Skip(1).FirstOrDefault(),
             IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0),
+            TotalStock = p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0,
             HasVariants = p.Variants.Any(v => v.IsActive)
         }).ToList();
 

@@ -1,85 +1,17 @@
 @model List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel>
 @inject SterlingLams.Web.Services.ISettingsService SettingsService
 @*
-    Renders the product cards only (no grid wrapper). Used both by the listing grid on
-    first paint and by the "View more" endpoint (?partial=cards) which appends the next
-    page of cards into the existing grid without a full reload.
+    Renders the product cards only (no grid wrapper), via the shared _ProductCard component.
+    Used both by the listing grid on first paint and by the "View more" endpoint
+    (?partial=cards) which appends the next page of cards without a full reload.
 *@
 @{
-    // Low-stock badge threshold (mirrors the product page); 0 = the nudge is switched off.
-    var cardLowThreshold = await SettingsService.GetBoolAsync("inventory.show_low_stock_nudge", true)
+    // Low-stock badge threshold (0 = off) — read once, then passed to each card via ViewData.
+    ViewData["CardLowThreshold"] = await SettingsService.GetBoolAsync("inventory.show_low_stock_nudge", true)
         ? (int)await SettingsService.GetDecimalAsync("inventory.low_stock_threshold", 5)
         : 0;
 }
 @foreach (var product in Model)
 {
-    <div class="group flex flex-col h-full">
-        <!-- Image -->
-        <a asp-controller="Products" asp-action="Detail" asp-route-slug="@product.Slug"
-           class="block aspect-square bg-neutral-50 overflow-hidden relative mb-4">
-            <img src="@Img.Cld(product.PrimaryImageUrl, 600, 600)" alt="@product.Name"
-                 loading="lazy" width="600" height="600"
-                 class="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 @(product.SecondaryImageUrl != null ? "group-hover:opacity-0" : "")" />
-            @if (product.SecondaryImageUrl != null)
-            {
-                <img src="@Img.Cld(product.SecondaryImageUrl, 600, 600)" alt="@product.Name" loading="lazy" width="600" height="600"
-                     class="absolute inset-0 w-full h-full object-cover opacity-0 transition-all duration-700 group-hover:opacity-100 group-hover:scale-105" />
-            }
-
-            <partial name="_DiscountBadge" model="product.DiscountPercent" />
-            @if (product.IsNewArrival)
-            {
-                <span class="absolute top-3 right-3 bg-brand-500 text-white text-[9px] tracking-widest uppercase px-2 py-1">
-                    New
-                </span>
-            }
-            @if (!product.IsAvailable)
-            {
-                <div class="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center">
-                    <span class="text-[11px] tracking-[0.2em] uppercase text-neutral-600 border border-neutral-300 px-3 py-1.5 bg-white/80">Sold Out</span>
-                </div>
-            }
-            else if (cardLowThreshold > 0 && product.TotalStock > 0 && product.TotalStock <= cardLowThreshold)
-            {
-                <span class="absolute bottom-3 left-3 inline-flex items-center gap-1.5 bg-white/90 backdrop-blur text-amber-700 text-[10px] tracking-wide uppercase px-2.5 py-1 rounded-full shadow-sm">
-                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                    Only @product.TotalStock left
-                </span>
-            }
-
-            <!-- Quick actions on hover: Compare / Quick View / Wishlist -->
-            <partial name="_ProductHoverActions" model="product" />
-        </a>
-
-        <!-- Info -->
-        <a asp-controller="Products" asp-action="Detail" asp-route-slug="@product.Slug" class="block flex-grow">
-            <p class="text-[10px] tracking-[0.2em] uppercase text-neutral-400 mb-1">@product.CategoryName</p>
-            <h3 class="text-sm font-light text-neutral-800 group-hover:text-neutral-900 transition-colors leading-snug mb-1">
-                @product.Name
-            </h3>
-            @if (product.ReviewCount > 0)
-            {
-                <p class="flex items-center gap-1 mb-1.5 text-xs leading-none">
-                    <span>
-                        @for (int i = 1; i <= 5; i++)
-                        {
-                            <span class="@(i <= Math.Round(product.AverageRating) ? "text-brand-500" : "text-neutral-300")">★</span>
-                        }
-                    </span>
-                    <span class="text-neutral-400">(@product.ReviewCount)</span>
-                </p>
-            }
-            @if (product.IsOnSale)
-            {
-                <p class="text-sm"><span class="text-neutral-400 line-through">@product.FormattedRegularPrice</span> <span class="text-brand-600 font-medium ml-1">@product.FormattedPrice</span></p>
-            }
-            else
-            {
-                <p class="text-sm text-neutral-700">@product.FormattedPrice</p>
-            }
-        </a>
-
-        <!-- CTA: Select Options (variants) / Add to Cart (simple) / Sold Out -->
-        <partial name="_ProductCardCta" model="product" />
-    </div>
+    <partial name="_ProductCard" model="product" />
 }

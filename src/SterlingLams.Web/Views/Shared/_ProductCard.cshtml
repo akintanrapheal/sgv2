@@ -1,0 +1,82 @@
+@model SterlingLams.Web.Models.ViewModels.ProductCardViewModel
+@*
+    The single source of truth for a storefront product card — used by the main listing grid,
+    the homepage Featured carousel, and the merchandising rows (Trending / Recently Viewed /
+    Best Sellers) so every card looks and behaves identically (badges, availability, ratings,
+    and the correct "Add to Cart" vs "Select Options" CTA).
+
+    Callers set ViewData["CardLowThreshold"] once (the low-stock threshold, 0 = off) so the
+    "Only N left" badge doesn't re-read settings per card.
+*@
+@{
+    var cardLowThreshold = ViewData["CardLowThreshold"] as int? ?? 0;
+}
+<div class="group flex flex-col h-full">
+    <!-- Image -->
+    <a asp-controller="Products" asp-action="Detail" asp-route-slug="@Model.Slug"
+       class="block aspect-square bg-neutral-50 overflow-hidden relative mb-4">
+        <img src="@Img.Cld(Model.PrimaryImageUrl, 600, 600)" alt="@Model.Name"
+             loading="lazy" width="600" height="600"
+             class="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 @(Model.SecondaryImageUrl != null ? "group-hover:opacity-0" : "")" />
+        @if (Model.SecondaryImageUrl != null)
+        {
+            <img src="@Img.Cld(Model.SecondaryImageUrl, 600, 600)" alt="@Model.Name" loading="lazy" width="600" height="600"
+                 class="absolute inset-0 w-full h-full object-cover opacity-0 transition-all duration-700 group-hover:opacity-100 group-hover:scale-105" />
+        }
+
+        <partial name="_DiscountBadge" model="Model.DiscountPercent" />
+        @if (Model.IsNewArrival)
+        {
+            <span class="absolute top-3 right-3 bg-brand-500 text-white text-[9px] tracking-widest uppercase px-2 py-1">
+                New
+            </span>
+        }
+        @if (!Model.IsAvailable)
+        {
+            <div class="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center">
+                <span class="text-[11px] tracking-[0.2em] uppercase text-neutral-600 border border-neutral-300 px-3 py-1.5 bg-white/80">Sold Out</span>
+            </div>
+        }
+        else if (cardLowThreshold > 0 && Model.TotalStock > 0 && Model.TotalStock <= cardLowThreshold)
+        {
+            <span class="absolute bottom-3 left-3 inline-flex items-center gap-1.5 bg-white/90 backdrop-blur text-amber-700 text-[10px] tracking-wide uppercase px-2.5 py-1 rounded-full shadow-sm">
+                <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                Only @Model.TotalStock left
+            </span>
+        }
+
+        <!-- Quick actions on hover: Compare / Quick View / Wishlist -->
+        <partial name="_ProductHoverActions" model="Model" />
+    </a>
+
+    <!-- Info -->
+    <a asp-controller="Products" asp-action="Detail" asp-route-slug="@Model.Slug" class="block flex-grow">
+        <p class="text-[10px] tracking-[0.2em] uppercase text-neutral-400 mb-1">@Model.CategoryName</p>
+        <h3 class="text-sm font-light text-neutral-800 group-hover:text-neutral-900 transition-colors leading-snug mb-1">
+            @Model.Name
+        </h3>
+        @if (Model.ReviewCount > 0)
+        {
+            <p class="flex items-center gap-1 mb-1.5 text-xs leading-none">
+                <span>
+                    @for (int i = 1; i <= 5; i++)
+                    {
+                        <span class="@(i <= Math.Round(Model.AverageRating) ? "text-brand-500" : "text-neutral-300")">★</span>
+                    }
+                </span>
+                <span class="text-neutral-400">(@Model.ReviewCount)</span>
+            </p>
+        }
+        @if (Model.IsOnSale)
+        {
+            <p class="text-sm"><span class="text-neutral-400 line-through">@Model.FormattedRegularPrice</span> <span class="text-brand-600 font-medium ml-1">@Model.FormattedPrice</span></p>
+        }
+        else
+        {
+            <p class="text-sm text-neutral-700">@Model.FormattedPrice</p>
+        }
+    </a>
+
+    <!-- CTA: Select Options (variants) / Add to Cart (simple) / Sold Out -->
+    <partial name="_ProductCardCta" model="Model" />
+</div>
