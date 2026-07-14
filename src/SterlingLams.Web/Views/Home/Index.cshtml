@@ -2,7 +2,7 @@
 @inject ISettingsService SettingsService
 @{
     ViewData["Title"] = "Luxury Jewellery";
-    ViewData["Description"] = "Sterlin Glams — luxury jewellery and accessories. Shop rings, necklaces, earrings, bracelets, watches and clutches, with in-store pickup at our Lagos and Abuja boutiques.";
+    ViewData["Description"] = "Sterlin Glams — luxury jewellery and accessories. Shop rings, necklaces, earrings, bracelets, watches and clutches, with in-store pickup at our Lagos and Abuja stores.";
     Layout = "_Layout";
     var featuredProducts = ViewBag.FeaturedProducts as List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> ?? new();
     var bestSellers = ViewBag.BestSellers as List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> ?? new();
@@ -30,7 +30,7 @@
     var heroSlideMs     = Math.Max(2, await SettingsService.GetIntAsync("homepage.hero_slide_seconds", 5)) * 1000;
     var featuredSlideMs = Math.Max(2, await SettingsService.GetIntAsync("homepage.featured_slide_seconds", 3)) * 1000;
     var storeBannerText = await SettingsService.GetAsync("homepage.store_banner_text",
-        "Experience our jewellery in person at any of our three Lagos boutiques. Our consultants are ready to help you find the perfect piece.");
+        "Experience our jewellery in person at any of our three Lagos stores. Our consultants are ready to help you find the perfect piece.");
 
     // Scrolling trust bar. Labels are editable in Settings → Homepage (Items 1–6). Items 4–6 are
     // optional — leave a label blank to hide it. Each label pairs with the fixed icon at its index.

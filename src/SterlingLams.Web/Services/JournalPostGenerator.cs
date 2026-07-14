@@ -112,7 +112,7 @@ public class JournalPostGenerator
         "Find these pieces &mdash; and the ones still to become your favourites &mdash; at Sterlin Glams.",
         "Visit us in-store or online to make any of these your own.",
         "Explore the edit in full at Sterlin Glams, in-store and online.",
-        "See these and more at any Sterlin Glams boutique, or shop the collection online."
+        "See these and more at any Sterlin Glams store, or shop the collection online."
     };
 
     private static readonly string[] Excerpts =

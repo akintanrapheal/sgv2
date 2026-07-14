@@ -5,7 +5,7 @@
 @inject ApplicationDbContext Db
 @{
     ViewData["Title"] = "Contact Us";
-    ViewData["Description"] = "Get in touch with Sterlin Glams. Visit any of our boutiques or reach us by phone and email.";
+    ViewData["Description"] = "Get in touch with Sterlin Glams. Visit any of our stores or reach us by phone and email.";
     Layout = "_Layout";
 
     var contactEmail = await SettingsService.GetAsync("general.contact_email", "info@sterlinglams.com");
@@ -81,7 +81,7 @@
 
         <!-- Store Locations -->
         <div>
-            <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-6">Our Boutiques</p>
+            <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-6">Our Stores</p>
             <div class="space-y-6">
                 @if (contactStores.Any())
                 {
@@ -105,7 +105,7 @@
                 }
                 else
                 {
-                    <p class="text-sm text-neutral-500">Boutique details coming soon.</p>
+                    <p class="text-sm text-neutral-500">Store details coming soon.</p>
                 }
             </div>
         </div>
