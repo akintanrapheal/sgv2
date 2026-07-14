@@ -447,7 +447,7 @@ public class ProductsController : Controller
                     ProductId = productId, Email = email, CreatedAt = DateTime.UtcNow
                 });
                 await _db.SaveChangesAsync();
-                _logger.LogInformation("Back-in-stock request saved: product {ProductId} for {Email}", productId, email);
+                _logger.LogInformation("Back-in-stock request saved: product {ProductId} for {Email}", productId, SterlingLams.Web.Infrastructure.LogRedact.Email(email));
             }
         }
 

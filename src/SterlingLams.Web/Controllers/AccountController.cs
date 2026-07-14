@@ -111,7 +111,7 @@ public class AccountController : Controller
                 return View(model);
             }
 
-            _logger.LogInformation("User {Email} logged in", model.Email);
+            _logger.LogInformation("User {Email} logged in", SterlingLams.Web.Infrastructure.LogRedact.Email(model.Email));
             return await FinishLoginAsync(user, model.ReturnUrl);
         }
 
@@ -228,7 +228,7 @@ public class AccountController : Controller
 
         if (result.Succeeded)
         {
-            _logger.LogInformation("New account created: {Email}", model.Email);
+            _logger.LogInformation("New account created: {Email}", SterlingLams.Web.Infrastructure.LogRedact.Email(model.Email));
             await CaptureReferralAsync(user.Id);
             await SendConfirmationEmailAsync(user);
             // Email confirmation is not enforced yet, so we still sign the user in — the link just
@@ -262,7 +262,7 @@ public class AccountController : Controller
         guest.IsGuest = false;
         await _userManager.UpdateAsync(guest);
 
-        _logger.LogInformation("Guest account upgraded to a full account: {Email}", guest.Email);
+        _logger.LogInformation("Guest account upgraded to a full account: {Email}", SterlingLams.Web.Infrastructure.LogRedact.Email(guest.Email));
         await SendConfirmationEmailAsync(guest);
         await _signInManager.SignInAsync(guest, isPersistent: false);
         TempData["Success"] = $"Welcome back, {guest.FirstName}! Your account is ready and your previous orders are now linked.";
@@ -280,7 +280,7 @@ public class AccountController : Controller
 
         // Dev aid: when SMTP isn't configured the email is only logged, so surface the link.
         if (_env.IsDevelopment())
-            _logger.LogInformation("[DEV] Email confirmation link for {Email}: {Link}", user.Email, confirmLink);
+            _logger.LogInformation("[DEV] Email confirmation link for {Email}: {Link}", SterlingLams.Web.Infrastructure.LogRedact.Email(user.Email), confirmLink);
 
         var subject = await _settings.GetAsync("email.email_confirm.subject", "Confirm your email");
         var intro = await _settings.GetAsync("email.email_confirm.intro", "Thanks for creating an account with us. Please confirm this is your email address by clicking below.");
@@ -316,7 +316,7 @@ public class AccountController : Controller
         var result = await _userManager.ConfirmEmailAsync(user, token);
         if (result.Succeeded)
         {
-            _logger.LogInformation("Email confirmed for {Email}", user.Email);
+            _logger.LogInformation("Email confirmed for {Email}", SterlingLams.Web.Infrastructure.LogRedact.Email(user.Email));
             TempData["Success"] = "Thank you — your email is now confirmed.";
         }
         else
@@ -704,7 +704,7 @@ public class AccountController : Controller
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
             var resetLink = Url.Action(nameof(ResetPassword), "Account",
                 new { token, email = user.Email }, protocol: Request.Scheme)!;
-            _logger.LogInformation("Password reset requested for {Email}.", email);
+            _logger.LogInformation("Password reset requested for {Email}.", SterlingLams.Web.Infrastructure.LogRedact.Email(email));
 
             var subject = await _settings.GetAsync("email.password_reset.subject", "Reset your password");
             var intro = await _settings.GetAsync("email.password_reset.intro", "We received a request to reset your password. Click below to choose a new one. This link expires shortly.");
@@ -752,7 +752,7 @@ public class AccountController : Controller
         var result = await _userManager.ResetPasswordAsync(user, model.Token, model.NewPassword);
         if (result.Succeeded)
         {
-            _logger.LogInformation("Password reset succeeded for {Email}", model.Email);
+            _logger.LogInformation("Password reset succeeded for {Email}", SterlingLams.Web.Infrastructure.LogRedact.Email(model.Email));
             return RedirectToAction(nameof(ResetPasswordConfirmation));
         }
 

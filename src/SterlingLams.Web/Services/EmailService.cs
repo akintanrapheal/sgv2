@@ -123,7 +123,7 @@ public class SmtpEmailService : IEmailService
 
             if (string.IsNullOrWhiteSpace(pickupDir))
             {
-                _log.LogWarning("Email NOT sent (SMTP not configured). to={To} subject=\"{Subject}\"", toEmail, subject);
+                _log.LogWarning("Email NOT sent (SMTP not configured). to={To} subject=\"{Subject}\"", SterlingLams.Web.Infrastructure.LogRedact.Email(toEmail), subject);
                 return false;
             }
 
@@ -149,12 +149,12 @@ public class SmtpEmailService : IEmailService
                 Credentials = new NetworkCredential(smtp.Username, smtp.Password),
             };
             await client.SendMailAsync(msg, ct);
-            _log.LogInformation("Email sent to {To}: \"{Subject}\"", toEmail, subject);
+            _log.LogInformation("Email sent to {To}: \"{Subject}\"", SterlingLams.Web.Infrastructure.LogRedact.Email(toEmail), subject);
             return true;
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Failed to send email to {To}: \"{Subject}\"", toEmail, subject);
+            _log.LogError(ex, "Failed to send email to {To}: \"{Subject}\"", SterlingLams.Web.Infrastructure.LogRedact.Email(toEmail), subject);
             return false;
         }
     }
@@ -174,16 +174,18 @@ public class SmtpEmailService : IEmailService
         {
             var dir = Path.IsPathRooted(pickupDir) ? pickupDir : Path.Combine(_env.ContentRootPath, pickupDir);
             Directory.CreateDirectory(dir);
-            var safeTo = string.Concat(toEmail.Split(Path.GetInvalidFileNameChars()));
+            // Redact the recipient in the filename so the pickup path (which gets logged) doesn't
+            // carry the full address in clear text; the email body itself still shows it (dev preview).
+            var safeTo = string.Concat(SterlingLams.Web.Infrastructure.LogRedact.Email(toEmail).Split(Path.GetInvalidFileNameChars()));
             var file = Path.Combine(dir, $"{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}_{safeTo}.html");
             var header = $"<!-- To: {System.Net.WebUtility.HtmlEncode(toName ?? toEmail)} <{System.Net.WebUtility.HtmlEncode(toEmail)}> | From: {System.Net.WebUtility.HtmlEncode(brand.FromName)} | Subject: {System.Net.WebUtility.HtmlEncode(subject)} -->\n";
             await File.WriteAllTextAsync(file, header + Wrap(subject, innerHtml, brand));
-            _log.LogInformation("Email written to pickup folder (no SMTP): {File} — to={To} subject=\"{Subject}\"", file, toEmail, subject);
+            _log.LogInformation("Email written to pickup folder (no SMTP): {File} — to={To} subject=\"{Subject}\"", file, SterlingLams.Web.Infrastructure.LogRedact.Email(toEmail), subject);
             return true;
         }
         catch (Exception ex)
         {
-            _log.LogError(ex, "Failed to write email to pickup folder. to={To} subject=\"{Subject}\"", toEmail, subject);
+            _log.LogError(ex, "Failed to write email to pickup folder. to={To} subject=\"{Subject}\"", SterlingLams.Web.Infrastructure.LogRedact.Email(toEmail), subject);
             return false;
         }
     }

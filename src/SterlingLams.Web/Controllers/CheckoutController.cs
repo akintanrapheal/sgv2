@@ -425,7 +425,7 @@ public class CheckoutController : Controller
                         .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
                     return await RedisplayCheckoutAsync(vm);
                 }
-                _logger.LogInformation("Guest account created for checkout: {Email}", vm.GuestEmail);
+                _logger.LogInformation("Guest account created for checkout: {Email}", SterlingLams.Web.Infrastructure.LogRedact.Email(vm.GuestEmail));
             }
         }
 

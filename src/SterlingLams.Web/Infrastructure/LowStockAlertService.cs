@@ -119,7 +119,7 @@ public class LowStockAlertService : BackgroundService
         if (sent)
         {
             _lastSentDate = today;
-            _logger.LogInformation("Stock digest sent to {Email} ({Count} item(s), {Branches} branch(es)).", adminEmail, items.Count, branchCount);
+            _logger.LogInformation("Stock digest sent to {Email} ({Count} item(s), {Branches} branch(es)).", SterlingLams.Web.Infrastructure.LogRedact.Email(adminEmail), items.Count, branchCount);
         }
         else
         {
