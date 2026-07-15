@@ -31,6 +31,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<RefundItem> RefundItems => Set<RefundItem>();
     public DbSet<CashMovement> CashMovements => Set<CashMovement>();
     public DbSet<Expense> Expenses => Set<Expense>();
+    public DbSet<EmailLog> EmailLogs => Set<EmailLog>();
     public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
     public DbSet<StockTransferItem> StockTransferItems => Set<StockTransferItem>();
     public DbSet<StockAdjustment> StockAdjustments => Set<StockAdjustment>();

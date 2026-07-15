@@ -153,7 +153,7 @@ public static class SettingsSeedData
         new() { Key = "email.reply_to",     Group = "Emails", Label = "Reply-To Address",     Type = "email",    Value = "",              Description = "Where customer replies go (optional). Blank = no reply-to.", SortOrder = 2 },
         new() { Key = "email.header_color", Group = "Emails", Label = "Header Colour",         Type = "color",    Value = "#0a0a0a",       Description = "Background colour of the email header band.",             SortOrder = 3 },
         new() { Key = "email.footer_text",  Group = "Emails", Label = "Footer Text",           Type = "textarea", Value = "This is an automated message — please don't reply.", Description = "Small print at the bottom of every email.", SortOrder = 4 },
-        new() { Key = "email.logo_height",  Group = "Emails", Label = "Logo Size (px)",         Type = "number",   Value = "48",            Description = "Height of the logo in the email header (16–200px).",      SortOrder = 5 },
+        new() { Key = "email.logo_height",  Group = "Emails", Label = "Logo Size (px)",         Type = "number",   Value = "72",            Description = "Height of the logo in the email header (16–300px).",      SortOrder = 5 },
 
         // Per-email subject + intro (structure/links stay code-controlled)
         new() { Key = "email.order_confirmed.subject", Group = "Emails", Label = "Order Confirmation — Subject", Type = "text",     Value = "Your order is being processed", Description = "Customer order confirmation (also the heading).",          SortOrder = 10 },

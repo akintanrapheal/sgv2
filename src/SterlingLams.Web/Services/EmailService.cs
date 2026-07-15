@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Mail;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using SterlingLams.Web.Data;
+using SterlingLams.Web.Models.Domain;
 
 namespace SterlingLams.Web.Services;
 
@@ -44,15 +47,40 @@ public class SmtpEmailService : IEmailService
     private readonly IWebHostEnvironment _env;
     private readonly ISettingsService _settings;
     private readonly IConfiguration _config;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public SmtpEmailService(IOptions<EmailOptions> opt, ILogger<SmtpEmailService> log, IWebHostEnvironment env,
-        ISettingsService settings, IConfiguration config)
+        ISettingsService settings, IConfiguration config, IServiceScopeFactory scopeFactory)
     {
         _opt = opt.Value;
         _log = log;
         _env = env;
         _settings = settings;
         _config = config;
+        _scopeFactory = scopeFactory;
+    }
+
+    // Records the send attempt to the EmailLog for the admin "Email log". Uses its own DbContext scope
+    // so it never touches the caller's transaction, and never throws (email must not break on a log error).
+    private async Task LogEmailAsync(string toEmail, string? toName, string subject, bool sent, string? error, string channel)
+    {
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.EmailLogs.Add(new EmailLog
+            {
+                ToEmail = toEmail,
+                ToName = string.IsNullOrWhiteSpace(toName) ? null : toName,
+                Subject = subject.Length > 300 ? subject[..300] : subject,
+                Sent = sent,
+                Error = error == null ? null : (error.Length > 500 ? error[..500] : error),
+                Channel = channel,
+                CreatedAt = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync();
+        }
+        catch { /* best-effort — never break a send because logging failed */ }
     }
 
     /// <summary>Admin-customizable email branding (Settings → Emails), resolved per send.</summary>
@@ -87,8 +115,8 @@ public class SmtpEmailService : IEmailService
         var replyTo = await _settings.GetAsync("email.reply_to", "");
         var headerColor = await _settings.GetAsync("email.header_color", "#0a0a0a");
         var footerText = await _settings.GetAsync("email.footer_text", "This is an automated message — please don't reply.");
-        var logoHeight = (int)await _settings.GetDecimalAsync("email.logo_height", 48);
-        if (logoHeight is < 16 or > 200) logoHeight = 48;
+        var logoHeight = (int)await _settings.GetDecimalAsync("email.logo_height", 72);
+        if (logoHeight is < 16 or > 300) logoHeight = 72;
 
         // Logo only renders in email if we can build an absolute URL (clients won't load relative paths).
         var logo = await _settings.GetAsync("general.logo_url", "");
@@ -124,10 +152,13 @@ public class SmtpEmailService : IEmailService
             if (string.IsNullOrWhiteSpace(pickupDir))
             {
                 _log.LogWarning("Email NOT sent (SMTP not configured). to={To} subject=\"{Subject}\"", SterlingLams.Web.Infrastructure.LogRedact.Email(toEmail), subject);
+                await LogEmailAsync(toEmail, toName, subject, false, "SMTP not configured — email skipped.", "skipped");
                 return false;
             }
 
-            return await WriteToPickupAsync(pickupDir, toEmail, toName, subject, innerHtml, brand);
+            var pickedUp = await WriteToPickupAsync(pickupDir, toEmail, toName, subject, innerHtml, brand);
+            await LogEmailAsync(toEmail, toName, subject, pickedUp, pickedUp ? null : "Failed to write to the pickup folder.", "pickup");
+            return pickedUp;
         }
 
         try
@@ -150,11 +181,13 @@ public class SmtpEmailService : IEmailService
             };
             await client.SendMailAsync(msg, ct);
             _log.LogInformation("Email sent to {To}: \"{Subject}\"", SterlingLams.Web.Infrastructure.LogRedact.Email(toEmail), subject);
+            await LogEmailAsync(toEmail, toName, subject, true, null, "smtp");
             return true;
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Failed to send email to {To}: \"{Subject}\"", SterlingLams.Web.Infrastructure.LogRedact.Email(toEmail), subject);
+            await LogEmailAsync(toEmail, toName, subject, false, ex.Message, "smtp");
             return false;
         }
     }
@@ -162,7 +195,7 @@ public class SmtpEmailService : IEmailService
     public async Task<string> RenderAsync(string subject, string innerHtml, int? logoHeight = null)
     {
         var brand = await GetBrandingAsync();
-        if (logoHeight is int h && h is >= 16 and <= 200) brand = brand with { LogoHeight = h };
+        if (logoHeight is int h && h is >= 16 and <= 300) brand = brand with { LogoHeight = h };
         return Wrap(subject, innerHtml, brand);
     }
 

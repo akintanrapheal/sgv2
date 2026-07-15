@@ -1,0 +1,96 @@
+@model List<SterlingLams.Web.Models.Domain.EmailLog>
+@{
+    ViewData["Title"] = "Email Log";
+    var status = (string)ViewBag.Status;
+    var q = (string)ViewBag.Q;
+    int page = ViewBag.Page, totalPages = ViewBag.TotalPages, total = ViewBag.Total;
+    string TabCls(string s) => s == status
+        ? "bg-neutral-900 text-white"
+        : "border border-neutral-200 text-neutral-600 hover:border-neutral-400";
+}
+
+<div class="flex items-center justify-between mb-1">
+    <h1 class="text-lg font-medium text-neutral-800">Email Log</h1>
+</div>
+<p class="text-xs text-neutral-400 mb-6">Every email the system attempted to send, with its result. Shows the SMTP-level outcome (accepted / failed).</p>
+
+<div class="grid grid-cols-3 gap-4 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Total logged</p><p class="text-xl font-light text-neutral-900 mt-1">@total</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Sent</p><p class="text-xl font-light text-emerald-600 mt-1">@ViewBag.SentCount</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Failed</p><p class="text-xl font-light mt-1 @((int)ViewBag.FailedCount > 0 ? "text-red-600" : "text-neutral-900")">@ViewBag.FailedCount</p>
+    </div>
+</div>
+
+<form method="get" class="flex flex-wrap items-center gap-2 mb-5">
+    <div class="flex gap-1.5">
+        <a asp-action="Index" asp-route-q="@q" class="px-3 py-1.5 text-xs rounded-sm @TabCls("")">All</a>
+        <a asp-action="Index" asp-route-status="sent" asp-route-q="@q" class="px-3 py-1.5 text-xs rounded-sm @TabCls("sent")">Sent</a>
+        <a asp-action="Index" asp-route-status="failed" asp-route-q="@q" class="px-3 py-1.5 text-xs rounded-sm @TabCls("failed")">Failed</a>
+    </div>
+    <input type="hidden" name="status" value="@status" />
+    <input type="text" name="q" value="@q" placeholder="Search recipient or subject…"
+           class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm w-72" />
+    <button class="px-4 py-1.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Search</button>
+</form>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+            <thead><tr class="text-xs text-neutral-400 bg-neutral-50">
+                <th class="px-4 py-2.5 text-left font-medium">When</th>
+                <th class="px-4 py-2.5 text-left font-medium">Recipient</th>
+                <th class="px-4 py-2.5 text-left font-medium">Subject</th>
+                <th class="px-4 py-2.5 text-left font-medium">Channel</th>
+                <th class="px-4 py-2.5 text-left font-medium">Status</th>
+            </tr></thead>
+            <tbody class="divide-y divide-neutral-100">
+                @if (!Model.Any()) { <tr><td colspan="5" class="px-4 py-10 text-center text-neutral-400">No emails logged yet.</td></tr> }
+                @foreach (var e in Model)
+                {
+                    <tr class="hover:bg-neutral-50 @(!e.Sent ? "bg-red-50/40" : "")">
+                        <td class="px-4 py-2.5 text-neutral-500">@e.CreatedAt.ToLocalTime().ToString("dd MMM yy HH:mm")</td>
+                        <td class="px-4 py-2.5 text-neutral-700">@e.ToEmail@(string.IsNullOrWhiteSpace(e.ToName) ? "" : $" ({e.ToName})")</td>
+                        <td class="px-4 py-2.5 text-neutral-600 max-w-xs truncate" title="@e.Subject">@e.Subject</td>
+                        <td class="px-4 py-2.5 text-neutral-400">@e.Channel</td>
+                        <td class="px-4 py-2.5">
+                            @if (e.Sent)
+                            {
+                                <span class="text-emerald-600">✓ Sent</span>
+                            }
+                            else
+                            {
+                                <span class="text-red-600" title="@e.Error">✗ Failed</span>
+                                @if (!string.IsNullOrWhiteSpace(e.Error))
+                                {
+                                    <span class="text-neutral-400 text-xs ml-1">— @e.Error</span>
+                                }
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (totalPages > 1)
+{
+    <div class="flex items-center justify-center gap-3 mt-5 text-sm">
+        @if (page > 1)
+        {
+            <a asp-action="Index" asp-route-status="@status" asp-route-q="@q" asp-route-page="@(page - 1)"
+               class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">← Prev</a>
+        }
+        <span class="text-neutral-400">Page @(page) of @totalPages</span>
+        @if (page < totalPages)
+        {
+            <a asp-action="Index" asp-route-status="@status" asp-route-q="@q" asp-route-page="@(page + 1)"
+               class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">Next →</a>
+        }
+    </div>
+}

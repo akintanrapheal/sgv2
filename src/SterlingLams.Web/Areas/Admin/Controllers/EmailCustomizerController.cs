@@ -47,7 +47,7 @@ public class EmailCustomizerController : AdminBaseController
             ReplyTo = await _settings.GetAsync("email.reply_to", ""),
             HeaderColor = await _settings.GetAsync("email.header_color", "#0a0a0a"),
             FooterText = await _settings.GetAsync("email.footer_text", "This is an automated message — please don't reply."),
-            LogoHeight = (int)await _settings.GetDecimalAsync("email.logo_height", 48),
+            LogoHeight = (int)await _settings.GetDecimalAsync("email.logo_height", 72),
         };
         return View(vm);
     }
@@ -70,7 +70,7 @@ public class EmailCustomizerController : AdminBaseController
             TempData["Error"] = "Unknown email type.";
             return RedirectToAction(nameof(Index));
         }
-        var h = logoHeight is int lh && lh is >= 16 and <= 200 ? lh : 48;
+        var h = logoHeight is int lh && lh is >= 16 and <= 300 ? lh : 72;
         await _settings.SaveManyAsync(new Dictionary<string, string>
         {
             [$"email.{type}.subject"] = subject?.Trim() ?? "",
