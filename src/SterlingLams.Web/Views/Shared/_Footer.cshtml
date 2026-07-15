@@ -15,9 +15,13 @@
         .Where(s => s.IsActive)
         .OrderBy(s => s.Name)
         .ToListAsync();
+
+    // Pages that end on a dark full-bleed section (e.g. Home's newsletter) set FooterFlush
+    // so the footer butts straight against it — no cream body-gap above the footer.
+    var footerTopMargin = ViewData["FooterFlush"] as bool? == true ? "" : "mt-24";
 }
 
-<footer class="bg-neutral-900 text-white mt-24">
+<footer class="bg-neutral-900 text-white @footerTopMargin">
     <div class="max-w-7xl mx-auto px-6 py-16">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-12">
 

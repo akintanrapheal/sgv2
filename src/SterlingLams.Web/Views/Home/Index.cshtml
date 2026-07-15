@@ -4,6 +4,9 @@
     ViewData["Title"] = "Luxury Jewellery";
     ViewData["Description"] = "Sterlin Glams — luxury jewellery and accessories. Shop rings, necklaces, earrings, bracelets, watches and clutches, with in-store pickup at our Lagos and Abuja stores.";
     Layout = "_Layout";
+    // Home ends on the black striped newsletter section — sit the (dark) footer flush against it,
+    // so there's no cream body-gap between them. Other pages keep the footer's normal top spacing.
+    ViewData["FooterFlush"] = true;
     var featuredProducts = ViewBag.FeaturedProducts as List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> ?? new();
     var bestSellers = ViewBag.BestSellers as List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> ?? new();
     var trending = ViewBag.Trending as List<SterlingLams.Web.Models.ViewModels.ProductCardViewModel> ?? new();
@@ -411,7 +414,59 @@
     </div>
 </section>
 
+<!-- ─── Newsletter signup ─────────────────────────────────────────────────── -->
+<section class="relative overflow-hidden bg-black" aria-label="Newsletter signup">
+    <!-- diagonal stripe backdrop (finer stripes) -->
+    <div class="absolute inset-0 opacity-90"
+         style="background: repeating-linear-gradient(135deg, #000 0, #000 9px, #ffffff 9px, #ffffff 18px);"></div>
+    <div class="relative max-w-7xl mx-auto px-6 py-12 flex justify-center">
+        <div class="w-full max-w-md bg-black/85 backdrop-blur-sm px-6 sm:px-8 py-7 text-center">
+            <p class="text-[11px] tracking-[0.3em] uppercase text-neutral-400 mb-1.5">Enjoy amazing discounts</p>
+            <h2 class="font-cormorant text-2xl sm:text-3xl font-semibold text-white mb-4">Join Our Newsletter</h2>
+
+            <form id="newsletter-form" class="text-left">
+                <input id="newsletter-email" name="email" type="email" required placeholder="Your email address" aria-label="Email address"
+                       class="w-full bg-transparent border border-neutral-600 text-white placeholder-neutral-500 px-4 py-2.5 mb-3 text-sm focus:outline-none focus:border-brand-500 transition-colors" />
+                <div class="text-center">
+                    <button type="submit"
+                            class="bg-white text-neutral-900 text-xs tracking-[0.2em] uppercase px-10 py-2.5 hover:bg-brand-500 hover:text-white transition-colors duration-300 disabled:opacity-60">
+                        Sign Up
+                    </button>
+                </div>
+                <p id="newsletter-msg" class="text-sm text-center mt-3 min-h-[1.25rem]"></p>
+            </form>
+        </div>
+    </div>
+</section>
+
 @section Scripts {
+<script nonce="@Context.Items["csp-nonce"]">
+(function () {
+    const form = document.getElementById('newsletter-form');
+    if (!form) return;
+    const msg = document.getElementById('newsletter-msg');
+    const btn = form.querySelector('button[type=submit]');
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('newsletter-email').value.trim();
+        btn.disabled = true; msg.textContent = ''; msg.className = 'text-sm text-center mt-3 min-h-[1.25rem] text-neutral-300';
+        try {
+            const res = await fetch('/Home/Subscribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'email=' + encodeURIComponent(email)
+            });
+            const data = await res.json();
+            msg.textContent = data.message;
+            msg.classList.add(data.success ? 'text-emerald-400' : 'text-red-400');
+            if (data.success) form.reset();
+        } catch {
+            msg.textContent = 'Something went wrong. Please try again.';
+            msg.classList.add('text-red-400');
+        } finally { btn.disabled = false; }
+    });
+}());
+</script>
 <script nonce="@Context.Items["csp-nonce"]">
 // Hero campaign slider — fade between images, auto-advance, arrows + dots.
 (function () {
