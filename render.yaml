@@ -18,7 +18,8 @@ services:
     region: oregon
     dockerfilePath: ./Dockerfile
     dockerContext: .
-    healthCheckPath: /
+    healthCheckPath: /health   # dedicated liveness endpoint — exempt from maintenance mode so the
+                               # instance stays healthy (a 503 on "/" would get the instance pulled → 502)
     autoDeploy: true          # redeploy automatically on every push to the connected branch
     envVars:
       - key: ASPNETCORE_ENVIRONMENT

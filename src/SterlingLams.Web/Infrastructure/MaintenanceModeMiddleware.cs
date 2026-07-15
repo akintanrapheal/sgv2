@@ -38,6 +38,9 @@ public class MaintenanceModeMiddleware
         return Starts($"/{StaffPaths.Admin}") || Starts($"/{StaffPaths.Inventory}") || Starts($"/{StaffPaths.Marketing}") || Starts("/Till") || Starts("/Pos")
             || Starts("/Account/Login") || Starts("/Account/Logout") || Starts("/Account/AccessDenied")
             || Starts("/webhooks")
+            // Health probes MUST stay 200 in maintenance mode, or the host (Render) marks the instance
+            // unhealthy and pulls it — turning a maintenance page into a full 502 outage.
+            || Starts("/health")
             || Starts("/css") || Starts("/js") || Starts("/lib") || Starts("/uploads")
             || Starts("/favicon");
     }
