@@ -262,7 +262,7 @@
             <div class="grid gap-8 @(featBlocks.Count > 1 ? "md:grid-cols-2" : "max-w-xl mx-auto")">
                 @foreach (var blk in featBlocks)
                 {
-                    <div class="text-center">
+                    <div class="text-center flex flex-col h-full">
                         @if (!string.IsNullOrWhiteSpace(blk.Category))
                         {
                             <a asp-controller="Products" asp-action="Index" asp-route-category="@blk.Category"
@@ -288,10 +288,12 @@
                         }
                         @if (!string.IsNullOrWhiteSpace(blk.Category))
                         {
-                            <a asp-controller="Products" asp-action="Index" asp-route-category="@blk.Category"
-                               class="inline-block text-xs tracking-[0.2em] uppercase text-neutral-900 border-b-2 border-brand-500 pb-1 hover:text-brand-500 transition-colors">
-                                @(string.IsNullOrWhiteSpace(blk.LinkText) ? "Shop the Collection" : blk.LinkText)
-                            </a>
+                            <div class="mt-auto pt-2">
+                                <a asp-controller="Products" asp-action="Index" asp-route-category="@blk.Category"
+                                   class="inline-block text-xs tracking-[0.2em] uppercase text-neutral-900 border-b-2 border-brand-500 pb-1 hover:text-brand-500 transition-colors">
+                                    @(string.IsNullOrWhiteSpace(blk.LinkText) ? "Shop the Collection" : blk.LinkText)
+                                </a>
+                            </div>
                         }
                     </div>
                 }
