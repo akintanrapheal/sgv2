@@ -56,6 +56,14 @@ public class BackInStockNotifier : BackgroundService
                 .ToListAsync(ct))
             .ToDictionary(x => x.ProductId, x => x.Avail);
 
+        // Primary image per product, for the email thumbnail.
+        var imgByProduct = (await db.ProductImages
+                .Where(im => productIds.Contains(im.ProductId))
+                .GroupBy(im => im.ProductId)
+                .Select(g => new { ProductId = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
+                .ToListAsync(ct))
+            .ToDictionary(x => x.ProductId, x => x.Url);
+
         var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
         var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
@@ -77,9 +85,14 @@ public class BackInStockNotifier : BackgroundService
                 ? $@"<p style=""margin:24px 0;""><a href=""{link}"" style=""background:#0a0a0a;color:#fff;text-decoration:none;padding:12px 28px;display:inline-block;font-size:13px;letter-spacing:1px;text-transform:uppercase;"">Shop now</a></p>"
                 : "<p>Visit our website to order before it sells out again.</p>";
             var name = System.Net.WebUtility.HtmlEncode(product.Name);
+            var rawImg = imgByProduct.GetValueOrDefault(group.Key);
+            var absImg = string.IsNullOrWhiteSpace(rawImg) ? null
+                : (rawImg.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? rawImg
+                   : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + rawImg.TrimStart('/')));
+            var thumb = SterlingLams.Web.Services.OrderEmailTemplate.Thumb(absImg);
             var body = $@"
                 <h2 style=""font-size:18px;margin:0 0 12px;"">{System.Net.WebUtility.HtmlEncode(subject)}</h2>
-                <p><strong>{name}</strong> is back in stock.</p>
+                <p style=""vertical-align:middle;"">{thumb}<strong>{name}</strong> is back in stock.</p>
                 <p>{System.Net.WebUtility.HtmlEncode(intro)}</p>
                 {cta}";
 

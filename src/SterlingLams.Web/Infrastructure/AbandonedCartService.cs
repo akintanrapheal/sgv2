@@ -99,7 +99,8 @@ public class AbandonedCartService : BackgroundService
                 coupon = await marketing.MintCouponAsync(DiscountType.Percentage, discountPct, discountExpiry, null,
                     $"Cart recovery ({discountPct}% off)", ct);
 
-            var body = BuildBody(subject, intro, ab, baseUrl, coupon, discountPct, emailNo, maxSteps);
+            var itemsHtml = await ItemsHtmlAsync(db, ab.ItemsJson, baseUrl, ct);
+            var body = BuildBody(subject, intro, ab, baseUrl, coupon, discountPct, emailNo, maxSteps, itemsHtml);
 
             if (await email.SendAsync(ab.Email, subject, body, ct: ct))
             {
@@ -120,8 +121,39 @@ public class AbandonedCartService : BackgroundService
         _ => ("Last chance for your bag", "This is a final reminder — your saved items may sell out soon."),
     };
 
+    // Rebuild the product list (with thumbnails) from the cart snapshot for the recovery email.
+    private sealed record CartSnap(int ProductId, int? VariantId, int Quantity);
+    private static async Task<string> ItemsHtmlAsync(ApplicationDbContext db, string itemsJson, string baseUrl, CancellationToken ct)
+    {
+        List<CartSnap>? lines = null;
+        try
+        {
+            lines = System.Text.Json.JsonSerializer.Deserialize<List<CartSnap>>(itemsJson,
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch { }
+        if (lines == null || lines.Count == 0) return "";
+
+        var pids = lines.Select(l => l.ProductId).Distinct().ToList();
+        var prods = await db.Products.Where(p => pids.Contains(p.Id))
+            .Select(p => new { p.Id, p.Name, Img = p.Images.OrderByDescending(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault() })
+            .ToDictionaryAsync(x => x.Id, ct);
+
+        var sb = new System.Text.StringBuilder(@"<table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""font-size:14px;border-collapse:collapse;margin:12px 0;"">");
+        foreach (var l in lines)
+        {
+            if (!prods.TryGetValue(l.ProductId, out var p)) continue;
+            var abs = string.IsNullOrWhiteSpace(p.Img) ? null
+                : (p.Img.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? p.Img
+                   : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + p.Img.TrimStart('/')));
+            sb.Append($@"<tr><td style=""padding:8px 0;border-bottom:1px solid #f0efee;color:#374151;vertical-align:middle;"">{OrderEmailTemplate.Thumb(abs)}<strong style=""color:#1c1917;"">{System.Net.WebUtility.HtmlEncode(p.Name)}</strong> &times; {l.Quantity}</td></tr>");
+        }
+        sb.Append("</table>");
+        return sb.ToString();
+    }
+
     private static string BuildBody(string subject, string intro, AbandonedCart ab, string baseUrl,
-        string? coupon, int pct, int emailNo, int maxSteps)
+        string? coupon, int pct, int emailNo, int maxSteps, string itemsHtml)
     {
         string Enc(string s) => System.Net.WebUtility.HtmlEncode(s);
         var link = string.IsNullOrEmpty(baseUrl) ? null : $"{baseUrl}/cart/recover?token={ab.Token}";
@@ -137,7 +169,8 @@ public class AbandonedCartService : BackgroundService
         return $@"
             <h2 style=""font-size:18px;margin:0 0 12px;"">{Enc(subject)}</h2>
             <p>{Enc(intro)}</p>
-            <p>{ab.ItemCount} item(s) · ₦{ab.Subtotal:N0}</p>
+            {itemsHtml}
+            <p style=""color:#78716c;font-size:13px;"">{ab.ItemCount} item(s) · Subtotal ₦{ab.Subtotal:N0}</p>
             {couponBlock}
             {cta}
             <p style=""font-size:13px;color:#78716c;"">{footer}</p>";

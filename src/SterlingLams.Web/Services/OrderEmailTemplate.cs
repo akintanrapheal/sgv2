@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using SterlingLams.Web.Infrastructure;
 
 namespace SterlingLams.Web.Services;
 
@@ -22,6 +23,17 @@ public static class OrderEmailTemplate
 
     private const string Accent = "#b03a6e";   // muted pink for labels
     private const string Line   = "#e7e5e4";
+
+    /// <summary>A small square product thumbnail for an email line (44px, Cloudinary-optimised when
+    /// possible). Returns "" when there's no image. Pass an ABSOLUTE url (email clients need it).
+    /// Shared by the order emails and the other transactional emails (abandoned cart, back-in-stock,
+    /// transfer request) so the thumbnail looks identical everywhere.</summary>
+    public static string Thumb(string? imageUrl)
+    {
+        if (string.IsNullOrWhiteSpace(imageUrl)) return "";
+        var src = Img.Cld(imageUrl, 96, 96) ?? imageUrl;   // 2× the 44px display; no-op on non-Cloudinary URLs
+        return $@"<img src=""{src}"" width=""44"" height=""44"" alt="""" style=""width:44px;height:44px;object-fit:cover;border:1px solid {Line};border-radius:2px;vertical-align:middle;margin-right:10px;"" />";
+    }
 
     public static string Build(
         string heading,
@@ -76,9 +88,7 @@ public static class OrderEmailTemplate
   </tr>");
         foreach (var it in items)
         {
-            var img = string.IsNullOrWhiteSpace(it.ImageUrl)
-                ? ""
-                : $@"<img src=""{it.ImageUrl}"" width=""44"" height=""44"" alt="""" style=""width:44px;height:44px;object-fit:cover;border:1px solid {Line};vertical-align:middle;margin-right:10px;"" />";
+            var img = Thumb(it.ImageUrl);
             var name = $@"<strong style=""color:#1c1917;"">{E(it.Name)}</strong>{(string.IsNullOrWhiteSpace(it.Variant) ? "" : $@" <span style=""color:#78716c;"">- {E(it.Variant)}</span>")}";
             sb.Append($@"
   <tr style=""border-bottom:1px solid {Line};"">
@@ -155,7 +165,7 @@ public static class OrderEmailTemplate
         foreach (var it in items)
         {
             var variant = string.IsNullOrWhiteSpace(it.Variant) ? "" : $@" <span style=""color:#78716c;"">({E(it.Variant)})</span>";
-            sb.Append($@"<tr><td style=""padding:6px 0;color:#374151;"">{E(it.Name)}{variant} &times; {it.Quantity}</td><td align=""right"" style=""padding:6px 0;color:#111;"">{Money(it.LineTotal)}</td></tr>");
+            sb.Append($@"<tr><td style=""padding:8px 0;color:#374151;vertical-align:middle;"">{Thumb(it.ImageUrl)}{E(it.Name)}{variant} &times; {it.Quantity}</td><td align=""right"" style=""padding:8px 0;color:#111;vertical-align:middle;"">{Money(it.LineTotal)}</td></tr>");
         }
         sb.Append($@"<tr><td style=""padding-top:8px;border-top:1px solid {Line};font-weight:700;color:#1c1917;"">Total</td><td align=""right"" style=""padding-top:8px;border-top:1px solid {Line};font-weight:700;color:#1c1917;"">{Money(total)}</td></tr>");
         sb.Append("</table>");

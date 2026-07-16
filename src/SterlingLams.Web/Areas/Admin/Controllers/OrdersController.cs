@@ -398,8 +398,22 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             var firstName = order.User?.FirstName ?? order.Customer?.FirstName ?? "there";
             var introHtml = OrderEmailTemplate.ApplyPlaceholders(introText, order.OrderNumber, order.CreatedAt, firstName);
+            // Per-item primary image, made absolute for email clients (Cloudinary URLs already are).
+            var pids = order.Items.Select(i => i.ProductId).Distinct().ToList();
+            var imgMap = await _db.ProductImages.Where(im => pids.Contains(im.ProductId))
+                .GroupBy(im => im.ProductId)
+                .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
+                .ToDictionaryAsync(x => x.Pid, x => x.Url);
+            var baseUrl = HttpContext != null ? $"{Request.Scheme}://{Request.Host}" : "";
+            string? AbsImg(int pid)
+            {
+                var u = imgMap.GetValueOrDefault(pid);
+                if (string.IsNullOrWhiteSpace(u)) return null;
+                return u.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? u
+                     : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + u.TrimStart('/'));
+            }
             var items = order.Items
-                .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, null))
+                .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId)))
                 .ToList();
 
             var body = OrderEmailTemplate.BuildStatusUpdate(subject, introHtml, order.OrderNumber, items, order.Total);

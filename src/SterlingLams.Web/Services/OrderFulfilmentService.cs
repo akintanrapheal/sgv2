@@ -205,6 +205,12 @@ public class OrderFulfilmentService : IOrderFulfilmentService
             var storeIds = activeStores.Select(s => s.Id).ToList();
             var products = await _db.Products.Where(p => productIds.Contains(p.Id))
                 .ToDictionaryAsync(p => p.Id, p => p.Name);
+            // Primary image per product for the branch-email thumbnails (absolute Cloudinary URLs only).
+            var productImages = (await _db.ProductImages.Where(im => productIds.Contains(im.ProductId))
+                    .GroupBy(im => im.ProductId)
+                    .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
+                    .ToListAsync())
+                .ToDictionary(x => x.Pid, x => x.Url);
             var now = DateTime.UtcNow;
 
             // Lock the candidate (product, store) rows for the whole allocate→deduct so two
@@ -214,7 +220,7 @@ public class OrderFulfilmentService : IOrderFulfilmentService
             var shipNow = false;
             var awaitingTransfer = false;
             Store? fulfilStoreForEmail = null;
-            var sourceNotices = new List<(Store Source, string Ref, List<(string Name, int Qty)> Items)>();
+            var sourceNotices = new List<(Store Source, string Ref, List<(string Name, int Qty, string? Img)> Items)>();
 
             await using (var tx = await _db.Database.BeginTransactionAsync())
             {
@@ -300,7 +306,7 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                             ApprovedByUserId = order.UserId,
                             ApprovedAt = now
                         };
-                        var emailItems = new List<(string, int)>();
+                        var emailItems = new List<(string, int, string?)>();
                         foreach (var kv in bySource)
                         {
                             var (pid, vid, qty) = (kv.Key.product, kv.Key.variant, kv.Value);
@@ -312,7 +318,7 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                                 ProductId = pid, ProductVariantId = vid, ProductName = pname,
                                 RequestedQty = qty, ApprovedQty = qty
                             });
-                            emailItems.Add((pname, qty));
+                            emailItems.Add((pname, qty, HttpImg(productImages.GetValueOrDefault(pid))));
                         }
                         _db.StockTransfers.Add(transfer);
                         sourceNotices.Add((sourceStore, transferNumber, emailItems));
@@ -424,8 +430,18 @@ public class OrderFulfilmentService : IOrderFulfilmentService
     }
 
     // ── Branch fulfilment emails ────────────────────────────────────────────────
-    private static string ItemRows(IEnumerable<(string Name, int Qty)> items) =>
-        string.Join("", items.Select(i => $"<li>{System.Net.WebUtility.HtmlEncode(i.Name)} &times; {i.Qty}</li>"));
+    // Only keep absolute (Cloudinary) image URLs — email clients can't resolve app-relative paths,
+    // and this service has no base URL to make local /uploads paths absolute.
+    private static string? HttpImg(string? u) =>
+        !string.IsNullOrWhiteSpace(u) && u.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? u : null;
+
+    // Product rows for branch emails, each with a small thumbnail before the name. Uses a table (not a
+    // <ul>) so the 44px image aligns cleanly with the text across email clients.
+    private static string ItemRows(IEnumerable<(string Name, int Qty, string? Img)> items) =>
+        @"<table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""font-size:14px;border-collapse:collapse;"">"
+        + string.Join("", items.Select(i =>
+            $@"<tr><td style=""padding:8px 0;border-bottom:1px solid #f0efee;color:#374151;vertical-align:middle;"">{OrderEmailTemplate.Thumb(i.Img)}<strong style=""color:#1c1917;"">{System.Net.WebUtility.HtmlEncode(i.Name)}</strong> &times; {i.Qty}</td></tr>"))
+        + "</table>";
 
     private async Task SendBranchAsync(string? toEmail, string subject, string html)
     {
@@ -441,7 +457,7 @@ public class OrderFulfilmentService : IOrderFulfilmentService
 
     // Source branches: pack & send a transfer to the fulfilling branch for an online order.
     private async Task NotifyTransfersRequestedAsync(Order order, Store fulfilStore,
-        List<(Store Source, string Ref, List<(string Name, int Qty)> Items)> notices)
+        List<(Store Source, string Ref, List<(string Name, int Qty, string? Img)> Items)> notices)
     {
         if (!await _settings.GetBoolAsync("notifications.branch_fulfilment", true)) return;
         var dest = fulfilStore.Name.Replace("Sterlin Glams ", "");
@@ -454,7 +470,7 @@ public class OrderFulfilmentService : IOrderFulfilmentService
         {
             var html = $"<h2 style=\"font-size:18px;margin:0 0 12px;\">Transfer needed — order {System.Net.WebUtility.HtmlEncode(order.OrderNumber)}</h2>"
                 + $"<p style=\"color:#44403c;\">{intro}</p>"
-                + $"<ul style=\"color:#374151;padding-left:18px;margin:14px 0;\">{ItemRows(n.Items)}</ul>"
+                + $"<div style=\"margin:14px 0;\">{ItemRows(n.Items)}</div>"
                 + $"<p style=\"color:#57534e;font-size:13px;\">Transfer reference <strong>{n.Ref}</strong>. Mark it dispatched in Inventory System → Stock transfer once sent.</p>";
             await SendBranchAsync(n.Source.Email, Fill(subjT), html);
         }
@@ -469,13 +485,22 @@ public class OrderFulfilmentService : IOrderFulfilmentService
         var subjT = await _settings.GetAsync("email.branch_dispatch.subject", "Dispatch order {order}");
         var introT = await _settings.GetAsync("email.branch_dispatch.intro", "All stock for order {order} is now at your branch — please pack and fulfil it.");
         string Fill(string s) => s.Replace("{branch}", branch).Replace("{order}", order.OrderNumber);
-        var items = order.Items.Select(i => (i.VariantName == null ? i.ProductName : $"{i.ProductName} ({i.VariantName})", i.Quantity));
+        var dpids = order.Items.Select(i => i.ProductId).Distinct().ToList();
+        var dimgs = (await _db.ProductImages.Where(im => dpids.Contains(im.ProductId))
+                .GroupBy(im => im.ProductId)
+                .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
+                .ToListAsync())
+            .ToDictionary(x => x.Pid, x => x.Url);
+        var items = order.Items.Select(i => (
+            i.VariantName == null ? i.ProductName : $"{i.ProductName} ({i.VariantName})",
+            i.Quantity,
+            HttpImg(dimgs.GetValueOrDefault(i.ProductId))));
         var where = order.FulfillmentType == FulfillmentType.StorePickup
             ? $"Customer pickup at {System.Net.WebUtility.HtmlEncode(branch)}."
             : $"Deliver to {System.Net.WebUtility.HtmlEncode((order.DeliveryAddress?.City + ", " + order.DeliveryAddress?.State).Trim(' ', ','))}.";
         var html = $"<h2 style=\"font-size:18px;margin:0 0 12px;\">Order {System.Net.WebUtility.HtmlEncode(order.OrderNumber)} ready to dispatch</h2>"
             + $"<p style=\"color:#44403c;\">{System.Net.WebUtility.HtmlEncode(Fill(introT))}</p>"
-            + $"<ul style=\"color:#374151;padding-left:18px;margin:14px 0;\">{ItemRows(items)}</ul>"
+            + $"<div style=\"margin:14px 0;\">{ItemRows(items)}</div>"
             + $"<p style=\"color:#57534e;font-size:13px;\">{where}</p>";
         await SendBranchAsync(fulfilStore.Email, Fill(subjT), html);
     }

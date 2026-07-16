@@ -112,6 +112,7 @@ public class EmailCustomizerController : AdminBaseController
         var intro = introOverride != null ? introOverride
             : await _settings.GetAsync($"email.{type}.intro", def.DefaultIntro);
         string E(string s) => System.Net.WebUtility.HtmlEncode(s);
+        const string SampleImg = "https://res.cloudinary.com/dxmadm7vj/image/upload/v1781722613/sterlinglams/products/cx7jwoftvtedwpdophjh.jpg";
 
         string Button(string label, string href) => $@"
             <table role=""presentation"" cellpadding=""0"" cellspacing=""0"" style=""margin:24px 0;""><tr>
@@ -149,8 +150,10 @@ public class EmailCustomizerController : AdminBaseController
             var introHtml = OrderEmailTemplate.ApplyPlaceholders(intro, "62175", sampleDate, "Zino");
             var sampleItems = new List<OrderEmailTemplate.Item>
             {
-                new("Pearl Dangle Loop Earrings", "Silver", 2, 15000m, null),
-                new("2-Tone Band Ring", null, 1, 6000m, null),
+                new("Pearl Dangle Loop Earrings", "Silver", 2, 15000m,
+                    "https://res.cloudinary.com/dxmadm7vj/image/upload/v1781722613/sterlinglams/products/cx7jwoftvtedwpdophjh.jpg"),
+                new("2-Tone Band Ring", null, 1, 6000m,
+                    "https://res.cloudinary.com/dxmadm7vj/image/upload/v1781722613/sterlinglams/products/cx7jwoftvtedwpdophjh.jpg"),
             };
             string? extra = type == "ready_for_pickup"
                 ? @"<div style=""text-align:center;margin:18px 0;""><img src=""https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=SAMPLE"" alt=""Pickup QR code"" width=""160"" height=""160"" style=""width:160px;height:160px;"" /><br/><span style=""font:12px monospace;color:#6b7280;"">62175</span></div>"
@@ -168,15 +171,19 @@ public class EmailCustomizerController : AdminBaseController
         {
             string Fill(string s) => s.Replace("{branch}", "Lekki").Replace("{order}", "62175");
             var introText = Fill(intro);
-            var items = @"<li style=""padding:3px 0;"">Pearl Dangle Loop Earrings (Silver) &times; 2</li><li style=""padding:3px 0;"">2-Tone Band Ring &times; 1</li>";
+            var thumb = OrderEmailTemplate.Thumb(SampleImg);
+            var items = $@"<table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""font-size:14px;border-collapse:collapse;"">
+                <tr><td style=""padding:8px 0;border-bottom:1px solid #f0efee;color:#374151;vertical-align:middle;"">{thumb}<strong style=""color:#1c1917;"">Pearl Dangle Loop Earrings (Silver)</strong> &times; 2</td></tr>
+                <tr><td style=""padding:8px 0;border-bottom:1px solid #f0efee;color:#374151;vertical-align:middle;"">{thumb}<strong style=""color:#1c1917;"">2-Tone Band Ring</strong> &times; 1</td></tr>
+              </table>";
             var bodyBr = type == "branch_transfer_request"
                 ? $@"<h2 style=""font-size:18px;margin:0 0 12px;"">Transfer needed — order 62175</h2>
                      <p style=""color:#44403c;"">{E(introText)}</p>
-                     <ul style=""color:#374151;padding-left:18px;margin:14px 0;"">{items}</ul>
+                     <div style=""margin:14px 0;"">{items}</div>
                      <p style=""color:#57534e;font-size:13px;"">Transfer reference <strong>TRF-260715-101530-2</strong>. Mark it dispatched in <strong>Inventory System → Stock transfer</strong> once sent.</p>"
                 : $@"<h2 style=""font-size:18px;margin:0 0 12px;"">Order 62175 ready to dispatch</h2>
                      <p style=""color:#44403c;"">{E(introText)}</p>
-                     <ul style=""color:#374151;padding-left:18px;margin:14px 0;"">{items}</ul>
+                     <div style=""margin:14px 0;"">{items}</div>
                      <p style=""color:#57534e;font-size:13px;"">Deliver to Lekki, Lagos.</p>";
             return (Fill(subject), bodyBr);
         }
@@ -185,14 +192,14 @@ public class EmailCustomizerController : AdminBaseController
         {
             "back_in_stock" => $@"
                 <h2 style=""font-size:18px;margin:0 0 16px;"">It's back in stock</h2>
+                <p style=""vertical-align:middle;"">{OrderEmailTemplate.Thumb(SampleImg)}<strong>Pearl Dangle Loop Earrings — Silver</strong> is back in stock.</p>
                 <p>{E(intro)}</p>
-                <p style=""font-size:16px;""><strong>Pearl Dangle Loop Earrings — Silver</strong></p>
                 {Button("Shop now", "#")}",
             "abandoned_cart" => $@"
                 <h2 style=""font-size:18px;margin:0 0 16px;"">Your bag is waiting</h2>
                 <p>{E(intro)}</p>
-                <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""margin:20px 0;font-size:14px;"">
-                    <tr><td style=""padding:8px 0;border-bottom:1px solid #f0efed;"">2-Tone Band Ring &times; 1</td><td align=""right"" style=""padding:8px 0;border-bottom:1px solid #f0efed;"">&#8358;6,000</td></tr>
+                <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""margin:20px 0;font-size:14px;border-collapse:collapse;"">
+                    <tr><td style=""padding:8px 0;border-bottom:1px solid #f0efed;color:#374151;vertical-align:middle;"">{OrderEmailTemplate.Thumb(SampleImg)}<strong style=""color:#1c1917;"">2-Tone Band Ring</strong> &times; 1</td></tr>
                 </table>
                 {Button("Return to your bag", "#")}",
             "password_reset" => $@"
