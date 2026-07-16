@@ -11,11 +11,17 @@ public static class SettingsSelectOptions
         {
             ["home.diamond.animation"] = new[]
             {
-                ("glow",  "Glow & Sparkle"),
-                ("pulse", "Pulse (grow & shrink)"),
-                ("float", "Float (gentle bob)"),
-                ("spin",  "Spin"),
-                ("none",  "Static (no motion)"),
+                ("glow",      "Glow & Sparkle"),
+                ("shine",     "Shine (light sweep)"),
+                ("pulse",     "Pulse (grow & shrink)"),
+                ("heartbeat", "Heartbeat"),
+                ("breathe",   "Breathe (slow glow)"),
+                ("float",     "Float (gentle bob)"),
+                ("bounce",    "Bounce"),
+                ("sway",      "Sway (rocking)"),
+                ("spin",      "Spin"),
+                ("flip",      "Flip (3D)"),
+                ("none",      "Static (no motion)"),
             },
         };
 

@@ -162,9 +162,28 @@
 .cat-diamond--pulse .cat-diamond__gem { animation: catPulse 2.4s ease-in-out infinite; }
 .cat-diamond--float .cat-diamond__gem { animation: catFloat 3.2s ease-in-out infinite; }
 .cat-diamond--spin  .cat-diamond__gem { animation: catSpin  7s   linear      infinite; }
-.cat-diamond--spin  .cat-diamond__shadow { display: none; }   /* a spinning ground-shadow looks wrong */
+.cat-diamond--heartbeat .cat-diamond__gem { animation: catHeartbeat 1.8s ease-in-out infinite; }
+.cat-diamond--breathe   .cat-diamond__gem { animation: catGlow 4s ease-in-out infinite, catBreathe 4s ease-in-out infinite; }
+.cat-diamond--bounce    .cat-diamond__gem { animation: catBounce 1.9s ease-in-out infinite; }
+.cat-diamond--sway      .cat-diamond__gem { animation: catSway   3s   ease-in-out infinite; }
+.cat-diamond--flip      { perspective: 420px; }
+.cat-diamond--flip      .cat-diamond__gem { animation: catFlip 4.5s ease-in-out infinite; }
+.cat-diamond--spin  .cat-diamond__shadow,
+.cat-diamond--flip  .cat-diamond__shadow { display: none; }   /* a rotating ground-shadow looks wrong */
 .cat-diamond--none  .cat-diamond__shine,
 .cat-diamond--none  .cat-diamond__spark { display: none; }    /* Static: soft glow only, no motion */
+
+/* Shine: a diagonal light sweep clipped to the gem outline (overlay, no SVG change) */
+.cat-diamond--shine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  clip-path: polygon(33.3% 16.7%, 66.7% 16.7%, 83.3% 36.7%, 50% 86.7%, 16.7% 36.7%);
+  background: linear-gradient(115deg, transparent 38%, rgba(255,255,255,.85) 50%, transparent 62%);
+  background-size: 250% 100%;
+  animation: catSweep 2.8s ease-in-out infinite;
+}
 
 @keyframes catGlow {
   0%, 100% { filter: drop-shadow(0 8px 10px  color-mix(in srgb, var(--cat-d-color,#ed028b) 22%, transparent)) drop-shadow(0 0 6px  color-mix(in srgb, var(--cat-d-color,#ed028b) 35%, transparent)); }
@@ -175,9 +194,16 @@
 @keyframes catSpin   { to { transform: rotate(360deg); } }
 @keyframes catShine  { 0%, 100% { opacity: .12; } 50% { opacity: .72; } }
 @keyframes catSpark  { 0%, 100% { opacity: 0; transform: scale(.2) rotate(0deg); } 50% { opacity: 1; transform: scale(1) rotate(90deg); } }
+@keyframes catHeartbeat { 0%, 55%, 100% { transform: scale(1); } 12% { transform: scale(1.13); } 24% { transform: scale(1); } 36% { transform: scale(1.09); } }
+@keyframes catBreathe   { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+@keyframes catBounce    { 0%, 100% { transform: translateY(0); } 25% { transform: translateY(-13px); } 45% { transform: translateY(0); } 62% { transform: translateY(-6px); } 80% { transform: translateY(0); } }
+@keyframes catSway      { 0%, 100% { transform: rotate(-11deg); } 50% { transform: rotate(11deg); } }
+@keyframes catFlip      { 0% { transform: rotateY(0); } 100% { transform: rotateY(360deg); } }
+@keyframes catSweep     { 0% { background-position: 130% 0; } 55%, 100% { background-position: -30% 0; } }
 
 @media (prefers-reduced-motion: reduce) {
   .cat-diamond__gem,
   .cat-diamond__shine,
   .cat-diamond__spark { animation: none; }
+  .cat-diamond--shine::after { display: none; }
 }
