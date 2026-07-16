@@ -139,7 +139,7 @@ else
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-[10px] px-2 py-0.5 rounded-full @badge.Css">@badge.Label</span>
                         <span class="text-xs text-neutral-400">@ChannelBadges(p.Channels)</span>
-                        @if (p.ScheduledAt != null) { <span class="text-xs text-neutral-400">· @p.ScheduledAt.Value.ToString("dd MMM yyyy HH:mm") UTC</span> }
+                        @if (p.ScheduledAt != null) { <span class="text-xs text-neutral-400">· @p.ScheduledAt.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm") WAT</span> }
                     </div>
                     <p class="text-sm text-neutral-700 mt-1.5 line-clamp-2 whitespace-pre-line">@p.Content</p>
                     @if (!string.IsNullOrEmpty(p.Error)) { <p class="text-xs text-red-500 mt-1">@p.Error</p> }

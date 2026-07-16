@@ -42,7 +42,7 @@ else
                         </div>
                         <a asp-controller="Products" asp-action="Detail" asp-area="" asp-route-slug="@r.ProductSlug" target="_blank" class="text-xs text-neutral-400 hover:text-neutral-700 mt-1 inline-block">@r.ProductName ↗</a>
                     </div>
-                    <span class="text-xs text-neutral-400">@r.CreatedAt.ToString("dd MMM yyyy HH:mm")</span>
+                    <span class="text-xs text-neutral-400">@r.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span>
                 </div>
 
                 @if (!string.IsNullOrWhiteSpace(r.Title)) { <p class="text-sm font-medium text-neutral-800 mt-3">@r.Title</p> }

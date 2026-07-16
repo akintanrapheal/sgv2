@@ -41,7 +41,7 @@
                     <tbody class="divide-y divide-neutral-100">
                         @foreach (var r in recipients)
                         {
-                            <tr><td class="px-5 py-2 text-neutral-700">@r.Email</td><td class="px-5 py-2 text-neutral-500">@r.Status</td><td class="px-5 py-2 text-neutral-400 text-xs">@(r.SentAt?.ToString("dd MMM HH:mm") ?? "—")</td></tr>
+                            <tr><td class="px-5 py-2 text-neutral-700">@r.Email</td><td class="px-5 py-2 text-neutral-500">@r.Status</td><td class="px-5 py-2 text-neutral-400 text-xs">@(r.SentAt?.ToLocalTime().ToString("dd MMM HH:mm") ?? "—")</td></tr>
                         }
                     </tbody>
                 </table>
@@ -79,7 +79,7 @@
                         <div class="flex justify-between"><span class="text-neutral-400">Orders</span><span class="text-neutral-900 font-medium">@attrOrders.ToString("N0")@(attrOrders > 0 ? $" · ₦{Math.Round(attrRev / attrOrders, 0):N0} avg" : "")</span></div>
                     }
                 }
-                <div class="flex justify-between"><span class="text-neutral-400">@(Model.Status == CampaignStatus.Sent ? "Sent at" : "Scheduled")</span><span class="text-neutral-700">@((Model.SentAt ?? Model.ScheduledAt)?.ToString("dd MMM yyyy HH:mm") ?? "—") UTC</span></div>
+                <div class="flex justify-between"><span class="text-neutral-400">@(Model.Status == CampaignStatus.Sent ? "Sent at" : "Scheduled")</span><span class="text-neutral-700">@((Model.SentAt ?? Model.ScheduledAt)?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? "—") WAT</span></div>
             }
         </div>
 

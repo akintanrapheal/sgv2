@@ -32,6 +32,13 @@ RUN dotnet publish src/SterlingLams.Web/SterlingLams.Web.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 
+# Timezone: the store is Nigeria (West Africa Time, UTC+1, no DST). The base image
+# runs in UTC, so DateTime.ToLocalTime() would render times 1 hour behind. Install the
+# IANA zone database (tzdata) and set TZ so the process-wide local zone is WAT — this
+# makes every ToLocalTime() display the correct local clock. (Storage stays UTC.)
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
+ENV TZ=Africa/Lagos
+
 # Non-root user for security
 RUN adduser --disabled-password --gecos "" appuser && chown -R appuser /app
 USER appuser

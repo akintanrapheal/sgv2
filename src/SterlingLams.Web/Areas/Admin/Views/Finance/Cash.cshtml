@@ -69,7 +69,7 @@
                 @foreach (var r in Model.Rows)
                 {
                     <tr class="hover:bg-neutral-50">
-                        <td class="px-4 py-2.5 text-neutral-600">@(r.Closed?.ToString("dd MMM yy HH:mm") ?? "—")</td>
+                        <td class="px-4 py-2.5 text-neutral-600">@(r.Closed?.ToLocalTime().ToString("dd MMM yy HH:mm") ?? "—")</td>
                         <td class="px-4 py-2.5 text-neutral-700">@r.Store <span class="text-neutral-400">· @r.Register</span></td>
                         <td class="px-4 py-2.5 text-neutral-600">@r.Cashier</td>
                         <td class="px-4 py-2.5 text-right text-neutral-500">@Money(r.OpeningFloat)</td>

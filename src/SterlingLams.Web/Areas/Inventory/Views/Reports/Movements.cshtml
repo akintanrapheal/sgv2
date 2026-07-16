@@ -93,7 +93,7 @@
             @foreach (var m in Model)
             {
                 <tr class="hover:bg-neutral-50">
-                    <td class="px-4 py-2.5 text-xs text-neutral-500 whitespace-nowrap">@m.When.ToString("dd MMM yyyy HH:mm")</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-500 whitespace-nowrap">@m.When.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
                     <td class="px-4 py-2.5">
                         <span class="text-xs text-neutral-800">@m.Product</span>
                         @if (!string.IsNullOrEmpty(m.Variant)) { <span class="text-[10px] text-neutral-400"> · @m.Variant</span> }

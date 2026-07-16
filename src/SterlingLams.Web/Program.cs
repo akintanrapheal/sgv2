@@ -529,4 +529,10 @@ if (args.Length >= 1 && args[0].Equals("import-barcodes", StringComparison.Ordin
     return;
 }
 
+// Timezone sanity line — confirms the container is running in West Africa Time (set via TZ +
+// tzdata in the Dockerfile). Should log "Africa/Lagos … +01:00:00"; if it says UTC, ToLocalTime
+// displays will be an hour behind.
+Log.Information("Server timezone: {Zone} (UTC offset {Offset})",
+    TimeZoneInfo.Local.Id, TimeZoneInfo.Local.BaseUtcOffset);
+
 await app.RunAsync();

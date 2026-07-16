@@ -24,6 +24,10 @@ services:
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
+      # Display all times in West Africa Time (Nigeria, UTC+1). The Dockerfile also bakes this in
+      # (tzdata + ENV TZ); kept here so the timezone is visible/adjustable from the Render config.
+      - key: TZ
+        value: Africa/Lagos
       # Render's ephemeral single instance: let the app apply migrations on startup
       # (the OP-12 escape hatch). On a multi-instance host you'd run migrations as a deploy step.
       - key: Database__AutoMigrate

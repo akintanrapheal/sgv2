@@ -18,7 +18,7 @@
         <div class="flex justify-between border-b border-neutral-50 py-1.5"><span class="text-neutral-400">Reference</span><span class="text-neutral-800 font-medium">@Model.Reference</span></div>
         <div class="flex justify-between border-b border-neutral-50 py-1.5"><span class="text-neutral-400">Status</span><span class="text-emerald-600">@Model.Status</span></div>
         <div class="flex justify-between border-b border-neutral-50 py-1.5"><span class="text-neutral-400">Staff</span><span class="text-neutral-800">@Model.StaffName</span></div>
-        <div class="flex justify-between border-b border-neutral-50 py-1.5"><span class="text-neutral-400">Date</span><span class="text-neutral-800">@Model.CreatedAt.ToString("dd/MM/yyyy HH:mm")</span></div>
+        <div class="flex justify-between border-b border-neutral-50 py-1.5"><span class="text-neutral-400">Date</span><span class="text-neutral-800">@Model.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span></div>
         <div class="flex justify-between border-b border-neutral-50 py-1.5"><span class="text-neutral-400">Items</span><span class="text-neutral-800">@Model.ItemCount (@Model.Discrepancies discrepancies)</span></div>
     </div>
     @if (!string.IsNullOrWhiteSpace(Model.Note))

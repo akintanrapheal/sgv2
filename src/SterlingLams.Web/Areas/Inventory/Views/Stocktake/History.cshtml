@@ -70,7 +70,7 @@
                     <td class="px-4 py-3 text-neutral-600">@t.StaffName</td>
                     <td class="px-4 py-3 text-center text-neutral-600">@t.ItemCount</td>
                     <td class="px-4 py-3 text-center @(t.Discrepancies > 0 ? "text-red-600 font-medium" : "text-neutral-400")">@t.Discrepancies</td>
-                    <td class="px-4 py-3 text-neutral-500">@t.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                    <td class="px-4 py-3 text-neutral-500">@t.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
                     <td class="px-4 py-3 text-right">
                         <a asp-area="Inventory" asp-controller="Stocktake" asp-action="Details" asp-route-id="@t.Id"
                            class="px-3 py-1.5 border border-blue-300 text-blue-700 text-xs rounded-md hover:bg-blue-50">View Details</a>

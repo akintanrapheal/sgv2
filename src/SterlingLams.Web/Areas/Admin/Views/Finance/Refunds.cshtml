@@ -129,7 +129,7 @@
                 {
                     <tr class="hover:bg-neutral-50">
                         <td class="px-4 py-2.5 text-neutral-600">@r.Number</td>
-                        <td class="px-4 py-2.5 text-neutral-500">@r.When.ToString("dd MMM yy HH:mm")</td>
+                        <td class="px-4 py-2.5 text-neutral-500">@r.When.ToLocalTime().ToString("dd MMM yy HH:mm")</td>
                         <td class="px-4 py-2.5 text-neutral-700">@r.Order</td>
                         <td class="px-4 py-2.5 text-neutral-600">@r.Method</td>
                         <td class="px-4 py-2.5 text-neutral-600">@r.Reason</td>

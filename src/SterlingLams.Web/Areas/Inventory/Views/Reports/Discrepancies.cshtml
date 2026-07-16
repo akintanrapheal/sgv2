@@ -74,8 +74,8 @@
                     <td class="px-3 py-2.5 text-neutral-700 font-medium">@(string.IsNullOrEmpty(r.TransRef) ? "—" : r.TransRef)</td>
                     <td class="px-3 py-2.5 text-neutral-500 text-xs">@r.From</td>
                     <td class="px-3 py-2.5 text-neutral-500 text-xs">@r.To</td>
-                    <td class="px-3 py-2.5 text-neutral-500 text-xs">@(r.Sent?.ToString("dd/MM/yy HH:mm") ?? "—")</td>
-                    <td class="px-3 py-2.5 text-neutral-500 text-xs">@(r.Received?.ToString("dd/MM/yy HH:mm") ?? "—")</td>
+                    <td class="px-3 py-2.5 text-neutral-500 text-xs">@(r.Sent?.ToLocalTime().ToString("dd/MM/yy HH:mm") ?? "—")</td>
+                    <td class="px-3 py-2.5 text-neutral-500 text-xs">@(r.Received?.ToLocalTime().ToString("dd/MM/yy HH:mm") ?? "—")</td>
                     <td class="px-3 py-2.5 text-neutral-800">@r.Product</td>
                     <td class="px-3 py-2.5 text-neutral-500 font-mono text-xs">@(r.Barcode ?? "—")</td>
                     <td class="px-3 py-2.5 text-center text-neutral-600">@r.SentQty</td>

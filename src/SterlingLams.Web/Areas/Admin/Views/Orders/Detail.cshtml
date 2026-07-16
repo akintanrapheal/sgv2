@@ -11,7 +11,7 @@
            class="px-3 py-1.5 text-xs border border-neutral-200 rounded-sm hover:border-neutral-400 transition-colors">🖨 Invoice</a>
         <a asp-area="Admin" asp-controller="Orders" asp-action="PackingSlip" asp-route-id="@Model.Order.Id" target="_blank"
            class="px-3 py-1.5 text-xs border border-neutral-200 rounded-sm hover:border-neutral-400 transition-colors">🖨 Packing slip</a>
-        <span class="text-xs text-neutral-400 ml-2">@Model.Order.CreatedAt.ToString("dddd, dd MMMM yyyy HH:mm")</span>
+        <span class="text-xs text-neutral-400 ml-2">@Model.Order.CreatedAt.ToLocalTime().ToString("dddd, dd MMMM yyyy HH:mm")</span>
     </div>
 </div>
 
@@ -125,7 +125,7 @@
                                 <span class="font-medium text-rose-600">₦@r.Amount.ToString("N0")</span>
                             </div>
                             <div class="text-[11px] text-neutral-400 mt-0.5">
-                                @r.CreatedAt.ToString("dd MMM yy HH:mm") · @r.RefundMethod · @r.Items.Sum(i => i.Quantity) item(s)
+                                @r.CreatedAt.ToLocalTime().ToString("dd MMM yy HH:mm") · @r.RefundMethod · @r.Items.Sum(i => i.Quantity) item(s)
                                 @if (!string.IsNullOrWhiteSpace(r.Reason)) { <text>· @r.Reason</text> }
                             </div>
                         </div>
@@ -301,7 +301,7 @@
                 }
                 @if (Model.Order.PaidAt.HasValue)
                 {
-                    <p class="text-xs"><span class="text-neutral-400">Paid at:</span> @Model.Order.PaidAt.Value.ToString("dd MMM yy HH:mm")</p>
+                    <p class="text-xs"><span class="text-neutral-400">Paid at:</span> @Model.Order.PaidAt.Value.ToLocalTime().ToString("dd MMM yy HH:mm")</p>
                 }
             </div>
         </div>

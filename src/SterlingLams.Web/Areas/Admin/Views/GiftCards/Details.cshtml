@@ -105,7 +105,7 @@
                                 @if (t.OrderId != null) { <a asp-area="Admin" asp-controller="Orders" asp-action="Detail" asp-route-id="@t.OrderId" class="text-neutral-400 hover:text-neutral-700 ml-1">(order)</a> }
                             </td>
                             <td class="px-5 py-2.5 text-right font-medium @(t.Amount >= 0 ? "text-emerald-600" : "text-neutral-700")">@(t.Amount >= 0 ? "+" : "−")₦@Math.Abs(t.Amount).ToString("N0")</td>
-                            <td class="px-5 py-2.5 text-neutral-400 text-xs">@t.CreatedAt.ToString("dd MMM yyyy HH:mm")</td>
+                            <td class="px-5 py-2.5 text-neutral-400 text-xs">@t.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
                         </tr>
                     }
                 </tbody>
