@@ -50,18 +50,30 @@ public class ReportsController : InventoryAreaController
     private async Task<List<ReorderRow>> ReorderRowsAsync(int? categoryId, List<Store> stores)
     {
         var pq = _db.Products.Where(p => p.IsActive);
-        if (categoryId.HasValue) pq = pq.Where(p => p.CategoryId == categoryId.Value);
+        var iq = _db.StoreInventories.Where(si => si.Product.IsActive);
+        if (categoryId.HasValue)
+        {
+            pq = pq.Where(p => p.CategoryId == categoryId.Value);
+            iq = iq.Where(si => si.Product.CategoryId == categoryId.Value);
+        }
 
-        var prods = await pq
-            .Select(p => new
-            {
-                p.Id, p.Name, p.Sku,
-                Threshold = p.LowStockThreshold,
-                Total = p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0
-            })
+        // Per-product on-hand totals in a SINGLE grouped aggregate (the sum is computed once),
+        // then filter/sort in memory. The old form referenced Sum(StoreInventories) in Select +
+        // Where + OrderBy, so EF emitted that subquery three times per product — a full-catalogue
+        // scan ×3 (this was a ~7s query). GetValueOrDefault keeps products with no inventory rows.
+        var totalByProduct = (await iq
+                .GroupBy(si => si.ProductId)
+                .Select(g => new { ProductId = g.Key, Total = g.Sum(x => x.QuantityOnHand) })
+                .ToListAsync())
+            .ToDictionary(x => x.ProductId, x => x.Total);
+
+        var prods = (await pq
+                .Select(p => new { p.Id, p.Name, p.Sku, Threshold = p.LowStockThreshold })
+                .ToListAsync())
+            .Select(p => new { p.Id, p.Name, p.Sku, p.Threshold, Total = totalByProduct.GetValueOrDefault(p.Id, 0) })
             .Where(r => r.Total <= (r.Threshold < 1 ? 1 : r.Threshold))
             .OrderBy(r => r.Total).ThenBy(r => r.Name)
-            .ToListAsync();
+            .ToList();
 
         var ids = prods.Select(r => r.Id).ToList();
         var perStore = (await _db.StoreInventories

@@ -28,37 +28,37 @@ public class HomeController : Controller
     [Microsoft.AspNetCore.OutputCaching.OutputCache(PolicyName = "Storefront")]
     public async Task<IActionResult> Index()
     {
-        // Featured products from DB (IsFeatured = true, active) — all of them for the slider (capped).
-        var featured = await _db.Products
-            .Include(p => p.Images)
-            .Include(p => p.StoreInventories)
-            .Include(p => p.Variants)
+        // Featured products (IsFeatured = true, active) for the slider (capped).
+        // Project straight to the card VM — EF turns the image/stock/variant lookups into small
+        // correlated subqueries in ONE query, instead of Include'ing three collections at once
+        // (which the DB expands into a cartesian product of images × inventories × variants).
+        var featuredCards = await _db.Products
             .Where(p => p.IsActive && p.IsFeatured)
             .OrderByDescending(p => p.CreatedAt)
             .Take(24)
+            .Select(p => new ProductCardViewModel
+            {
+                Id = p.Id,
+                Name = p.Name,
+                Slug = p.Slug,
+                Price = p.Price,
+                SalePrice = p.SalePrice,
+                SaleStartsAt = p.SaleStartsAt,
+                SaleEndsAt = p.SaleEndsAt,
+                Currency = p.Currency,
+                PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
+                    .Select(i => i.Url).FirstOrDefault() ?? "/images/placeholder.jpg",
+                SecondaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
+                    .Select(i => i.Url).Skip(1).FirstOrDefault(),
+                IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0),
+                TotalStock = p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0,
+                HasVariants = p.Variants.Any(v => v.IsActive)
+            })
             .ToListAsync();
 
-        ViewBag.FeaturedProducts = featured.Select(p => new ProductCardViewModel
-        {
-            Id = p.Id,
-            Name = p.Name,
-            Slug = p.Slug,
-            Price = p.Price,
-            SalePrice = p.SalePrice,
-            SaleStartsAt = p.SaleStartsAt,
-            SaleEndsAt = p.SaleEndsAt,
-            Currency = p.Currency,
-            PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
-                .Select(i => i.Url).FirstOrDefault() ?? "/images/placeholder.jpg",
-            SecondaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
-                .Select(i => i.Url).Skip(1).FirstOrDefault(),
-            IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0),
-            TotalStock = p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0,
-            HasVariants = p.Variants.Any(v => v.IsActive)
-        }).ToList();
+        ViewBag.FeaturedProducts = featuredCards;
 
         // Attach approved-review ratings to the featured cards (one grouped query).
-        var featuredCards = (List<ProductCardViewModel>)ViewBag.FeaturedProducts;
         var featuredIds = featuredCards.Select(c => c.Id).ToList();
         if (featuredIds.Count > 0)
         {
