@@ -201,27 +201,39 @@
         <div class="max-w-7xl mx-auto px-6">
             <div class="text-center mb-14">
                 <h2 class="font-cormorant text-4xl font-light text-neutral-900">Shop by Category</h2>
-                <!-- Decorative glowing pink diamond (brand-500). Animation lives in input.css. -->
-                <div class="cat-diamond" aria-hidden="true">
-                    <svg class="cat-diamond__gem" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
-                        <ellipse class="cat-diamond__shadow" cx="60" cy="111" rx="24" ry="3.5" />
-                        <g stroke="#ffffff" stroke-opacity="0.30" stroke-width="0.5" stroke-linejoin="round">
-                            <polygon points="40,20 80,20 72,32 48,32" fill="#fde9f5" />
-                            <polygon points="40,20 48,32 20,44" fill="#f35fb8" />
-                            <polygon points="80,20 72,32 100,44" fill="#f35fb8" />
-                            <polygon points="48,32 60,44 20,44" fill="#f796d3" />
-                            <polygon points="48,32 72,32 60,44" fill="#f35fb8" />
-                            <polygon points="72,32 100,44 60,44" fill="#f796d3" />
-                            <polygon points="20,44 40,44 60,104" fill="#ed028b" />
-                            <polygon points="40,44 60,44 60,104" fill="#f35fb8" />
-                            <polygon points="60,44 80,44 60,104" fill="#ed028b" />
-                            <polygon points="80,44 100,44 60,104" fill="#f35fb8" />
-                        </g>
-                        <polygon class="cat-diamond__shine" points="45,22 63,22 57,30 49,30" fill="#ffffff" />
-                        <path class="cat-diamond__spark cat-diamond__spark--1" d="M28,18 L30,24 L36,26 L30,28 L28,34 L26,28 L20,26 L26,24 Z" />
-                        <path class="cat-diamond__spark cat-diamond__spark--2" d="M90,47 L91.2,50.8 L95,52 L91.2,53.2 L90,57 L88.8,53.2 L85,52 L88.8,50.8 Z" />
-                    </svg>
-                </div>
+                @{
+                    // Admin-configurable (Settings → Homepage). Values are sanitised before they go
+                    // anywhere near an inline style / class so nothing can be injected.
+                    var dEnabled = await SettingsService.GetBoolAsync("home.diamond.enabled", true);
+                    var dColorRaw = await SettingsService.GetAsync("home.diamond.color", "#ed028b");
+                    var dColor = System.Text.RegularExpressions.Regex.IsMatch(dColorRaw ?? "", "^#[0-9a-fA-F]{3,8}$") ? dColorRaw : "#ed028b";
+                    var dSize = int.TryParse(await SettingsService.GetAsync("home.diamond.size", "74"), out var _sz) && _sz is >= 20 and <= 300 ? _sz : 74;
+                    var dAnim = SterlingLams.Web.Infrastructure.SettingsSelectOptions.Coerce("home.diamond.animation", await SettingsService.GetAsync("home.diamond.animation", "glow"));
+                }
+                @if (dEnabled)
+                {
+                    <!-- Decorative glowing diamond. Colour/size/animation come from Settings → Homepage. -->
+                    <div class="cat-diamond cat-diamond--@dAnim" style="--cat-d-size:@(dSize)px;--cat-d-color:@dColor;" aria-hidden="true">
+                        <svg class="cat-diamond__gem" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                            <ellipse class="cat-diamond__shadow" cx="60" cy="111" rx="24" ry="3.5" />
+                            <g stroke="#ffffff" stroke-opacity="0.30" stroke-width="0.5" stroke-linejoin="round">
+                                <polygon class="cat-diamond__facet" fill-opacity="0.12" points="40,20 80,20 72,32 48,32" />
+                                <polygon class="cat-diamond__facet" fill-opacity="0.50" points="40,20 48,32 20,44" />
+                                <polygon class="cat-diamond__facet" fill-opacity="0.50" points="80,20 72,32 100,44" />
+                                <polygon class="cat-diamond__facet" fill-opacity="0.32" points="48,32 60,44 20,44" />
+                                <polygon class="cat-diamond__facet" fill-opacity="0.50" points="48,32 72,32 60,44" />
+                                <polygon class="cat-diamond__facet" fill-opacity="0.32" points="72,32 100,44 60,44" />
+                                <polygon class="cat-diamond__facet" fill-opacity="1"    points="20,44 40,44 60,104" />
+                                <polygon class="cat-diamond__facet" fill-opacity="0.62" points="40,44 60,44 60,104" />
+                                <polygon class="cat-diamond__facet" fill-opacity="1"    points="60,44 80,44 60,104" />
+                                <polygon class="cat-diamond__facet" fill-opacity="0.62" points="80,44 100,44 60,104" />
+                            </g>
+                            <polygon class="cat-diamond__shine" points="45,22 63,22 57,30 49,30" />
+                            <path class="cat-diamond__spark cat-diamond__spark--1" d="M28,18 L30,24 L36,26 L30,28 L28,34 L26,28 L20,26 L26,24 Z" />
+                            <path class="cat-diamond__spark cat-diamond__spark--2" d="M90,47 L91.2,50.8 L95,52 L91.2,53.2 L90,57 L88.8,53.2 L85,52 L88.8,50.8 Z" />
+                        </svg>
+                    </div>
+                }
             </div>
 
             <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6">

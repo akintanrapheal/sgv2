@@ -148,6 +148,25 @@
                                     }
                                 </select>
                             }
+                            else if (s.Type == "select")
+                            {
+                                <select name="@s.Key"
+                                        class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 bg-white">
+                                    @foreach (var o in SterlingLams.Web.Infrastructure.SettingsSelectOptions.For(s.Key))
+                                    {
+                                        <option value="@o.Value" selected="@(s.Value == o.Value)">@o.Label</option>
+                                    }
+                                </select>
+                            }
+                            else if (s.Type == "color")
+                            {
+                                <div class="flex items-center gap-3">
+                                    <input type="color" name="@s.Key" value="@(string.IsNullOrWhiteSpace(s.Value) ? "#ed028b" : s.Value)"
+                                           class="h-10 w-16 border border-neutral-200 rounded-sm p-1 cursor-pointer bg-white"
+                                           oninput="this.nextElementSibling.textContent=this.value" />
+                                    <span class="text-xs text-neutral-500 font-mono">@s.Value</span>
+                                </div>
+                            }
                             else
                             {
                                 <input type="@s.Type" name="@s.Key" value="@s.Value"

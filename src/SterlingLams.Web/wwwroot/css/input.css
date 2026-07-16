@@ -126,25 +126,29 @@
   }
 }
 
-/* ─── "Shop by Category" decorative pink diamond ──────────────────────────────
-   A faceted brand-pink gem that softly glows, shimmers on its table facet, and
-   twinkles two sparkles. Plain CSS (outside @layer) so it survives the prod purge.
-   Respects prefers-reduced-motion. */
+/* ─── "Shop by Category" decorative diamond (admin-configurable) ──────────────
+   Colour (--cat-d-color), size (--cat-d-size) and the animation (a --anim modifier
+   class) are set from Admin → Settings → Homepage. Facets are tints of one colour
+   (they sit on the white section, so fill-opacity gives the lighter faces). Plain
+   CSS (outside @layer) so it survives the prod purge. Respects reduced-motion. */
 .cat-diamond {
   display: block;
-  width: 74px;
-  height: 82px;
-  margin: 18px auto 0;
   position: relative;
+  margin: 18px auto 0;
+  width: var(--cat-d-size, 74px);
+  height: calc(var(--cat-d-size, 74px) * 1.108);
 }
 .cat-diamond__gem {
   width: 100%;
   height: 100%;
   overflow: visible;                 /* let the glow spill past the viewBox */
-  animation: catGlow 2.8s ease-in-out infinite;
+  transform-origin: center;
+  /* soft base glow — always on, so the gem glows even when motion is "Static" */
+  filter: drop-shadow(0 8px 10px color-mix(in srgb, var(--cat-d-color, #ed028b) 30%, transparent));
 }
-.cat-diamond__shine  { animation: catShine 2.8s ease-in-out infinite; }
-.cat-diamond__shadow { fill: #ed028b; animation: catShadow 2.8s ease-in-out infinite; }
+.cat-diamond__facet  { fill: var(--cat-d-color, #ed028b); }
+.cat-diamond__shadow { fill: var(--cat-d-color, #ed028b); opacity: .14; }
+.cat-diamond__shine  { fill: #ffffff; animation: catShine 2.8s ease-in-out infinite; }
 .cat-diamond__spark {
   fill: #ffffff;
   transform-box: fill-box;           /* rotate/scale around each sparkle's own centre */
@@ -153,17 +157,27 @@
 }
 .cat-diamond__spark--2 { animation-delay: 1.3s; }
 
+/* Animation presets (picked in the admin) */
+.cat-diamond--glow  .cat-diamond__gem { animation: catGlow  2.8s ease-in-out infinite; }
+.cat-diamond--pulse .cat-diamond__gem { animation: catPulse 2.4s ease-in-out infinite; }
+.cat-diamond--float .cat-diamond__gem { animation: catFloat 3.2s ease-in-out infinite; }
+.cat-diamond--spin  .cat-diamond__gem { animation: catSpin  7s   linear      infinite; }
+.cat-diamond--spin  .cat-diamond__shadow { display: none; }   /* a spinning ground-shadow looks wrong */
+.cat-diamond--none  .cat-diamond__shine,
+.cat-diamond--none  .cat-diamond__spark { display: none; }    /* Static: soft glow only, no motion */
+
 @keyframes catGlow {
-  0%, 100% { filter: drop-shadow(0 8px 10px rgba(237,2,139,.22)) drop-shadow(0 0 6px rgba(237,2,139,.35)); }
-  50%      { filter: drop-shadow(0 10px 16px rgba(237,2,139,.42)) drop-shadow(0 0 20px rgba(237,2,139,.72)); }
+  0%, 100% { filter: drop-shadow(0 8px 10px  color-mix(in srgb, var(--cat-d-color,#ed028b) 22%, transparent)) drop-shadow(0 0 6px  color-mix(in srgb, var(--cat-d-color,#ed028b) 35%, transparent)); }
+  50%      { filter: drop-shadow(0 10px 16px color-mix(in srgb, var(--cat-d-color,#ed028b) 42%, transparent)) drop-shadow(0 0 20px color-mix(in srgb, var(--cat-d-color,#ed028b) 72%, transparent)); }
 }
+@keyframes catPulse  { 0%, 100% { transform: scale(1); }        50% { transform: scale(1.08); } }
+@keyframes catFloat  { 0%, 100% { transform: translateY(0); }   50% { transform: translateY(-7px); } }
+@keyframes catSpin   { to { transform: rotate(360deg); } }
 @keyframes catShine  { 0%, 100% { opacity: .12; } 50% { opacity: .72; } }
-@keyframes catShadow { 0%, 100% { opacity: .12; transform: scaleX(.9); } 50% { opacity: .22; transform: scaleX(1.06); } }
 @keyframes catSpark  { 0%, 100% { opacity: 0; transform: scale(.2) rotate(0deg); } 50% { opacity: 1; transform: scale(1) rotate(90deg); } }
 
 @media (prefers-reduced-motion: reduce) {
   .cat-diamond__gem,
   .cat-diamond__shine,
-  .cat-diamond__shadow,
   .cat-diamond__spark { animation: none; }
 }
