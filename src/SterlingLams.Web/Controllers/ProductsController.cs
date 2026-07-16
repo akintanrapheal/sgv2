@@ -48,7 +48,12 @@ public class ProductsController : Controller
         }
 
         if (!string.IsNullOrWhiteSpace(filters.Category))
-            query = query.Where(p => p.Category.Slug == filters.Category);
+        {
+            // A group-parent slug ("All Clutches"/"All Accessories"/"All Mens", etc.) rolls up all of
+            // its sub-categories; a leaf category resolves to just itself.
+            var catSlugs = SterlingLams.Web.Infrastructure.StoreMenu.ExpandSlug(filters.Category);
+            query = query.Where(p => catSlugs.Contains(p.Category.Slug));
+        }
 
         if (!string.IsNullOrWhiteSpace(filters.Metal))
             query = query.Where(p => p.Metal == filters.Metal);

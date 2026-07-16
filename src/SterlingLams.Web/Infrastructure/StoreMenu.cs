@@ -33,6 +33,29 @@ public static class StoreMenu
     };
 
     /// <summary>
+    /// Expands a category slug for the shop listing. If the slug is a menu-group parent (e.g. the
+    /// "clutches" category behind the "All Clutches" link), returns that slug PLUS every sub-category
+    /// slug in the group, so the parent listing shows all products across the group (stoned + none-stone,
+    /// etc.). A leaf category, or any slug not a group parent, returns just itself. The parent slug is
+    /// the group label lower-cased — the same rule <see cref="BuildSidebar"/> uses to surface "All X".
+    /// </summary>
+    public static IReadOnlyList<string> ExpandSlug(string? slug)
+    {
+        if (string.IsNullOrWhiteSpace(slug)) return System.Array.Empty<string>();
+        foreach (var e in Entries)
+        {
+            if (e.Items.Count == 0) continue; // link-only entry (e.g. "New In")
+            if (string.Equals(e.Label.ToLowerInvariant(), slug, System.StringComparison.OrdinalIgnoreCase))
+            {
+                var slugs = new List<string> { slug };
+                slugs.AddRange(e.Items.Select(i => i.Slug));
+                return slugs;
+            }
+        }
+        return new[] { slug };
+    }
+
+    /// <summary>
     /// Builds the shop-page sidebar tree from the categories that actually have products right now.
     /// Groups keep only their in-stock sub-items and are dropped when empty; any active category not
     /// placed in a group is added as a standalone link. The whole list is sorted alphabetically to
