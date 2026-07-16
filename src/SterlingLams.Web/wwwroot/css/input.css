@@ -125,3 +125,45 @@
     @apply scale-150;
   }
 }
+
+/* ─── "Shop by Category" decorative pink diamond ──────────────────────────────
+   A faceted brand-pink gem that softly glows, shimmers on its table facet, and
+   twinkles two sparkles. Plain CSS (outside @layer) so it survives the prod purge.
+   Respects prefers-reduced-motion. */
+.cat-diamond {
+  display: block;
+  width: 74px;
+  height: 82px;
+  margin: 18px auto 0;
+  position: relative;
+}
+.cat-diamond__gem {
+  width: 100%;
+  height: 100%;
+  overflow: visible;                 /* let the glow spill past the viewBox */
+  animation: catGlow 2.8s ease-in-out infinite;
+}
+.cat-diamond__shine  { animation: catShine 2.8s ease-in-out infinite; }
+.cat-diamond__shadow { fill: #ed028b; animation: catShadow 2.8s ease-in-out infinite; }
+.cat-diamond__spark {
+  fill: #ffffff;
+  transform-box: fill-box;           /* rotate/scale around each sparkle's own centre */
+  transform-origin: center;
+  animation: catSpark 2.6s ease-in-out infinite;
+}
+.cat-diamond__spark--2 { animation-delay: 1.3s; }
+
+@keyframes catGlow {
+  0%, 100% { filter: drop-shadow(0 8px 10px rgba(237,2,139,.22)) drop-shadow(0 0 6px rgba(237,2,139,.35)); }
+  50%      { filter: drop-shadow(0 10px 16px rgba(237,2,139,.42)) drop-shadow(0 0 20px rgba(237,2,139,.72)); }
+}
+@keyframes catShine  { 0%, 100% { opacity: .12; } 50% { opacity: .72; } }
+@keyframes catShadow { 0%, 100% { opacity: .12; transform: scaleX(.9); } 50% { opacity: .22; transform: scaleX(1.06); } }
+@keyframes catSpark  { 0%, 100% { opacity: 0; transform: scale(.2) rotate(0deg); } 50% { opacity: 1; transform: scale(1) rotate(90deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .cat-diamond__gem,
+  .cat-diamond__shine,
+  .cat-diamond__shadow,
+  .cat-diamond__spark { animation: none; }
+}
