@@ -4,6 +4,7 @@
     ViewData["Title"] = Model.TransferNumber;
     var userNames = ViewBag.UserNames as Dictionary<string, string> ?? new();
     var availableQty = ViewBag.AvailableQty as Dictionary<int, int> ?? new();
+    var imgs = ViewBag.ProductImages as Dictionary<int, string> ?? new();
     string Who(string? uid) => uid != null && userNames.TryGetValue(uid, out var n) ? n : "—";
     string Fmt(DateTime? dt) => dt.HasValue ? dt.Value.ToLocalTime().ToString("dd MMM, HH:mm") : "—";
 
@@ -87,12 +88,21 @@
                         var reconciled = Model.ReceivedAt.HasValue && ((i.DamagedQty ?? 0) > 0 || (i.WontFulfilQty ?? 0) > 0 || pending > 0);
                         <tr class="@(reconciled ? "bg-amber-50" : "")">
                             <td class="px-4 py-3 text-neutral-800">
-                                @i.ProductName
-                                @if (!string.IsNullOrEmpty(i.VariantName)) { <span class="text-neutral-400">(@i.VariantName)</span> }
-                                @if (Model.Status == TransferStatus.PendingApproval)
-                                {
-                                    <p class="text-[10px] text-neutral-400">@(availableQty.GetValueOrDefault(i.ProductId)) available at @Model.FromStore?.Name</p>
-                                }
+                                <div class="flex items-center gap-2.5">
+                                    @{ var im = imgs.GetValueOrDefault(i.ProductId); }
+                                    @if (!string.IsNullOrEmpty(im))
+                                    {
+                                        <img src="@Img.Cld(im, 72, 72)" alt="" loading="lazy" class="w-9 h-9 object-cover rounded-sm border border-neutral-100 flex-shrink-0" />
+                                    }
+                                    <div>
+                                        @i.ProductName
+                                        @if (!string.IsNullOrEmpty(i.VariantName)) { <span class="text-neutral-400">(@i.VariantName)</span> }
+                                        @if (Model.Status == TransferStatus.PendingApproval)
+                                        {
+                                            <p class="text-[10px] text-neutral-400">@(availableQty.GetValueOrDefault(i.ProductId)) available at @Model.FromStore?.Name</p>
+                                        }
+                                    </div>
+                                </div>
                             </td>
                             <td class="px-4 py-3 text-right text-neutral-600">@i.RequestedQty</td>
                             <td class="px-4 py-3 text-right text-neutral-600">

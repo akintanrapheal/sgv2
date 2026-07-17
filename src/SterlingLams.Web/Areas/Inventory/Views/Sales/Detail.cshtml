@@ -3,6 +3,7 @@
 @{
     ViewData["Title"] = Model.OrderNumber;
     string? store = ViewBag.Store; string? customer = ViewBag.Customer; string? cashier = ViewBag.Cashier;
+    var imgs = ViewBag.ProductImages as Dictionary<int, string> ?? new();
     string back = Model.PaidAt.HasValue && Model.Status != OrderStatus.Cancelled ? "Completed" : "Outstanding";
     string StatusBadge(OrderStatus s) => s switch
     {
@@ -64,8 +65,17 @@
             {
                 <tr>
                     <td class="px-4 py-3 text-neutral-700">
-                        @it.ProductName
-                        @if (!string.IsNullOrEmpty(it.VariantName)) { <span class="text-neutral-400 text-xs">· @it.VariantName</span> }
+                        <div class="flex items-center gap-2.5">
+                            @{ var im = imgs.GetValueOrDefault(it.ProductId); }
+                            @if (!string.IsNullOrEmpty(im))
+                            {
+                                <img src="@Img.Cld(im, 72, 72)" alt="" loading="lazy" class="w-9 h-9 object-cover rounded-sm border border-neutral-100 flex-shrink-0" />
+                            }
+                            <span>
+                                @it.ProductName
+                                @if (!string.IsNullOrEmpty(it.VariantName)) { <span class="text-neutral-400 text-xs">· @it.VariantName</span> }
+                            </span>
+                        </div>
                     </td>
                     <td class="px-4 py-3 text-right text-neutral-500">@it.Quantity</td>
                     <td class="px-4 py-3 text-right text-neutral-500">₦@it.UnitPrice.ToString("N0")</td>

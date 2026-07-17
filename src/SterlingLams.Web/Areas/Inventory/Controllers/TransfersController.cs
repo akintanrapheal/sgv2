@@ -253,6 +253,14 @@ public class TransfersController : InventoryAreaController
             .GroupBy(x => x.ProductId)
             .ToDictionary(g => g.Key, g => g.Sum(x => x.QuantityOnHand - x.QuantityReserved));
 
+        // Primary image per product for the line thumbnails.
+        ViewBag.ProductImages = (await _db.ProductImages.Where(im => productIds.Contains(im.ProductId))
+                .GroupBy(im => im.ProductId)
+                .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
+                .ToListAsync())
+            .Where(x => !string.IsNullOrEmpty(x.Url))
+            .ToDictionary(x => x.Pid, x => x.Url!);
+
         return View(transfer);
     }
 

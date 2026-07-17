@@ -90,6 +90,16 @@ public class SalesController : InventoryAreaController
             ViewBag.Customer = await _db.Users.Where(u => u.Id == custId).Select(u => u.Email).FirstOrDefaultAsync();
         ViewBag.Cashier = order.Channel == OrderChannel.Pos
             ? await _db.Users.Where(u => u.Id == order.UserId).Select(u => u.Email).FirstOrDefaultAsync() : null;
+
+        // Primary image per product for the line thumbnails.
+        var itemPids = order.Items.Select(i => i.ProductId).Distinct().ToList();
+        ViewBag.ProductImages = (await _db.ProductImages.Where(im => itemPids.Contains(im.ProductId))
+                .GroupBy(im => im.ProductId)
+                .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
+                .ToListAsync())
+            .Where(x => !string.IsNullOrEmpty(x.Url))
+            .ToDictionary(x => x.Pid, x => x.Url!);
+
         return View(order);
     }
 }

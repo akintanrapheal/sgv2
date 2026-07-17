@@ -3,6 +3,7 @@
     ViewData["Title"] = Model.AdjustmentNumber;
     string? by = ViewBag.CreatedBy;
     var net = Model.Lines.Sum(l => l.QtyDelta);
+    var imgs = ViewBag.ProductImages as Dictionary<int, string> ?? new();
     var hasCost = Model.Lines.Any(l => l.UnitCost.HasValue);
     var hasExpiry = Model.Lines.Any(l => l.ExpiryDate.HasValue);
     string Badge(string r) => r switch
@@ -59,8 +60,17 @@
             {
                 <tr class="hover:bg-neutral-50">
                     <td class="px-4 py-3 text-neutral-700">
-                        @l.ProductName
-                        @if (!string.IsNullOrEmpty(l.VariantName)) { <span class="text-neutral-400 text-xs">· @l.VariantName</span> }
+                        <div class="flex items-center gap-2.5">
+                            @{ var im = imgs.GetValueOrDefault(l.ProductId); }
+                            @if (!string.IsNullOrEmpty(im))
+                            {
+                                <img src="@Img.Cld(im, 72, 72)" alt="" loading="lazy" class="w-9 h-9 object-cover rounded-sm border border-neutral-100 flex-shrink-0" />
+                            }
+                            <span>
+                                @l.ProductName
+                                @if (!string.IsNullOrEmpty(l.VariantName)) { <span class="text-neutral-400 text-xs">· @l.VariantName</span> }
+                            </span>
+                        </div>
                     </td>
                     <td class="px-4 py-3 text-right font-medium @(l.QtyDelta >= 0 ? "text-emerald-600" : "text-red-600")">@(l.QtyDelta >= 0 ? "+" : "")@l.QtyDelta</td>
                     <td class="px-4 py-3 text-right text-neutral-500">@l.BalanceAfter</td>

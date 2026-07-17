@@ -75,6 +75,16 @@ public class AdjustmentsController : InventoryAreaController
             ViewBag.CreatedBy = await _db.Users.Where(u => u.Id == a.CreatedByUserId)
                 .Select(u => u.Email).FirstOrDefaultAsync();
         ViewData["Title"] = a.AdjustmentNumber;
+
+        // Primary image per product for the line thumbnails.
+        var linePids = a.Lines.Select(l => l.ProductId).Distinct().ToList();
+        ViewBag.ProductImages = (await _db.ProductImages.Where(im => linePids.Contains(im.ProductId))
+                .GroupBy(im => im.ProductId)
+                .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
+                .ToListAsync())
+            .Where(x => !string.IsNullOrEmpty(x.Url))
+            .ToDictionary(x => x.Pid, x => x.Url!);
+
         return View(a);
     }
 
