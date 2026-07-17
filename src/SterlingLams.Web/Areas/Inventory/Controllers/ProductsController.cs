@@ -684,6 +684,11 @@ public class ProductsController : InventoryAreaController
         if (locs.Any(l => !writable.Contains(l.StoreId)))
             return Json(new { ok = false, error = "You can only edit stock for your assigned branch(es)." });
 
+        // For a detailed audit line: branch names + the before→after change per branch.
+        var storeNames = await _db.Stores.Where(s => locs.Select(x => x.StoreId).Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => s.Name.Replace("Sterlin Glams ", ""));
+        var changeDescs = new List<string>();
+
         p.TrackStock = req.TrackStock;
         p.UpdatedAt = DateTime.UtcNow;
 
@@ -714,6 +719,7 @@ public class ProductsController : InventoryAreaController
                     Lines = { new StockAdjustmentLine { ProductId = req.Id, ProductVariantId = vid, ProductName = p.Name, QtyDelta = delta, BalanceAfter = balance } }
                 });
                 applied++;
+                changeDescs.Add($"{storeNames.GetValueOrDefault(l.StoreId, $"store {l.StoreId}")} {current} → {l.OnHand} ({(delta >= 0 ? "+" : "")}{delta}, {reason})");
             }
 
             // Persist the reorder fields on the (pool or variant) location row, creating it if needed.
@@ -741,7 +747,16 @@ public class ProductsController : InventoryAreaController
             return Json(new { ok = false, error = "Stock changed while saving — refresh and try again." });
         }
 
-        await LogAsync("Update", "Product", req.Id.ToString(), $"Track Stock update for '{p.Name}' ({applied} stock change(s))");
+        var variantSuffix = "";
+        if (vid.HasValue)
+        {
+            var vn = await _db.ProductVariants.Where(v => v.Id == vid.Value).Select(v => v.Name).FirstOrDefaultAsync();
+            if (!string.IsNullOrWhiteSpace(vn)) variantSuffix = $" [{vn}]";
+        }
+        var logDesc = changeDescs.Count > 0
+            ? $"Track Stock update for '{p.Name}'{variantSuffix} — {string.Join("; ", changeDescs)}"
+            : $"Track Stock update for '{p.Name}'{variantSuffix} — no stock change (reorder settings saved)";
+        await LogAsync("Update", "Product", req.Id.ToString(), logDesc);
         return Json(new { ok = true, applied, trackStock = p.TrackStock });
     }
 
