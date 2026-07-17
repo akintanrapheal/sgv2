@@ -323,7 +323,7 @@
         })
             .then(function (r) { return r.json(); })
             .then(function (d) {
-                if (d.success) { location.reload(); }
+                if (d.success) { try { sessionStorage.setItem('invToast', JSON.stringify({ msg: 'Stock updated — ' + (d.count || 0) + ' change(s)', type: 'success' })); } catch (e) {} location.reload(); }
                 else { alert(d.message || 'Save failed.'); adjustBtn.disabled = false; labelEl.textContent = 'Save changes'; }
             })
             .catch(function () { alert('Save failed.'); adjustBtn.disabled = false; labelEl.textContent = 'Save changes'; });

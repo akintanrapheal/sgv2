@@ -120,7 +120,9 @@
             body: JSON.stringify({ id: pid, trackStock: el('inv-track').checked, reason: 'Correction', locations: locations })
         }).then(function (r) { return r.json(); }).then(function (d) {
             if (!d || !d.ok) { alert((d && d.error) || 'Save failed.'); return; }
-            if (after === 'back') window.location.href = backUrl; else alert('Saved.');
+            if (after === 'back') { try { sessionStorage.setItem('invToast', JSON.stringify({ msg: 'Stock saved', type: 'success' })); } catch (e) {} window.location.href = backUrl; }
+            else if (window.invToast) invToast('Stock saved');
+            else alert('Saved.');
         }).catch(function () { alert('Save failed.'); });
     }
     el('inv-save').addEventListener('click', function () { save('stay'); });

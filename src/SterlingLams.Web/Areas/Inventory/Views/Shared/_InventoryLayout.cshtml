@@ -187,8 +187,6 @@
                 <h1 class="text-sm font-medium text-neutral-800 truncate">@ViewData["Title"]</h1>
             </div>
             <div class="flex items-center gap-3">
-                @if (TempData["Success"] != null) { <span class="text-xs text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full">✓ @TempData["Success"]</span> }
-                @if (TempData["Error"] != null) { <span class="text-xs text-red-700 bg-red-50 px-3 py-1.5 rounded-full">@TempData["Error"]</span> }
                 <partial name="_UserChip" />
             </div>
             
@@ -200,6 +198,19 @@
         </main>
     </div>
 </div>
+
+<!-- ─── Toast — backend save/change confirmations (green ✓ / red ✕) ────────── -->
+<div id="inv-toast" role="status" aria-live="polite"
+     class="fixed bottom-6 right-6 z-[9999] flex items-center gap-2.5 px-4 py-3 rounded-lg shadow-lg text-sm font-medium border max-w-sm transition-all duration-300"
+     style="transform:translateY(14px);opacity:0;pointer-events:none;">
+    <span id="inv-toast-icon" class="font-bold text-base leading-none"></span>
+    <span id="inv-toast-msg"></span>
+</div>
+@{ var _tSucc = TempData["Success"] as string; var _tErr = TempData["Error"] as string; }
+@if (_tSucc != null || _tErr != null)
+{
+    <script>window.__invToastInit = { msg: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(_tErr ?? _tSucc)), type: "@(_tErr != null ? "error" : "success")" };</script>
+}
 
 <script src="~/js/app.js" asp-append-version="true"></script>
 @await RenderSectionAsync("Scripts", required: false)
@@ -214,6 +225,30 @@
     bd.addEventListener('click', function () { set(false); });
     sb.addEventListener('click', function (e) { if (e.target.closest('a')) set(false); });
     window.matchMedia('(min-width: 768px)').addEventListener('change', function (e) { if (e.matches) set(false); });
+})();
+
+// Floating toast for the Inventory System. Call window.invToast(message, type) from AJAX saves
+// (type 'success' | 'error'); redirect actions fire it from TempData; and a save→reload can hand
+// off a message via sessionStorage. Uses inline styles for show/hide so no class gets purged.
+(function () {
+    var t = document.getElementById('inv-toast');
+    if (!t) return;
+    var msg = document.getElementById('inv-toast-msg'), icon = document.getElementById('inv-toast-icon'), timer;
+    window.invToast = function (message, type) {
+        var ok = type !== 'error';
+        msg.textContent = message || (ok ? 'Saved' : 'Something went wrong');
+        icon.textContent = ok ? '✓' : '✕';
+        t.style.background = ok ? '#ecfdf5' : '#fef2f2';
+        t.style.borderColor = ok ? '#6ee7b7' : '#fca5a5';
+        t.style.color = ok ? '#047857' : '#b91c1c';
+        t.style.transform = 'translateY(0)'; t.style.opacity = '1'; t.style.pointerEvents = 'auto';
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+            t.style.transform = 'translateY(14px)'; t.style.opacity = '0'; t.style.pointerEvents = 'none';
+        }, 3500);
+    };
+    if (window.__invToastInit) window.invToast(window.__invToastInit.msg, window.__invToastInit.type);
+    try { var p = sessionStorage.getItem('invToast'); if (p) { sessionStorage.removeItem('invToast'); var o = JSON.parse(p); window.invToast(o.msg, o.type); } } catch (e) {}
 })();
 </script>
 </body>

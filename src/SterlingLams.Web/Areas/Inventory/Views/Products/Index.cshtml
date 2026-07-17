@@ -543,6 +543,7 @@
                     if (cell(tr, 'barcode')) cell(tr, 'barcode').textContent = d.barcode || '—';
                 }
                 closeDrawers();
+                if (window.invToast) invToast('Product updated');
             })
             .catch(function () { btn.disabled = false; btn.textContent = 'Save'; alert('Save failed.'); });
     });
@@ -685,6 +686,7 @@
                 if (tc) tc.textContent = d.trackStock ? '✓' : '—';
                 var kb = document.querySelector('.kebab[data-id="' + id + '"]'); if (kb) kb.dataset.track = d.trackStock ? 'true' : 'false';
                 closeDrawers();
+                if (window.invToast) invToast('Stock saved');
             })
             .catch(function () { btn.disabled = false; btn.textContent = 'Save'; alert('Save failed.'); });
     });
