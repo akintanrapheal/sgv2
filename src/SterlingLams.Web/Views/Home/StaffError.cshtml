@@ -1,16 +1,29 @@
 @{
     Layout = "_StaffAuthLayout";
     ViewData["Title"] = "Something went wrong";
+    var isPos = ViewData["IsPos"] as bool? ?? false;
 }
 <div class="text-center">
     <div class="text-4xl mb-3">⚠️</div>
     <h1 class="font-cormorant text-2xl font-light text-neutral-900 mb-2">Something went wrong</h1>
-    <p class="text-sm text-neutral-500 leading-relaxed mb-6">
-        An unexpected error occurred in the back office. Your sign-in is still active —
-        try again, or head back to your dashboard.
-    </p>
-    <div class="flex gap-3 justify-center">
-        <a asp-area="Inventory" asp-controller="Overview" asp-action="Index" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">Inventory System</a>
-        <a asp-area="Admin" asp-controller="Dashboard" asp-action="Index" class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:bg-neutral-50 transition-colors">Website Admin</a>
-    </div>
+    @if (isPos)
+    {
+        <p class="text-sm text-neutral-500 leading-relaxed mb-6">
+            A hiccup in the POS. Your till is unaffected — head back and try again.
+        </p>
+        <div class="flex gap-3 justify-center">
+            <a href="@($"/{SterlingLams.Web.Infrastructure.StaffPaths.Pos}")" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">Back to POS</a>
+        </div>
+    }
+    else
+    {
+        <p class="text-sm text-neutral-500 leading-relaxed mb-6">
+            An unexpected error occurred in the back office. Your sign-in is still active —
+            try again, or head back to your dashboard.
+        </p>
+        <div class="flex gap-3 justify-center">
+            <a asp-area="Inventory" asp-controller="Overview" asp-action="Index" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">Inventory System</a>
+            <a asp-area="Admin" asp-controller="Dashboard" asp-action="Index" class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:bg-neutral-50 transition-colors">Website Admin</a>
+        </div>
+    }
 </div>

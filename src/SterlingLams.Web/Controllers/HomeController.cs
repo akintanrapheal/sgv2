@@ -181,6 +181,13 @@ public class HomeController : Controller
     {
         Response.StatusCode = code ?? 404;
         ViewData["StatusCode"] = code ?? 404;
+
+        // Staff areas (Admin/Inventory/Marketing/POS) must never fall back to the customer storefront —
+        // a bare status code (e.g. a 405 in the POS) shows the back-office error page instead.
+        var original = HttpContext.Features
+            .Get<Microsoft.AspNetCore.Diagnostics.IStatusCodeReExecuteFeature>()?.OriginalPath ?? "";
+        if (IsStaffPath(original)) { ViewData["IsPos"] = IsPosPath(original); return View("StaffError"); }
+
         return View("NotFound");
     }
 
@@ -191,19 +198,19 @@ public class HomeController : Controller
         // on the customer-facing "Something went wrong" page.
         var path = HttpContext.Features
             .Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerPathFeature>()?.Path ?? "";
-        if (IsStaffPath(path)) return View("StaffError");
+        if (IsStaffPath(path)) { ViewData["IsPos"] = IsPosPath(path); return View("StaffError"); }
         return View();
     }
 
-    private static bool IsStaffPath(string path)
+    // POS may live behind a secret prefix in production, so match the configured StaffPaths.Pos
+    // (not a hardcoded "/Pos"). /Till is the fixed redirect segment.
+    private static bool IsPosPath(string path)
     {
-        var sp = SterlingLams.Web.Infrastructure.StaffPaths.Admin;
-        var si = SterlingLams.Web.Infrastructure.StaffPaths.Inventory;
-        var sm = SterlingLams.Web.Infrastructure.StaffPaths.Marketing;
-        return path.StartsWith($"/{sp}", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith($"/{si}", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith($"/{sm}", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/Till", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWith("/Pos", StringComparison.OrdinalIgnoreCase);
+        var seg = path.TrimStart('/').Split('/', 2)[0];
+        return seg.Equals(SterlingLams.Web.Infrastructure.StaffPaths.Pos, StringComparison.OrdinalIgnoreCase)
+            || seg.Equals("Till", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool IsStaffPath(string path) =>
+        SterlingLams.Web.Infrastructure.StaffPaths.IsStaffPath(path);
 }

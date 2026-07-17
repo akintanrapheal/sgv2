@@ -144,6 +144,17 @@ builder.Services.ConfigureApplicationCookie(options =>
         }
         return Task.CompletedTask;
     };
+
+    // An expired POS session must never bounce the till to the customer storefront login — keep it
+    // inside the POS by redirecting to the POS sign-in screen instead of /Account/Login.
+    options.Events.OnRedirectToLogin = ctx =>
+    {
+        var seg = ctx.Request.Path.Value?.TrimStart('/').Split('/', 2)[0] ?? "";
+        var isPos = seg.Equals(SterlingLams.Web.Infrastructure.StaffPaths.Pos, StringComparison.OrdinalIgnoreCase)
+                 || seg.Equals("Till", StringComparison.OrdinalIgnoreCase);
+        ctx.Response.Redirect(isPos ? $"/{SterlingLams.Web.Infrastructure.StaffPaths.Pos}" : ctx.RedirectUri);
+        return Task.CompletedTask;
+    };
 });
 
 // ─── Caching ────────────────────────────────────────────────────────────────

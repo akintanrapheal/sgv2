@@ -95,6 +95,19 @@ public class PosController : Controller
         return null;
     }
 
+    /// <summary>Whether a POS user may work at a given branch, checked at sign-in (before the auth
+    /// cookie exists, so it can't use <see cref="IStoreAccessService"/> which reads the principal).
+    /// Mirrors that service: full-access roles → any branch; no explicit assignment → unrestricted
+    /// (legacy); otherwise only the assigned branches.</summary>
+    private async Task<bool> CanWorkAtStoreAsync(ApplicationUser user, int storeId)
+    {
+        var roles = await _userManager.GetRolesAsync(user);
+        if (roles.Any(r => SterlingLams.Web.Areas.Admin.AdminSections.FullAccessRoles.Contains(r)))
+            return true;
+        var assigned = await _db.UserStores.Where(us => us.UserId == user.Id).Select(us => us.StoreId).ToListAsync();
+        return assigned.Count == 0 || assigned.Contains(storeId);
+    }
+
     /// <summary>Validates a manager-override PIN. A "manager" is any Admin-role user with a PIN set;
     /// the PIN is checked against each (there are only a handful of admins). Returns the approver, or
     /// null when the PIN doesn't match any manager. Used to gate refunds / large discounts.</summary>
@@ -515,8 +528,10 @@ public class PosController : Controller
 
     // Moving the till to another register/branch is gated behind an admin PIN, so a cashier can't
     // re-point the till on their own. The PIN entered must match an Admin who has a POS PIN set.
-    // Rate-limited (per-IP) so the admin PIN can't be brute-forced.
-    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    // Rate-limited (per-IP) so the admin PIN can't be brute-forced. AllowAnonymous because this is
+    // also reachable from the (signed-out) POS login screen — the admin PIN is the real gate, and
+    // requiring a signed-in user there caused an auth redirect → GET → 405 on this POST-only action.
+    [AllowAnonymous, HttpPost, ValidateAntiForgeryToken]
     [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("auth")]
     public async Task<IActionResult> ChangeRegister(string? pin)
     {
@@ -544,8 +559,18 @@ public class PosController : Controller
         if (user != null && !string.IsNullOrEmpty(pin) &&
             _hasher.VerifyHashedPassword(user, user.PinHash!, pin) != PasswordVerificationResult.Failed)
         {
-            await _signIn.SignInAsync(user, isPersistent: false);
             var reg = await BoundRegisterAsync();
+            // Enforce branch assignment at sign-in: a cashier assigned to specific branches may only
+            // sign in at a register in one of those branches. (Admins/Owner/Developer → any branch;
+            // a cashier with NO assignment → unrestricted/legacy.) Blocking here — rather than later at
+            // the cash count — gives a clear message instead of a dead-end on the open-till screen.
+            if (reg != null && !await CanWorkAtStoreAsync(user, reg.StoreId))
+            {
+                try { await _audit.LogAsync("LoginBlocked", "POS", user.Id, $"{user.FullName} blocked from POS ({reg.Name}) — not assigned to {reg.Store?.Name}"); } catch { }
+                return Json(new { success = false, message = "You are not assigned to this branch. Please contact your administrator." });
+            }
+
+            await _signIn.SignInAsync(user, isPersistent: false);
             try { await _audit.LogAsync("Login", "POS", user.Id, $"{user.FullName} signed in to POS{(reg != null ? $" ({reg.Name})" : "")}"); } catch { }
             return Json(new { success = true });
         }

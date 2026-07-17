@@ -7,12 +7,10 @@
 <div class="h-screen bg-neutral-50 flex flex-col overflow-hidden">
     <!-- Top bar -->
     <header class="flex items-center justify-between px-6 py-2 bg-white border-b border-neutral-100">
-        <form asp-controller="Pos" asp-action="ChangeRegister" method="post">
-            <button class="flex items-center gap-2 text-xs text-neutral-500 hover:text-neutral-800 border border-neutral-200 rounded-full px-4 py-2 transition-colors">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
-                Change register
-            </button>
-        </form>
+        <button type="button" id="change-register-btn" class="flex items-center gap-2 text-xs text-neutral-500 hover:text-neutral-800 border border-neutral-200 rounded-full px-4 py-2 transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+            Change register
+        </button>
         <!-- Live clock in header -->
         <p class="text-xs text-neutral-400 tabular-nums" id="till-clock-top"></p>
         <div class="w-[120px]"></div>
@@ -107,6 +105,22 @@
         if (topEl) topEl.textContent = timeShort;
     }
     tick(); setInterval(tick, 1000);
+
+    // Change register — needs an admin PIN (same gate as the in-session switch on the Sell screen).
+    document.getElementById('change-register-btn')?.addEventListener('click', async () => {
+        const adminPin = prompt('Admin PIN required to change this till to another register/branch:');
+        if (adminPin === null || adminPin.trim() === '') return;
+        try {
+            const res = await fetch('/Pos/ChangeRegister', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token },
+                body: 'pin=' + encodeURIComponent(adminPin.trim())
+            });
+            const data = await res.json().catch(() => ({}));
+            if (data.success) location.reload();
+            else alert(data.message || 'Invalid admin PIN.');
+        } catch { alert('Could not change register.'); }
+    });
 
     function renderDots() {
         dots.innerHTML = Array.from({ length: pin.length }).map(() =>
