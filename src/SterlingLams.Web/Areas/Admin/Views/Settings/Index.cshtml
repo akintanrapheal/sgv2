@@ -34,6 +34,7 @@
 
                 @foreach (var s in group.OrderBy(x => x.SortOrder))
                 {
+                    if (s.Type == "hidden") { <input type="hidden" name="@s.Key" value="@s.Value" /> continue; }
                     <div>
                         @if (s.Type == "boolean")
                         {

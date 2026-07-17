@@ -5,16 +5,17 @@ using SterlingLams.Web.Services;
 namespace SterlingLams.Web.Infrastructure;
 
 /// <summary>
-/// Sends the admin a once-a-day digest of products at/below their low-stock threshold, when the
+/// Sends the admin a digest of products at/below their low-stock threshold, when the
 /// <c>notifications.low_stock</c> toggle is on. Mirrors <see cref="FulfilmentRetryService"/>: a
-/// periodic sweep with a startup run. Day-level dedupe keeps it to one email per day.
+/// periodic sweep with a startup run. The send cadence is admin-set
+/// (<c>notifications.low_stock_every_days</c>, default 1 = daily) and the last-sent date is
+/// PERSISTED (<c>notifications.low_stock_last_sent</c>) so a restart/redeploy never re-sends.
 /// </summary>
 public class LowStockAlertService : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(6);
     private readonly IServiceProvider _sp;
     private readonly ILogger<LowStockAlertService> _logger;
-    private DateOnly? _lastSentDate; // in-memory: at most one digest per day (may re-send once after a restart)
 
     public LowStockAlertService(IServiceProvider sp, ILogger<LowStockAlertService> logger)
     {
@@ -40,8 +41,13 @@ public class LowStockAlertService : BackgroundService
 
         if (!await settings.GetBoolAsync("notifications.low_stock", false)) return;
 
+        // Send at most once every N days (admin-set), using a PERSISTED last-sent date so a
+        // restart/redeploy can't re-trigger it.
+        var everyDays = Math.Max(1, await settings.GetIntAsync("notifications.low_stock_every_days", 1));
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        if (_lastSentDate == today) return; // already sent today
+        var lastSentStr = await settings.GetAsync("notifications.low_stock_last_sent", "");
+        if (DateOnly.TryParse(lastSentStr, out var lastSent) && lastSent.AddDays(everyDays) > today)
+            return; // not due yet
 
         var adminEmail = await settings.GetAsync("notifications.admin_email", "");
         if (string.IsNullOrWhiteSpace(adminEmail))
@@ -118,7 +124,8 @@ public class LowStockAlertService : BackgroundService
         var sent = await email.SendAsync(adminEmail, subject, body, ct: ct);
         if (sent)
         {
-            _lastSentDate = today;
+            // Persist so restarts/redeploys don't re-send; honours the cadence next time.
+            await settings.SaveManyAsync(new Dictionary<string, string> { ["notifications.low_stock_last_sent"] = today.ToString("yyyy-MM-dd") });
             _logger.LogInformation("Stock digest sent to {Email} ({Count} item(s), {Branches} branch(es)).", SterlingLams.Web.Infrastructure.LogRedact.Email(adminEmail), items.Count, branchCount);
         }
         else
