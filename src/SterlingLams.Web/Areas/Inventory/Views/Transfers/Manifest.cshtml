@@ -6,6 +6,9 @@
     string qr = ViewBag.QrDataUri ?? "";
     string publicUrl = ViewBag.PublicUrl ?? "";
     string Who(string? uid) => uid != null && names.TryGetValue(uid, out var n) ? n : "—";
+    // Online-order transfers are raised & approved by the fulfilment engine, not a person — always
+    // "System" for those two roles (covers historical rows that stored the customer's id by mistake).
+    string CreatorApprover(string? uid) => Model.OrderId != null ? "System" : Who(uid);
     string Fmt(DateTime? dt) => dt.HasValue ? dt.Value.ToLocalTime().ToString("dd MMM yyyy, HH:mm") : "—";
     int Qty(SterlingLams.Web.Models.Domain.StockTransferItem i) => i.ApprovedQty ?? i.RequestedQty;
     var totalPieces = Model.Items.Sum(i => Qty(i));
@@ -80,8 +83,8 @@
     </div>
 
     <div class="meta">
-        <div><div class="lbl">Created by</div><div class="val">@Who(Model.CreatedByUserId)</div><div class="lbl" style="margin-top:2px">@Fmt(Model.CreatedAt)</div></div>
-        <div><div class="lbl">Approved by</div><div class="val">@Who(Model.ApprovedByUserId)</div><div class="lbl" style="margin-top:2px">@Fmt(Model.ApprovedAt)</div></div>
+        <div><div class="lbl">Created by</div><div class="val">@CreatorApprover(Model.CreatedByUserId)</div><div class="lbl" style="margin-top:2px">@Fmt(Model.CreatedAt)</div></div>
+        <div><div class="lbl">Approved by</div><div class="val">@CreatorApprover(Model.ApprovedByUserId)</div><div class="lbl" style="margin-top:2px">@Fmt(Model.ApprovedAt)</div></div>
     </div>
 
     <table>

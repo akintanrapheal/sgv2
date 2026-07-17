@@ -6,6 +6,9 @@
     var availableQty = ViewBag.AvailableQty as Dictionary<int, int> ?? new();
     var imgs = ViewBag.ProductImages as Dictionary<int, string> ?? new();
     string Who(string? uid) => uid != null && userNames.TryGetValue(uid, out var n) ? n : "—";
+    // Online-order transfers are raised & approved by the fulfilment engine, not a person — always
+    // "System" for those two roles (covers historical rows that stored the customer's id by mistake).
+    string CreatorApprover(string? uid) => Model.OrderId != null ? "System" : Who(uid);
     string Fmt(DateTime? dt) => dt.HasValue ? dt.Value.ToLocalTime().ToString("dd MMM, HH:mm") : "—";
 
     var hasShortage = Model.Items.Any(i => i.DispatchedQty.HasValue && (i.PendingQty > 0 || (i.DamagedQty ?? 0) > 0 || (i.WontFulfilQty ?? 0) > 0) && Model.ReceivedAt.HasValue);
@@ -52,7 +55,7 @@
                 <svg class="w-6 h-6 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
                 <div class="text-center"><p class="text-xs text-neutral-400">To</p><p class="text-sm font-medium text-neutral-800">@Model.ToStore?.Name</p></div>
             </div>
-            <p class="text-center text-xs text-neutral-400">Requested @Fmt(Model.CreatedAt) by @Who(Model.CreatedByUserId)</p>
+            <p class="text-center text-xs text-neutral-400">Requested @Fmt(Model.CreatedAt) by @CreatorApprover(Model.CreatedByUserId)</p>
             @if (!string.IsNullOrEmpty(Model.Note)) { <p class="text-center text-sm text-neutral-500 mt-2">"@Model.Note"</p> }
             @if (!string.IsNullOrEmpty(Model.TrackingNumber))
             {
@@ -178,7 +181,7 @@
             <ol class="text-xs space-y-3">
                 <li class="flex gap-3">
                     <div class="w-2 h-2 rounded-full bg-emerald-500 mt-1 flex-shrink-0"></div>
-                    <div><p class="text-neutral-800 font-medium">Requested</p><p class="text-neutral-400">@Fmt(Model.CreatedAt) · @Who(Model.CreatedByUserId)</p></div>
+                    <div><p class="text-neutral-800 font-medium">Requested</p><p class="text-neutral-400">@Fmt(Model.CreatedAt) · @CreatorApprover(Model.CreatedByUserId)</p></div>
                 </li>
                 @if (showRejected)
                 {
@@ -195,7 +198,7 @@
                 {
                     <li class="flex gap-3">
                         <div class="w-2 h-2 rounded-full bg-emerald-500 mt-1 flex-shrink-0"></div>
-                        <div><p class="text-neutral-800 font-medium">Approved</p><p class="text-neutral-400">@Fmt(Model.ApprovedAt) · @Who(Model.ApprovedByUserId)</p></div>
+                        <div><p class="text-neutral-800 font-medium">Approved</p><p class="text-neutral-400">@Fmt(Model.ApprovedAt) · @CreatorApprover(Model.ApprovedByUserId)</p></div>
                     </li>
                     if (showCancelled)
                     {
