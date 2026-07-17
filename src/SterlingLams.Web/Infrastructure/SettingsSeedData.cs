@@ -19,6 +19,21 @@ public static class SettingsSeedData
             logger.LogInformation("Seeded {Count} site settings.", toAdd.Count);
         }
 
+        // Remove settings that have been superseded and are no longer read anywhere, so they stop
+        // showing (and misleading) in Admin → Settings. Lagos/Abuja flat fees → replaced by zones.
+        var obsoleteKeys = new[]
+        {
+            "shipping.lagos_abuja_express_fee",  "shipping.lagos_abuja_express_days",
+            "shipping.lagos_abuja_standard_fee", "shipping.lagos_abuja_standard_days",
+        };
+        var obsolete = await db.SiteSettings.Where(s => obsoleteKeys.Contains(s.Key)).ToListAsync();
+        if (obsolete.Count > 0)
+        {
+            db.SiteSettings.RemoveRange(obsolete);
+            await db.SaveChangesAsync();
+            logger.LogInformation("Removed {Count} obsolete site settings (superseded by delivery zones).", obsolete.Count);
+        }
+
         // One-time migrations: update stale defaults / types
         var announcementColor = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "announcement.bg_color");
         if (announcementColor != null && (announcementColor.Value == "bg-neutral-900" || string.IsNullOrWhiteSpace(announcementColor.Value)))
@@ -84,12 +99,9 @@ public static class SettingsSeedData
         new() { Key = "announcement.bg_color",    Group = "Announcement Bar", Label = "Background Colour",      Type = "text",     Value = "bg-brand-500",    Description = "Tailwind class: bg-brand-500, bg-neutral-900, bg-red-600, bg-emerald-700, etc.", SortOrder = 3 },
 
         // ── Shipping & Delivery ───────────────────────────────────────────────
-        // Lagos & Abuja — Express
-        new() { Key = "shipping.lagos_abuja_express_fee",  Group = "Shipping", Label = "Lagos & Abuja Express Fee (N)",         Type = "number", Value = "4000",               Description = "Express delivery fee for Lagos and Abuja FCT.",                SortOrder = 1 },
-        new() { Key = "shipping.lagos_abuja_express_days", Group = "Shipping", Label = "Lagos & Abuja Express Timeframe",       Type = "text",   Value = "24 - 48 hours",      Description = "Timeframe shown to customers for express delivery.",           SortOrder = 2 },
-        // Lagos & Abuja — Standard
-        new() { Key = "shipping.lagos_abuja_standard_fee", Group = "Shipping", Label = "Lagos & Abuja Standard Fee (N)",        Type = "number", Value = "2000",               Description = "Standard delivery fee for Lagos and Abuja FCT.",               SortOrder = 3 },
-        new() { Key = "shipping.lagos_abuja_standard_days",Group = "Shipping", Label = "Lagos & Abuja Standard Timeframe",      Type = "text",   Value = "2 - 4 working days", Description = "Timeframe shown to customers for standard delivery.",          SortOrder = 4 },
+        // Lagos & Abuja delivery is now handled by the distance-based zones below (each zone carries
+        // its own Standard + Express fee/timeframe). The old flat "shipping.lagos_abuja_*" settings are
+        // removed as obsolete in SeedAsync.
         // Distance-based delivery zones (JSON) — managed in Admin → Delivery Zones. Empty = use the
         // built-in default zones (DeliveryZoneService.DefaultZones) until edited.
         new() { Key = "shipping.delivery_zones", Group = "Shipping", Label = "", Type = "hidden", Value = "", Description = "", SortOrder = 99 },
