@@ -34,7 +34,7 @@ jobs:
       group: deploy-${{ github.ref }}        # never run two deploys at once (avoids migration races)
       cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # ── Build the Tailwind CSS (package.json + scripts live at the repo root) ──
       - uses: actions/setup-node@v4
