@@ -1562,6 +1562,14 @@
         setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 2500);
     }
 
+    // Safety net: never let a script error or rejected promise fail silently in the POS — surface it
+    // so the cashier knows something went wrong and can report it, rather than a dead button.
+    window.addEventListener('error', (e) => { if (e && e.message) showError('Something went wrong: ' + e.message); });
+    window.addEventListener('unhandledrejection', (e) => {
+        const m = (e && e.reason && (e.reason.message || e.reason)) || 'unexpected error';
+        showError('Something went wrong: ' + m);
+    });
+
     // ── Item note/discount modal ──────────────────────────────────────────────
     let discountReasons = [];
     let modalItemIdx = -1;

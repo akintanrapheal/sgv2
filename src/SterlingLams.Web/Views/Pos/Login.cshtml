@@ -58,7 +58,7 @@
             <p id="pin-name" class="text-center text-base font-medium text-neutral-800 h-6 mb-3">&nbsp;</p>
 
             <div class="border-b-2 border-neutral-300 h-10 flex items-center justify-center gap-3 mb-2" id="pin-dots"></div>
-            <p id="pin-error" class="text-center text-xs text-red-500 h-4 mb-3"></p>
+            <p id="pin-error" class="text-center text-xs text-red-500 min-h-4 mb-3" role="alert" aria-live="assertive"></p>
 
             <div class="grid grid-cols-3 gap-2 mb-4">
                 @for (int n = 1; n <= 9; n++)
@@ -129,47 +129,65 @@
         loginBtn.disabled = !(userId && pin.length >= 4);
     }
 
-    document.querySelectorAll('.cashier-btn').forEach(b => b.addEventListener('click', () => {
+    // Selected-cashier highlight via INLINE styles, not utility classes — Tailwind purges classes
+    // that only ever appear in JS strings, so the pink selection would vanish in production.
+    const SELECTED = { borderColor: '#ed028b', backgroundColor: '#fff0f8', boxShadow: '0 0 0 2px rgba(237,2,139,0.35)' };
+    function selectCashier(b) {
         document.querySelectorAll('.cashier-btn').forEach(x => {
-            x.classList.remove('border-brand-500', 'bg-brand-50', 'border-2', 'shadow-md');
+            x.style.borderColor = ''; x.style.backgroundColor = ''; x.style.boxShadow = '';
+            x.setAttribute('aria-pressed', 'false');
         });
-        b.classList.add('border-brand-500', 'bg-brand-50', 'border-2');
+        b.style.borderColor = SELECTED.borderColor;
+        b.style.backgroundColor = SELECTED.backgroundColor;
+        b.style.boxShadow = SELECTED.boxShadow;
+        b.setAttribute('aria-pressed', 'true');
         userId = b.dataset.id; nameEl.textContent = b.dataset.name; pin = ''; renderDots(); errEl.textContent = '';
-    }));
+    }
+    document.querySelectorAll('.cashier-btn').forEach(b => b.addEventListener('click', () => selectCashier(b)));
 
-    document.querySelectorAll('.pin-key').forEach(b => b.addEventListener('click', () => {
-        if (pin.length < 8) { pin += b.dataset.k; errEl.textContent = ''; renderDots(); }
-    }));
+    // Adding a PIN digit — but only after a name is picked, so it's never unclear why nothing happens.
+    function pressDigit(d) {
+        if (!userId) { errEl.textContent = 'Please select your name first.'; return; }
+        if (pin.length < 8) { pin += d; errEl.textContent = ''; renderDots(); }
+    }
+    document.querySelectorAll('.pin-key').forEach(b => b.addEventListener('click', () => pressDigit(b.dataset.k)));
     document.getElementById('pin-back').addEventListener('click', () => { pin = pin.slice(0, -1); renderDots(); });
 
     loginBtn.addEventListener('click', submit);
 
-    // Enter key submits
+    // Physical keyboard: Enter submits, Backspace deletes, digits add (with the same name-first guard).
     document.addEventListener('keydown', e => {
-        if (e.key === 'Enter' && !loginBtn.disabled) submit();
-        if (e.key === 'Backspace') { pin = pin.slice(0, -1); renderDots(); }
-        if (/^\d$/.test(e.key) && pin.length < 8) { pin += e.key; renderDots(); }
+        if (e.key === 'Enter') { submit(); return; }
+        if (e.key === 'Backspace') { pin = pin.slice(0, -1); renderDots(); return; }
+        if (/^\d$/.test(e.key)) pressDigit(e.key);
     });
 
     async function submit() {
-        if (!userId) { errEl.textContent = 'Select your name first.'; return; }
-        if (pin.length < 4) return;
+        if (!userId) { errEl.textContent = 'Please select your name first.'; return; }
+        if (pin.length < 4) { errEl.textContent = 'Enter your PIN (at least 4 digits).'; return; }
         loginBtn.disabled = true;
         loginBtn.textContent = 'Signing in…';
-        const res = await fetch('/Pos/Login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token },
-            body: `userId=${encodeURIComponent(userId)}&pin=${encodeURIComponent(pin)}`
-        });
-        const data = await res.json();
-        if (data.success) { location.href = window.__posBase || '/Pos'; }
-        else {
-            errEl.textContent = data.message || 'Wrong PIN.';
-            pin = ''; renderDots();
-            loginBtn.disabled = false;
-            loginBtn.textContent = 'Sign In';
+        try {
+            const res = await fetch('/Pos/Login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token },
+                body: `userId=${encodeURIComponent(userId)}&pin=${encodeURIComponent(pin)}`
+            });
+            let data = {};
+            try { data = await res.json(); } catch { /* non-JSON (e.g. an auth redirect) */ }
+            if (res.ok && data.success) { location.href = window.__posBase || '/Pos'; return; }
+            errEl.textContent = data.message || `Sign-in failed (${res.status}). Please try again.`;
+        } catch {
+            errEl.textContent = 'Network error — check your connection and try again.';
         }
+        pin = ''; renderDots();
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Sign In';
     }
+
+    // Safety net: never let a script error or rejected promise fail silently on the POS login.
+    window.addEventListener('error', e => { errEl.textContent = 'Unexpected error: ' + (e.message || 'unknown') + ' — please reload.'; });
+    window.addEventListener('unhandledrejection', e => { errEl.textContent = 'Unexpected error: ' + ((e.reason && e.reason.message) || 'unexpected') + ' — please reload.'; });
 }());
 </script>
 }
