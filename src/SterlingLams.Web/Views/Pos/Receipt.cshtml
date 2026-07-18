@@ -167,7 +167,7 @@
                 if (to === null) return;
                 btn.disabled = true; btn.textContent = '…';
                 try {
-                    var r = await fetch('/Pos/EmailReceipt', {
+                    var r = await fetch('@($"/{SterlingLams.Web.Infrastructure.StaffPaths.Pos}")/EmailReceipt', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
                         body: JSON.stringify({ orderId: @Model.Id, email: to })

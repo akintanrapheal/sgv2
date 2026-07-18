@@ -1492,7 +1492,9 @@
                         `<span class="font-medium">${fmt(data.total)}</span> · ${data.orderNumber}`+
                         (data.change > 0 ? `<br>Change due: <span class="font-medium text-emerald-600">${fmt(data.change)}</span>` : '');
                     receiptBtn.onclick = null;
-                    receiptBtn.href = '/Pos/Receipt/' + data.orderId;
+                    // Use __posBase, not a literal "/Pos" — this is an <a href> navigation (not a
+                    // shimmed fetch), so under a secret POS prefix "/Pos/Receipt/.." 404s.
+                    receiptBtn.href = window.__posBase + '/Receipt/' + data.orderId;
                     receiptBtn.classList.remove('hidden');
                 }
                 cart = []; tenderedEl.value = ''; setCustomer(null); selectMethod('Cash'); clearSavedCart(); renderCart();
