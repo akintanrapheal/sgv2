@@ -12,7 +12,11 @@
  */
 (function () {
   'use strict';
-  if (!location.pathname.toLowerCase().startsWith('/pos')) return;
+  // The POS may be served from a secret prefix (window.__posBase, set by _PosLayout before this
+  // file loads) instead of "/Pos". Gate on that prefix — hard-coding "/pos" here silently disabled
+  // the entire offline layer in production once the prefix was configured.
+  var POS_BASE = (window.__posBase || '/Pos').toLowerCase();
+  if (!location.pathname.toLowerCase().startsWith(POS_BASE)) return;
 
   var DB_NAME = 'sgpos', STORE = 'kv', SNAP_KEY = 'snapshot', QUEUE_KEY = 'queue';
   var SYNC_INTERVAL_MS = 30 * 60 * 1000; // periodic auto-sync cadence (30 minutes)
