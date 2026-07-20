@@ -129,16 +129,22 @@ public class AccountController : Controller
     // both the password path and the 2FA path.
     private async Task<IActionResult> FinishLoginAsync(ApplicationUser? user, string? returnUrl)
     {
+        IList<string> roles = new List<string>();
         if (user != null)
         {
             user.LastLoginAt = DateTime.UtcNow;
             await _userManager.UpdateAsync(user);
-            var roles = await _userManager.GetRolesAsync(user);
+            roles = await _userManager.GetRolesAsync(user);
             if (roles.Count > 0)
                 try { await _audit.LogAsync("Login", "Account", user.Id, $"{user.FullName} signed in ({string.Join(", ", roles)})"); }
                 catch { /* auditing must never block login */ }
+
+            // Confirm the sign-in succeeded instead of a silent refresh — the layout renders this as a toast.
+            TempData["Success"] = string.IsNullOrWhiteSpace(user.FirstName)
+                ? "Welcome back!" : $"Welcome back, {user.FirstName}!";
         }
 
+        // Came from a specific page (checkout, a gated link, a product) → send them back to it.
         if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
             return Redirect(returnUrl);
 
@@ -147,6 +153,13 @@ public class AccountController : Controller
             && await _userManager.IsInRoleAsync(user, "Inventory")
             && !await _userManager.IsInRoleAsync(user, "Admin"))
             return RedirectToAction("Index", "Overview", new { area = "Inventory" });
+
+        // Plain customer (no staff role) → their storefront account page (profile / orders /
+        // addresses) — more useful than the bare homepage and makes a successful sign-in feel
+        // purposeful. NOTE: this is /Account/Profile, NOT /me (MyAccount is the STAFF account page,
+        // which 404s for customers). Staff keep the homepage default.
+        if (user != null && roles.Count == 0)
+            return RedirectToAction(nameof(Profile));
 
         return RedirectToLocal(returnUrl);
     }
