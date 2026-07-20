@@ -3,6 +3,7 @@
 @{
     ViewData["Title"] = Model.OrderNumber;
     string? store = ViewBag.Store; string? customer = ViewBag.Customer; string? cashier = ViewBag.Cashier;
+    string? customerPhone = ViewBag.CustomerPhone;
     var imgs = ViewBag.ProductImages as Dictionary<int, string> ?? new();
     string back = Model.PaidAt.HasValue && Model.Status != OrderStatus.Cancelled ? "Completed" : "Outstanding";
     string StatusBadge(OrderStatus s) => s switch
@@ -30,7 +31,8 @@
     <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Date</div>
         <div class="text-sm text-neutral-800">@Model.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</div></div>
     <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Customer</div>
-        <div class="text-sm text-neutral-600">@(customer ?? "Walk-in")</div></div>
+        <div class="text-sm text-neutral-600">@(customer ?? "Walk-in")</div>
+        @if (!string.IsNullOrWhiteSpace(customerPhone)) { <div class="text-xs text-neutral-400">@customerPhone</div> }</div>
     <div><div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Payment</div>
         <div class="text-sm @(Model.PaidAt.HasValue ? "text-emerald-600" : "text-amber-600")">@(Model.PaidAt.HasValue ? (Model.PaymentProvider ?? "Paid") : "Unpaid")</div></div>
     @if (!string.IsNullOrEmpty(store))

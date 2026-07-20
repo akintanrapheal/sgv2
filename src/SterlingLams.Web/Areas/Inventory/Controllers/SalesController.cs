@@ -48,10 +48,11 @@ public class SalesController : InventoryAreaController
                 Paid = o.PaidAt != null,
                 PaymentProvider = o.PaymentProvider,
                 When = o.CreatedAt,
+                // Buyer name (POS customer, or the online account holder); null → shown as "Walk-in".
                 Customer = o.CustomerUserId != null
-                    ? _db.Users.Where(u => u.Id == o.CustomerUserId).Select(u => u.Email).FirstOrDefault()
+                    ? _db.Users.Where(u => u.Id == o.CustomerUserId).Select(u => (u.FirstName + " " + u.LastName).Trim()).FirstOrDefault()
                     : (o.Channel == OrderChannel.Online
-                        ? _db.Users.Where(u => u.Id == o.UserId).Select(u => u.Email).FirstOrDefault()
+                        ? _db.Users.Where(u => u.Id == o.UserId).Select(u => (u.FirstName + " " + u.LastName).Trim()).FirstOrDefault()
                         : null)
             }).ToListAsync();
 
@@ -85,11 +86,31 @@ public class SalesController : InventoryAreaController
         if (order.FulfillingStoreId.HasValue || order.PickupStoreId.HasValue)
             ViewBag.Store = await _db.Stores.Where(s => s.Id == (order.FulfillingStoreId ?? order.PickupStoreId))
                 .Select(s => s.Name).FirstOrDefaultAsync();
+        // Buyer: the attached POS customer (CustomerUserId), or the account holder for online orders.
+        // Show their NAME (fall back to email) plus phone — not just an email.
         var custId = order.CustomerUserId ?? (order.Channel == OrderChannel.Online ? order.UserId : null);
         if (custId != null)
-            ViewBag.Customer = await _db.Users.Where(u => u.Id == custId).Select(u => u.Email).FirstOrDefaultAsync();
-        ViewBag.Cashier = order.Channel == OrderChannel.Pos
-            ? await _db.Users.Where(u => u.Id == order.UserId).Select(u => u.Email).FirstOrDefaultAsync() : null;
+        {
+            var c = await _db.Users.Where(u => u.Id == custId)
+                .Select(u => new { u.FirstName, u.LastName, u.Email, u.PhoneNumber }).FirstOrDefaultAsync();
+            if (c != null)
+            {
+                var name = $"{c.FirstName} {c.LastName}".Trim();
+                ViewBag.Customer = name.Length > 0 ? name : c.Email;
+                ViewBag.CustomerPhone = c.PhoneNumber;
+            }
+        }
+        // Cashier who rang up the POS sale (Order.UserId on POS) — by name (fall back to email).
+        if (order.Channel == OrderChannel.Pos)
+        {
+            var cash = await _db.Users.Where(u => u.Id == order.UserId)
+                .Select(u => new { u.FirstName, u.LastName, u.Email }).FirstOrDefaultAsync();
+            if (cash != null)
+            {
+                var cn = $"{cash.FirstName} {cash.LastName}".Trim();
+                ViewBag.Cashier = cn.Length > 0 ? cn : cash.Email;
+            }
+        }
 
         // Primary image per product for the line thumbnails.
         var itemPids = order.Items.Select(i => i.ProductId).Distinct().ToList();

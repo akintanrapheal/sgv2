@@ -210,7 +210,18 @@
         <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
             <h2 class="text-sm font-medium mb-3">Customer</h2>
             <p class="text-xs font-medium text-neutral-800">@Model.CustomerName</p>
-            <p class="text-xs text-neutral-500">@Model.CustomerEmail</p>
+            @if (!string.IsNullOrWhiteSpace(Model.CustomerEmail))
+            {
+                <p class="text-xs text-neutral-500">@Model.CustomerEmail</p>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.CustomerPhone))
+            {
+                <p class="text-xs text-neutral-500">@Model.CustomerPhone</p>
+            }
+            @if (!string.IsNullOrWhiteSpace(Model.CashierName))
+            {
+                <p class="text-[11px] text-neutral-400 mt-2 pt-2 border-t border-neutral-100">Served by <span class="text-neutral-600">@Model.CashierName</span></p>
+            }
         </div>
 
         <!-- Resend email -->

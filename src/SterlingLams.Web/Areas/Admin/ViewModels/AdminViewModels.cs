@@ -112,6 +112,10 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public Order Order { get; set; } = null!;
         public string CustomerName { get; set; } = "";
         public string CustomerEmail { get; set; } = "";
+        public string CustomerPhone { get; set; } = "";
+        /// <summary>The cashier who rang up a POS sale (null for online orders). On POS, Order.User is
+        /// the cashier and Order.Customer is the buyer — the two must not be conflated.</summary>
+        public string? CashierName { get; set; }
         // "Refunded" is intentionally excluded — refunds go through the dedicated Refund action
         // (records the refund, returns stock, triggers the gateway), not a status dropdown.
         public List<string> AvailableStatuses { get; set; } = new()

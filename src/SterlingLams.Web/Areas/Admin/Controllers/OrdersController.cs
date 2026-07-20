@@ -89,8 +89,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 {
                     Id = o.Id,
                     OrderNumber = o.OrderNumber,
-                    CustomerName = o.User.FirstName + " " + o.User.LastName,
-                    CustomerEmail = o.User.Email ?? "",
+                    // POS: show the buyer (Order.Customer), not the cashier (Order.User); walk-ins have none.
+                    CustomerName = o.Channel == OrderChannel.Pos
+                        ? (o.Customer != null ? o.Customer.FirstName + " " + o.Customer.LastName : "Walk-in")
+                        : o.User.FirstName + " " + o.User.LastName,
+                    CustomerEmail = o.Channel == OrderChannel.Pos
+                        ? (o.Customer != null ? o.Customer.Email ?? "" : "")
+                        : o.User.Email ?? "",
                     Total = o.Total,
                     Status = o.Status.ToString(),
                     IsPaid = o.IsPaid,
@@ -136,6 +141,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .Include(o => o.PickupStore)
                 .Include(o => o.DeliveryAddress)
                 .Include(o => o.User)
+                .Include(o => o.Customer)   // POS buyer (CustomerUserId) — distinct from the cashier (User)
                 .FirstOrDefaultAsync(o => o.Id == id);
 
             if (order == null) return NotFound();
@@ -167,11 +173,18 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 custAov = paidCount > 0 ? custRevenue / paidCount : 0;
             }
 
+            // For a POS sale the buyer is Order.Customer (may be null → walk-in) and Order.User is the
+            // cashier. For an online order Order.User IS the buyer and there is no cashier.
+            var isPos = order.Channel == OrderChannel.Pos;
+            var buyer = isPos ? order.Customer : order.User;
+
             var vm = new AdminOrderDetailViewModel
             {
                 Order = order,
-                CustomerName = order.User.FullName,
-                CustomerEmail = order.User.Email ?? "",
+                CustomerName = buyer?.FullName is { Length: > 0 } n ? n : (isPos ? "Walk-in customer" : order.User.FullName),
+                CustomerEmail = buyer?.Email ?? "",
+                CustomerPhone = buyer?.PhoneNumber ?? "",
+                CashierName = isPos ? order.User?.FullName : null,
                 Refunds = refunds,
                 RefundedQty = refundedQty,
                 RefundedTotal = refunds.Sum(r => r.Amount),
