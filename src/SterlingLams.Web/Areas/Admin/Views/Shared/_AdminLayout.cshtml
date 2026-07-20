@@ -148,6 +148,13 @@
                 {
                     <span class="text-xs text-red-700 bg-red-50 px-3 py-1.5 rounded-full">@TempData["Error"]</span>
                 }
+                @* New-order sound toggle (per-device; remembered in this browser). *@
+                <button id="order-alert-bell" type="button" title="New-order sound"
+                        class="relative text-neutral-400 hover:text-neutral-700 transition-colors" aria-label="Toggle new-order sound">
+                    <svg id="order-alert-icon-on" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+                    <svg id="order-alert-icon-off" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.73 21a2 2 0 01-3.46 0M18.63 13A17.9 17.9 0 0118 8m-6-4a6 6 0 00-3.84 1.4M3 3l18 18"/></svg>
+                    <span id="order-alert-badge" class="hidden absolute -top-1.5 -right-1.5 min-w-[16px] h-[16px] px-1 rounded-full bg-brand-500 text-white text-[10px] leading-4 text-center font-semibold"></span>
+                </button>
                 <partial name="_UserChip" />
             </div>
         </header>
@@ -189,6 +196,110 @@ document.addEventListener('submit', function (e) {
         setTimeout(() => { btn.disabled = false; btn.textContent = original; }, 8000);
     });
 });
+
+// ── New-order notification: sound + toast, polled every ~25s. Per-device toggle (localStorage). ──
+(function () {
+    var bell = document.getElementById('order-alert-bell');
+    if (!bell) return;
+    var iconOn = document.getElementById('order-alert-icon-on');
+    var iconOff = document.getElementById('order-alert-icon-off');
+    var badgeEl = document.getElementById('order-alert-badge');
+
+    var NEW_URL = '@Url.Action("NewOrders", "Orders", new { area = "Admin" })';
+    var DETAIL_TPL = '@Url.Action("Detail", "Orders", new { area = "Admin", id = "__ID__" })';
+    var onOrdersList = @(((ViewContext.RouteData.Values["controller"]?.ToString() == "Orders") && (ViewContext.RouteData.Values["action"]?.ToString() == "Index")).ToString().ToLowerInvariant());
+    var K_SOUND = 'sg_neworder_sound', K_CURSOR = 'sg_neworder_cursor', K_UNSEEN = 'sg_neworder_unseen';
+
+    var audioCtx = null;
+    function soundOn() { return localStorage.getItem(K_SOUND) !== 'off'; }
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+    function renderBell() {
+        var on = soundOn();
+        iconOn.classList.toggle('hidden', !on);
+        iconOff.classList.toggle('hidden', on);
+        bell.title = on ? 'New-order sound: ON (click to mute)' : 'New-order sound: OFF (click to enable)';
+    }
+    function renderBadge() {
+        var n = parseInt(localStorage.getItem(K_UNSEEN) || '0', 10);
+        if (n > 0) { badgeEl.textContent = n > 99 ? '99+' : n; badgeEl.classList.remove('hidden'); }
+        else badgeEl.classList.add('hidden');
+    }
+
+    // Web Audio chime — no asset. Needs a prior user gesture (browser autoplay policy); we unlock below.
+    function unlock() {
+        try { var C = window.AudioContext || window.webkitAudioContext; if (C) { audioCtx = audioCtx || new C(); if (audioCtx.state === 'suspended') audioCtx.resume(); } } catch (e) {}
+        document.removeEventListener('click', unlock); document.removeEventListener('keydown', unlock);
+    }
+    document.addEventListener('click', unlock); document.addEventListener('keydown', unlock);
+    function chime() {
+        try {
+            var C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+            audioCtx = audioCtx || new C(); if (audioCtx.state === 'suspended') audioCtx.resume();
+            var now = audioCtx.currentTime;
+            [[880, 0], [1174.66, 0.12]].forEach(function (p) {
+                var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+                o.type = 'sine'; o.frequency.value = p[0]; o.connect(g); g.connect(audioCtx.destination);
+                var t = now + p[1];
+                g.gain.setValueAtTime(0.0001, t);
+                g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
+                o.start(t); o.stop(t + 0.4);
+            });
+        } catch (e) {}
+    }
+
+    var toastWrap;
+    function toast(order) {
+        if (!toastWrap) {
+            toastWrap = document.createElement('div');
+            toastWrap.style.cssText = 'position:fixed;top:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;max-width:340px;';
+            document.body.appendChild(toastWrap);
+        }
+        var a = document.createElement('a');
+        a.href = DETAIL_TPL.replace('__ID__', order.id);
+        a.style.cssText = 'display:block;background:#111827;color:#fff;text-decoration:none;padding:12px 14px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.28);font:500 13px/1.4 ui-sans-serif,system-ui,sans-serif;';
+        a.innerHTML = '<div style="font-weight:600;margin-bottom:2px;">🛎️ New order ' + esc(order.number) + '</div>'
+            + '<div style="color:#d1d5db;font-size:12px;">₦' + Number(order.total).toLocaleString() + (order.customer ? ' · ' + esc(order.customer) : '') + '</div>';
+        toastWrap.appendChild(a);
+        setTimeout(function () { a.style.transition = 'opacity .4s'; a.style.opacity = '0'; setTimeout(function () { a.remove(); }, 400); }, 9000);
+    }
+
+    // Seeing the Orders list clears the "new" badge.
+    if (onOrdersList) { localStorage.setItem(K_UNSEEN, '0'); }
+    renderBell(); renderBadge();
+
+    bell.addEventListener('click', function () {
+        localStorage.setItem(K_SOUND, soundOn() ? 'off' : 'on');
+        renderBell();
+        unlock();               // clicking the bell also satisfies the autoplay gesture
+        if (soundOn()) chime();  // preview the sound when enabling
+    });
+
+    var stopped = false;
+    function poll() {
+        if (stopped) return;
+        var cur = localStorage.getItem(K_CURSOR);
+        var since = cur === null ? 0 : cur;
+        fetch(NEW_URL + '?sinceTicks=' + encodeURIComponent(since), { headers: { 'X-Requested-With': 'fetch' } })
+            .then(function (r) { if (r.status === 401 || r.status === 403) { stopped = true; return null; } return r.ok ? r.json() : null; })
+            .then(function (d) {
+                if (!d) return;
+                // cur === null → first load in this browser: set the baseline, never ding for old orders.
+                if (cur !== null && d.orders && d.orders.length) {
+                    if (soundOn()) chime();
+                    d.orders.slice().reverse().forEach(toast);
+                    var n = parseInt(localStorage.getItem(K_UNSEEN) || '0', 10) + d.orders.length;
+                    localStorage.setItem(K_UNSEEN, String(n));
+                    renderBadge();
+                }
+                localStorage.setItem(K_CURSOR, String(d.latestTicks));
+            })
+            .catch(function () {});
+    }
+    setTimeout(poll, 4000);          // first check shortly after load
+    setInterval(poll, 25000);        // then every 25s
+})();
 </script>
 </body>
 </html>

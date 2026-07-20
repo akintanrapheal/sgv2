@@ -48,6 +48,34 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             _whatsapp = whatsapp;
         }
 
+        // Lightweight poll for the admin new-order sound (runs from _AdminLayout every ~25s). Returns
+        // online orders PAID since the client's cursor, plus the newest cursor to store. sinceTicks<=0
+        // is a baseline (empty) so a freshly-opened browser never dings for pre-existing orders.
+        [HttpGet]
+        public async Task<IActionResult> NewOrders(long sinceTicks = 0)
+        {
+            var paid = _db.Orders.Where(o => o.Channel == OrderChannel.Online && o.PaidAt != null);
+            var latest = await paid.MaxAsync(o => (DateTime?)o.PaidAt);   // avoid .Ticks in SQL
+            var latestTicks = latest?.Ticks ?? 0L;
+
+            var orders = new List<object>();
+            if (sinceTicks > 0 && latestTicks > sinceTicks)
+            {
+                var since = new DateTime(sinceTicks, DateTimeKind.Utc);   // PaidAt is stored UTC (timestamptz)
+                orders = await paid.Where(o => o.PaidAt > since)
+                    .OrderByDescending(o => o.PaidAt).Take(10)
+                    .Select(o => new
+                    {
+                        id = o.Id,
+                        number = o.OrderNumber,
+                        total = o.Total,
+                        customer = (o.User.FirstName + " " + o.User.LastName).Trim()
+                    })
+                    .ToListAsync<object>();
+            }
+            return Json(new { latestTicks, orders });
+        }
+
         public async Task<IActionResult> Index(string status = "", string q = "", string channel = "",
             string paid = "", string? from = null, string? to = null, int page = 1)
         {
