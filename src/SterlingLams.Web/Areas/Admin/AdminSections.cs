@@ -75,6 +75,35 @@ public static class AdminSections
         return false;
     }
 
+    // ── The business owner ────────────────────────────────────────────────────
+    /// <summary>
+    /// Accounts allowed to perform owner-only destructive actions (currently: deleting audit
+    /// history). Set via <c>Admin:OwnerEmails</c> — comma-separated; on Render the env var
+    /// <c>Admin__OwnerEmails</c>. Deliberately NOT role-based: any full admin can reach
+    /// Users/Roles and grant themselves a role, so a role check could be self-granted. Config can
+    /// only be changed by whoever controls the host, which is the point for an audit trail.
+    /// </summary>
+    private static string[] _ownerEmails = { "rapheal@sterlinglamslogistics.com" };
+
+    public static void InitOwners(IConfiguration config)
+    {
+        var raw = config["Admin:OwnerEmails"];
+        if (!string.IsNullOrWhiteSpace(raw))
+            _ownerEmails = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    /// <summary>True only for the configured owner account(s) — stricter than <see cref="IsFullAccess"/>.</summary>
+    public static bool IsOwner(ClaimsPrincipal user)
+    {
+        if (user?.Identity?.IsAuthenticated != true) return false;
+        var email = user.FindFirstValue(ClaimTypes.Email);
+        var name = user.Identity.Name;   // UserName == email for staff accounts
+        foreach (var o in _ownerEmails)
+            if (o.Equals(email, StringComparison.OrdinalIgnoreCase) || o.Equals(name, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
+
     /// <summary>Admin + Developer — the roles that manage billing, users and roles. Owner is a view-only
     /// full-access role, so it is deliberately excluded from these management actions.</summary>
     public static bool IsSystemManager(ClaimsPrincipal user) => user.IsInRole("Admin") || user.IsInRole("Developer");

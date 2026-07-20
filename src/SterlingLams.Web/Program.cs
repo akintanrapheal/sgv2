@@ -18,6 +18,7 @@ var builder = WebApplication.CreateBuilder(args);
 // Configurable secret prefixes for the staff backends (StaffPaths:Admin/Inventory/Marketing);
 // unset → current names. Read once here so routing + CSP + staff-path checks all agree.
 SterlingLams.Web.Infrastructure.StaffPaths.Init(builder.Configuration);
+SterlingLams.Web.Areas.Admin.AdminSections.InitOwners(builder.Configuration);
 
 // ─── Serilog ────────────────────────────────────────────────────────────────
 Log.Logger = new LoggerConfiguration()

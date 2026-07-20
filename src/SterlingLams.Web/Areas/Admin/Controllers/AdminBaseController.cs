@@ -36,6 +36,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var allowed = await perms.GetAllowedSectionsAsync(User);
             ViewData["AllowedSections"] = allowed;
             ViewData["IsFullAdmin"] = AdminSections.IsFullAccess(User);
+            ViewData["IsOwner"] = AdminSections.IsOwner(User);   // stricter: the configured owner account only
 
             // Inventory-team staff operate in the dedicated Inventory System, not the website admin.
             if (!AdminSections.IsFullAccess(User) && User.IsInRole("Inventory"))

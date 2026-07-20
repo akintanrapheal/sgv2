@@ -103,13 +103,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return File(bytes, "text/csv", $"audit_log_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv");
         }
 
-        // Deleting audit history is restricted to full administrators (the owner) — staff who can
-        // merely VIEW the log (granted the AuditLog section) cannot remove entries.
+        // Deleting audit history is restricted to the OWNER account (AdminSections.IsOwner) — not
+        // merely any full administrator. The audit log is the accountability record, so nobody who
+        // could be added as an admin later can quietly erase it.
         [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> DeleteSelected(int[] ids, string act = "", string entity = "",
             string dateFrom = "", string dateTo = "", string q = "", int page = 1)
         {
-            if (!AdminSections.IsFullAccess(User)) return Forbid();
+            if (!AdminSections.IsOwner(User)) return Forbid();
             var back = new { act, entity, dateFrom, dateTo, q, page };
             if (ids == null || ids.Length == 0)
             {
@@ -125,7 +126,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> ClearAll()
         {
-            if (!AdminSections.IsFullAccess(User)) return Forbid();
+            if (!AdminSections.IsOwner(User)) return Forbid();
             var deleted = await _db.AuditLogs.ExecuteDeleteAsync();
             // Leave a single record that a clear happened (accountability).
             await LogAsync("Delete", "AuditLog", null, $"Cleared all audit logs ({deleted} entries)");
