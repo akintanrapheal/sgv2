@@ -1439,6 +1439,10 @@
         try {
             let managerPin = null, res, data;
             while (true) {
+                // NOTE: keep this URL as the literal '/Pos/Checkout'. pos-offline.js wraps fetch and
+                // matches this exact path to capture the sale offline on a network failure; the inner
+                // _PosLayout shim then rewrites '/Pos/...' to the secret prefix for the real request.
+                // Building this from window.__posBase instead would silently bypass offline capture.
                 res = await fetch('/Pos/Checkout', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },

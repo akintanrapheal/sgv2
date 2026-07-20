@@ -89,7 +89,7 @@
     const dots = document.getElementById('pin-dots');
     const errEl = document.getElementById('pin-error');
     const loginBtn = document.getElementById('pin-login');
-    let userId = null, pin = '';
+    let userId = null, pin = '', submitting = false;
 
     // Live clock — big display + small header
     function tick() {
@@ -163,8 +163,10 @@
     });
 
     async function submit() {
+        if (submitting) return;   // a sign-in is already in flight (e.g. Enter pressed again) — don't double-post
         if (!userId) { errEl.textContent = 'Please select your name first.'; return; }
         if (pin.length < 4) { errEl.textContent = 'Enter your PIN (at least 4 digits).'; return; }
+        submitting = true;
         loginBtn.disabled = true;
         loginBtn.textContent = 'Signing in…';
         try {
@@ -180,6 +182,8 @@
         } catch {
             errEl.textContent = 'Network error — check your connection and try again.';
         }
+        // Reached only on failure (success navigates away above) — re-enable for another attempt.
+        submitting = false;
         pin = ''; renderDots();
         loginBtn.disabled = false;
         loginBtn.textContent = 'Sign In';
