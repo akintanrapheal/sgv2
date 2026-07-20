@@ -19,7 +19,10 @@ public class SeoController : Controller
     {
         var sb = new StringBuilder();
         sb.AppendLine("User-agent: *");
-        foreach (var path in new[] { "/Admin", "/Till", "/Pos", "/Checkout", "/Cart", "/Account", "/Wishlist", "/api/" })
+        // Only list customer areas that waste crawl budget. Staff paths are deliberately NOT listed:
+        // "Disallow" publicly advertises a path rather than protecting it, and the backends already
+        // sit behind auth (and optionally a secret prefix). Never add StaffPaths.* here.
+        foreach (var path in new[] { "/Checkout", "/Cart", "/Account", "/Wishlist", "/api/" })
             sb.AppendLine($"Disallow: {path}");
         sb.AppendLine();
         sb.AppendLine($"Sitemap: {BaseUrl}/sitemap.xml");

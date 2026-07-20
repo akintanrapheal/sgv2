@@ -188,6 +188,12 @@ builder.Services.AddSession(options =>
 // ~58 client-side references depend on them; renaming those is a separate, wider change.
 builder.Services.AddAntiforgery(o => o.Cookie.Name = "sg_af");
 
+// HSTS: the framework default is only 30 days. A year is the recommended value (and the minimum
+// for the browser preload list). IncludeSubDomains is deliberately NOT set — it would force HTTPS
+// on every subdomain, which breaks any that are still plain HTTP; enable it only once every
+// subdomain is confirmed HTTPS-only. Preload is likewise left off: it is hard to reverse.
+builder.Services.AddHsts(o => o.MaxAge = TimeSpan.FromDays(365));
+
 // ─── Application Services ───────────────────────────────────────────────────
 // Encrypts sensitive site-settings (payment keys, SMTP password) at rest via Data Protection.
 builder.Services.AddSingleton<SterlingLams.Web.Services.ISettingsSecretProtector, SterlingLams.Web.Services.SettingsSecretProtector>();
@@ -295,8 +301,17 @@ app.UseStatusCodePagesWithReExecute("/Home/PageNotFound", "?code={0}");
 app.UseHttpsRedirection();
 
 // ─── Security headers ───────────────────────────────────────────────────────
+// Reject verbs the app has no endpoints for. Without this, MVC answers DELETE/PUT on any GET
+// action (returning 200), which scanners flag and which can confuse caches/proxies.
+var allowedMethods = new[] { "GET", "HEAD", "POST", "OPTIONS" };
 app.Use(async (context, next) =>
 {
+    if (!allowedMethods.Contains(context.Request.Method, StringComparer.OrdinalIgnoreCase))
+    {
+        context.Response.StatusCode = StatusCodes.Status405MethodNotAllowed;
+        context.Response.Headers["Allow"] = "GET, HEAD, POST, OPTIONS";
+        return;
+    }
     // The POS service worker must NOT inherit the page CSP: a worker adopts the CSP of its own
     // script, and connect-src 'self' would block it from fetching cross-origin product images
     // (Cloudinary) to cache them for offline. Serve the SW script without a CSP.
@@ -309,6 +324,21 @@ app.Use(async (context, next) =>
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+
+    // Drop browser features the site never uses, so injected/3rd-party script can't reach them.
+    context.Response.Headers["Permissions-Policy"] =
+        "accelerometer=(), autoplay=(), camera=(), display-capture=(), encrypted-media=(), " +
+        "fullscreen=(self), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), " +
+        "midi=(), usb=(), xr-spatial-tracking=(), " +
+        // Payment Request API stays open to us and Paystack — some card/wallet flows use it, and
+        // silently blocking it would break checkout.
+        "payment=(self \"https://checkout.paystack.com\" \"https://paystack.com\")";
+
+    // Isolate our browsing context from cross-origin windows. "allow-popups" (not plain
+    // "same-origin") so the Paystack checkout popup can still talk back to the opener.
+    context.Response.Headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups";
+    // Legacy Adobe crossdomain.xml policy — nothing should honour one for this site.
+    context.Response.Headers["X-Permitted-Cross-Domain-Policies"] = "none";
 
     // Per-request CSP nonce for inline <script> blocks (read in views via Context.Items["csp-nonce"]).
     // Hex (not base64) so there are no +/= characters for Razor to HTML-encode — the attribute value
