@@ -13,18 +13,21 @@ public class IntegrationsController : AdminBaseController
 {
     protected override string? Section => "Integrations"; // grantable; write actions still require :manage
 
-    private static readonly string[] Groups = { "Payments", "SMTP" };
+    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp" };
     private static readonly string[] Providers = { "paystack", "stripe", "flutterwave" };
 
     private readonly ISettingsService _settings;
     private readonly ISettingsSecretProtector _secrets;
     private readonly IConfiguration _config;
+    private readonly IWhatsAppService _whatsapp;
 
-    public IntegrationsController(ISettingsService settings, ISettingsSecretProtector secrets, IConfiguration config)
+    public IntegrationsController(ISettingsService settings, ISettingsSecretProtector secrets,
+        IConfiguration config, IWhatsAppService whatsapp)
     {
         _settings = settings;
         _secrets = secrets;
         _config = config;
+        _whatsapp = whatsapp;
     }
 
     public async Task<IActionResult> Index()
@@ -71,9 +74,39 @@ public class IntegrationsController : AdminBaseController
             SmtpFromName    = string.IsNullOrWhiteSpace(Plain("email.smtp.from_name", null)) ? "Sterlin Glams" : Plain("email.smtp.from_name", null),
             SmtpSsl         = await _settings.GetBoolAsync("email.smtp.ssl", true),
 
+            WaEnabled       = await _settings.GetBoolAsync("whatsapp.enabled", false),
+            WaProvider      = string.IsNullOrWhiteSpace(Plain("whatsapp.provider", null)) ? "twilio" : Plain("whatsapp.provider", null),
+            WaAccountSid    = Plain("whatsapp.twilio.account_sid", "WhatsApp:Twilio:AccountSid"),
+            WaAuthTokenSet  = Set("whatsapp.twilio.auth_token", "WhatsApp:Twilio:AuthToken"),
+            WaFrom          = Plain("whatsapp.twilio.from", "WhatsApp:Twilio:From"),
+            WaNotifyOrderConfirmed  = await _settings.GetBoolAsync("whatsapp.notify.order_confirmed", false),
+            WaNotifyPaymentReceived = await _settings.GetBoolAsync("whatsapp.notify.payment_received", false),
+            WaNotifyReadyForPickup  = await _settings.GetBoolAsync("whatsapp.notify.ready_for_pickup", false),
+            WaNotifyShipped         = await _settings.GetBoolAsync("whatsapp.notify.shipped", false),
+            WaNotifyDelivered       = await _settings.GetBoolAsync("whatsapp.notify.delivered", false),
+            WaTplOrderConfirmed  = Plain("whatsapp.template.order_confirmed", null),
+            WaTplPaymentReceived = Plain("whatsapp.template.payment_received", null),
+            WaTplReadyForPickup  = Plain("whatsapp.template.ready_for_pickup", null),
+            WaTplShipped         = Plain("whatsapp.template.shipped", null),
+            WaTplDelivered       = Plain("whatsapp.template.delivered", null),
+
             BaseUrl = baseUrl,
         };
         return View(vm);
+    }
+
+    /// <summary>Sends a test WhatsApp message to confirm the credentials work (Twilio Sandbox: the
+    /// recipient must have joined the sandbox first). Returns JSON for the inline test button.</summary>
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> TestWhatsApp(string toPhone)
+    {
+        if (string.IsNullOrWhiteSpace(toPhone))
+            return Json(new { ok = false, message = "Enter a phone number to send the test to." });
+
+        var (ok, message) = await _whatsapp.SendAsync(toPhone,
+            "✅ Test from Sterlin Glams — your WhatsApp integration is working.");
+        await LogAsync("Update", "Setting", null, $"Sent test WhatsApp to {toPhone}: {(ok ? "ok" : "failed")}");
+        return Json(new { ok, message });
     }
 
     [HttpPost, ValidateAntiForgeryToken]
@@ -139,6 +172,23 @@ public class IntegrationsViewModel
     public string SmtpFromAddress { get; set; } = "";
     public string SmtpFromName { get; set; } = "Sterlin Glams";
     public bool SmtpSsl { get; set; } = true;
+
+    // WhatsApp
+    public bool WaEnabled { get; set; }
+    public string WaProvider { get; set; } = "twilio";
+    public string WaAccountSid { get; set; } = "";
+    public bool WaAuthTokenSet { get; set; }
+    public string WaFrom { get; set; } = "";
+    public bool WaNotifyOrderConfirmed { get; set; }
+    public bool WaNotifyPaymentReceived { get; set; }
+    public bool WaNotifyReadyForPickup { get; set; }
+    public bool WaNotifyShipped { get; set; }
+    public bool WaNotifyDelivered { get; set; }
+    public string WaTplOrderConfirmed { get; set; } = "";
+    public string WaTplPaymentReceived { get; set; } = "";
+    public string WaTplReadyForPickup { get; set; } = "";
+    public string WaTplShipped { get; set; } = "";
+    public string WaTplDelivered { get; set; } = "";
 
     public string BaseUrl { get; set; } = "";
 }

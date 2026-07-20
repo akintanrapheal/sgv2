@@ -303,5 +303,28 @@ public static class SettingsSeedData
         new() { Key = "email.smtp.from_address",  Group = "SMTP", Label = "From Address",         Type = "email",   Value = "",      Description = "The address customers see mail come from, e.g. hello@sterlinglams.com.", SortOrder = 5 },
         new() { Key = "email.smtp.from_name",     Group = "SMTP", Label = "From Name",            Type = "text",    Value = "Sterlin Glams", Description = "Sender display name.",                            SortOrder = 6 },
         new() { Key = "email.smtp.ssl",           Group = "SMTP", Label = "Use SSL/TLS",         Type = "boolean", Value = "true",  Description = "Enable TLS. Leave on for ports 587 and 465.",             SortOrder = 7 },
+
+        // ── WhatsApp (Admin → Integrations, full-admin only) ─────────────────
+        // Business API via a provider (Twilio for Phase 1; provider-agnostic). Secrets encrypted at rest.
+        // Connection
+        new() { Key = "whatsapp.enabled",            Group = "WhatsApp", Label = "Enable WhatsApp",         Type = "boolean", Value = "false", Description = "Master switch. When off, WhatsApp messages are skipped (order emails still send).", SortOrder = 0 },
+        new() { Key = "whatsapp.provider",           Group = "WhatsApp", Label = "Provider",                Type = "text",    Value = "twilio", Description = "twilio (Phase 1). termii can be wired later without changing callers.", SortOrder = 1 },
+        new() { Key = "whatsapp.twilio.account_sid", Group = "WhatsApp", Label = "Twilio Account SID",       Type = "text",    Value = "",      Description = "From the Twilio Console dashboard (starts AC…).", SortOrder = 2 },
+        new() { Key = "whatsapp.twilio.auth_token",  Group = "WhatsApp", Label = "Twilio Auth Token",        Type = "secret",  Value = "",      Description = "From the Twilio Console dashboard. Stored encrypted; never shown back.", SortOrder = 3 },
+        new() { Key = "whatsapp.twilio.from",        Group = "WhatsApp", Label = "WhatsApp From Number",     Type = "text",    Value = "",      Description = "Your WhatsApp sender in +E.164, e.g. +14155238886 for the Twilio Sandbox, or your approved number in production.", SortOrder = 4 },
+
+        // Which order events send a WhatsApp (mirrors the order emails)
+        new() { Key = "whatsapp.notify.order_confirmed",  Group = "WhatsApp", Label = "Notify: Order confirmed",   Type = "boolean", Value = "false", Description = "Send a WhatsApp when a POS/online order is placed.",         SortOrder = 10 },
+        new() { Key = "whatsapp.notify.payment_received", Group = "WhatsApp", Label = "Notify: Payment received",  Type = "boolean", Value = "false", Description = "Send a WhatsApp when payment is confirmed.",                 SortOrder = 11 },
+        new() { Key = "whatsapp.notify.ready_for_pickup", Group = "WhatsApp", Label = "Notify: Ready for pickup",  Type = "boolean", Value = "false", Description = "Send a WhatsApp when a store-pickup order is ready.",        SortOrder = 12 },
+        new() { Key = "whatsapp.notify.shipped",          Group = "WhatsApp", Label = "Notify: Shipped / dispatched", Type = "boolean", Value = "false", Description = "Send a WhatsApp when an order is dispatched.",            SortOrder = 13 },
+        new() { Key = "whatsapp.notify.delivered",        Group = "WhatsApp", Label = "Notify: Delivered",         Type = "boolean", Value = "false", Description = "Send a WhatsApp when an order is delivered.",               SortOrder = 14 },
+
+        // Production template Content SIDs (Phase 2). Blank = plain-text body (sandbox / open session only).
+        new() { Key = "whatsapp.template.order_confirmed",  Group = "WhatsApp", Label = "Template SID: Order confirmed",  Type = "text", Value = "", Description = "Twilio Content SID (HX…) of the approved 'order confirmed' template.", SortOrder = 20 },
+        new() { Key = "whatsapp.template.payment_received", Group = "WhatsApp", Label = "Template SID: Payment received", Type = "text", Value = "", Description = "Twilio Content SID (HX…) of the approved 'payment received' template.", SortOrder = 21 },
+        new() { Key = "whatsapp.template.ready_for_pickup", Group = "WhatsApp", Label = "Template SID: Ready for pickup", Type = "text", Value = "", Description = "Twilio Content SID (HX…) of the approved 'ready for pickup' template.", SortOrder = 22 },
+        new() { Key = "whatsapp.template.shipped",          Group = "WhatsApp", Label = "Template SID: Shipped",          Type = "text", Value = "", Description = "Twilio Content SID (HX…) of the approved 'shipped' template.", SortOrder = 23 },
+        new() { Key = "whatsapp.template.delivered",        Group = "WhatsApp", Label = "Template SID: Delivered",        Type = "text", Value = "", Description = "Twilio Content SID (HX…) of the approved 'delivered' template.", SortOrder = 24 },
     };
 }

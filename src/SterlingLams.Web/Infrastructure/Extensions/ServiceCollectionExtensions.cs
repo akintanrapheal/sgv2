@@ -37,6 +37,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IManifestTokenService, ManifestTokenService>();
         services.AddScoped<SterlingLams.Web.Services.Social.ISocialPublisher, SterlingLams.Web.Services.Social.NullSocialPublisher>();
 
+        // ─── WhatsApp (Business API via Twilio; provider-agnostic) ────────────
+        // Credentials read at request time from Settings (Admin → Integrations), so entering them
+        // takes effect immediately. Own HttpClient with a short timeout.
+        services.AddHttpClient<IWhatsAppService, WhatsAppService>(c => c.Timeout = TimeSpan.FromSeconds(20));
+
         // ─── Store-level authorization (writes-only) ──────────────────────────
         services.AddScoped<IStoreAccessService, StoreAccessService>();
 

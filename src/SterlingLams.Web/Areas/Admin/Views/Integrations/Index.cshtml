@@ -166,6 +166,90 @@
             </label>
         </section>
 
+        @* ─── WhatsApp ─────────────────────────────────────────────────────── *@
+        <section class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
+            <div>
+                <h2 class="text-sm font-semibold text-neutral-800">WhatsApp</h2>
+                <p class="text-xs text-neutral-400 mt-0.5">Order updates to the customer's WhatsApp via Twilio. Test with the Twilio Sandbox before a production number.</p>
+            </div>
+
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" name="whatsapp.enabled" value="true" @(Model.WaEnabled ? "checked" : "")
+                       class="mt-0.5 rounded border-neutral-300 accent-neutral-900 w-4 h-4" />
+                <div>
+                    <p class="text-sm font-medium text-neutral-800">Enable WhatsApp sending</p>
+                    <p class="text-xs text-neutral-400 mt-0.5">When off, WhatsApp is skipped (order emails still send).</p>
+                </div>
+            </label>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Provider</label>
+                    <select name="whatsapp.provider" class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500">
+                        <option value="twilio" selected="@(Model.WaProvider == "twilio")">Twilio</option>
+                        <option value="termii" selected="@(Model.WaProvider == "termii")">Termii (coming soon)</option>
+                    </select>
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Twilio Account SID</label>
+                    <input type="text" name="whatsapp.twilio.account_sid" value="@Model.WaAccountSid" placeholder="AC…" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <partial name="_SecretField" model="@(("whatsapp.twilio.auth_token", "Twilio Auth Token", "auth token", Model.WaAuthTokenSet))" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">WhatsApp From Number</label>
+                    <input type="text" name="whatsapp.twilio.from" value="@Model.WaFrom" placeholder="+14155238886 (sandbox)" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                </div>
+            </div>
+
+            <div>
+                <p class="text-xs font-medium text-neutral-700 mb-2">Send a WhatsApp when…</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    @foreach (var (key, label, on) in new[] {
+                        ("whatsapp.notify.order_confirmed",  "Order confirmed",   Model.WaNotifyOrderConfirmed),
+                        ("whatsapp.notify.payment_received", "Payment received",  Model.WaNotifyPaymentReceived),
+                        ("whatsapp.notify.ready_for_pickup", "Ready for pickup",  Model.WaNotifyReadyForPickup),
+                        ("whatsapp.notify.shipped",          "Shipped / dispatched", Model.WaNotifyShipped),
+                        ("whatsapp.notify.delivered",        "Delivered",         Model.WaNotifyDelivered),
+                    })
+                    {
+                        <label class="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer">
+                            <input type="checkbox" name="@key" value="true" @(on ? "checked" : "")
+                                   class="rounded border-neutral-300 accent-neutral-900 w-4 h-4" />
+                            @label
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <details class="border-t border-neutral-100 pt-3">
+                <summary class="text-xs font-medium text-neutral-600 cursor-pointer">Production message templates (Phase 2)</summary>
+                <p class="text-xs text-neutral-400 mt-2 mb-3">Paste the approved Twilio Content SIDs (HX…). Leave blank while testing on the sandbox.</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    @foreach (var (key, label, val) in new[] {
+                        ("whatsapp.template.order_confirmed",  "Order confirmed",  Model.WaTplOrderConfirmed),
+                        ("whatsapp.template.payment_received", "Payment received", Model.WaTplPaymentReceived),
+                        ("whatsapp.template.ready_for_pickup", "Ready for pickup", Model.WaTplReadyForPickup),
+                        ("whatsapp.template.shipped",          "Shipped",          Model.WaTplShipped),
+                        ("whatsapp.template.delivered",        "Delivered",        Model.WaTplDelivered),
+                    })
+                    {
+                        <div>
+                            <label class="block text-[11px] font-medium text-neutral-600 mb-1">@label</label>
+                            <input type="text" name="@key" value="@val" placeholder="HX…" autocomplete="off"
+                                   class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                        </div>
+                    }
+                </div>
+            </details>
+        </section>
+
         <div class="flex items-center gap-3">
             <button type="submit" class="bg-neutral-900 text-white text-sm px-6 py-2.5 rounded-sm hover:bg-neutral-700 transition-colors">
                 Save changes
@@ -173,4 +257,52 @@
             <span class="text-xs text-neutral-400">Secret fields left blank keep their current value.</span>
         </div>
     </form>
+
+    @* ─── WhatsApp test send (separate from the Save form) ─────────────────── *@
+    <section class="bg-white rounded-sm border border-neutral-100 p-6 mt-8 space-y-3">
+        <div>
+            <h2 class="text-sm font-semibold text-neutral-800">Send a test WhatsApp</h2>
+            <p class="text-xs text-neutral-400 mt-0.5">
+                Save your credentials above first. On the Twilio Sandbox the recipient must have sent the
+                <span class="font-mono">join &lt;code&gt;</span> message to your sandbox number.
+            </p>
+        </div>
+        @Html.AntiForgeryToken()
+        <div class="flex flex-wrap items-center gap-2">
+            <input id="wa-test-to" type="tel" placeholder="+2348012345678"
+                   class="flex-1 min-w-[220px] border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+            <button id="wa-test-btn" type="button"
+                    class="bg-[#25D366] text-white text-sm px-5 py-2 rounded-sm hover:opacity-90 transition-opacity">
+                Send test
+            </button>
+        </div>
+        <p id="wa-test-result" class="text-xs hidden"></p>
+    </section>
 </div>
+
+@section Scripts {
+<script>
+(function () {
+    var btn = document.getElementById('wa-test-btn');
+    var out = document.getElementById('wa-test-result');
+    var token = document.querySelector('input[name="__RequestVerificationToken"]');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+        var to = document.getElementById('wa-test-to').value.trim();
+        out.className = 'text-xs text-neutral-500';
+        out.textContent = 'Sending…';
+        btn.disabled = true;
+        fetch('@Url.Action("TestWhatsApp", "Integrations", new { area = "Admin" })', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token ? token.value : '' },
+            body: 'toPhone=' + encodeURIComponent(to)
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            out.className = 'text-xs ' + (d.ok ? 'text-emerald-600' : 'text-red-600');
+            out.textContent = (d.ok ? '✓ ' : '✕ ') + (d.message || (d.ok ? 'Sent.' : 'Failed.'));
+        }).catch(function () {
+            out.className = 'text-xs text-red-600'; out.textContent = '✕ Could not reach the server.';
+        }).finally(function () { btn.disabled = false; });
+    });
+}());
+</script>
+}

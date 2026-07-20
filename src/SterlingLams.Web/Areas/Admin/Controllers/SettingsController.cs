@@ -49,7 +49,8 @@ public class SettingsController : AdminBaseController
         // Billing / API-connector settings are owner-only and managed on the full-admin Subscribe page.
         var all = (await _settings.GetAllAsync())
             .Where(s => s.Group != "POS / Pos" && s.Group != "Emails"
-                     && s.Group != "Payments" && s.Group != "SMTP" && s.Group != "Billing").ToList();
+                     && s.Group != "Payments" && s.Group != "SMTP" && s.Group != "Billing"
+                     && s.Group != "WhatsApp").ToList();
         // Granular: a role may be granted only specific settings groups. null = all groups.
         var allowedGroups = await _perms.GetAllowedSettingsGroupsAsync(User);
         if (allowedGroups != null)
