@@ -15,6 +15,13 @@ using SterlingLams.Web.Models.Domain;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ─── Reduce tech fingerprinting ─────────────────────────────────────────────
+// Don't advertise the server software. Kestrel's "Server: Kestrel" header is what stack-detection
+// extensions (Wappalyzer/BuiltWith) read to identify ASP.NET Core — and Render echoes it back to
+// the browser as "x-render-origin-server". Obscurity only: it slows casual/automated fingerprinting,
+// it is NOT a security control on its own.
+builder.WebHost.ConfigureKestrel(o => o.AddServerHeader = false);
+
 // Configurable secret prefixes for the staff backends (StaffPaths:Admin/Inventory/Marketing);
 // unset → current names. Read once here so routing + CSP + staff-path checks all agree.
 SterlingLams.Web.Infrastructure.StaffPaths.Init(builder.Configuration);
@@ -121,6 +128,7 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.LoginPath = "/Account/Login";
     options.LogoutPath = "/Account/Logout";
     options.AccessDeniedPath = "/Account/AccessDenied";
+    options.Cookie.Name = "sg_auth";   // was ".AspNetCore.Identity.Application" (framework giveaway)
     options.Cookie.HttpOnly = true;
     // Require HTTPS for the auth cookie outside Development (plain HTTP localhost has no TLS).
     options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
@@ -172,7 +180,13 @@ builder.Services.AddSession(options =>
     options.IdleTimeout = TimeSpan.FromMinutes(30);
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
+    options.Cookie.Name = "sg_s";           // was ".AspNetCore.Session" — see fingerprinting note above
 });
+
+// Antiforgery cookie carries the framework name by default (".AspNetCore.Antiforgery.<hash>").
+// Only the COOKIE is renamed here — the form field/header names are left at their defaults because
+// ~58 client-side references depend on them; renaming those is a separate, wider change.
+builder.Services.AddAntiforgery(o => o.Cookie.Name = "sg_af");
 
 // ─── Application Services ───────────────────────────────────────────────────
 // Encrypts sensitive site-settings (payment keys, SMTP password) at rest via Data Protection.
