@@ -146,9 +146,14 @@ public class PaystackPaymentService : IPaymentService
     public async Task<bool> ValidateWebhookAsync(string payload, string signature)
     {
         var s = await _creds.PaystackAsync();
+        // Never compare a MAC with an ordinary string comparison: it short-circuits on the first
+        // differing character, leaking how much of a forged signature was correct. Constant-time
+        // compare instead (matches SubscriptionPaymentService / the logistics webhook).
+        if (string.IsNullOrEmpty(s.SecretKey) || string.IsNullOrEmpty(signature)) return false;
         var hash = HMACSHA512.HashData(Encoding.UTF8.GetBytes(s.SecretKey), Encoding.UTF8.GetBytes(payload));
-        var computed = BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
-        return string.Equals(computed, signature, StringComparison.OrdinalIgnoreCase);
+        var computed = Convert.ToHexString(hash).ToLowerInvariant();
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(computed), Encoding.UTF8.GetBytes(signature.ToLowerInvariant()));
     }
 
     // ─── Paystack response DTOs ───────────────────────────────────────────────

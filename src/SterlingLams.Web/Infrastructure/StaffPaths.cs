@@ -28,6 +28,13 @@ public static class StaffPaths
     /// <summary>True when POS has been moved behind a secret prefix (a custom StaffPaths:Pos is set).</summary>
     public static bool PosIsSecret => !Pos.Equals("Pos", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>True when the staff area has been moved behind a secret prefix. Legacy redirects must
+    /// 404 rather than send a Location header containing a secret path — an unauthenticated request
+    /// would otherwise be told exactly where the hidden backend lives.</summary>
+    public static bool AdminIsSecret     => !Admin.Equals("Admin", StringComparison.OrdinalIgnoreCase);
+    public static bool InventoryIsSecret => !Inventory.Equals("Inventory", StringComparison.OrdinalIgnoreCase);
+    public static bool MarketingIsSecret => !Marketing.Equals("Marketing", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Normalises a configured prefix to a single clean path segment (no slashes/spaces).</summary>
     private static string Clean(string? value, string fallback)
     {
