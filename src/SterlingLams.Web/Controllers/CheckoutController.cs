@@ -810,18 +810,6 @@ public class CheckoutController : Controller
             var customerEmail = order.User?.Email
                 ?? await _db.Users.Where(u => u.Id == order.UserId).Select(u => u.Email).FirstOrDefaultAsync();
 
-            string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
-            var rows = string.Join("", order.Items.Select(i => $@"
-                <tr>
-                    <td style=""padding:8px 0;border-bottom:1px solid #f0efed;"">{Enc(i.ProductName)}{(string.IsNullOrWhiteSpace(i.VariantName) ? "" : " — " + Enc(i.VariantName))} &times; {i.Quantity}</td>
-                    <td align=""right"" style=""padding:8px 0;border-bottom:1px solid #f0efed;white-space:nowrap;"">&#8358;{i.LineTotal:N0}</td>
-                </tr>"));
-            var summary = $@"
-                <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""margin:20px 0;font-size:14px;"">
-                    {rows}
-                    <tr><td style=""padding:12px 0 0;font-weight:bold;"">Total</td><td align=""right"" style=""padding:12px 0 0;font-weight:bold;"">&#8358;{order.Total:N0}</td></tr>
-                </table>";
-
             // Customer confirmation — rich WooCommerce-style layout (editable in Email Customizer).
             if (!string.IsNullOrWhiteSpace(customerEmail)
                 && await _settings.GetBoolAsync("notifications.order_confirmed", true))
@@ -902,12 +890,13 @@ public class CheckoutController : Controller
                 var adminEmail = await _settings.GetAsync("notifications.admin_email", "");
                 if (!string.IsNullOrWhiteSpace(adminEmail))
                 {
-                    var body = $@"
-                        <h2 style=""font-size:18px;margin:0 0 16px;"">New order received</h2>
-                        <p>Order <strong>{Enc(order.OrderNumber)}</strong>{(string.IsNullOrWhiteSpace(customerEmail) ? "" : " from " + Enc(customerEmail))}.</p>
-                        {summary}
-                        <p style=""font-size:13px;color:#78716c;"">View it in the admin dashboard under Orders.</p>";
-                    await _email.SendAsync(adminEmail, $"New order {order.OrderNumber} — ₦{order.Total:N0}", body, ct: HttpContext.RequestAborted);
+                    // Rich admin alert — same layout as the customer confirmation (images, colour,
+                    // quantities, billing + shipping, pickup vs delivery). Subject/intro editable in
+                    // the Email Customizer ("New order alert (admin)").
+                    var adminSubjectT = await _settings.GetAsync("email.new_order_admin.subject", "New order {order}");
+                    var adminSubject = adminSubjectT.Replace("{order}", order.OrderNumber) + $" — ₦{order.Total:N0}";
+                    var adminBody = await BuildAdminOrderAlertAsync(order, customerEmail);
+                    await _email.SendAsync(adminEmail, adminSubject, adminBody, ct: HttpContext.RequestAborted);
                 }
             }
         }
@@ -915,6 +904,68 @@ public class CheckoutController : Controller
         {
             _logger.LogError(ex, "Failed sending order emails for order {OrderId}", orderId);
         }
+    }
+
+    // Rich "new order received" admin body: mirrors the customer confirmation (product images, colour,
+    // quantities, billing + shipping, or "Pickup at …" for store pickup). Subject/intro editable in the
+    // Email Customizer ("New order alert (admin)").
+    private async Task<string> BuildAdminOrderAlertAsync(Order order, string? customerEmail)
+    {
+        var baseUrl = (_config["App:BaseUrl"] ?? "").TrimEnd('/');
+        var pids = order.Items.Select(i => i.ProductId).Distinct().ToList();
+        var imgMap = await _db.ProductImages.Where(im => pids.Contains(im.ProductId))
+            .GroupBy(im => im.ProductId)
+            .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
+            .ToDictionaryAsync(x => x.Pid, x => x.Url);
+        string? AbsImg(int pid)
+        {
+            var u = imgMap.GetValueOrDefault(pid);
+            if (string.IsNullOrWhiteSpace(u)) return null;
+            return u.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? u
+                 : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + u.TrimStart('/'));
+        }
+        var items = order.Items.Select(i => new SterlingLams.Web.Services.OrderEmailTemplate.Item(
+            i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId))).ToList();
+
+        var custName = order.User?.FullName ?? order.DeliveryAddress?.FullName ?? "";
+        var a = order.DeliveryAddress;
+        var billing = new List<string> { custName };
+        if (a != null)
+        {
+            billing.Add(a.Line1 + (string.IsNullOrWhiteSpace(a.Line2) ? "" : ", " + a.Line2));
+            billing.Add($"{a.City}, {a.State}".Trim(' ', ','));
+            if (!string.IsNullOrWhiteSpace(a.Phone)) billing.Add(a.Phone);
+        }
+        if (!string.IsNullOrWhiteSpace(customerEmail)) billing.Add(customerEmail!);
+
+        List<string> shipping;
+        string shippingLabel;
+        if (order.FulfillmentType == FulfillmentType.StorePickup)
+        {
+            var store = order.PickupStore?.Name ?? "our store";
+            shipping = new List<string> { custName, "Pickup at " + store };
+            shippingLabel = $"Pickup at {store}";
+        }
+        else
+        {
+            shipping = new List<string> { custName };
+            if (a != null) { shipping.Add(a.Line1 + (string.IsNullOrWhiteSpace(a.Line2) ? "" : ", " + a.Line2)); shipping.Add($"{a.City}, {a.State}".Trim(' ', ',')); }
+            shippingLabel = order.DeliveryFee > 0 ? $"Delivery — ₦{order.DeliveryFee:N0}" : "Delivery";
+        }
+
+        var subjectT = await _settings.GetAsync("email.new_order_admin.subject", "New order {order}");
+        var introT = await _settings.GetAsync("email.new_order_admin.intro",
+            "A new order has come in — full details below. View it in the admin dashboard under Orders.");
+        var heading = subjectT.Replace("{order}", order.OrderNumber);
+        var introHtml = SterlingLams.Web.Services.OrderEmailTemplate.ApplyPlaceholders(
+                introT, "#" + order.OrderNumber, order.CreatedAt, custName)
+            + (string.IsNullOrWhiteSpace(customerEmail) ? ""
+               : $"<br/><span style=\"color:#78716c;font-size:13px;\">From {System.Net.WebUtility.HtmlEncode(customerEmail)}</span>");
+
+        return SterlingLams.Web.Services.OrderEmailTemplate.Build(
+            heading: heading, introHtml: introHtml, orderNumber: order.OrderNumber, orderDate: order.CreatedAt,
+            items: items, subtotal: order.Subtotal, shippingLabel: shippingLabel, total: order.Total,
+            paymentMethod: order.PaymentProvider ?? "—", billingLines: billing, shippingLines: shipping);
     }
 
     /// <summary>Increments the global usage count on the discount code an order used.</summary>

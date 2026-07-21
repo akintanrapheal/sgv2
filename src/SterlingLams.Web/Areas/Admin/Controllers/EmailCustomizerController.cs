@@ -32,6 +32,8 @@ public class EmailCustomizerController : AdminBaseController
         // Branch/staff emails — sent to a store's email (not the customer). Placeholders: {branch}, {order}.
         ("branch_transfer_request", "Transfer request (to branch)", "Send stock to {branch} — order {order}", "Please pack and send the stock below to {branch} so order {order} can be fulfilled."),
         ("branch_dispatch",         "Order dispatch (to branch)",   "Dispatch order {order}",                 "All stock for order {order} is now at your branch — please pack and fulfil it."),
+        // Internal alert to the shop when an online order is placed. Placeholders: {order}, {date}, {name}.
+        ("new_order_admin",         "New order alert (admin)",      "New order {order}",                      "A new order has come in — full details below. View it in the admin dashboard under Orders."),
     };
 
     public async Task<IActionResult> Index(string type = "order_confirmed")
@@ -119,10 +121,11 @@ public class EmailCustomizerController : AdminBaseController
                 <td style=""background:#ec1c8e;border-radius:2px;""><a href=""{href}"" style=""display:inline-block;padding:12px 28px;color:#fff;font-size:13px;letter-spacing:1px;text-transform:uppercase;text-decoration:none;"">{label}</a></td>
             </tr></table>";
 
-        if (type == "order_confirmed")
+        if (type is "order_confirmed" or "new_order_admin")
         {
             var sampleDate = DateTime.UtcNow;
-            var introHtml = OrderEmailTemplate.ApplyPlaceholders(intro, "#62175", sampleDate, "Zino Idoro");
+            var introHtml = OrderEmailTemplate.ApplyPlaceholders(intro, "#62175", sampleDate, "Zino Idoro")
+                + (type == "new_order_admin" ? "<br/><span style=\"color:#78716c;font-size:13px;\">From zinoidoro@gmail.com</span>" : "");
             var body0 = OrderEmailTemplate.Build(
                 heading: subject,
                 introHtml: introHtml,
@@ -184,7 +187,8 @@ public class EmailCustomizerController : AdminBaseController
                 : $@"<h2 style=""font-size:18px;margin:0 0 12px;"">Order 62175 ready to dispatch</h2>
                      <p style=""color:#44403c;"">{E(introText)}</p>
                      <div style=""margin:14px 0;"">{items}</div>
-                     <p style=""color:#57534e;font-size:13px;"">Deliver to Lekki, Lagos.</p>";
+                     {OrderEmailTemplate.AddressBlock("Shipping address", new[] { "Zino Idoro", "Victoria crest 3 estate, Chevron", "Lekki, Lagos", "08163866044" })}
+                     {OrderEmailTemplate.AddressBlock("Customer", new[] { "Zino Idoro", "08163866044", "zinoidoro@gmail.com" })}";
             return (Fill(subject), bodyBr);
         }
 

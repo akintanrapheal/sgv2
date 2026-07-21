@@ -35,6 +35,18 @@ public static class OrderEmailTemplate
         return $@"<img src=""{src}"" width=""44"" height=""44"" alt="""" style=""width:44px;height:44px;object-fit:cover;border:1px solid {Line};border-radius:2px;vertical-align:middle;margin-right:10px;"" />";
     }
 
+    /// <summary>A small labelled address/detail block (used by the branch dispatch email). Blank
+    /// lines are dropped; returns "" when there's nothing to show.</summary>
+    public static string AddressBlock(string label, IEnumerable<string?> lines)
+    {
+        var body = string.Join("<br/>", lines
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .Select(l => System.Net.WebUtility.HtmlEncode(l!.Trim())));
+        if (body.Length == 0) return "";
+        return $@"<div style=""margin:12px 0;font-size:13px;color:#44403c;line-height:1.5;"">
+            <div style=""text-transform:uppercase;letter-spacing:.5px;font-size:11px;color:#9ca3af;margin-bottom:2px;"">{System.Net.WebUtility.HtmlEncode(label)}</div>{body}</div>";
+    }
+
     public static string Build(
         string heading,
         string introHtml,

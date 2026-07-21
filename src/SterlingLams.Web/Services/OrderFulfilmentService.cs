@@ -506,13 +506,24 @@ public class OrderFulfilmentService : IOrderFulfilmentService
             i.VariantName == null ? i.ProductName : $"{i.ProductName} ({i.VariantName})",
             i.Quantity,
             HttpImg(dimgs.GetValueOrDefault(i.ProductId))));
-        var where = order.FulfillmentType == FulfillmentType.StorePickup
-            ? $"Customer pickup at {System.Net.WebUtility.HtmlEncode(branch)}."
-            : $"Deliver to {System.Net.WebUtility.HtmlEncode((order.DeliveryAddress?.City + ", " + order.DeliveryAddress?.State).Trim(' ', ','))}.";
+        var custEmail = await _db.Users.Where(u => u.Id == order.UserId).Select(u => u.Email).FirstOrDefaultAsync();
+        var addr = order.DeliveryAddress;
+        var isPickup = order.FulfillmentType == FulfillmentType.StorePickup;
+        var shipLines = isPickup
+            ? new List<string?> { "Customer pickup at " + branch }
+            : new List<string?>
+            {
+                addr?.FullName,
+                addr == null ? null : addr.Line1 + (string.IsNullOrWhiteSpace(addr.Line2) ? "" : ", " + addr.Line2),
+                addr == null ? null : $"{addr.City}, {addr.State}".Trim(' ', ','),
+                addr?.Phone,
+            };
+        var custLines = new List<string?> { addr?.FullName, addr?.Phone, custEmail };
         var html = $"<h2 style=\"font-size:18px;margin:0 0 12px;\">Order {System.Net.WebUtility.HtmlEncode(order.OrderNumber)} ready to dispatch</h2>"
             + $"<p style=\"color:#44403c;\">{System.Net.WebUtility.HtmlEncode(Fill(introT))}</p>"
             + $"<div style=\"margin:14px 0;\">{ItemRows(items)}</div>"
-            + $"<p style=\"color:#57534e;font-size:13px;\">{where}</p>";
+            + OrderEmailTemplate.AddressBlock(isPickup ? "Pickup" : "Shipping address", shipLines)
+            + OrderEmailTemplate.AddressBlock("Customer", custLines);
         await SendBranchAsync(fulfilStore.Email, Fill(subjT), html);
     }
 
