@@ -168,12 +168,16 @@ public class WhatsAppService : IWhatsAppService
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var order = await db.Orders
                 .Include(o => o.User).Include(o => o.Customer).Include(o => o.PickupStore)
+                .Include(o => o.DeliveryAddress)
                 .FirstOrDefaultAsync(o => o.Id == orderId, ct);
             if (order == null || !order.WhatsAppOptIn) return; // customer opted out at checkout
 
             // POS: the buyer is Order.Customer (Order.User is the cashier). Online: the buyer is Order.User.
             var buyer = order.Channel == OrderChannel.Pos ? order.Customer : order.User;
-            var to = NormalizePhone(buyer?.PhoneNumber);
+            // Online shoppers usually leave their profile phone blank and enter their number on the
+            // delivery address instead — fall back to that, or the message never reaches them.
+            var phone = string.IsNullOrWhiteSpace(buyer?.PhoneNumber) ? order.DeliveryAddress?.Phone : buyer!.PhoneNumber;
+            var to = NormalizePhone(phone);
             if (to.Length < 8) return; // no usable phone → nothing to send (email still covers them)
 
             var name  = string.IsNullOrWhiteSpace(buyer?.FirstName) ? "there" : buyer!.FirstName.Trim();
