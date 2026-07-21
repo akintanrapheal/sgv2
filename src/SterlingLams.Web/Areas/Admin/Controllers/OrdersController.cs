@@ -73,7 +73,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     })
                     .ToListAsync<object>();
             }
-            return Json(new { latestTicks, orders });
+            // Return the cursor as a STRING: DateTime.Ticks (~6.4e17) exceeds JS's safe integer range
+            // (~9e15), so a JSON number would round-trip lossily and make every poll think the newest
+            // order is "new" — dinging forever. A string preserves it exactly (the client only stores
+            // and echoes it, never does math on it).
+            return Json(new { latestTicks = latestTicks.ToString(), orders });
         }
 
         public async Task<IActionResult> Index(string status = "", string q = "", string channel = "",
