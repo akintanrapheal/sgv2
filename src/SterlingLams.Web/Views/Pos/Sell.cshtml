@@ -104,6 +104,15 @@
                 <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                 Stock Lookup
             </button>
+            <button type="button" id="menu-sendstock-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M5 8h14M5 8a2 2 0 100-4h14a2 2 0 100 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
+                Send Stock
+            </button>
+            <button type="button" id="menu-receivestock-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
+                Receive Stock
+                <span id="receivestock-badge" class="hidden ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-brand-500 text-white text-[10px] leading-[18px] text-center font-semibold"></span>
+            </button>
         </nav>
         <div class="border-t border-neutral-100 p-2 flex-shrink-0">
             <form asp-controller="Pos" asp-action="Logout" method="post">
@@ -669,6 +678,51 @@
             <input id="pickup-code" type="text" autocomplete="off" placeholder="Scan or enter the pickup QR code…"
                    class="w-full border border-neutral-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-brand-500" />
             <div id="pickup-result" class="mt-4"></div>
+        </div>
+    </div>
+</div>
+
+@* ── Send stock (cashier → creates a transfer request, admin approves, cashier marks sent) ── *@
+<div id="till-sendstock" class="hidden fixed inset-0 z-50 bg-white flex flex-col">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 flex-shrink-0">
+        <div><p class="text-xs text-neutral-400">POS</p><h3 class="text-lg font-semibold text-neutral-900 leading-tight">Send stock</h3></div>
+        <button type="button" id="sendstock-close" class="text-neutral-400 hover:text-neutral-700"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></button>
+    </div>
+    <div class="flex-1 overflow-y-auto">
+        <div class="max-w-xl mx-auto px-6 py-5 space-y-4">
+            <div>
+                <label class="block text-xs font-medium text-neutral-500 mb-1 uppercase tracking-wide">Send to branch</label>
+                <select id="sendstock-dest" class="w-full border border-neutral-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-brand-500"></select>
+            </div>
+            <div class="relative">
+                <label class="block text-xs font-medium text-neutral-500 mb-1 uppercase tracking-wide">Add product</label>
+                <input id="sendstock-search" type="text" autocomplete="off" placeholder="Search name / SKU, or scan…" class="w-full border border-neutral-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-brand-500" />
+                <div id="sendstock-results" class="hidden absolute z-10 left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-lg shadow-lg max-h-60 overflow-y-auto"></div>
+            </div>
+            <div>
+                <p class="text-xs font-medium text-neutral-500 mb-2 uppercase tracking-wide">Items to send</p>
+                <div id="sendstock-basket" class="space-y-2"><p class="text-xs text-neutral-400 py-3 text-center">No items yet — search above.</p></div>
+            </div>
+            <button type="button" id="sendstock-submit" class="w-full bg-brand-500 text-white text-sm font-medium py-3 rounded-lg hover:bg-brand-600 disabled:opacity-40" disabled>Request transfer</button>
+            <p id="sendstock-msg" class="text-xs text-center h-4"></p>
+
+            <div class="pt-4 border-t border-neutral-100">
+                <p class="text-xs font-medium text-neutral-500 mb-2 uppercase tracking-wide">My transfers out</p>
+                <div id="sendstock-outgoing" class="space-y-2"><p class="text-xs text-neutral-400 py-2 text-center">None.</p></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@* ── Receive stock (destination cashier confirms an in-transit transfer arrived) ── *@
+<div id="till-receivestock" class="hidden fixed inset-0 z-50 bg-white flex flex-col">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 flex-shrink-0">
+        <div><p class="text-xs text-neutral-400">POS</p><h3 class="text-lg font-semibold text-neutral-900 leading-tight">Receive stock</h3></div>
+        <button type="button" id="receivestock-close" class="text-neutral-400 hover:text-neutral-700"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></button>
+    </div>
+    <div class="flex-1 overflow-y-auto">
+        <div class="max-w-xl mx-auto px-6 py-5">
+            <div id="receivestock-list" class="space-y-3"><p class="text-sm text-neutral-400 py-8 text-center">No incoming transfers.</p></div>
         </div>
     </div>
 </div>
@@ -2138,6 +2192,106 @@
             else { btn.disabled = false; btn.textContent = 'Confirm collected'; result.insertAdjacentHTML('afterbegin', `<p class="text-center text-red-500 text-sm mb-2">${esc(d.message)}</p>`); }
         } catch { btn.disabled = false; btn.textContent = 'Confirm collected'; }
     }
+}());
+
+// ── Stock transfers: Send (request + mark-sent) & Receive ────────────────────
+(function () {
+    var sendPanel = document.getElementById('till-sendstock');
+    var recvPanel = document.getElementById('till-receivestock');
+    if (!sendPanel || !recvPanel) return;
+    var token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+    var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+    var post = function (url, body) { return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token }, body: JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }); }); };
+    var get = function (url) { return fetch(url, { headers: { 'X-Requested-With': 'fetch' } }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }); };
+
+    var destSel = document.getElementById('sendstock-dest');
+    var searchIn = document.getElementById('sendstock-search');
+    var resultsBox = document.getElementById('sendstock-results');
+    var basketBox = document.getElementById('sendstock-basket');
+    var submitBtn = document.getElementById('sendstock-submit');
+    var sendMsg = document.getElementById('sendstock-msg');
+    var outgoingBox = document.getElementById('sendstock-outgoing');
+    var recvList = document.getElementById('receivestock-list');
+    var basket = [], lastResults = [], branchesLoaded = false;
+
+    function badge(n) { var b = document.getElementById('receivestock-badge'); if (!b) return; if (n > 0) { b.textContent = n; b.classList.remove('hidden'); } else b.classList.add('hidden'); }
+    function loadBranches() {
+        if (branchesLoaded) return Promise.resolve();
+        return get('/Pos/TransferMeta').then(function (d) { branchesLoaded = true; destSel.innerHTML = '<option value="">— Select branch —</option>' + ((d && d.branches) || []).map(function (b) { return '<option value="' + b.id + '">' + esc(b.name) + '</option>'; }).join(''); });
+    }
+    function renderBasket() {
+        basketBox.innerHTML = basket.length ? basket.map(function (it, i) {
+            return '<div class="flex items-center gap-2 border border-neutral-200 rounded-lg px-3 py-2"><div class="flex-1 min-w-0"><p class="text-sm text-neutral-800 truncate">' + esc(it.name) + '</p><p class="text-[11px] text-neutral-400">' + it.available + ' available</p></div>'
+                + '<button type="button" data-dec="' + i + '" class="w-7 h-7 rounded border border-neutral-200 text-neutral-600">−</button><span class="w-8 text-center text-sm">' + it.qty + '</span>'
+                + '<button type="button" data-inc="' + i + '" class="w-7 h-7 rounded border border-neutral-200 text-neutral-600">+</button>'
+                + '<button type="button" data-rm="' + i + '" class="ml-1 text-neutral-300 hover:text-red-500">✕</button></div>';
+        }).join('') : '<p class="text-xs text-neutral-400 py-3 text-center">No items yet — search above.</p>';
+        submitBtn.disabled = !(basket.length && destSel.value);
+    }
+    basketBox.addEventListener('click', function (e) {
+        var inc = e.target.closest('[data-inc]'), dec = e.target.closest('[data-dec]'), rm = e.target.closest('[data-rm]');
+        if (inc) { var i = +inc.dataset.inc; if (basket[i].qty < basket[i].available) basket[i].qty++; }
+        else if (dec) { var j = +dec.dataset.dec; if (basket[j].qty > 1) basket[j].qty--; }
+        else if (rm) { basket.splice(+rm.dataset.rm, 1); } else return;
+        renderBasket();
+    });
+    destSel.addEventListener('change', renderBasket);
+    var sdeb; searchIn.addEventListener('input', function () { clearTimeout(sdeb); sdeb = setTimeout(searchProducts, 250); });
+    function searchProducts() {
+        var q = searchIn.value.trim(); if (!q) { resultsBox.classList.add('hidden'); return; }
+        get('/Pos/TransferSearch?q=' + encodeURIComponent(q)).then(function (rows) {
+            lastResults = rows || [];
+            resultsBox.innerHTML = lastResults.length ? lastResults.map(function (r, i) { return '<button type="button" data-add="' + i + '" class="w-full text-left px-3 py-2 hover:bg-neutral-50 border-b border-neutral-50"><span class="text-sm text-neutral-800">' + esc(r.name) + '</span> <span class="text-[11px] text-neutral-400">· ' + r.available + ' avail</span></button>'; }).join('') : '<p class="px-3 py-2 text-xs text-neutral-400">No products with stock here.</p>';
+            resultsBox.classList.remove('hidden');
+        });
+    }
+    resultsBox.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-add]'); if (!btn) return;
+        var r = lastResults[+btn.dataset.add]; if (!r) return;
+        var ex = basket.find(function (x) { return x.productId === r.id; });
+        if (ex) { if (ex.qty < ex.available) ex.qty++; } else basket.push({ productId: r.id, name: r.name, available: r.available, qty: 1 });
+        searchIn.value = ''; resultsBox.classList.add('hidden'); renderBasket();
+    });
+    submitBtn.addEventListener('click', function () {
+        if (!basket.length || !destSel.value) return;
+        submitBtn.disabled = true; sendMsg.className = 'text-xs text-center h-4 text-neutral-500'; sendMsg.textContent = 'Sending…';
+        post('/Pos/TransferRequest', { toStoreId: +destSel.value, items: basket.map(function (b) { return { productId: b.productId, qty: b.qty }; }) }).then(function (d) {
+            if (d.success) { sendMsg.className = 'text-xs text-center h-4 text-emerald-600'; sendMsg.textContent = '✓ Request ' + (d.number || '') + ' sent for approval.'; basket = []; renderBasket(); loadLists(); }
+            else { sendMsg.className = 'text-xs text-center h-4 text-red-600'; sendMsg.textContent = d.message || 'Failed.'; submitBtn.disabled = false; }
+        });
+    });
+    outgoingBox.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-dispatch]'); if (!btn) return;
+        if (!confirm('Mark this transfer as sent? Stock leaves this branch.')) return;
+        btn.disabled = true; btn.textContent = 'Sending…';
+        post('/Pos/TransferDispatch', { id: +btn.dataset.dispatch }).then(function (d) { if (!d.success) alert(d.message || 'Could not send.'); loadLists(); });
+    });
+    recvList.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-receive]'); if (!btn) return;
+        if (!confirm('Confirm you received these items? Stock is added to this branch.')) return;
+        btn.disabled = true; btn.textContent = 'Receiving…';
+        post('/Pos/TransferReceive', { id: +btn.dataset.receive }).then(function (d) { if (!d.success) alert(d.message || 'Could not receive.'); loadLists(); });
+    });
+    function loadLists() {
+        return get('/Pos/TransfersList').then(function (d) {
+            var out = (d && d.outgoing) || [], inc = (d && d.incoming) || [];
+            badge(inc.length);
+            outgoingBox.innerHTML = out.length ? out.map(function (t) {
+                var items = t.items.map(function (i) { return esc(i.name) + ' ×' + i.qty; }).join(', ');
+                var b = t.status === 'PendingApproval' ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Pending approval</span>' : t.status === 'Approved' ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">Approved</span>' : '<span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">In transit</span>';
+                return '<div class="border border-neutral-200 rounded-lg px-3 py-2"><div class="flex items-center justify-between gap-2 mb-1"><span class="text-xs font-medium text-neutral-700">' + esc(t.number) + ' → ' + esc(t.toStore) + '</span>' + b + '</div><p class="text-[11px] text-neutral-500">' + items + '</p>' + (t.canDispatch ? '<button type="button" data-dispatch="' + t.id + '" class="mt-2 w-full bg-neutral-900 text-white text-xs py-2 rounded-lg hover:bg-black">Mark as sent</button>' : '') + '</div>';
+            }).join('') : '<p class="text-xs text-neutral-400 py-2 text-center">None.</p>';
+            recvList.innerHTML = inc.length ? inc.map(function (t) {
+                var items = t.items.map(function (i) { return esc(i.name) + ' ×' + i.qty; }).join(', ');
+                return '<div class="border border-neutral-200 rounded-lg px-4 py-3"><div class="flex items-center justify-between gap-2 mb-1"><span class="text-sm font-medium text-neutral-800">' + esc(t.number) + '</span><span class="text-[11px] text-neutral-400">from ' + esc(t.fromStore) + '</span></div><p class="text-xs text-neutral-500 mb-2">' + items + '</p><button type="button" data-receive="' + t.id + '" class="w-full bg-emerald-600 text-white text-sm py-2 rounded-lg hover:bg-emerald-700">Receive into this branch</button></div>';
+            }).join('') : '<p class="text-sm text-neutral-400 py-8 text-center">No incoming transfers.</p>';
+        });
+    }
+    document.getElementById('menu-sendstock-btn').addEventListener('click', function () { sendPanel.classList.remove('hidden'); loadBranches(); renderBasket(); loadLists(); });
+    document.getElementById('sendstock-close').addEventListener('click', function () { sendPanel.classList.add('hidden'); });
+    document.getElementById('menu-receivestock-btn').addEventListener('click', function () { recvPanel.classList.remove('hidden'); loadLists(); });
+    document.getElementById('receivestock-close').addEventListener('click', function () { recvPanel.classList.add('hidden'); });
+    loadLists(); setInterval(loadLists, 60000);   // keep the "receive" badge fresh
 }());
 </script>
 }

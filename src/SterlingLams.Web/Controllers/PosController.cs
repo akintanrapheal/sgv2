@@ -29,6 +29,7 @@ public class PosController : Controller
     private readonly SterlingLams.Web.Services.IEmailService _email;
     private readonly SterlingLams.Web.Services.IWhatsAppService _whatsapp;
     private readonly SterlingLams.Web.Services.IOrderNumberService _orderNumbers;
+    private readonly SterlingLams.Web.Services.ITransferWorkflowService _transfers;
 
     public PosController(ApplicationDbContext db, IStockService stock,
         SignInManager<ApplicationUser> signIn, IPasswordHasher<ApplicationUser> hasher,
@@ -39,7 +40,8 @@ public class PosController : Controller
         SterlingLams.Web.Services.ISettingsService settings,
         SterlingLams.Web.Services.IEmailService email,
         SterlingLams.Web.Services.IWhatsAppService whatsapp,
-        SterlingLams.Web.Services.IOrderNumberService orderNumbers)
+        SterlingLams.Web.Services.IOrderNumberService orderNumbers,
+        SterlingLams.Web.Services.ITransferWorkflowService transfers)
     {
         _db = db;
         _stock = stock;
@@ -53,6 +55,7 @@ public class PosController : Controller
         _email = email;
         _whatsapp = whatsapp;
         _orderNumbers = orderNumbers;
+        _transfers = transfers;
     }
 
     // POS card/receipt thumbnail: rewrite a Cloudinary upload URL to a small, cacheable variant so
@@ -264,6 +267,124 @@ public class PosController : Controller
         });
         await _db.SaveChangesAsync();
         try { await _audit.LogAsync("CashMovement", "TillSession", session.Id.ToString(), $"Cash {(isIn ? "in" : "out")} ₦{amount:N0} at {register.Name}{(string.IsNullOrWhiteSpace(req.Reason) ? "" : $" — {req.Reason!.Trim()}")}"); } catch { }
+        return Json(new { success = true });
+    }
+
+    // ── Stock transfers (cashier: send + dispatch + receive; admin APPROVES in the Inventory backend) ──
+    // Flow: cashier Send → PendingApproval → admin Approve → cashier Dispatch (mark sent) → destination cashier Receive.
+
+    /// <summary>Branches a cashier can send stock to (all other active stores).</summary>
+    [Authorize, HttpGet]
+    public async Task<IActionResult> TransferMeta()
+    {
+        var reg = await BoundRegisterAsync();
+        if (reg == null) return Json(new { ok = false });
+        var branches = await _db.Stores.Where(s => s.IsActive && s.Id != reg.StoreId)
+            .OrderBy(s => s.Name).Select(s => new { id = s.Id, name = s.Name }).ToListAsync();
+        return Json(new { ok = true, myStore = reg.Store != null ? reg.Store.Name : "", branches });
+    }
+
+    /// <summary>Products with transferable (pool) stock at the cashier's branch — for the Send screen.</summary>
+    [Authorize, HttpGet]
+    public async Task<IActionResult> TransferSearch(string? q)
+    {
+        var reg = await BoundRegisterAsync();
+        if (reg == null) return Json(Array.Empty<object>());
+        var term = (q ?? "").Trim().ToLower();   // case-insensitive (Postgres LIKE is case-sensitive)
+        var rows = await _db.StoreInventories
+            .Where(si => si.StoreId == reg.StoreId && si.ProductVariantId == null
+                      && si.QuantityOnHand - si.QuantityReserved > 0)
+            .Join(_db.Products.Where(p => p.IsActive && (term == "" || p.Name.ToLower().Contains(term) || (p.Sku != null && p.Sku.ToLower().Contains(term)))),
+                  si => si.ProductId, p => p.Id,
+                  (si, p) => new { id = p.Id, name = p.Name, sku = p.Sku, available = si.QuantityOnHand - si.QuantityReserved })
+            .OrderBy(x => x.name).Take(25).ToListAsync();
+        return Json(rows);
+    }
+
+    public class PosTransferLine { public int ProductId { get; set; } public int Qty { get; set; } }
+    public class PosTransferRequestDto { public int ToStoreId { get; set; } public List<PosTransferLine> Items { get; set; } = new(); }
+    public class PosTransferIdDto { public int Id { get; set; } }
+
+    /// <summary>Cashier creates a transfer request FROM their branch → lands PendingApproval for the admin.</summary>
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> TransferRequest([FromBody] PosTransferRequestDto req)
+    {
+        var reg = await BoundRegisterAsync();
+        if (reg == null) return Json(new { success = false, message = "This POS isn't set up. Pick a register." });
+        if (req?.Items == null || req.Items.Count(i => i.Qty > 0) == 0) return Json(new { success = false, message = "Add at least one item." });
+        if (req.ToStoreId == reg.StoreId || req.ToStoreId <= 0) return Json(new { success = false, message = "Pick a destination branch." });
+
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var (ok, error, id) = await _transfers.RequestAsync(new SterlingLams.Web.Services.TransferRequest
+        {
+            FromStoreId = reg.StoreId,
+            ToStoreId = req.ToStoreId,
+            Note = "Requested from POS",
+            Items = req.Items.Where(i => i.Qty > 0)
+                .Select(i => new SterlingLams.Web.Services.TransferLine { ProductId = i.ProductId, Quantity = i.Qty }).ToList()
+        }, userId);
+        if (!ok) return Json(new { success = false, message = error ?? "Could not create the transfer." });
+        var number = await _db.StockTransfers.Where(t => t.Id == id).Select(t => t.TransferNumber).FirstOrDefaultAsync();
+        try { await _audit.LogAsync("Create", "Transfer", id != null ? id.ToString() : null, $"POS transfer request {number} — {(reg.Store != null ? reg.Store.Name : "")} → store #{req.ToStoreId} ({req.Items.Count(i => i.Qty > 0)} line(s))"); } catch { }
+        return Json(new { success = true, number });
+    }
+
+    /// <summary>Outgoing (from my branch) + incoming (to my branch, in transit) transfers for the POS screens.</summary>
+    [Authorize, HttpGet]
+    public async Task<IActionResult> TransfersList()
+    {
+        var reg = await BoundRegisterAsync();
+        if (reg == null) return Json(new { outgoing = Array.Empty<object>(), incoming = Array.Empty<object>() });
+        var active = new[] { TransferStatus.PendingApproval, TransferStatus.Approved, TransferStatus.InTransit };
+
+        var outgoing = await _db.StockTransfers
+            .Where(t => t.FromStoreId == reg.StoreId && active.Contains(t.Status))
+            .OrderByDescending(t => t.Id).Take(20)
+            .Select(t => new {
+                id = t.Id, number = t.TransferNumber, status = t.Status.ToString(),
+                toStore = t.ToStore!.Name,
+                canDispatch = t.Status == TransferStatus.Approved,
+                items = t.Items.Select(i => new { name = i.ProductName + (i.VariantName == null ? "" : " (" + i.VariantName + ")"), qty = i.ApprovedQty ?? i.RequestedQty }).ToList()
+            }).ToListAsync();
+
+        var incoming = await _db.StockTransfers
+            .Where(t => t.ToStoreId == reg.StoreId && t.Status == TransferStatus.InTransit)
+            .OrderByDescending(t => t.Id).Take(20)
+            .Select(t => new {
+                id = t.Id, number = t.TransferNumber, fromStore = t.FromStore!.Name,
+                items = t.Items.Select(i => new { name = i.ProductName + (i.VariantName == null ? "" : " (" + i.VariantName + ")"), qty = i.DispatchedQty ?? 0 }).ToList()
+            }).ToListAsync();
+
+        return Json(new { outgoing, incoming });
+    }
+
+    /// <summary>Cashier marks an approved outgoing transfer as sent (dispatches the approved quantities).</summary>
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> TransferDispatch([FromBody] PosTransferIdDto req)
+    {
+        var reg = await BoundRegisterAsync();
+        if (reg == null) return Json(new { success = false, message = "This POS isn't set up." });
+        var t = await _db.StockTransfers.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == req.Id);
+        if (t == null || t.FromStoreId != reg.StoreId) return Json(new { success = false, message = "Transfer not found for this branch." });
+        var items = t.Items.Select(i => new SterlingLams.Web.Services.ItemQtyDto(i.Id, i.ApprovedQty ?? 0)).ToList();
+        var res = await _transfers.DispatchAsync(t.Id, items, null, "POS", null, User.FindFirstValue(ClaimTypes.NameIdentifier));
+        if (!res.Success) return Json(new { success = false, message = res.Error });
+        try { await _audit.LogAsync("Dispatch", "Transfer", t.Id.ToString(), $"POS dispatched {t.TransferNumber}"); } catch { }
+        return Json(new { success = true });
+    }
+
+    /// <summary>Cashier receives an incoming in-transit transfer (all dispatched units as received).</summary>
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> TransferReceive([FromBody] PosTransferIdDto req)
+    {
+        var reg = await BoundRegisterAsync();
+        if (reg == null) return Json(new { success = false, message = "This POS isn't set up." });
+        var t = await _db.StockTransfers.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == req.Id);
+        if (t == null || t.ToStoreId != reg.StoreId) return Json(new { success = false, message = "Transfer not found for this branch." });
+        var lines = t.Items.Select(i => new SterlingLams.Web.Services.ReceiveLineDto(i.Id, i.PendingQty, 0, 0)).ToList();
+        var res = await _transfers.ReceiveAsync(t.Id, lines, null, User.FindFirstValue(ClaimTypes.NameIdentifier));
+        if (!res.Success) return Json(new { success = false, message = res.Error });
+        try { await _audit.LogAsync("Receive", "Transfer", t.Id.ToString(), $"POS received {t.TransferNumber}"); } catch { }
         return Json(new { success = true });
     }
 
