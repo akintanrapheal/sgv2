@@ -21,16 +21,6 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             _db = db;
         }
 
-        // TEMPORARY — one-off Sentry verification. Owner/full-access only (404s for anyone else).
-        // Throws an unhandled exception so Sentry captures a real event from this server. REMOVE once
-        // the event is confirmed in the Sentry dashboard.
-        [HttpGet]
-        public IActionResult SentryTest()
-        {
-            if (!AdminSections.IsFullAccess(User)) return NotFound();
-            throw new Exception("Sentry verification — deliberate test error at " + DateTime.UtcNow.ToString("O"));
-        }
-
         public async Task<IActionResult> Index(int days = 30)
         {
             ViewData["Title"] = "Dashboard";
