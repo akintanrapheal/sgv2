@@ -33,8 +33,9 @@ public class TransferManifestController : Controller
         var transfer = await _db.StockTransfers
             .Include(t => t.FromStore).Include(t => t.ToStore).Include(t => t.Items)
             .FirstOrDefaultAsync(t => t.Id == transferId);
-        // Only approved transfers have a manifest; a bad/expired token or unapproved transfer 404s.
-        if (transfer == null || transfer.ApprovedAt == null) return NotFound();
+        // A bad/expired token 404s. The manifest renders from request time onward (it doubles as the
+        // POS pick-and-pack sheet before approval); quantities show as requested until approved.
+        if (transfer == null) return NotFound();
 
         var productIds = transfer.Items.Select(i => i.ProductId).Distinct().ToList();
         var imgRows = await _db.ProductImages

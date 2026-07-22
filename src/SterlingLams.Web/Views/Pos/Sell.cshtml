@@ -113,6 +113,10 @@
                 Receive Stock
                 <span id="receivestock-badge" class="hidden ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-brand-500 text-white text-[10px] leading-[18px] text-center font-semibold"></span>
             </button>
+            <button type="button" id="menu-transferhistory-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Transfer History
+            </button>
         </nav>
         <div class="border-t border-neutral-100 p-2 flex-shrink-0">
             <form asp-controller="Pos" asp-action="Logout" method="post">
@@ -714,7 +718,7 @@
     </div>
 </div>
 
-@* ── Receive stock (destination cashier confirms an in-transit transfer arrived) ── *@
+@* ── Receive stock (destination cashier picks an in-transit transfer to check in) ── *@
 <div id="till-receivestock" class="hidden fixed inset-0 z-50 bg-white flex flex-col">
     <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 flex-shrink-0">
         <div><p class="text-xs text-neutral-400">POS</p><h3 class="text-lg font-semibold text-neutral-900 leading-tight">Receive stock</h3></div>
@@ -723,6 +727,44 @@
     <div class="flex-1 overflow-y-auto">
         <div class="max-w-xl mx-auto px-6 py-5">
             <div id="receivestock-list" class="space-y-3"><p class="text-sm text-neutral-400 py-8 text-center">No incoming transfers.</p></div>
+        </div>
+    </div>
+</div>
+
+@* ── Receive detail: scan items in, edit counts, add a reason if short ── *@
+<div id="till-receive-detail" class="hidden fixed inset-0 z-[60] bg-white flex flex-col">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 flex-shrink-0">
+        <button type="button" id="recvdetail-back" class="flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-800"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7"/></svg>Back</button>
+        <div class="text-center"><p class="text-xs text-neutral-400" id="recvdetail-num">—</p><h3 class="text-base font-semibold text-neutral-900 leading-tight" id="recvdetail-from">Check in items</h3></div>
+        <span class="w-12"></span>
+    </div>
+    <div class="flex-1 overflow-y-auto">
+        <div class="max-w-xl mx-auto px-6 py-5 space-y-4">
+            <div>
+                <label class="block text-xs font-medium text-neutral-500 mb-1 uppercase tracking-wide">Scan a barcode to tick items off</label>
+                <input id="recvdetail-scan" type="text" autocomplete="off" placeholder="Scan or type a barcode…" class="w-full border border-neutral-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-brand-500" />
+                <p id="recvdetail-scanmsg" class="text-xs text-center h-4 mt-1"></p>
+            </div>
+            <div id="recvdetail-lines" class="space-y-2"></div>
+            <div>
+                <label class="block text-xs font-medium text-neutral-500 mb-1 uppercase tracking-wide">Reason (required if counts don't match)</label>
+                <textarea id="recvdetail-notes" rows="2" placeholder="e.g. 1 unit arrived damaged / short-shipped" class="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500"></textarea>
+            </div>
+            <button type="button" id="recvdetail-submit" class="w-full bg-emerald-600 text-white text-sm font-medium py-3 rounded-lg hover:bg-emerald-700 disabled:opacity-40">Confirm receipt into this branch</button>
+            <p id="recvdetail-msg" class="text-xs text-center h-4"></p>
+        </div>
+    </div>
+</div>
+
+@* ── Transfer history (past transfers touching this branch, both directions) ── *@
+<div id="till-transferhistory" class="hidden fixed inset-0 z-50 bg-white flex flex-col">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 flex-shrink-0">
+        <div><p class="text-xs text-neutral-400">POS</p><h3 class="text-lg font-semibold text-neutral-900 leading-tight">Transfer history</h3></div>
+        <button type="button" id="transferhistory-close" class="text-neutral-400 hover:text-neutral-700"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></button>
+    </div>
+    <div class="flex-1 overflow-y-auto">
+        <div class="max-w-xl mx-auto px-6 py-5">
+            <div id="transferhistory-list" class="space-y-2"><p class="text-sm text-neutral-400 py-8 text-center">Loading…</p></div>
         </div>
     </div>
 </div>
@@ -2194,7 +2236,7 @@
     }
 }());
 
-// ── Stock transfers: Send (request + mark-sent) & Receive ────────────────────
+// ── Stock transfers: Send (request + mark-sent + print), Receive (scan/edit/reason), History ──
 (function () {
     var sendPanel = document.getElementById('till-sendstock');
     var recvPanel = document.getElementById('till-receivestock');
@@ -2203,6 +2245,11 @@
     var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
     var post = function (url, body) { return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token }, body: JSON.stringify(body) }).then(function (r) { return r.json().catch(function () { return {}; }); }); };
     var get = function (url) { return fetch(url, { headers: { 'X-Requested-With': 'fetch' } }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }); };
+    // Small square product thumbnail (or a placeholder box) so the cashier eyeballs the item, not just its name.
+    var thumb = function (url) { return url
+        ? '<img src="' + esc(url) + '" class="w-10 h-10 rounded object-cover bg-neutral-100 flex-shrink-0" alt="">'
+        : '<div class="w-10 h-10 rounded bg-neutral-100 flex-shrink-0 flex items-center justify-center text-neutral-300"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14M4 6h16M4 6v12a2 2 0 002 2h12a2 2 0 002-2V6"/></svg></div>'; };
+    var openManifest = function (url) { if (url) window.open(url, '_blank'); };
 
     var destSel = document.getElementById('sendstock-dest');
     var searchIn = document.getElementById('sendstock-search');
@@ -2221,12 +2268,17 @@
     }
     function renderBasket() {
         basketBox.innerHTML = basket.length ? basket.map(function (it, i) {
-            return '<div class="flex items-center gap-2 border border-neutral-200 rounded-lg px-3 py-2"><div class="flex-1 min-w-0"><p class="text-sm text-neutral-800 truncate">' + esc(it.name) + '</p><p class="text-[11px] text-neutral-400">' + it.available + ' available</p></div>'
+            return '<div class="flex items-center gap-2 border border-neutral-200 rounded-lg px-3 py-2">' + thumb(it.image) + '<div class="flex-1 min-w-0"><p class="text-sm text-neutral-800 truncate">' + esc(it.name) + '</p><p class="text-[11px] text-neutral-400">' + it.available + ' available</p></div>'
                 + '<button type="button" data-dec="' + i + '" class="w-7 h-7 rounded border border-neutral-200 text-neutral-600">−</button><span class="w-8 text-center text-sm">' + it.qty + '</span>'
                 + '<button type="button" data-inc="' + i + '" class="w-7 h-7 rounded border border-neutral-200 text-neutral-600">+</button>'
                 + '<button type="button" data-rm="' + i + '" class="ml-1 text-neutral-300 hover:text-red-500">✕</button></div>';
-        }).join('') : '<p class="text-xs text-neutral-400 py-3 text-center">No items yet — search above.</p>';
+        }).join('') : '<p class="text-xs text-neutral-400 py-3 text-center">No items yet — search or scan above.</p>';
         submitBtn.disabled = !(basket.length && destSel.value);
+    }
+    function addToBasket(r) {
+        var ex = basket.find(function (x) { return x.productId === r.id; });
+        if (ex) { if (ex.qty < ex.available) ex.qty++; } else basket.push({ productId: r.id, name: r.name, image: r.image, available: r.available, qty: 1 });
+        renderBasket();
     }
     basketBox.addEventListener('click', function (e) {
         var inc = e.target.closest('[data-inc]'), dec = e.target.closest('[data-dec]'), rm = e.target.closest('[data-rm]');
@@ -2237,20 +2289,30 @@
     });
     destSel.addEventListener('change', renderBasket);
     var sdeb; searchIn.addEventListener('input', function () { clearTimeout(sdeb); sdeb = setTimeout(searchProducts, 250); });
+    // Enter = scanner submit: exact barcode/SKU match (or a lone result) is added straight to the basket.
+    searchIn.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        var q = searchIn.value.trim().toLowerCase(); if (!q) return;
+        var exact = lastResults.find(function (r) { return (r.barcode && r.barcode.toLowerCase() === q) || (r.sku && r.sku.toLowerCase() === q); });
+        var pick = exact || (lastResults.length === 1 ? lastResults[0] : null);
+        if (pick) { addToBasket(pick); searchIn.value = ''; resultsBox.classList.add('hidden'); }
+    });
     function searchProducts() {
         var q = searchIn.value.trim(); if (!q) { resultsBox.classList.add('hidden'); return; }
         get('/Pos/TransferSearch?q=' + encodeURIComponent(q)).then(function (rows) {
             lastResults = rows || [];
-            resultsBox.innerHTML = lastResults.length ? lastResults.map(function (r, i) { return '<button type="button" data-add="' + i + '" class="w-full text-left px-3 py-2 hover:bg-neutral-50 border-b border-neutral-50"><span class="text-sm text-neutral-800">' + esc(r.name) + '</span> <span class="text-[11px] text-neutral-400">· ' + r.available + ' avail</span></button>'; }).join('') : '<p class="px-3 py-2 text-xs text-neutral-400">No products with stock here.</p>';
+            resultsBox.innerHTML = lastResults.length ? lastResults.map(function (r, i) {
+                return '<button type="button" data-add="' + i + '" class="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-neutral-50 border-b border-neutral-50">' + thumb(r.image) + '<span class="flex-1 min-w-0"><span class="block text-sm text-neutral-800 truncate">' + esc(r.name) + '</span><span class="block text-[11px] text-neutral-400">' + r.available + ' available' + (r.sku ? ' · ' + esc(r.sku) : '') + '</span></span></button>';
+            }).join('') : '<p class="px-3 py-2 text-xs text-neutral-400">No products with stock here.</p>';
             resultsBox.classList.remove('hidden');
         });
     }
     resultsBox.addEventListener('click', function (e) {
         var btn = e.target.closest('[data-add]'); if (!btn) return;
         var r = lastResults[+btn.dataset.add]; if (!r) return;
-        var ex = basket.find(function (x) { return x.productId === r.id; });
-        if (ex) { if (ex.qty < ex.available) ex.qty++; } else basket.push({ productId: r.id, name: r.name, available: r.available, qty: 1 });
-        searchIn.value = ''; resultsBox.classList.add('hidden'); renderBasket();
+        addToBasket(r);
+        searchIn.value = ''; resultsBox.classList.add('hidden'); searchIn.focus();
     });
     submitBtn.addEventListener('click', function () {
         if (!basket.length || !destSel.value) return;
@@ -2261,16 +2323,12 @@
         });
     });
     outgoingBox.addEventListener('click', function (e) {
+        var mf = e.target.closest('[data-manifest]');
+        if (mf) { openManifest(mf.dataset.manifest); return; }
         var btn = e.target.closest('[data-dispatch]'); if (!btn) return;
         if (!confirm('Mark this transfer as sent? Stock leaves this branch.')) return;
         btn.disabled = true; btn.textContent = 'Sending…';
         post('/Pos/TransferDispatch', { id: +btn.dataset.dispatch }).then(function (d) { if (!d.success) alert(d.message || 'Could not send.'); loadLists(); });
-    });
-    recvList.addEventListener('click', function (e) {
-        var btn = e.target.closest('[data-receive]'); if (!btn) return;
-        if (!confirm('Confirm you received these items? Stock is added to this branch.')) return;
-        btn.disabled = true; btn.textContent = 'Receiving…';
-        post('/Pos/TransferReceive', { id: +btn.dataset.receive }).then(function (d) { if (!d.success) alert(d.message || 'Could not receive.'); loadLists(); });
     });
     function loadLists() {
         return get('/Pos/TransfersList').then(function (d) {
@@ -2279,18 +2337,119 @@
             outgoingBox.innerHTML = out.length ? out.map(function (t) {
                 var items = t.items.map(function (i) { return esc(i.name) + ' ×' + i.qty; }).join(', ');
                 var b = t.status === 'PendingApproval' ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Pending approval</span>' : t.status === 'Approved' ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">Approved</span>' : '<span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">In transit</span>';
-                return '<div class="border border-neutral-200 rounded-lg px-3 py-2"><div class="flex items-center justify-between gap-2 mb-1"><span class="text-xs font-medium text-neutral-700">' + esc(t.number) + ' → ' + esc(t.toStore) + '</span>' + b + '</div><p class="text-[11px] text-neutral-500">' + items + '</p>' + (t.canDispatch ? '<button type="button" data-dispatch="' + t.id + '" class="mt-2 w-full bg-neutral-900 text-white text-xs py-2 rounded-lg hover:bg-black">Mark as sent</button>' : '') + '</div>';
+                var actions = '<div class="flex gap-2 mt-2">'
+                    + '<button type="button" data-manifest="' + esc(t.manifestUrl) + '" class="flex-1 border border-neutral-200 text-neutral-700 text-xs py-2 rounded-lg hover:bg-neutral-50">Print manifest</button>'
+                    + (t.canDispatch ? '<button type="button" data-dispatch="' + t.id + '" class="flex-1 bg-neutral-900 text-white text-xs py-2 rounded-lg hover:bg-black">Mark as sent</button>' : '')
+                    + '</div>';
+                return '<div class="border border-neutral-200 rounded-lg px-3 py-2"><div class="flex items-center justify-between gap-2 mb-1"><span class="text-xs font-medium text-neutral-700">' + esc(t.number) + ' → ' + esc(t.toStore) + '</span>' + b + '</div><p class="text-[11px] text-neutral-500">' + items + '</p>' + actions + '</div>';
             }).join('') : '<p class="text-xs text-neutral-400 py-2 text-center">None.</p>';
             recvList.innerHTML = inc.length ? inc.map(function (t) {
                 var items = t.items.map(function (i) { return esc(i.name) + ' ×' + i.qty; }).join(', ');
-                return '<div class="border border-neutral-200 rounded-lg px-4 py-3"><div class="flex items-center justify-between gap-2 mb-1"><span class="text-sm font-medium text-neutral-800">' + esc(t.number) + '</span><span class="text-[11px] text-neutral-400">from ' + esc(t.fromStore) + '</span></div><p class="text-xs text-neutral-500 mb-2">' + items + '</p><button type="button" data-receive="' + t.id + '" class="w-full bg-emerald-600 text-white text-sm py-2 rounded-lg hover:bg-emerald-700">Receive into this branch</button></div>';
+                return '<div class="border border-neutral-200 rounded-lg px-4 py-3"><div class="flex items-center justify-between gap-2 mb-1"><span class="text-sm font-medium text-neutral-800">' + esc(t.number) + '</span><span class="text-[11px] text-neutral-400">from ' + esc(t.fromStore) + '</span></div><p class="text-xs text-neutral-500 mb-2">' + items + '</p><div class="flex gap-2"><button type="button" data-manifest="' + esc(t.manifestUrl) + '" class="border border-neutral-200 text-neutral-700 text-xs px-3 py-2 rounded-lg hover:bg-neutral-50">Manifest</button><button type="button" data-open="' + t.id + '" class="flex-1 bg-emerald-600 text-white text-sm py-2 rounded-lg hover:bg-emerald-700">Check in items</button></div></div>';
             }).join('') : '<p class="text-sm text-neutral-400 py-8 text-center">No incoming transfers.</p>';
         });
     }
+
+    // ── Receive detail: scan items in, edit counts, add a reason when short ──
+    var recvDetailPanel = document.getElementById('till-receive-detail');
+    var recvLinesBox = document.getElementById('recvdetail-lines');
+    var recvScan = document.getElementById('recvdetail-scan');
+    var recvScanMsg = document.getElementById('recvdetail-scanmsg');
+    var recvNotes = document.getElementById('recvdetail-notes');
+    var recvSubmit = document.getElementById('recvdetail-submit');
+    var recvMsg = document.getElementById('recvdetail-msg');
+    var recvState = { id: 0, lines: [] };
+
+    function renderRecvLines() {
+        var short = false;
+        recvLinesBox.innerHTML = recvState.lines.map(function (l, i) {
+            if (l.received < l.expected) short = true;
+            var full = l.received >= l.expected;
+            return '<div class="flex items-center gap-2 border rounded-lg px-3 py-2 ' + (full ? 'border-emerald-200 bg-emerald-50/40' : 'border-neutral-200') + '">' + thumb(l.image)
+                + '<div class="flex-1 min-w-0"><p class="text-sm text-neutral-800 truncate">' + esc(l.name) + '</p><p class="text-[11px] text-neutral-400">expected ' + l.expected + '</p></div>'
+                + '<button type="button" data-rdec="' + i + '" class="w-7 h-7 rounded border border-neutral-200 text-neutral-600">−</button>'
+                + '<input type="number" data-rqty="' + i + '" value="' + l.received + '" min="0" max="' + l.expected + '" class="w-12 text-center text-sm border border-neutral-200 rounded py-1" />'
+                + '<span class="text-[11px] text-neutral-400 w-8">/ ' + l.expected + '</span>'
+                + '<button type="button" data-rinc="' + i + '" class="w-7 h-7 rounded border border-neutral-200 text-neutral-600">+</button></div>';
+        }).join('');
+        recvNotes.parentElement.style.display = short ? '' : 'none';
+    }
+    function openReceiveDetail(id) {
+        recvScanMsg.textContent = ''; recvMsg.textContent = ''; recvNotes.value = '';
+        recvLinesBox.innerHTML = '<p class="text-sm text-neutral-400 py-4 text-center">Loading…</p>';
+        recvPanel.classList.add('hidden'); recvDetailPanel.classList.remove('hidden');
+        get('/Pos/TransferReceiveDetail?id=' + id).then(function (d) {
+            if (!d || !d.ok) { recvLinesBox.innerHTML = '<p class="text-sm text-red-500 py-4 text-center">Could not load this transfer.</p>'; return; }
+            document.getElementById('recvdetail-num').textContent = d.number;
+            document.getElementById('recvdetail-from').textContent = 'from ' + d.fromStore;
+            recvState = { id: d.id, lines: d.lines.map(function (l) { return { itemId: l.itemId, name: l.name, image: l.image, expected: l.expected, codes: l.codes || [], received: l.expected }; }) };
+            renderRecvLines(); recvScan.focus();
+        });
+    }
+    recvLinesBox.addEventListener('click', function (e) {
+        var inc = e.target.closest('[data-rinc]'), dec = e.target.closest('[data-rdec]');
+        if (inc) { var i = +inc.dataset.rinc; if (recvState.lines[i].received < recvState.lines[i].expected) recvState.lines[i].received++; }
+        else if (dec) { var j = +dec.dataset.rdec; if (recvState.lines[j].received > 0) recvState.lines[j].received--; } else return;
+        renderRecvLines();
+    });
+    recvLinesBox.addEventListener('input', function (e) {
+        var el = e.target.closest('[data-rqty]'); if (!el) return;
+        var i = +el.dataset.rqty, v = Math.max(0, Math.min(recvState.lines[i].expected, parseInt(el.value, 10) || 0));
+        recvState.lines[i].received = v; renderRecvLines();
+    });
+    recvScan.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        var code = recvScan.value.trim().toLowerCase(); recvScan.value = ''; if (!code) return;
+        var idx = recvState.lines.findIndex(function (l) { return l.codes.indexOf(code) !== -1; });
+        if (idx === -1) { recvScanMsg.className = 'text-xs text-center h-4 mt-1 text-red-500'; recvScanMsg.textContent = 'No item on this transfer matches that barcode.'; return; }
+        var line = recvState.lines[idx];
+        // Start counting from 0 the first time a line is scanned, so scans tally the physical count.
+        if (!line._scanned) { line._scanned = true; line.received = 0; }
+        if (line.received < line.expected) { line.received++; recvScanMsg.className = 'text-xs text-center h-4 mt-1 text-emerald-600'; recvScanMsg.textContent = '✓ ' + line.name + ' (' + line.received + '/' + line.expected + ')'; }
+        else { recvScanMsg.className = 'text-xs text-center h-4 mt-1 text-amber-600'; recvScanMsg.textContent = line.name + ' already at ' + line.expected + '.'; }
+        renderRecvLines();
+    });
+    recvSubmit.addEventListener('click', function () {
+        var short = recvState.lines.some(function (l) { return l.received < l.expected; });
+        if (short && !recvNotes.value.trim()) { recvMsg.className = 'text-xs text-center h-4 text-red-600'; recvMsg.textContent = 'Add a reason — some counts are short.'; recvNotes.focus(); return; }
+        if (!confirm('Confirm receipt? Received units are added to this branch.')) return;
+        recvSubmit.disabled = true; recvMsg.className = 'text-xs text-center h-4 text-neutral-500'; recvMsg.textContent = 'Receiving…';
+        post('/Pos/TransferReceive', { id: recvState.id, notes: recvNotes.value.trim(), items: recvState.lines.map(function (l) { return { itemId: l.itemId, received: l.received }; }) }).then(function (d) {
+            recvSubmit.disabled = false;
+            if (d.success) { recvDetailPanel.classList.add('hidden'); recvPanel.classList.remove('hidden'); loadLists(); }
+            else { recvMsg.className = 'text-xs text-center h-4 text-red-600'; recvMsg.textContent = d.message || 'Could not receive.'; }
+        });
+    });
+    recvList.addEventListener('click', function (e) {
+        var mf = e.target.closest('[data-manifest]'); if (mf) { openManifest(mf.dataset.manifest); return; }
+        var btn = e.target.closest('[data-open]'); if (btn) openReceiveDetail(+btn.dataset.open);
+    });
+    document.getElementById('recvdetail-back').addEventListener('click', function () { recvDetailPanel.classList.add('hidden'); recvPanel.classList.remove('hidden'); });
+
+    // ── Transfer history ──
+    var histPanel = document.getElementById('till-transferhistory');
+    var histList = document.getElementById('transferhistory-list');
+    function loadHistory() {
+        histList.innerHTML = '<p class="text-sm text-neutral-400 py-8 text-center">Loading…</p>';
+        get('/Pos/TransferHistory').then(function (rows) {
+            rows = rows || [];
+            histList.innerHTML = rows.length ? rows.map(function (t) {
+                var badgeCls = t.status === 'Completed' ? 'bg-emerald-50 text-emerald-700' : t.status === 'PartiallyReceived' ? 'bg-amber-50 text-amber-700' : t.status === 'Rejected' ? 'bg-red-50 text-red-600' : 'bg-neutral-100 text-neutral-500';
+                var dir = t.outgoing ? '<span class="text-neutral-400">→</span> ' + esc(t.otherStore) : '<span class="text-neutral-400">←</span> ' + esc(t.otherStore);
+                var mf = t.manifestUrl ? '<button type="button" data-manifest="' + esc(t.manifestUrl) + '" class="text-[11px] text-brand-600 hover:underline">Manifest</button>' : '';
+                return '<div class="border border-neutral-200 rounded-lg px-3 py-2"><div class="flex items-center justify-between gap-2"><span class="text-xs font-medium text-neutral-700">' + esc(t.number) + ' ' + dir + '</span><span class="text-[10px] px-2 py-0.5 rounded-full ' + badgeCls + '">' + esc(t.status) + '</span></div><div class="flex items-center justify-between gap-2 mt-1"><span class="text-[11px] text-neutral-400">' + esc(t.when) + ' · ' + t.lines + ' pcs</span>' + mf + '</div></div>';
+            }).join('') : '<p class="text-sm text-neutral-400 py-8 text-center">No past transfers yet.</p>';
+        });
+    }
+    histList.addEventListener('click', function (e) { var mf = e.target.closest('[data-manifest]'); if (mf) openManifest(mf.dataset.manifest); });
+
     document.getElementById('menu-sendstock-btn').addEventListener('click', function () { sendPanel.classList.remove('hidden'); loadBranches(); renderBasket(); loadLists(); });
     document.getElementById('sendstock-close').addEventListener('click', function () { sendPanel.classList.add('hidden'); });
     document.getElementById('menu-receivestock-btn').addEventListener('click', function () { recvPanel.classList.remove('hidden'); loadLists(); });
     document.getElementById('receivestock-close').addEventListener('click', function () { recvPanel.classList.add('hidden'); });
+    document.getElementById('menu-transferhistory-btn').addEventListener('click', function () { histPanel.classList.remove('hidden'); loadHistory(); });
+    document.getElementById('transferhistory-close').addEventListener('click', function () { histPanel.classList.add('hidden'); });
     loadLists(); setInterval(loadLists, 60000);   // keep the "receive" badge fresh
 }());
 </script>

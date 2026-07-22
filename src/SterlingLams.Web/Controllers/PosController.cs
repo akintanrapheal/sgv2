@@ -30,6 +30,7 @@ public class PosController : Controller
     private readonly SterlingLams.Web.Services.IWhatsAppService _whatsapp;
     private readonly SterlingLams.Web.Services.IOrderNumberService _orderNumbers;
     private readonly SterlingLams.Web.Services.ITransferWorkflowService _transfers;
+    private readonly SterlingLams.Web.Services.IManifestTokenService _manifestTokens;
 
     public PosController(ApplicationDbContext db, IStockService stock,
         SignInManager<ApplicationUser> signIn, IPasswordHasher<ApplicationUser> hasher,
@@ -41,7 +42,8 @@ public class PosController : Controller
         SterlingLams.Web.Services.IEmailService email,
         SterlingLams.Web.Services.IWhatsAppService whatsapp,
         SterlingLams.Web.Services.IOrderNumberService orderNumbers,
-        SterlingLams.Web.Services.ITransferWorkflowService transfers)
+        SterlingLams.Web.Services.ITransferWorkflowService transfers,
+        SterlingLams.Web.Services.IManifestTokenService manifestTokens)
     {
         _db = db;
         _stock = stock;
@@ -56,7 +58,19 @@ public class PosController : Controller
         _whatsapp = whatsapp;
         _orderNumbers = orderNumbers;
         _transfers = transfers;
+        _manifestTokens = manifestTokens;
     }
+
+    // Primary product image (small POS thumbnail) per product id — for transfer line rows.
+    private async Task<Dictionary<int, string?>> PrimaryImagesAsync(List<int> productIds) =>
+        (await _db.ProductImages.Where(im => productIds.Contains(im.ProductId))
+            .GroupBy(im => im.ProductId)
+            .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).ThenBy(x => x.SortOrder).Select(x => x.Url).FirstOrDefault() })
+            .ToListAsync())
+        .ToDictionary(x => x.Pid, x => PosThumb(x.Url));
+
+    // Tokenised public manifest link (same sheet the Inventory System prints) — no login needed to view.
+    private string ManifestUrl(int transferId) => "/t/manifest/" + _manifestTokens.Protect(transferId);
 
     // POS card/receipt thumbnail: rewrite a Cloudinary upload URL to a small, cacheable variant so
     // offline image-caching stays light. Non-Cloudinary URLs are returned unchanged.
@@ -294,11 +308,16 @@ public class PosController : Controller
         var rows = await _db.StoreInventories
             .Where(si => si.StoreId == reg.StoreId && si.ProductVariantId == null
                       && si.QuantityOnHand - si.QuantityReserved > 0)
-            .Join(_db.Products.Where(p => p.IsActive && (term == "" || p.Name.ToLower().Contains(term) || (p.Sku != null && p.Sku.ToLower().Contains(term)))),
+            .Join(_db.Products.Where(p => p.IsActive && (term == "" || p.Name.ToLower().Contains(term)
+                      || (p.Sku != null && p.Sku.ToLower().Contains(term))
+                      || (p.Barcode != null && p.Barcode.ToLower().Contains(term)))),
                   si => si.ProductId, p => p.Id,
-                  (si, p) => new { id = p.Id, name = p.Name, sku = p.Sku, available = si.QuantityOnHand - si.QuantityReserved })
+                  (si, p) => new { id = p.Id, name = p.Name, sku = p.Sku, barcode = p.Barcode,
+                      available = si.QuantityOnHand - si.QuantityReserved,
+                      image = _db.ProductImages.Where(im => im.ProductId == p.Id)
+                          .OrderByDescending(im => im.IsPrimary).ThenBy(im => im.SortOrder).Select(im => im.Url).FirstOrDefault() })
             .OrderBy(x => x.name).Take(25).ToListAsync();
-        return Json(rows);
+        return Json(rows.Select(x => new { x.id, x.name, x.sku, x.barcode, x.available, image = PosThumb(x.image) }));
     }
 
     public class PosTransferLine { public int ProductId { get; set; } public int Qty { get; set; } }
@@ -337,25 +356,59 @@ public class PosController : Controller
         if (reg == null) return Json(new { outgoing = Array.Empty<object>(), incoming = Array.Empty<object>() });
         var active = new[] { TransferStatus.PendingApproval, TransferStatus.Approved, TransferStatus.InTransit };
 
-        var outgoing = await _db.StockTransfers
+        var outRows = await _db.StockTransfers
             .Where(t => t.FromStoreId == reg.StoreId && active.Contains(t.Status))
-            .OrderByDescending(t => t.Id).Take(20)
-            .Select(t => new {
-                id = t.Id, number = t.TransferNumber, status = t.Status.ToString(),
-                toStore = t.ToStore!.Name,
-                canDispatch = t.Status == TransferStatus.Approved,
-                items = t.Items.Select(i => new { name = i.ProductName + (i.VariantName == null ? "" : " (" + i.VariantName + ")"), qty = i.ApprovedQty ?? i.RequestedQty }).ToList()
-            }).ToListAsync();
-
-        var incoming = await _db.StockTransfers
+            .Include(t => t.Items).Include(t => t.ToStore)
+            .OrderByDescending(t => t.Id).Take(20).ToListAsync();
+        var inRows = await _db.StockTransfers
             .Where(t => t.ToStoreId == reg.StoreId && t.Status == TransferStatus.InTransit)
-            .OrderByDescending(t => t.Id).Take(20)
-            .Select(t => new {
-                id = t.Id, number = t.TransferNumber, fromStore = t.FromStore!.Name,
-                items = t.Items.Select(i => new { name = i.ProductName + (i.VariantName == null ? "" : " (" + i.VariantName + ")"), qty = i.DispatchedQty ?? 0 }).ToList()
-            }).ToListAsync();
+            .Include(t => t.Items).Include(t => t.FromStore)
+            .OrderByDescending(t => t.Id).Take(20).ToListAsync();
+
+        var pids = outRows.Concat(inRows).SelectMany(t => t.Items).Select(i => i.ProductId).Distinct().ToList();
+        var imgs = await PrimaryImagesAsync(pids);
+        string? Thumb(int pid) => imgs.TryGetValue(pid, out var u) ? u : null;
+        string Label(StockTransferItem i) => i.ProductName + (i.VariantName == null ? "" : " (" + i.VariantName + ")");
+
+        var outgoing = outRows.Select(t => new {
+            id = t.Id, number = t.TransferNumber, status = t.Status.ToString(),
+            toStore = t.ToStore!.Name,
+            canDispatch = t.Status == TransferStatus.Approved,
+            // Manifest prints from request time onward (it's the pick-and-pack sheet that travels with the goods).
+            manifestUrl = ManifestUrl(t.Id),
+            items = t.Items.Select(i => new { name = Label(i), qty = i.ApprovedQty ?? i.RequestedQty, image = Thumb(i.ProductId) }).ToList()
+        }).ToList();
+
+        var incoming = inRows.Select(t => new {
+            id = t.Id, number = t.TransferNumber, fromStore = t.FromStore!.Name,
+            manifestUrl = ManifestUrl(t.Id),
+            items = t.Items.Select(i => new { name = Label(i), qty = i.DispatchedQty ?? 0, image = Thumb(i.ProductId) }).ToList()
+        }).ToList();
 
         return Json(new { outgoing, incoming });
+    }
+
+    /// <summary>Past transfers touching my branch (completed/partial/rejected/cancelled), both directions — POS history.</summary>
+    [Authorize, HttpGet]
+    public async Task<IActionResult> TransferHistory()
+    {
+        var reg = await BoundRegisterAsync();
+        if (reg == null) return Json(Array.Empty<object>());
+        var done = new[] { TransferStatus.Completed, TransferStatus.PartiallyReceived, TransferStatus.Rejected, TransferStatus.Cancelled };
+        var rows = await _db.StockTransfers
+            .Where(t => (t.FromStoreId == reg.StoreId || t.ToStoreId == reg.StoreId) && done.Contains(t.Status))
+            .Include(t => t.Items).Include(t => t.FromStore).Include(t => t.ToStore)
+            .OrderByDescending(t => t.Id).Take(40).ToListAsync();
+
+        return Json(rows.Select(t => new {
+            id = t.Id, number = t.TransferNumber, status = t.Status.ToString(),
+            outgoing = t.FromStoreId == reg.StoreId,
+            otherStore = t.FromStoreId == reg.StoreId ? t.ToStore!.Name : t.FromStore!.Name,
+            when = (t.ReceivedAt ?? t.CancelledAt ?? t.RejectedAt ?? t.CreatedAt).ToLocalTime().ToString("dd MMM yyyy, HH:mm"),
+            lines = t.Items.Sum(i => i.ReceivedQty ?? i.ApprovedQty ?? i.RequestedQty),
+            manifestUrl = t.ApprovedAt != null ? ManifestUrl(t.Id) : null,
+            items = t.Items.Select(i => i.ProductName + (i.VariantName == null ? "" : " (" + i.VariantName + ")") + " ×" + (i.ReceivedQty ?? i.ApprovedQty ?? i.RequestedQty)).ToList()
+        }));
     }
 
     /// <summary>Cashier marks an approved outgoing transfer as sent (dispatches the approved quantities).</summary>
@@ -373,18 +426,74 @@ public class PosController : Controller
         return Json(new { success = true });
     }
 
-    /// <summary>Cashier receives an incoming in-transit transfer (all dispatched units as received).</summary>
+    /// <summary>Line detail for the receive screen: what's expected, the product photo, and the barcodes
+    /// that match each line (so the receiving cashier can scan items in and check counts before confirming).</summary>
+    [Authorize, HttpGet]
+    public async Task<IActionResult> TransferReceiveDetail(int id)
+    {
+        var reg = await BoundRegisterAsync();
+        if (reg == null) return Json(new { ok = false });
+        var t = await _db.StockTransfers.Include(x => x.Items).Include(x => x.FromStore)
+            .FirstOrDefaultAsync(x => x.Id == id && x.ToStoreId == reg.StoreId
+                && (x.Status == TransferStatus.InTransit || x.Status == TransferStatus.PartiallyReceived));
+        if (t == null) return Json(new { ok = false });
+
+        var pids = t.Items.Select(i => i.ProductId).Distinct().ToList();
+        var imgs = await PrimaryImagesAsync(pids);
+        var codes = (await _db.Products.Where(p => pids.Contains(p.Id))
+                .Select(p => new { p.Id, p.Barcode, p.Sku }).ToListAsync())
+            .ToDictionary(p => p.Id, p => new[] { p.Barcode, p.Sku }.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c!.ToLower()).ToList());
+
+        var lines = t.Items.Where(i => i.PendingQty > 0).Select(i => new {
+            itemId = i.Id,
+            name = i.ProductName + (i.VariantName == null ? "" : " (" + i.VariantName + ")"),
+            image = imgs.TryGetValue(i.ProductId, out var u) ? u : null,
+            expected = i.PendingQty,
+            codes = codes.TryGetValue(i.ProductId, out var c) ? c : new List<string>()
+        }).ToList();
+        return Json(new { ok = true, id = t.Id, number = t.TransferNumber, fromStore = t.FromStore!.Name, lines });
+    }
+
+    public class PosReceiveLine { public int ItemId { get; set; } public int Received { get; set; } }
+    public class PosReceiveDto { public int Id { get; set; } public string? Notes { get; set; } public List<PosReceiveLine> Items { get; set; } = new(); }
+
+    /// <summary>Cashier receives an incoming in-transit transfer. Per-line received counts may differ from
+    /// what was dispatched (short/damaged) — any shortfall stays pending and the transfer is flagged
+    /// PartiallyReceived for the admin to reconcile; a reason note is required when anything is short.</summary>
     [Authorize, HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> TransferReceive([FromBody] PosTransferIdDto req)
+    public async Task<IActionResult> TransferReceive([FromBody] PosReceiveDto req)
     {
         var reg = await BoundRegisterAsync();
         if (reg == null) return Json(new { success = false, message = "This POS isn't set up." });
         var t = await _db.StockTransfers.Include(x => x.Items).FirstOrDefaultAsync(x => x.Id == req.Id);
         if (t == null || t.ToStoreId != reg.StoreId) return Json(new { success = false, message = "Transfer not found for this branch." });
-        var lines = t.Items.Select(i => new SterlingLams.Web.Services.ReceiveLineDto(i.Id, i.PendingQty, 0, 0)).ToList();
-        var res = await _transfers.ReceiveAsync(t.Id, lines, null, User.FindFirstValue(ClaimTypes.NameIdentifier));
+
+        List<SterlingLams.Web.Services.ReceiveLineDto> lines;
+        var anyShort = false;
+        if (req.Items != null && req.Items.Count > 0)
+        {
+            var byId = t.Items.ToDictionary(i => i.Id);
+            lines = new();
+            foreach (var l in req.Items)
+            {
+                if (!byId.TryGetValue(l.ItemId, out var it)) continue;
+                var pending = it.PendingQty;
+                var recv = Math.Clamp(l.Received, 0, pending);
+                if (recv < pending) anyShort = true;
+                lines.Add(new SterlingLams.Web.Services.ReceiveLineDto(it.Id, recv, 0, 0)); // shortfall stays pending
+            }
+        }
+        else
+        {
+            lines = t.Items.Select(i => new SterlingLams.Web.Services.ReceiveLineDto(i.Id, i.PendingQty, 0, 0)).ToList();
+        }
+        if (anyShort && string.IsNullOrWhiteSpace(req.Notes))
+            return Json(new { success = false, message = "Add a reason when the received count differs from what was sent." });
+
+        var res = await _transfers.ReceiveAsync(t.Id, lines, string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
+            User.FindFirstValue(ClaimTypes.NameIdentifier));
         if (!res.Success) return Json(new { success = false, message = res.Error });
-        try { await _audit.LogAsync("Receive", "Transfer", t.Id.ToString(), $"POS received {t.TransferNumber}"); } catch { }
+        try { await _audit.LogAsync("Receive", "Transfer", t.Id.ToString(), $"POS received {t.TransferNumber}" + (anyShort ? " (short — reason logged)" : "")); } catch { }
         return Json(new { success = true });
     }
 
