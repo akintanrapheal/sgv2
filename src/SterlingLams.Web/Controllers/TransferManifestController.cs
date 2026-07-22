@@ -45,7 +45,7 @@ public class TransferManifestController : Controller
             .ToListAsync();
         ViewBag.ImageByProduct = imgRows.GroupBy(x => x.ProductId).ToDictionary(g => g.Key, g => g.First().Url);
 
-        var uids = new[] { transfer.CreatedByUserId, transfer.ApprovedByUserId }
+        var uids = new[] { transfer.CreatedByUserId, transfer.ApprovedByUserId, transfer.DispatchedByUserId, transfer.ReceivedByUserId }
             .Where(u => u != null).Cast<string>().Distinct().ToList();
         ViewBag.Names = (await _db.Users.Where(u => uids.Contains(u.Id))
                 .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email }).ToListAsync())

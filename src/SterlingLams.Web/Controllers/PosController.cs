@@ -295,7 +295,7 @@ public class PosController : Controller
         if (reg == null) return Json(new { ok = false });
         var branches = await _db.Stores.Where(s => s.IsActive && s.Id != reg.StoreId)
             .OrderBy(s => s.Name).Select(s => new { id = s.Id, name = s.Name }).ToListAsync();
-        return Json(new { ok = true, myStore = reg.Store != null ? reg.Store.Name : "", branches });
+        return Json(new { ok = true, myStore = reg.Store != null ? reg.Store.Name : "", branches, reasons = TransferReasons });
     }
 
     /// <summary>Products with transferable (pool) stock at the cashier's branch — for the Send screen.</summary>
@@ -321,8 +321,11 @@ public class PosController : Controller
     }
 
     public class PosTransferLine { public int ProductId { get; set; } public int Qty { get; set; } }
-    public class PosTransferRequestDto { public int ToStoreId { get; set; } public List<PosTransferLine> Items { get; set; } = new(); }
+    public class PosTransferRequestDto { public int ToStoreId { get; set; } public string? Reason { get; set; } public List<PosTransferLine> Items { get; set; } = new(); }
     public class PosTransferIdDto { public int Id { get; set; } }
+
+    // Reasons a cashier can pick when sending stock (mirrors the EposNow "reason" list the store uses).
+    private static readonly string[] TransferReasons = { "Internal Movement", "External Branch Movement", "Missing Stock", "New Stock", "Stock Take" };
 
     /// <summary>Cashier creates a transfer request FROM their branch → lands PendingApproval for the admin.</summary>
     [Authorize, HttpPost, ValidateAntiForgeryToken]
@@ -332,13 +335,15 @@ public class PosController : Controller
         if (reg == null) return Json(new { success = false, message = "This POS isn't set up. Pick a register." });
         if (req?.Items == null || req.Items.Count(i => i.Qty > 0) == 0) return Json(new { success = false, message = "Add at least one item." });
         if (req.ToStoreId == reg.StoreId || req.ToStoreId <= 0) return Json(new { success = false, message = "Pick a destination branch." });
+        var reason = (req.Reason ?? "").Trim();
+        if (!TransferReasons.Contains(reason)) return Json(new { success = false, message = "Pick a reason for the transfer." });
 
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var (ok, error, id) = await _transfers.RequestAsync(new SterlingLams.Web.Services.TransferRequest
         {
             FromStoreId = reg.StoreId,
             ToStoreId = req.ToStoreId,
-            Note = "Requested from POS",
+            Note = reason,
             Items = req.Items.Where(i => i.Qty > 0)
                 .Select(i => new SterlingLams.Web.Services.TransferLine { ProductId = i.ProductId, Quantity = i.Qty }).ToList()
         }, userId);
@@ -388,15 +393,23 @@ public class PosController : Controller
         return Json(new { outgoing, incoming });
     }
 
-    /// <summary>Past transfers touching my branch (completed/partial/rejected/cancelled), both directions — POS history.</summary>
+    /// <summary>Past transfers a cashier handles at this branch (completed/partial/rejected/cancelled),
+    /// both directions. Excludes automatic online-order (System) transfers so the till history stays the
+    /// branch-to-branch moves staff actually pack/receive — POS-raised and Inventory-raised alike.</summary>
     [Authorize, HttpGet]
     public async Task<IActionResult> TransferHistory()
     {
         var reg = await BoundRegisterAsync();
         if (reg == null) return Json(Array.Empty<object>());
         var done = new[] { TransferStatus.Completed, TransferStatus.PartiallyReceived, TransferStatus.Rejected, TransferStatus.Cancelled };
+        // Exclude online-order transfers: new ones carry an OrderId; legacy ones (pre-OrderId wiring)
+        // are identified by the fulfilment engine's "Online order …" note. No POS/Inventory reason
+        // uses that prefix, so this reliably keeps the till history to staff-packed branch moves.
         var rows = await _db.StockTransfers
-            .Where(t => (t.FromStoreId == reg.StoreId || t.ToStoreId == reg.StoreId) && done.Contains(t.Status))
+            .Where(t => (t.FromStoreId == reg.StoreId || t.ToStoreId == reg.StoreId)
+                     && t.OrderId == null
+                     && (t.Note == null || !t.Note.StartsWith("Online order"))
+                     && done.Contains(t.Status))
             .Include(t => t.Items).Include(t => t.FromStore).Include(t => t.ToStore)
             .OrderByDescending(t => t.Id).Take(40).ToListAsync();
 
@@ -404,6 +417,7 @@ public class PosController : Controller
             id = t.Id, number = t.TransferNumber, status = t.Status.ToString(),
             outgoing = t.FromStoreId == reg.StoreId,
             otherStore = t.FromStoreId == reg.StoreId ? t.ToStore!.Name : t.FromStore!.Name,
+            reason = t.Note,
             when = (t.ReceivedAt ?? t.CancelledAt ?? t.RejectedAt ?? t.CreatedAt).ToLocalTime().ToString("dd MMM yyyy, HH:mm"),
             lines = t.Items.Sum(i => i.ReceivedQty ?? i.ApprovedQty ?? i.RequestedQty),
             manifestUrl = t.ApprovedAt != null ? ManifestUrl(t.Id) : null,

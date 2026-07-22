@@ -85,6 +85,8 @@
     <div class="meta">
         <div><div class="lbl">Created by</div><div class="val">@CreatorApprover(Model.CreatedByUserId)</div><div class="lbl" style="margin-top:2px">@Fmt(Model.CreatedAt)</div></div>
         <div><div class="lbl">Approved by</div><div class="val">@CreatorApprover(Model.ApprovedByUserId)</div><div class="lbl" style="margin-top:2px">@Fmt(Model.ApprovedAt)</div></div>
+        <div><div class="lbl">Sent by (dispatching cashier)</div><div class="val">@Who(Model.DispatchedByUserId)</div><div class="lbl" style="margin-top:2px">@Fmt(Model.DispatchedAt)</div></div>
+        <div><div class="lbl">Received by (receiving cashier)</div><div class="val">@Who(Model.ReceivedByUserId)</div><div class="lbl" style="margin-top:2px">@Fmt(Model.ReceivedAt)</div></div>
     </div>
 
     <table>
@@ -126,8 +128,8 @@
     }
 
     <div class="sigs">
-        <div class="sig"><strong>Dispatched by</strong>Name / signature &amp; date</div>
-        <div class="sig"><strong>Received &amp; checked by</strong>Name / signature &amp; date</div>
+        <div class="sig"><strong>Dispatched by</strong>@(Model.DispatchedByUserId != null ? Who(Model.DispatchedByUserId) + " — signature & date" : "Name / signature & date")</div>
+        <div class="sig"><strong>Received &amp; checked by</strong>@(Model.ReceivedByUserId != null ? Who(Model.ReceivedByUserId) + " — signature & date" : "Name / signature & date")</div>
     </div>
 
     <div class="foot">Generated from Sterlin Glams Inventory — verify every line against the physical goods on arrival. @Model.TransferNumber</div>

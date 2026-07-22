@@ -694,9 +694,15 @@
     </div>
     <div class="flex-1 overflow-y-auto">
         <div class="max-w-xl mx-auto px-6 py-5 space-y-4">
-            <div>
-                <label class="block text-xs font-medium text-neutral-500 mb-1 uppercase tracking-wide">Send to branch</label>
-                <select id="sendstock-dest" class="w-full border border-neutral-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-brand-500"></select>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-neutral-500 mb-1 uppercase tracking-wide">Send to branch</label>
+                    <select id="sendstock-dest" class="w-full border border-neutral-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-brand-500"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-500 mb-1 uppercase tracking-wide">Reason</label>
+                    <select id="sendstock-reason" class="w-full border border-neutral-200 rounded-lg px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-brand-500"></select>
+                </div>
             </div>
             <div class="relative">
                 <label class="block text-xs font-medium text-neutral-500 mb-1 uppercase tracking-wide">Add product</label>
@@ -2252,6 +2258,7 @@
     var openManifest = function (url) { if (url) window.open(url, '_blank'); };
 
     var destSel = document.getElementById('sendstock-dest');
+    var reasonSel = document.getElementById('sendstock-reason');
     var searchIn = document.getElementById('sendstock-search');
     var resultsBox = document.getElementById('sendstock-results');
     var basketBox = document.getElementById('sendstock-basket');
@@ -2264,7 +2271,11 @@
     function badge(n) { var b = document.getElementById('receivestock-badge'); if (!b) return; if (n > 0) { b.textContent = n; b.classList.remove('hidden'); } else b.classList.add('hidden'); }
     function loadBranches() {
         if (branchesLoaded) return Promise.resolve();
-        return get('/Pos/TransferMeta').then(function (d) { branchesLoaded = true; destSel.innerHTML = '<option value="">— Select branch —</option>' + ((d && d.branches) || []).map(function (b) { return '<option value="' + b.id + '">' + esc(b.name) + '</option>'; }).join(''); });
+        return get('/Pos/TransferMeta').then(function (d) {
+            branchesLoaded = true;
+            destSel.innerHTML = '<option value="">— Select branch —</option>' + ((d && d.branches) || []).map(function (b) { return '<option value="' + b.id + '">' + esc(b.name) + '</option>'; }).join('');
+            reasonSel.innerHTML = '<option value="">— Select reason —</option>' + ((d && d.reasons) || []).map(function (r) { return '<option value="' + esc(r) + '">' + esc(r) + '</option>'; }).join('');
+        });
     }
     function renderBasket() {
         basketBox.innerHTML = basket.length ? basket.map(function (it, i) {
@@ -2273,7 +2284,7 @@
                 + '<button type="button" data-inc="' + i + '" class="w-7 h-7 rounded border border-neutral-200 text-neutral-600">+</button>'
                 + '<button type="button" data-rm="' + i + '" class="ml-1 text-neutral-300 hover:text-red-500">✕</button></div>';
         }).join('') : '<p class="text-xs text-neutral-400 py-3 text-center">No items yet — search or scan above.</p>';
-        submitBtn.disabled = !(basket.length && destSel.value);
+        submitBtn.disabled = !(basket.length && destSel.value && reasonSel.value);
     }
     function addToBasket(r) {
         var ex = basket.find(function (x) { return x.productId === r.id; });
@@ -2288,6 +2299,7 @@
         renderBasket();
     });
     destSel.addEventListener('change', renderBasket);
+    reasonSel.addEventListener('change', renderBasket);
     var sdeb; searchIn.addEventListener('input', function () { clearTimeout(sdeb); sdeb = setTimeout(searchProducts, 250); });
     // Enter = scanner submit: exact barcode/SKU match (or a lone result) is added straight to the basket.
     searchIn.addEventListener('keydown', function (e) {
@@ -2315,10 +2327,10 @@
         searchIn.value = ''; resultsBox.classList.add('hidden'); searchIn.focus();
     });
     submitBtn.addEventListener('click', function () {
-        if (!basket.length || !destSel.value) return;
+        if (!basket.length || !destSel.value || !reasonSel.value) return;
         submitBtn.disabled = true; sendMsg.className = 'text-xs text-center h-4 text-neutral-500'; sendMsg.textContent = 'Sending…';
-        post('/Pos/TransferRequest', { toStoreId: +destSel.value, items: basket.map(function (b) { return { productId: b.productId, qty: b.qty }; }) }).then(function (d) {
-            if (d.success) { sendMsg.className = 'text-xs text-center h-4 text-emerald-600'; sendMsg.textContent = '✓ Request ' + (d.number || '') + ' sent for approval.'; basket = []; renderBasket(); loadLists(); }
+        post('/Pos/TransferRequest', { toStoreId: +destSel.value, reason: reasonSel.value, items: basket.map(function (b) { return { productId: b.productId, qty: b.qty }; }) }).then(function (d) {
+            if (d.success) { sendMsg.className = 'text-xs text-center h-4 text-emerald-600'; sendMsg.textContent = '✓ Request ' + (d.number || '') + ' sent for approval.'; basket = []; reasonSel.value = ''; renderBasket(); loadLists(); }
             else { sendMsg.className = 'text-xs text-center h-4 text-red-600'; sendMsg.textContent = d.message || 'Failed.'; submitBtn.disabled = false; }
         });
     });
@@ -2438,7 +2450,8 @@
                 var badgeCls = t.status === 'Completed' ? 'bg-emerald-50 text-emerald-700' : t.status === 'PartiallyReceived' ? 'bg-amber-50 text-amber-700' : t.status === 'Rejected' ? 'bg-red-50 text-red-600' : 'bg-neutral-100 text-neutral-500';
                 var dir = t.outgoing ? '<span class="text-neutral-400">→</span> ' + esc(t.otherStore) : '<span class="text-neutral-400">←</span> ' + esc(t.otherStore);
                 var mf = t.manifestUrl ? '<button type="button" data-manifest="' + esc(t.manifestUrl) + '" class="text-[11px] text-brand-600 hover:underline">Manifest</button>' : '';
-                return '<div class="border border-neutral-200 rounded-lg px-3 py-2"><div class="flex items-center justify-between gap-2"><span class="text-xs font-medium text-neutral-700">' + esc(t.number) + ' ' + dir + '</span><span class="text-[10px] px-2 py-0.5 rounded-full ' + badgeCls + '">' + esc(t.status) + '</span></div><div class="flex items-center justify-between gap-2 mt-1"><span class="text-[11px] text-neutral-400">' + esc(t.when) + ' · ' + t.lines + ' pcs</span>' + mf + '</div></div>';
+                var reason = t.reason ? '<span class="text-[10px] text-neutral-400"> · ' + esc(t.reason) + '</span>' : '';
+                return '<div class="border border-neutral-200 rounded-lg px-3 py-2"><div class="flex items-center justify-between gap-2"><span class="text-xs font-medium text-neutral-700">' + esc(t.number) + ' ' + dir + '</span><span class="text-[10px] px-2 py-0.5 rounded-full ' + badgeCls + '">' + esc(t.status) + '</span></div><div class="flex items-center justify-between gap-2 mt-1"><span class="text-[11px] text-neutral-400">' + esc(t.when) + ' · ' + t.lines + ' pcs' + '</span>' + mf + '</div>' + (reason ? '<div class="text-[11px] text-neutral-400 mt-0.5">Reason:' + reason + '</div>' : '') + '</div>';
             }).join('') : '<p class="text-sm text-neutral-400 py-8 text-center">No past transfers yet.</p>';
         });
     }
