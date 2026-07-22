@@ -762,7 +762,30 @@ public class PosController : Controller
 
         try { await _audit.LogAsync("Refund", "Order", order.Id.ToString(), $"POS refund {refundNumber} — ₦{amount:N0} on {order.OrderNumber}{(fullyRefunded ? " (full)" : " (partial)")}{refundApprovalNote}"); } catch { }
 
-        return Json(new { success = true, refundNumber, amount });
+        return Json(new { success = true, refundNumber, amount, refundId = refund.Id });
+    }
+
+    /// <summary>Printable refund/return receipt (same thermal format as a sale receipt).</summary>
+    [Authorize]
+    public async Task<IActionResult> RefundReceipt(int id)
+    {
+        var refund = await _db.Refunds.Include(r => r.Items)
+            .Include(r => r.OriginalOrder).ThenInclude(o => o.PickupStore)
+            .Include(r => r.OriginalOrder).ThenInclude(o => o.Customer)
+            .FirstOrDefaultAsync(r => r.Id == id);
+        if (refund == null) return NotFound();
+
+        var cashier = await _db.Users.FirstOrDefaultAsync(u => u.Id == refund.CashierUserId);
+        ViewBag.CashierName = cashier?.FullName ?? "—";
+        // Store for the header/address: the sale's pickup store, else the refunding register's store.
+        var store = refund.OriginalOrder?.PickupStore;
+        if (store == null && refund.RegisterId != null)
+            store = await _db.Registers.Where(r => r.Id == refund.RegisterId).Select(r => r.Store).FirstOrDefaultAsync();
+        ViewBag.Store = store;
+        ViewBag.DeviceName = refund.RegisterId != null
+            ? await _db.Registers.Where(r => r.Id == refund.RegisterId).Select(r => r.Name).FirstOrDefaultAsync()
+            : null;
+        return View(refund);
     }
 
     [AllowAnonymous, HttpPost, ValidateAntiForgeryToken]

@@ -474,6 +474,11 @@
             </div>
             <p class="text-base font-medium text-neutral-900 mb-1">Refund processed</p>
             <p id="refund-success-detail" class="text-sm text-neutral-500 mb-6"></p>
+            <button type="button" id="refund-print"
+                    class="w-full border border-neutral-300 text-neutral-800 rounded-lg py-3 text-sm hover:bg-neutral-50 transition-colors mb-2 flex items-center justify-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                Print receipt
+            </button>
             <button type="button" id="refund-done"
                     class="w-full bg-neutral-900 text-white rounded-lg py-3 text-sm hover:bg-neutral-700 transition-colors">Done</button>
         </div>
@@ -2018,6 +2023,11 @@
             if (data.success) {
                 searchState.classList.add('hidden');
                 document.getElementById('refund-success-detail').textContent = fmt(data.amount) + ' refunded · ' + data.refundNumber;
+                // Wire the "Print receipt" button to this refund's printable receipt (new tab).
+                // __posBase, not a literal "/Pos" — this is a navigation, not a shimmed fetch, so it
+                // resolves under a secret POS prefix instead of 404ing.
+                var printBtn = document.getElementById('refund-print');
+                printBtn.onclick = function () { window.open(window.__posBase + '/RefundReceipt/' + data.refundId, '_blank'); };
                 successState.classList.remove('hidden');
             } else msgEl.textContent = data.message || 'Refund failed.';
         } finally { confirmBtn.textContent = 'Process refund'; confirmBtn.disabled = false; }

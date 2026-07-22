@@ -1,0 +1,143 @@
+@model SterlingLams.Web.Models.Domain.Refund
+@using SterlingLams.Web.Services
+@inject ISettingsService Settings
+@{
+    Layout = null;
+    var siteName     = await Settings.GetAsync("general.site_name", "Sterlin Glams");
+    var receiptHeader = await Settings.GetAsync("pos.receipt_header", "");
+    var receiptFooter = await Settings.GetAsync("pos.receipt_footer", "NO EXCHANGE OF GOODS, NO REFUND OF CASH");
+    var contactEmail  = await Settings.GetAsync("general.contact_email", "");
+    var contactPhone  = await Settings.GetAsync("general.contact_phone", "");
+    var logoUrl       = await Settings.GetAsync("general.logo_url", "");
+    if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = "/images/sg-logo.png";
+
+    var store = ViewBag.Store as SterlingLams.Web.Models.Domain.Store;
+    var cashierName = ViewBag.CashierName as string ?? "—";
+    var deviceName = ((ViewBag.DeviceName as string) ?? "POS").Replace("Till", "Pos").Replace("till", "pos");
+    var order = Model.OriginalOrder;
+    var customer = order?.Customer;
+
+    var addressLines = (store?.Address ?? "")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    var phone = string.IsNullOrWhiteSpace(store?.Phone) ? contactPhone : store!.Phone;
+    var website = "";
+    if (contactEmail.Contains('@')) website = "www." + contactEmail.Split('@')[1];
+
+    var totalQty = Model.Items.Sum(i => i.Quantity);
+    string N(decimal v) => "₦" + v.ToString("0.00");
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Refund @Model.RefundNumber</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, Helvetica, sans-serif; color:#000; margin:0; padding:16px; font-size:12px; line-height:1.35; }
+        .r { width:300px; margin:0 auto; }
+        .c { text-align:center; }
+        .b { font-weight:bold; }
+        .muted { color:#333; }
+        .logo { display:block; margin:0 auto 4px; max-width:190px; max-height:70px; object-fit:contain; }
+        .biz { text-align:center; font-size:15px; font-weight:bold; margin:0 0 4px; }
+        .addr { text-align:center; font-size:11px; margin:0; }
+        .tag { text-align:center; font-size:14px; font-weight:bold; letter-spacing:1px; border:1.5px solid #000; border-radius:4px; padding:3px 0; margin:6px 0 0; }
+        hr { border:none; border-top:1px solid #000; margin:8px 0; }
+        .row { display:flex; justify-content:space-between; gap:8px; margin:2px 0; }
+        .row span:last-child { text-align:right; }
+        table { width:100%; border-collapse:collapse; }
+        th { font-size:11px; text-align:left; padding:0 0 3px; border-bottom:1px solid #000; }
+        td { padding:3px 0; vertical-align:top; font-size:11px; }
+        .num { text-align:right; white-space:nowrap; padding-left:10px; }
+        .qty { text-align:center; white-space:nowrap; padding-left:10px; }
+        .tot-line { font-size:12px; }
+        .grand { font-size:18px; font-weight:bold; }
+        .foot { text-align:center; font-size:11px; margin:3px 0; }
+        .btns { width:300px; margin:16px auto 0; display:flex; gap:8px; }
+        .btns button, .btns a { flex:1; padding:8px; font-size:12px; text-align:center; border:1px solid #ccc; background:#fff; cursor:pointer; text-decoration:none; color:#111; border-radius:3px; }
+        @@media print { .btns { display:none; } body { padding:0; } }
+    </style>
+</head>
+<body onload="window.print()">
+    <div class="r">
+        <img src="@logoUrl" alt="" class="logo" onerror="this.style.display='none'" />
+        <p class="biz">@siteName Ltd</p>
+        <div class="addr">
+            @if (store != null) { <div>@store.Name</div> }
+            @foreach (var ln in addressLines) { <div>@ln</div> }
+            @if (store != null && (!string.IsNullOrWhiteSpace(store.City) || !string.IsNullOrWhiteSpace(store.State)))
+            {
+                <div>@($"{store.City} {store.State}".Trim())</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(phone)) { <div>Tel : @phone</div> }
+            @if (!string.IsNullOrWhiteSpace(website) || !string.IsNullOrWhiteSpace(contactEmail))
+            {
+                <div>@website @(string.IsNullOrWhiteSpace(website) ? "" : "|") @contactEmail</div>
+            }
+        </div>
+        <div class="tag">REFUND / RETURN</div>
+        @if (!string.IsNullOrWhiteSpace(receiptHeader))
+        {
+            <p class="c muted" style="font-size:11px;margin:6px 0 0;white-space:pre-line;">@receiptHeader</p>
+        }
+        <hr />
+
+        <div class="row"><span class="b">Refund No.</span><span>@Model.RefundNumber</span></div>
+        <div class="row"><span>Date</span><span>@Model.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</span></div>
+        @if (order != null)
+        {
+            <div class="row"><span>Original sale</span><span>@order.OrderNumber</span></div>
+        }
+        <div class="row"><span>Staff</span><span>@cashierName</span></div>
+        <div class="row"><span>Device</span><span>@deviceName</span></div>
+        @if (customer != null)
+        {
+            <div class="row"><span>Customer</span><span>@customer.FullName@(string.IsNullOrWhiteSpace(customer.PhoneNumber) ? "" : $" / {customer.PhoneNumber}")</span></div>
+        }
+        @if (!string.IsNullOrWhiteSpace(Model.Reason))
+        {
+            <div class="row"><span>Reason</span><span>@Model.Reason</span></div>
+        }
+        <hr />
+
+        <table>
+            <thead>
+                <tr><th>ITEM RETURNED</th><th class="num">PRICE</th><th class="qty">QTY</th><th class="num">TOTAL</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model.Items)
+                {
+                    var desc = item.ProductName + (item.VariantName != null ? " " + item.VariantName : "");
+                    <tr>
+                        <td>@desc</td>
+                        <td class="num">@N(item.UnitPrice)</td>
+                        <td class="qty">@item.Quantity</td>
+                        <td class="num">@N(item.LineTotal)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <div class="row" style="margin-top:4px;"><span class="b">Total Qty</span><span class="b">@totalQty</span></div>
+        <hr />
+
+        <div class="row grand"><span>Refunded</span><span>-@N(Model.Amount)</span></div>
+        <div class="row tot-line"><span>Method</span><span>@Model.RefundMethod.ToUpper()</span></div>
+        <hr />
+
+        <p class="foot">Refund processed at @siteName</p>
+        @if (!string.IsNullOrWhiteSpace(receiptFooter))
+        {
+            <p class="foot b" style="white-space:pre-line;">@receiptFooter</p>
+        }
+        <div class="c" style="margin-top:8px;"><svg id="barcode" style="display:inline-block;max-width:100%;height:auto;"></svg></div>
+    </div>
+
+    <div class="btns"><button onclick="window.print()">Print</button><a href="@($"/{SterlingLams.Web.Infrastructure.StaffPaths.Pos}")">Back to POS</a></div>
+    <script src="/js/jsbarcode.min.js"></script>
+    <script>
+        try { JsBarcode("#barcode", "@Model.RefundNumber", { format: "CODE128", displayValue: true, width: 1, height: 34, margin: 0, fontSize: 10 }); }
+        catch (e) { var el = document.getElementById('barcode'); if (el) el.outerHTML = '<p class="c muted" style="font-size:11px;">' + "@Model.RefundNumber" + '</p>'; }
+    </script>
+</body>
+</html>

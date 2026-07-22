@@ -28,9 +28,24 @@ SterlingLams.Web.Infrastructure.StaffPaths.Init(builder.Configuration);
 SterlingLams.Web.Areas.Admin.AdminSections.InitOwners(builder.Configuration);
 
 // ─── Serilog ────────────────────────────────────────────────────────────────
+// The load-balancer/uptime probe hits /health every few seconds; without filtering, its request
+// logs (start/finish, endpoint, session start, readiness DB query) drown out real traffic and make
+// genuine errors hard to spot. Drop any log event that belongs to a /health(/…) request — matched by
+// {Path} on the hosting start/finish lines and {RequestPath} (pushed by middleware below) on the rest.
+static bool IsHealthCheckLog(Serilog.Events.LogEvent e)
+{
+    static bool IsHealth(Serilog.Events.LogEventPropertyValue? v) =>
+        v is Serilog.Events.ScalarValue { Value: string s }
+        && (s.Equals("/health", StringComparison.OrdinalIgnoreCase)
+            || s.StartsWith("/health/", StringComparison.OrdinalIgnoreCase));
+    return (e.Properties.TryGetValue("RequestPath", out var rp) && IsHealth(rp))
+        || (e.Properties.TryGetValue("Path", out var p) && IsHealth(p));
+}
+
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
+    .Filter.ByExcluding(IsHealthCheckLog)
     .WriteTo.Console()
     .WriteTo.File("logs/sterlinglams-.txt", rollingInterval: RollingInterval.Day)
     .CreateLogger();
@@ -287,6 +302,14 @@ var forwardedOptions = new ForwardedHeadersOptions
 forwardedOptions.KnownNetworks.Clear();
 forwardedOptions.KnownProxies.Clear();
 app.UseForwardedHeaders(forwardedOptions);
+
+// Tag every log written during a request with its path (AsyncLocal → flows to inner middleware,
+// endpoints, EF). The Serilog filter above uses this to drop health-check request noise.
+app.Use(async (ctx, next) =>
+{
+    using (Serilog.Context.LogContext.PushProperty("RequestPath", ctx.Request.Path.Value ?? ""))
+        await next();
+});
 
 if (!app.Environment.IsDevelopment())
 {
