@@ -87,13 +87,42 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 ? await _db.StoreInventories.Where(si => allProductIds.Contains(si.ProductId)).ToListAsync()
                 : new List<StoreInventory>();
 
+            // A variable product keeps its stock on the variant rows, not the product pool, so the
+            // grid has to show (and edit) each variant separately — otherwise a colour/size product
+            // looks identical to a simple one and typing a quantity would write to a pool nothing reads.
+            var variantsByProduct = allProductIds.Any()
+                ? (await _db.ProductVariants
+                        .Where(v => allProductIds.Contains(v.ProductId) && v.IsActive)
+                        .OrderBy(v => v.Name)
+                        .Select(v => new { v.Id, v.ProductId, v.Name, v.Sku })
+                        .ToListAsync())
+                    .GroupBy(v => v.ProductId)
+                    .ToDictionary(g => g.Key, g => g.ToList())
+                : new();
+
             // Build rows (needed before stock filter so we can check stock values)
             var allRows = allMatchingProducts.Select(p =>
             {
+                // The product pool row is the one with no variant attached.
                 var stockByStore = stores.ToDictionary(
                     s => s.Id,
-                    s => allInventory.FirstOrDefault(si => si.ProductId == p.Id && si.StoreId == s.Id)
+                    s => allInventory.FirstOrDefault(si => si.ProductId == p.Id && si.StoreId == s.Id
+                                                        && si.ProductVariantId == null)
                                     ?.QuantityOnHand ?? -1);
+                var variants = variantsByProduct.TryGetValue(p.Id, out var vs)
+                    ? vs.Select(v => new VariantInventoryRow
+                    {
+                        VariantId    = v.Id,
+                        Name         = v.Name,
+                        Sku          = v.Sku,
+                        StockByStore = stores.ToDictionary(
+                            s => s.Id,
+                            s => allInventory.FirstOrDefault(si => si.ProductId == p.Id && si.StoreId == s.Id
+                                                                && si.ProductVariantId == v.Id)
+                                            ?.QuantityOnHand ?? -1),
+                    }).ToList()
+                    : new List<VariantInventoryRow>();
+
                 return new ProductInventoryRow
                 {
                     ProductId         = p.Id,
@@ -103,6 +132,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     ImageUrl          = p.Images.OrderBy(i => i.SortOrder).FirstOrDefault()?.Url,
                     LowStockThreshold = p.LowStockThreshold,
                     StockByStore      = stockByStore,
+                    Variants          = variants,
                 };
             }).ToList();
 
@@ -194,25 +224,41 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             var stores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
             var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var variantIds = (await _db.ProductVariants.Where(v => v.ProductId == productId)
+                .Select(v => v.Id).ToListAsync()).ToHashSet();
 
             foreach (var store in stores)
             {
-                var key = $"store_{store.Id}";
-                if (!form.TryGetValue(key, out var qtyStr)) continue;
-                if (!int.TryParse(qtyStr, out var qty) || qty < 0) continue;
+                // "store_5" is the product's own stock; "store_5_v12" is variant 12's stock at that
+                // store — a variable product holds its stock on the variants, never on the product.
+                foreach (var (key, variantId) in Fields(store.Id, variantIds))
+                {
+                    if (!form.TryGetValue(key, out var qtyStr)) continue;
+                    if (!int.TryParse(qtyStr, out var qty) || qty < 0) continue;
 
-                // Apply the change through the stock ledger so every restock is traceable.
-                var current = await _stock.GetStockAsync(productId, null, store.Id);
-                var delta = qty - current;
-                if (delta != 0)
-                    await _stock.ApplyAsync(productId, null, store.Id, delta,
-                        StockMovementType.Adjustment, "Stock update", userId: userId);
+                    // Apply the change through the stock ledger so every restock is traceable.
+                    var current = await _stock.GetStockAsync(productId, variantId, store.Id, fallback: false);
+                    var delta = qty - current;
+                    if (delta != 0)
+                        await _stock.ApplyAsync(productId, variantId, store.Id, delta,
+                            StockMovementType.Adjustment, "Stock update", userId: userId,
+                            materializeVariant: variantId.HasValue);
+                }
+            }
+
+            static IEnumerable<(string Key, int? VariantId)> Fields(int storeId, HashSet<int> variantIds)
+            {
+                yield return ($"store_{storeId}", null);
+                foreach (var vid in variantIds) yield return ($"store_{storeId}_v{vid}", vid);
             }
 
             await _db.SaveChangesAsync();
 
-            var summary = string.Join(", ", stores.Select(s =>
-                $"{s.Name.Replace("Sterlin Glams ", "")}: {form[$"store_{s.Id}"]}"));
+            // Audit line lists every quantity that was submitted, variant fields included.
+            var summary = string.Join(", ", stores.SelectMany(s =>
+                Fields(s.Id, variantIds)
+                    .Where(f => form.ContainsKey(f.Key) && !string.IsNullOrWhiteSpace(form[f.Key]))
+                    .Select(f => $"{s.Name.Replace("Sterlin Glams ", "")}{(f.VariantId.HasValue ? $" [variant {f.VariantId}]" : "")}: {form[f.Key]}")));
             await LogAsync("Update", "Inventory", productId.ToString(),
                 $"Set stock for '{product.Name}' — {summary}");
 
@@ -229,6 +275,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         {
             public int ProductId { get; set; }
             public int StoreId { get; set; }
+            /// <summary>null = the product's own stock; set = that variant's own per-branch stock.</summary>
+            public int? VariantId { get; set; }
             public int Quantity { get; set; }
         }
 
@@ -241,23 +289,33 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
             var validStoreIds = (await _db.Stores.Where(s => s.IsActive).Select(s => s.Id).ToListAsync()).ToHashSet();
+            var editedProductIds = edits.Select(e => e.ProductId).Distinct().ToList();
             var validProductIds = (await _db.Products
-                .Where(p => edits.Select(e => e.ProductId).Distinct().Contains(p.Id))
+                .Where(p => editedProductIds.Contains(p.Id))
                 .Select(p => p.Id).ToListAsync()).ToHashSet();
+            // A variant id must belong to the product it was sent with.
+            var validVariants = (await _db.ProductVariants
+                .Where(v => editedProductIds.Contains(v.ProductId))
+                .Select(v => new { v.Id, v.ProductId }).ToListAsync())
+                .Select(v => (v.ProductId, v.Id)).ToHashSet();
 
             var applied = 0;
             foreach (var e in edits)
             {
                 if (e.Quantity < 0 || !validStoreIds.Contains(e.StoreId) || !validProductIds.Contains(e.ProductId))
                     continue;
+                if (e.VariantId.HasValue && !validVariants.Contains((e.ProductId, e.VariantId.Value)))
+                    continue;
 
-                // Route every change through the ledger so each restock stays traceable.
-                var current = await _stock.GetStockAsync(e.ProductId, null, e.StoreId);
+                // Route every change through the ledger so each restock stays traceable. Read the exact
+                // row being edited (no pool fallback) so the delta targets that variant, not the product.
+                var current = await _stock.GetStockAsync(e.ProductId, e.VariantId, e.StoreId, fallback: false);
                 var delta = e.Quantity - current;
                 if (delta != 0)
                 {
-                    await _stock.ApplyAsync(e.ProductId, null, e.StoreId, delta,
-                        StockMovementType.Adjustment, "Bulk stock update", userId: userId);
+                    await _stock.ApplyAsync(e.ProductId, e.VariantId, e.StoreId, delta,
+                        StockMovementType.Adjustment, "Bulk stock update", userId: userId,
+                        materializeVariant: e.VariantId.HasValue);
                     applied++;
                 }
             }

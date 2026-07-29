@@ -244,10 +244,20 @@ else
 
                         <!-- Product name + SKU -->
                         <td class="px-4 py-3">
-                            <p class="text-xs font-medium text-neutral-800 leading-snug">@row.ProductName</p>
+                            <p class="text-xs font-medium text-neutral-800 leading-snug">
+                                @row.ProductName
+                                @if (row.HasVariants)
+                                {
+                                    <span class="ml-1 text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-medium align-middle">@row.Variants.Count variants</span>
+                                }
+                            </p>
                             @if (!string.IsNullOrEmpty(row.Sku))
                             {
                                 <p class="text-[10px] text-neutral-400 font-mono mt-0.5">@row.Sku</p>
+                            }
+                            @if (row.HasVariants)
+                            {
+                                <p class="text-[10px] text-neutral-400 mt-0.5">Stock is held per variant — edit the rows below.</p>
                             }
                         </td>
 
@@ -261,13 +271,18 @@ else
                             </span>
                         </td>
 
-                        <!-- Stock per store — editable inputs -->
+                        <!-- Stock per store — editable inputs (roll-up only for variable products) -->
                         @foreach (var store in Model.Stores)
                         {
-                            var qty = row.StockByStore.TryGetValue(store.Id, out var q2) ? q2 : -1;
+                            var qty = row.StoreTotal(store.Id);
                             var cellBg = qty == -1 ? "bg-neutral-50" : qty == 0 ? "bg-red-50" : qty < row.LowStockThreshold ? "bg-amber-50" : "";
                             <td class="px-3 py-2 text-center @cellBg">
-                                @if (canEdit && qty == -1)
+                                @if (row.HasVariants)
+                                {
+                                    <!-- Variable product: the total of its variants, edited on the rows below -->
+                                    <span class="text-xs font-medium @(qty <= 0 ? "text-neutral-400" : "text-neutral-700")">@(qty == -1 ? "—" : qty.ToString())</span>
+                                }
+                                else if (canEdit && qty == -1)
                                 {
                                     <!-- No record exists — show dash, still let admin enter a value -->
                                     <input form="inv-@row.ProductId"
@@ -307,6 +322,48 @@ else
                             }
                         </td>
                     </tr>
+
+                    @* Variant rows — a variable product's stock is held here, one row per colour/size. *@
+                    @foreach (var v in row.Variants)
+                    {
+                        var vTotal = v.StockByStore.Values.Where(x => x >= 0).Sum();
+                        <tr class="bg-neutral-50/40 hover:bg-neutral-50 transition-colors">
+                            <td class="px-3 py-1.5"></td>
+                            <td class="px-4 py-1.5 pl-8">
+                                <p class="text-xs text-neutral-600 leading-snug">↳ @v.Name</p>
+                                @if (!string.IsNullOrEmpty(v.Sku))
+                                {
+                                    <p class="text-[10px] text-neutral-400 font-mono">@v.Sku</p>
+                                }
+                            </td>
+                            <td class="px-4 py-1.5"></td>
+                            <td class="px-4 py-1.5 text-center">
+                                <span class="text-xs @(vTotal == 0 ? "text-red-600" : "text-neutral-600")">@vTotal</span>
+                            </td>
+                            @foreach (var store in Model.Stores)
+                            {
+                                var vq = v.StockByStore.TryGetValue(store.Id, out var q3) ? q3 : -1;
+                                var vBg = vq == -1 ? "bg-neutral-50" : vq == 0 ? "bg-red-50" : vq < row.LowStockThreshold ? "bg-amber-50" : "";
+                                <td class="px-3 py-1.5 text-center @vBg">
+                                    @if (canEdit)
+                                    {
+                                        <input form="inv-@row.ProductId"
+                                               type="number" name="store_@(store.Id)_v@(v.VariantId)"
+                                               value="@(vq == -1 ? "" : vq.ToString())" placeholder="—" min="0"
+                                               data-pid="@row.ProductId" data-sid="@store.Id" data-vid="@v.VariantId"
+                                               data-orig="@(vq == -1 ? "" : vq.ToString())"
+                                               class="stock-cell w-16 text-center text-xs border border-neutral-200 rounded-sm px-2 py-1 focus:outline-none focus:border-neutral-400 bg-white
+                                                      @(vq == 0 ? "text-red-600 border-red-200" : vq > 0 && vq < row.LowStockThreshold ? "text-amber-600 border-amber-200" : "")" />
+                                    }
+                                    else
+                                    {
+                                        <span class="text-xs @(vq == -1 ? "text-neutral-300" : vq == 0 ? "text-red-600" : vq < row.LowStockThreshold ? "text-amber-600" : "text-neutral-700")">@(vq == -1 ? "—" : vq.ToString())</span>
+                                    }
+                                </td>
+                            }
+                            <td class="px-4 py-1.5"></td>
+                        </tr>
+                    }
                 }
             </tbody>
         </table>
@@ -370,7 +427,12 @@ else
         document.addEventListener('input', e => { if (e.target.classList && e.target.classList.contains('stock-cell')) refresh(); });
         refresh();
         btn.addEventListener('click', async () => {
-            const edits = changed().map(i => ({ productId: +i.dataset.pid, storeId: +i.dataset.sid, quantity: +i.value }));
+            const edits = changed().map(i => ({
+                productId: +i.dataset.pid,
+                storeId: +i.dataset.sid,
+                variantId: i.dataset.vid ? +i.dataset.vid : null,   // null = the product's own stock
+                quantity: +i.value
+            }));
             if (!edits.length) { alert('No changes to save.'); return; }
             btn.disabled = true; const label = btn.querySelector('span') ? null : null; btn.textContent = 'Saving…';
             try {

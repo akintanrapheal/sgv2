@@ -360,10 +360,26 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         // Only count stores that have an actual record (exclude -1); include variant rows.
         public int TotalStock        => StockByStore.Values.Where(v => v >= 0).Sum()
                                         + Variants.Sum(v => v.StockByStore.Values.Where(q => q >= 0).Sum());
-        public bool HasAnyRecord     => StockByStore.Values.Any(v => v >= 0);
-        public bool HasOutOfStock    => StockByStore.Values.Any(v => v == 0);
-        public bool HasLowStock      => StockByStore.Values.Any(v => v > 0 && v < LowStockThreshold);
-        public bool HasMissingRecord => StockByStore.Values.Any(v => v == -1);
+
+        /// <summary>The cells the stock-status flags below judge: a variable product's stock lives on
+        /// its variants, so its (always empty) product pool must not decide low/out-of-stock.</summary>
+        private IEnumerable<int> StockCells => HasVariants
+            ? Variants.SelectMany(v => v.StockByStore.Values)
+            : StockByStore.Values;
+
+        public bool HasAnyRecord     => StockCells.Any(v => v >= 0);
+        public bool HasOutOfStock    => StockCells.Any(v => v == 0);
+        public bool HasLowStock      => StockCells.Any(v => v > 0 && v < LowStockThreshold);
+        public bool HasMissingRecord => StockCells.Any(v => v == -1);
+
+        /// <summary>Stock per store for the row header — the sum across variants for a variable
+        /// product, the pool value for a simple one. -1 when no record exists at that store.</summary>
+        public int StoreTotal(int storeId)
+        {
+            if (!HasVariants) return StockByStore.TryGetValue(storeId, out var q) ? q : -1;
+            var cells = Variants.Select(v => v.StockByStore.TryGetValue(storeId, out var q) ? q : -1).ToList();
+            return cells.Any(c => c >= 0) ? cells.Where(c => c >= 0).Sum() : -1;
+        }
     }
 
     public class VariantInventoryRow
