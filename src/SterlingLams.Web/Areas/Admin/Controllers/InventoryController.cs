@@ -69,8 +69,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .Where(p => p.IsActive)
                 .AsQueryable();
 
+            // Match name, SKU or barcode — same as the Inventory System list, so a code typed or
+            // scanned here finds the product instead of coming back empty.
             if (!string.IsNullOrWhiteSpace(q))
-                productQuery = productQuery.Where(p => EF.Functions.ILike(p.Name, $"%{q}%"));
+                productQuery = productQuery.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
+                                                    || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
+                                                    || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%"));
 
             if (!string.IsNullOrWhiteSpace(category))
                 productQuery = productQuery.Where(p => p.Category != null && p.Category.Slug == category);

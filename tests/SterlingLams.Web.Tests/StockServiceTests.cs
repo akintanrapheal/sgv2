@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Models.Domain;
 using SterlingLams.Web.Services;
 using Xunit;
@@ -40,6 +41,40 @@ public class StockServiceTests
         await t.Db.SaveChangesAsync();
 
         Assert.Equal(5, await svc.GetStockAsync(p.Id, null, store.Id));
+    }
+
+    // Track Stock (and the Stock grid) apply the on-hand change through the ledger and then upsert
+    // the reorder settings on the same location row. For a product with no row yet, ApplyAsync's row
+    // is still a pending insert the database cannot see — looking it up with a query alone returns
+    // null, a second row gets added and SaveChanges dies on the (ProductId, StoreId) unique index.
+    // The callers must resolve through the change tracker first; this pins that behaviour.
+    [Fact]
+    public async Task Reorder_upsert_after_ApplyAsync_reuses_the_pending_row()
+    {
+        using var t = new TestDb();
+        var store = t.SeedStore("Abuja", "Abuja", "Gwarimpa");
+        var p = t.SeedProduct();          // brand-new product: no StoreInventory row anywhere
+
+        var svc = new StockService(t.Db);
+        await svc.ApplyAsync(p.Id, null, store.Id, 4, StockMovementType.Adjustment, "BSA00001");
+
+        // A database query cannot see the row ApplyAsync just added.
+        Assert.Null(await t.Db.StoreInventories
+            .FirstOrDefaultAsync(si => si.ProductId == p.Id && si.StoreId == store.Id && si.ProductVariantId == null));
+
+        var row = t.Db.StoreInventories.Local
+            .FirstOrDefault(si => si.ProductId == p.Id && si.StoreId == store.Id && si.ProductVariantId == null);
+        Assert.NotNull(row);
+        row!.MinStock = 2;
+        row.MaxStock = 20;
+
+        await t.Db.SaveChangesAsync();
+
+        Assert.Single(t.Db.StoreInventories.Where(si => si.ProductId == p.Id && si.StoreId == store.Id));
+        var saved = t.Inv(p.Id, store.Id);
+        Assert.Equal(4, saved.QuantityOnHand);
+        Assert.Equal(2, saved.MinStock);
+        Assert.Equal(20, saved.MaxStock);
     }
 
     [Fact]

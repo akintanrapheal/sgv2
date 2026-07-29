@@ -723,8 +723,13 @@ public class ProductsController : InventoryAreaController
             }
 
             // Persist the reorder fields on the (pool or variant) location row, creating it if needed.
-            var row = await _db.StoreInventories
-                .FirstOrDefaultAsync(si => si.ProductId == req.Id && si.StoreId == l.StoreId && si.ProductVariantId == vid);
+            // Check the change tracker FIRST: for a product with no balance row yet (e.g. just created),
+            // ApplyAsync above has already added one that is still pending — a database query cannot see
+            // it, and adding a second row trips the (ProductId, StoreId) unique index on save.
+            var row = _db.StoreInventories.Local
+                    .FirstOrDefault(si => si.ProductId == req.Id && si.StoreId == l.StoreId && si.ProductVariantId == vid)
+                ?? await _db.StoreInventories
+                    .FirstOrDefaultAsync(si => si.ProductId == req.Id && si.StoreId == l.StoreId && si.ProductVariantId == vid);
             if (row == null)
             {
                 row = new StoreInventory { ProductId = req.Id, StoreId = l.StoreId, ProductVariantId = vid };

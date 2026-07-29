@@ -271,8 +271,13 @@ public class StockController : InventoryAreaController
                 // Stock Management grid also persists Min/Max/On-order on the (pool or variant) row.
                 if (e.HasReorder)
                 {
-                    var row = await _db.StoreInventories.FirstOrDefaultAsync(si =>
-                        si.ProductId == e.ProductId && si.StoreId == e.StoreId && si.ProductVariantId == e.VariantId);
+                    // Change tracker first — ApplyAsync above may have created this row already and a
+                    // database query cannot see a pending insert; adding a second one would trip the
+                    // (ProductId, StoreId) unique index when we save.
+                    var row = _db.StoreInventories.Local.FirstOrDefault(si =>
+                            si.ProductId == e.ProductId && si.StoreId == e.StoreId && si.ProductVariantId == e.VariantId)
+                        ?? await _db.StoreInventories.FirstOrDefaultAsync(si =>
+                            si.ProductId == e.ProductId && si.StoreId == e.StoreId && si.ProductVariantId == e.VariantId);
                     if (row == null)
                     {
                         row = new StoreInventory { ProductId = e.ProductId, StoreId = e.StoreId, ProductVariantId = e.VariantId };
