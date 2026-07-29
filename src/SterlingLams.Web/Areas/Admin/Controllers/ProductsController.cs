@@ -112,6 +112,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 "category_desc" => query.OrderByDescending(p => p.Category != null ? p.Category.Name : ""),
                 "price_asc"     => query.OrderBy(p => p.Price),
                 "price_desc"    => query.OrderByDescending(p => p.Price),
+                "sale_asc"      => query.OrderBy(p => p.SalePrice == null).ThenBy(p => p.SalePrice),
+                "sale_desc"     => query.OrderBy(p => p.SalePrice == null).ThenByDescending(p => p.SalePrice),
                 "status_asc"    => query.OrderBy(p => p.IsActive),
                 "status_desc"   => query.OrderByDescending(p => p.IsActive),
                 _               => query.OrderBy(p => p.Name),   // name_asc (default)

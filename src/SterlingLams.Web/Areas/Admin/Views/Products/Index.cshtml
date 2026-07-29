@@ -23,6 +23,7 @@
     var nameRoute = SortRoute("name");
     var categoryRoute = SortRoute("category");
     var priceRoute = SortRoute("price");
+    var saleRoute = SortRoute("sale");
     var statusRoute = SortRoute("status");
 }
 
@@ -226,6 +227,9 @@
                     <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-all-route-data="priceRoute" class="hover:text-neutral-800">Price@(SortIndicator("price"))</a>
                 </th>
                 <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">
+                    <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-all-route-data="saleRoute" class="hover:text-neutral-800">Sale Price@(SortIndicator("sale"))</a>
+                </th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">
                     <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-all-route-data="statusRoute" class="hover:text-neutral-800">Status@(SortIndicator("status"))</a>
                 </th>
                 <th class="text-right px-4 py-3 text-xs text-neutral-400 font-medium">Actions</th>
@@ -235,7 +239,7 @@
             @if (!Model.Products.Any())
             {
                 <tr>
-                    <td colspan="7" class="px-6 py-16 text-center text-neutral-400 text-sm">
+                    <td colspan="8" class="px-6 py-16 text-center text-neutral-400 text-sm">
                         @if (hasFilters)
                         {
                             <span>No products match your filters. <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-route-clear="1" class="underline hover:text-neutral-700">Clear all filters</a></span>
@@ -292,6 +296,31 @@
 
                     <td class="px-4 py-3 text-xs text-neutral-500">@(p.Category?.Name ?? "—")</td>
                     <td class="px-4 py-3 text-xs font-medium">₦@p.Price.ToString("N0")</td>
+
+                    <!-- Sale price — live sales in brand colour with the discount %; a sale that is
+                         scheduled or already finished shows muted so it isn't mistaken for active. -->
+                    <td class="px-4 py-3 text-xs whitespace-nowrap">
+                        @if (p.SalePrice is decimal sale && sale > 0m)
+                        {
+                            <span class="font-medium @(p.IsOnSale ? "text-brand-600" : "text-neutral-400 line-through")">₦@sale.ToString("N0")</span>
+                            if (p.IsOnSale)
+                            {
+                                <span class="ml-1 text-[10px] bg-rose-50 text-rose-600 px-1.5 py-0.5 rounded">-@(((int)Math.Round((p.Price - sale) / p.Price * 100m)))%</span>
+                            }
+                            else if (p.SaleStartsAt is DateTime starts && starts > DateTime.UtcNow)
+                            {
+                                <span class="ml-1 text-[10px] text-neutral-400">scheduled @starts.ToLocalTime().ToString("d MMM")</span>
+                            }
+                            else if (p.SaleEndsAt is DateTime ends && ends < DateTime.UtcNow)
+                            {
+                                <span class="ml-1 text-[10px] text-neutral-400">ended @ends.ToLocalTime().ToString("d MMM")</span>
+                            }
+                        }
+                        else
+                        {
+                            <span class="text-neutral-300">—</span>
+                        }
+                    </td>
 
                     <td class="px-4 py-3">
                         @if (p.IsActive)
