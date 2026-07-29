@@ -200,8 +200,8 @@
                 </a>
             }
             <p class="mb-2 flex items-baseline gap-3 flex-wrap" id="price-block">
+                <span id="price-regular" class="text-2xl font-light text-neutral-400 line-through @(Model.IsOnSale ? "" : "hidden")">@Model.FormattedRegularPrice</span>
                 <span id="price-effective" class="text-2xl font-light @(Model.IsOnSale ? "text-brand-600" : "text-neutral-800")">@Model.FormattedPrice</span>
-                <span id="price-regular" class="text-lg font-light text-neutral-400 line-through @(Model.IsOnSale ? "" : "hidden")">@Model.FormattedRegularPrice</span>
             </p>
             @{
                 // "Only N left" urgency: for a simple (no-variant) product we know the exact total
@@ -675,7 +675,7 @@
                         <h3 class="text-sm font-light text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
                         @if (p.IsOnSale)
                         {
-                            <p class="text-xs mt-1"><span class="text-brand-600">@p.FormattedPrice</span> <span class="text-neutral-400 line-through ml-1">@p.FormattedRegularPrice</span></p>
+                            <p class="text-xs mt-1"><span class="text-neutral-400 line-through">@p.FormattedRegularPrice</span> <span class="text-brand-600 ml-1">@p.FormattedPrice</span></p>
                         }
                         else
                         {
@@ -707,7 +707,7 @@
                         <h3 class="text-sm font-light text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
                         @if (p.IsOnSale)
                         {
-                            <p class="text-xs mt-1"><span class="text-brand-600">@p.FormattedPrice</span> <span class="text-neutral-400 line-through ml-1">@p.FormattedRegularPrice</span></p>
+                            <p class="text-xs mt-1"><span class="text-neutral-400 line-through">@p.FormattedRegularPrice</span> <span class="text-brand-600 ml-1">@p.FormattedPrice</span></p>
                         }
                         else
                         {
