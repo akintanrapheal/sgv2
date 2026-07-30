@@ -94,16 +94,32 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
             else
             {
-                code = await _db.DiscountCodes
+                var existing = await _db.DiscountCodes
                     .Include(d => d.Categories)
                     .Include(d => d.Products)
-                    .FirstOrDefaultAsync(d => d.Id == vm.Id) ?? new DiscountCode();
+                    .FirstOrDefaultAsync(d => d.Id == vm.Id);
+                // A stale edit link (code since deleted) must not silently "save" nothing.
+                if (existing == null)
+                {
+                    TempData["Error"] = "That discount code no longer exists.";
+                    return RedirectToAction(nameof(Index));
+                }
+                code = existing;
             }
 
             // Automatic promos still need a unique internal code — generate one if blank
-            code.Code = string.IsNullOrWhiteSpace(vm.Code)
+            var newCode = string.IsNullOrWhiteSpace(vm.Code)
                 ? $"AUTO-{Guid.NewGuid():N}"[..12].ToUpper()
                 : vm.Code.Trim().ToUpper();
+
+            // Code is unique in the database. A coupon code is customer-facing, so never silently
+            // rename it — tell the admin the code is taken and keep them on the form.
+            if (await _db.DiscountCodes.AnyAsync(d => d.Code == newCode && d.Id != code.Id))
+            {
+                TempData["Error"] = $"The code '{newCode}' is already in use — pick another.";
+                return RedirectToAction(vm.Id == 0 ? nameof(Create) : nameof(Edit), new { id = vm.Id });
+            }
+            code.Code = newCode;
             code.Description        = vm.Description;
             code.Type              = Enum.TryParse<DiscountType>(vm.Type, out var t) ? t : DiscountType.Percentage;
             code.Value             = vm.Value;

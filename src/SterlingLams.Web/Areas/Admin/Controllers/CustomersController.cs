@@ -132,14 +132,27 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             if (!string.IsNullOrWhiteSpace(tag))
                 query = query.Where(u => u.Tags != null && EF.Functions.ILike(u.Tags, $"%{tag}%"));
 
+            // Every figure below counts BOTH channels. Which column holds the BUYER depends on the
+            // channel: online it's UserId, but on a POS sale UserId is the CASHIER and the buyer sits
+            // in CustomerUserId. So the match must be channel-aware — reading either column would
+            // credit every till sale to the cashier as well, and counting only UserId (the old
+            // u.Orders navigation) made in-store regulars look like they had never bought anything.
+            var allOrders = _db.Orders.AsQueryable();
+
             // Segment filters mirror the derived badges on AdminCustomerRow.
             var lapsedCutoff = DateTime.UtcNow.AddDays(-CustomerSegments.LapsedDays);
             query = segment switch
             {
-                "vip" => query.Where(u => (u.Orders.Where(o => o.IsPaid).Sum(o => (decimal?)o.Total) ?? 0) >= CustomerSegments.VipSpend),
-                "repeat" => query.Where(u => u.Orders.Count >= 2),
-                "lapsed" => query.Where(u => u.Orders.Any() && u.Orders.Max(o => o.CreatedAt) < lapsedCutoff),
-                "new" => query.Where(u => u.Orders.Count <= 1),
+                "vip" => query.Where(u => (allOrders
+                        .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id && o.IsPaid)
+                        .Sum(o => (decimal?)o.Total) ?? 0) >= CustomerSegments.VipSpend),
+                "repeat" => query.Where(u => allOrders
+                        .Count(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id) >= 2),
+                "lapsed" => query.Where(u => allOrders
+                        .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id)
+                        .Max(o => (DateTime?)o.CreatedAt) < lapsedCutoff),
+                "new" => query.Where(u => allOrders
+                        .Count(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id) <= 1),
                 _ => query
             };
 
@@ -155,10 +168,15 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     FullName = u.FirstName + " " + u.LastName,
                     Email = u.Email ?? "",
                     Phone = u.PhoneNumber,
-                    OrderCount = u.Orders.Count,
-                    TotalSpend = u.Orders.Where(o => o.IsPaid).Sum(o => (decimal?)o.Total) ?? 0,
+                    OrderCount = allOrders
+                        .Count(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id),
+                    TotalSpend = allOrders
+                        .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id && o.IsPaid)
+                        .Sum(o => (decimal?)o.Total) ?? 0,
                     JoinedAt = u.CreatedAt,
-                    LastOrderAt = u.Orders.Any() ? u.Orders.Max(o => (DateTime?)o.CreatedAt) : null,
+                    LastOrderAt = allOrders
+                        .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id)
+                        .Max(o => (DateTime?)o.CreatedAt),
                     Tags = u.Tags
                 })
                 .ToListAsync();
@@ -183,8 +201,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var user = await _db.Users.FindAsync(id);
             if (user == null) return NotFound();
 
-            var orders = await _db.Orders
-                .Where(o => o.UserId == id)
+            // Both channels: online orders link the buyer via UserId, POS sales via CustomerUserId
+            // (where UserId is the cashier). Counting only UserId hid every in-store purchase; matching
+            // either column would hand a cashier every sale they rang up.
+            var theirOrders = _db.Orders
+                .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == id);
+
+            var orders = await theirOrders
                 .OrderByDescending(o => o.CreatedAt)
                 .Take(10)
                 .Select(o => new RecentOrderRow
@@ -204,10 +227,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 Email = user.Email ?? "",
                 Phone = user.PhoneNumber,
                 JoinedAt = user.CreatedAt,
-                OrderCount = await _db.Orders.CountAsync(o => o.UserId == id),
-                TotalSpend = await _db.Orders
-                    .Where(o => o.UserId == id && o.IsPaid)
-                    .SumAsync(o => (decimal?)o.Total) ?? 0,
+                OrderCount = await theirOrders.CountAsync(),
+                TotalSpend = await theirOrders.Where(o => o.IsPaid).SumAsync(o => (decimal?)o.Total) ?? 0,
                 RecentOrders = orders,
                 Tags = user.Tags,
                 LoyaltyBalance = await _loyalty.GetBalanceAsync(id),
@@ -260,6 +281,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     EF.Functions.ILike(u.FirstName + " " + u.LastName, $"%{q}%") ||
                     EF.Functions.ILike(u.Email!, $"%{q}%"));
 
+            // Online + in-store, matching the figures on the list and detail screens.
+            var allOrders = _db.Orders.AsQueryable();
             var customers = await query
                 .OrderByDescending(u => u.CreatedAt)
                 .Select(u => new
@@ -267,8 +290,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     FullName  = u.FirstName + " " + u.LastName,
                     u.Email,
                     Phone     = u.PhoneNumber ?? "",
-                    Orders    = u.Orders.Count,
-                    TotalSpend = u.Orders.Where(o => o.IsPaid).Sum(o => (decimal?)o.Total) ?? 0,
+                    Orders    = allOrders
+                        .Count(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id),
+                    TotalSpend = allOrders
+                        .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id && o.IsPaid)
+                        .Sum(o => (decimal?)o.Total) ?? 0,
                     Joined    = u.CreatedAt.ToString("yyyy-MM-dd")
                 })
                 .ToListAsync();

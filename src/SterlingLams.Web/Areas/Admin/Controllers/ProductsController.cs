@@ -414,7 +414,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
             else
             {
-                product = await _db.Products.FindAsync(vm.Id) ?? new Product();
+                // A stale edit link (product since deleted) must not silently "save" nothing.
+                var existing = await _db.Products.FindAsync(vm.Id);
+                if (existing == null)
+                {
+                    TempData["Error"] = "That product no longer exists.";
+                    return RedirectToAction(nameof(Index));
+                }
+                product = existing;
             }
 
             // Snapshot for the audit before/after diff (meaningful on an update).
@@ -423,9 +430,18 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var oldFeatured = product.IsFeatured; var oldNewArr = product.IsNewArrival;
 
             product.Name = vm.Name.Trim();
-            product.Slug = string.IsNullOrWhiteSpace(vm.Slug)
-                ? Regex.Replace(vm.Name.ToLower().Trim(), @"[^a-z0-9]+", "-")
-                : vm.Slug.Trim();
+
+            // Slug is unique in the database, and two products may legitimately share a name (the same
+            // set in a second colourway, a re-stocked line). Suffix -1, -2… so saving never dies on the
+            // unique index — same approach as StoresController.
+            var slug = (string.IsNullOrWhiteSpace(vm.Slug)
+                ? Regex.Replace(vm.Name.ToLowerInvariant().Trim(), @"[^a-z0-9]+", "-")
+                : vm.Slug.Trim().ToLowerInvariant()).Trim('-');
+            if (slug.Length == 0) slug = "product";
+            var baseSlug = slug;
+            for (int i = 1; await _db.Products.AnyAsync(p => p.Slug == slug && p.Id != product.Id); i++)
+                slug = $"{baseSlug}-{i}";
+            product.Slug = slug;
             product.Description = SterlingLams.Web.Services.ProductHtml.Sanitize(vm.Description);
             product.ShortDescription = vm.ShortDescription;
             product.Price = vm.Price;

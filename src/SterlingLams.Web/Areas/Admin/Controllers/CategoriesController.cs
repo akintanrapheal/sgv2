@@ -97,17 +97,33 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
             else
             {
-                category = await _db.Categories.FindAsync(vm.Id) ?? new Category();
+                // A stale edit link (category since deleted) must not silently "save" nothing.
+                var existing = await _db.Categories.FindAsync(vm.Id);
+                if (existing == null)
+                {
+                    TempData["Error"] = "That category no longer exists.";
+                    return RedirectToAction(nameof(Index));
+                }
+                category = existing;
             }
 
             category.Name = vm.Name.Trim();
-            category.Slug = string.IsNullOrWhiteSpace(vm.Slug)
-                ? Regex.Replace(vm.Name.ToLower().Trim(), @"[^a-z0-9]+", "-")
-                : vm.Slug.Trim();
+
+            // Slug is unique in the database — suffix -1, -2… rather than dying on the unique index.
+            var slug = (string.IsNullOrWhiteSpace(vm.Slug)
+                ? Regex.Replace(vm.Name.ToLowerInvariant().Trim(), @"[^a-z0-9]+", "-")
+                : vm.Slug.Trim().ToLowerInvariant()).Trim('-');
+            if (slug.Length == 0) slug = "category";
+            var baseSlug = slug;
+            for (int i = 1; await _db.Categories.AnyAsync(c => c.Slug == slug && c.Id != category.Id); i++)
+                slug = $"{baseSlug}-{i}";
+            category.Slug = slug;
+
             category.Description = vm.Description;
             category.IsActive = vm.IsActive;
             category.SortOrder = vm.SortOrder;
-            category.ParentId = vm.ParentId;
+            // A category can't be its own parent (a tampered form would otherwise orphan the tree).
+            category.ParentId = vm.ParentId == category.Id && category.Id != 0 ? null : vm.ParentId;
 
             // Image: a freshly uploaded file wins; otherwise keep the URL field value.
             if (imageFile != null && imageFile.Length > 0)

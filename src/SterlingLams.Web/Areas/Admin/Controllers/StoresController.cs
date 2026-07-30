@@ -85,7 +85,14 @@ public class StoresController : AdminBaseController
         }
         else
         {
-            store = await _db.Stores.FindAsync(vm.Id) ?? new Store();
+            // A stale edit link (store since deleted) must not silently "save" nothing.
+            var existing = await _db.Stores.FindAsync(vm.Id);
+            if (existing == null)
+            {
+                TempData["Error"] = "That store no longer exists.";
+                return RedirectToAction(nameof(Index));
+            }
+            store = existing;
         }
 
         store.Name             = vm.Name.Trim();

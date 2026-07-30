@@ -200,7 +200,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             int custOrders = 0; decimal custRevenue = 0, custAov = 0;
             if (!string.IsNullOrEmpty(customerId))
             {
-                var theirOrders = _db.Orders.Where(o => o.UserId == customerId || o.CustomerUserId == customerId);
+                // Channel-aware, matching the Customers screen: the buyer is CustomerUserId on a POS
+                // sale (UserId is the cashier) and UserId online. Reading either column would credit a
+                // staff buyer with every sale they had rung up.
+                var theirOrders = _db.Orders
+                    .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == customerId);
                 custOrders = await theirOrders.CountAsync();
                 var paid = theirOrders.Where(o => o.IsPaid);
                 custRevenue = await paid.SumAsync(o => (decimal?)o.Total) ?? 0;
@@ -268,75 +272,99 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     return RedirectToAction(nameof(Detail), new { id });
                 }
 
-                var old = order.Status;
                 var staff = await CurrentStaffNameAsync();
+                var outcome = await ApplyStatusAsync(order, newStatus, staff);
 
-                // Deduct stock when staff move an online order forward for the first time (e.g. they
-                // confirmed an offline/bank-transfer payment). The fulfilment engine allocates from the
-                // nearest branch + sets up any inter-branch transfers, and is idempotent (it no-ops once
-                // FulfillingStoreId is set), so this is safe even if payment already fulfilled the order.
-                var needsFulfil = order.Channel == OrderChannel.Online
-                    && order.FulfillingStoreId == null
-                    && newStatus is OrderStatus.Confirmed or OrderStatus.Processing
-                        or OrderStatus.ReadyForPickup or OrderStatus.Shipped or OrderStatus.Delivered;
-
-                if (needsFulfil)
-                {
-                    var outcome = await _fulfilment.FulfilPaidOrderAsync(order.Id);
-                    await _db.Entry(order).ReloadAsync();
-                    if (outcome == FulfilOutcome.SoldOut)
-                    {
-                        TempData["Error"] = $"Order {order.OrderNumber} can't be confirmed — an item is out of stock. It was cancelled.";
-                        return RedirectToAction(nameof(Detail), new { id });
-                    }
-                    // The engine advances cross-branch orders to Awaiting Transfer (the transfer flow
-                    // must run) — don't override that. Otherwise honour the status the staff picked.
-                    if (order.Status != OrderStatus.AwaitingTransfer)
-                    {
-                        order.Status = newStatus;
-                        OrderNotes.AddSystem(_db, order.Id, $"Marked {newStatus} by {staff} (stock deducted).");
-                    }
-                    order.UpdatedAt = DateTime.UtcNow;
-                    await _db.SaveChangesAsync();
-                }
+                if (outcome == StatusOutcome.SoldOut)
+                    TempData["Error"] = $"Order {order.OrderNumber} can't be confirmed — an item is out of stock. It was cancelled.";
                 else
-                {
-                    order.Status = newStatus;
-                    order.UpdatedAt = DateTime.UtcNow;
-                    OrderNotes.AddSystem(_db, order.Id, $"Order status changed from {old} to {newStatus} by {staff}.");
-                    await _db.SaveChangesAsync();
-                }
-
-                await LogAsync("Update", "Order", order.Id.ToString(),
-                    $"Order {order.OrderNumber} status: {old} → {order.Status}");
-                TempData["Success"] = $"Order {order.OrderNumber} updated to {order.Status}.";
-
-                // Push the order to the Lagos delivery system once it's a confirmed delivery order
-                // (covers the post-transfer "ready" moment + manual confirmation). Idempotent + guarded.
-                await _logistics.PushOrderAsync(order.Id);
-
-                // Keep the customer posted as their order reaches each milestone. Only on a real
-                // transition (old != new) so re-saving the same status never re-sends. Subjects and
-                // intros for these emails are editable in the Email Customizer.
-                if (old != order.Status)
-                {
-                    if (order.Status == OrderStatus.ReadyForPickup
-                        && order.FulfillmentType == FulfillmentType.StorePickup)
-                    {
-                        // Store-pickup: the QR pickup-pass email (sent once, guarded by PickupReadyEmailedAt).
-                        if (order.PickupReadyEmailedAt == null)
-                            await SendPickupReadyEmailAsync(order.Id);
-                    }
-                    else if (order.Status is OrderStatus.Processing or OrderStatus.Shipped
-                             or OrderStatus.Delivered or OrderStatus.ReadyForPickup)
-                    {
-                        await SendStatusUpdateEmailAsync(order.Id, order.Status);
-                    }
-                }
+                    TempData["Success"] = $"Order {order.OrderNumber} updated to {order.Status}.";
             }
 
             return RedirectToAction(nameof(Detail), new { id });
         }
+
+        private enum StatusOutcome { Applied, SoldOut }
+
+        /// <summary>
+        /// Moves one order to <paramref name="newStatus"/> — the single path every status change goes
+        /// through (per-order Detail screen and the bulk action alike), so neither can skip the stock
+        /// deduction, the timeline note, the logistics push or the customer email. Commits this order
+        /// on its own, so a bulk run that is interrupted leaves the orders it already handled correct.
+        /// Callers must reject <see cref="OrderStatus.Refunded"/> first — refunds run through RefundOrder.
+        /// </summary>
+        private async Task<StatusOutcome> ApplyStatusAsync(Order order, OrderStatus newStatus, string staff)
+        {
+            var old = order.Status;
+
+            // Deduct stock when staff move an online order forward for the first time (e.g. they
+            // confirmed an offline/bank-transfer payment). The fulfilment engine allocates from the
+            // nearest branch + sets up any inter-branch transfers, and is idempotent (it no-ops once
+            // FulfillingStoreId is set), so this is safe even if payment already fulfilled the order.
+            var needsFulfil = order.Channel == OrderChannel.Online
+                && order.FulfillingStoreId == null
+                && newStatus is OrderStatus.Confirmed or OrderStatus.Processing
+                    or OrderStatus.ReadyForPickup or OrderStatus.Shipped or OrderStatus.Delivered;
+
+            if (needsFulfil)
+            {
+                var outcome = await _fulfilment.FulfilPaidOrderAsync(order.Id);
+                await _db.Entry(order).ReloadAsync();
+                if (outcome == FulfilOutcome.SoldOut) return StatusOutcome.SoldOut;
+                // The engine advances cross-branch orders to Awaiting Transfer (the transfer flow
+                // must run) — don't override that. Otherwise honour the status the staff picked.
+                if (order.Status != OrderStatus.AwaitingTransfer)
+                {
+                    order.Status = newStatus;
+                    OrderNotes.AddSystem(_db, order.Id, $"Marked {newStatus} by {staff} (stock deducted).");
+                }
+                order.UpdatedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+            }
+            else
+            {
+                order.Status = newStatus;
+                order.UpdatedAt = DateTime.UtcNow;
+                OrderNotes.AddSystem(_db, order.Id, $"Order status changed from {old} to {newStatus} by {staff}.");
+                await _db.SaveChangesAsync();
+            }
+
+            await LogAsync("Update", "Order", order.Id.ToString(),
+                $"Order {order.OrderNumber} status: {old} → {order.Status}");
+
+            // Push the order to the Lagos delivery system once it's a confirmed delivery order
+            // (covers the post-transfer "ready" moment + manual confirmation). Idempotent + guarded.
+            await _logistics.PushOrderAsync(order.Id);
+
+            // Keep the customer posted as their order reaches each milestone. Only on a real
+            // transition (old != new) so re-saving the same status never re-sends. Subjects and
+            // intros for these emails are editable in the Email Customizer.
+            if (old != order.Status)
+            {
+                if (order.Status == OrderStatus.ReadyForPickup
+                    && order.FulfillmentType == FulfillmentType.StorePickup)
+                {
+                    // Store-pickup: the QR pickup-pass email (sent once, guarded by PickupReadyEmailedAt).
+                    if (order.PickupReadyEmailedAt == null)
+                        await SendPickupReadyEmailAsync(order.Id);
+                }
+                else if (order.Status is OrderStatus.Processing or OrderStatus.Shipped
+                         or OrderStatus.Delivered or OrderStatus.ReadyForPickup)
+                {
+                    await SendStatusUpdateEmailAsync(order.Id, order.Status);
+                }
+            }
+
+            return StatusOutcome.Applied;
+        }
+
+        /// <summary>
+        /// The person who bought the order — the one any customer-facing email must go to. On a POS sale
+        /// <see cref="Order.User"/> is the CASHIER and the buyer sits in <see cref="Order.Customer"/>
+        /// (null for a walk-in); online, Order.User IS the buyer. Requires User/Customer to be included.
+        /// </summary>
+        private static ApplicationUser? Buyer(Order order) =>
+            order.Channel == OrderChannel.Pos ? order.Customer : order.User;
 
         // Display name ("First Last", else username) of the signed-in staff member — for order notes.
         private async Task<string> CurrentStaffNameAsync()
@@ -364,7 +392,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .Include(o => o.Items).Include(o => o.PickupStore).Include(o => o.User).Include(o => o.Customer)
                 .FirstOrDefaultAsync(o => o.Id == orderId);
             if (order == null || order.FulfillmentType != FulfillmentType.StorePickup) return;
-            var email = order.User?.Email ?? order.Customer?.Email;
+            var buyer = Buyer(order);
+            var email = buyer?.Email;
             if (string.IsNullOrWhiteSpace(email)) return;
 
             if (string.IsNullOrEmpty(order.PickupToken))
@@ -377,7 +406,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var passUrl = $"{baseUrl}/pickup/{order.PickupToken}";
             var qrUrl = $"{passUrl}/qr.png";
             var store = order.PickupStore;
-            var firstName = order.User?.FirstName ?? order.Customer?.FirstName ?? "there";
+            var firstName = string.IsNullOrWhiteSpace(buyer?.FirstName) ? "there" : buyer!.FirstName;
             string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
 
             // Subject + intro are editable in the Email Customizer ("Ready for pickup" template).
@@ -407,8 +436,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 + $"<tr><td style=\"padding-top:8px;border-top:1px solid #eee;font-weight:700\">Total</td><td style=\"padding-top:8px;border-top:1px solid #eee;text-align:right;font-weight:700\">₦{order.Total:N0}</td></tr></table>"
                 + "<p style=\"color:#6b7280;font-size:13px;margin-top:16px\">Please bring a valid ID. This pass is unique to your order.</p>";
 
-            var sent = await _email.SendAsync(email!, subject, body,
-                order.User?.FullName ?? order.Customer?.FullName);
+            var sent = await _email.SendAsync(email!, subject, body, buyer?.FullName);
             if (sent)
             {
                 order.PickupReadyEmailedAt = DateTime.UtcNow;
@@ -436,7 +464,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .Include(o => o.Items).Include(o => o.User).Include(o => o.Customer)
                 .FirstOrDefaultAsync(o => o.Id == orderId);
             if (order == null) return;
-            var email = order.User?.Email ?? order.Customer?.Email;
+            var buyer = Buyer(order);
+            var email = buyer?.Email;
             if (string.IsNullOrWhiteSpace(email)) return;
 
             var key = StatusTemplateKey(status);
@@ -444,7 +473,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var subject = await _settings.GetAsync($"email.{key}.subject", def.DefaultSubject ?? "Your order update");
             var introText = await _settings.GetAsync($"email.{key}.intro", def.DefaultIntro ?? "");
 
-            var firstName = order.User?.FirstName ?? order.Customer?.FirstName ?? "there";
+            var firstName = string.IsNullOrWhiteSpace(buyer?.FirstName) ? "there" : buyer!.FirstName;
             var introHtml = OrderEmailTemplate.ApplyPlaceholders(introText, order.OrderNumber, order.CreatedAt, firstName);
             // Per-item primary image, made absolute for email clients (Cloudinary URLs already are).
             var pids = order.Items.Select(i => i.ProductId).Distinct().ToList();
@@ -465,8 +494,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .ToList();
 
             var body = OrderEmailTemplate.BuildStatusUpdate(subject, introHtml, order.OrderNumber, items, order.Total);
-            var sent = await _email.SendAsync(email!, subject, body,
-                order.User?.FullName ?? order.Customer?.FullName);
+            var sent = await _email.SendAsync(email!, subject, body, buyer?.FullName);
             if (sent)
             {
                 OrderNotes.AddSystem(_db, order.Id, $"'{def.Label ?? status.ToString()}' status email sent to the customer.");
@@ -495,7 +523,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .FirstOrDefaultAsync(o => o.Id == id);
             if (order == null) return NotFound();
 
-            var to = order.User?.Email ?? order.Customer?.Email;
+            var buyer = Buyer(order);
+            var to = buyer?.Email;
             if (string.IsNullOrWhiteSpace(to))
             {
                 TempData["Error"] = "This order has no customer email on file.";
@@ -517,7 +546,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             // Default: an order summary / confirmation.
             string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
-            var firstName = order.User?.FirstName ?? order.Customer?.FirstName ?? "there";
+            var firstName = string.IsNullOrWhiteSpace(buyer?.FirstName) ? "there" : buyer!.FirstName;
             var rows = string.Join("", order.Items.Select(i =>
                 $"<tr><td style=\"padding:4px 0;color:#374151\">{Enc(i.ProductName)}{(i.VariantName != null ? " (" + Enc(i.VariantName) + ")" : "")} &times; {i.Quantity}</td>"
                 + $"<td style=\"padding:4px 0;text-align:right;color:#111\">₦{i.LineTotal:N0}</td></tr>"));
@@ -528,8 +557,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 + $"<tr><td style=\"padding-top:8px;border-top:1px solid #eee;font-weight:700\">Total</td><td style=\"padding-top:8px;border-top:1px solid #eee;text-align:right;font-weight:700\">₦{order.Total:N0}</td></tr></table>"
                 + "<p style=\"color:#6b7280;font-size:13px;margin-top:16px\">Thank you for shopping with Sterlin Glams.</p>";
 
-            var sent = await _email.SendAsync(to!, $"Your order {order.OrderNumber}", body,
-                order.User?.FullName ?? order.Customer?.FullName);
+            var sent = await _email.SendAsync(to!, $"Your order {order.OrderNumber}", body, buyer?.FullName);
             if (sent)
             {
                 OrderNotes.AddSystem(_db, order.Id, $"Order summary email re-sent to {to}.");
@@ -546,7 +574,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> AddNote(int id, string content, string noteType = "private")
         {
-            var order = await _db.Orders.Include(o => o.User).FirstOrDefaultAsync(o => o.Id == id);
+            var order = await _db.Orders.Include(o => o.User).Include(o => o.Customer)
+                .FirstOrDefaultAsync(o => o.Id == id);
             if (order == null) return NotFound();
             content = (content ?? string.Empty).Trim();
             if (string.IsNullOrEmpty(content))
@@ -571,16 +600,22 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             await LogAsync("Update", "Order", id.ToString(),
                 $"Added {(isCustomerNote ? "customer" : "private")} note to order {order.OrderNumber}");
 
-            // A "note to customer" is emailed to the buyer (best-effort).
-            if (isCustomerNote && !string.IsNullOrEmpty(order.User?.Email))
+            // A "note to customer" is emailed to the buyer (best-effort). On a POS sale the buyer is
+            // Order.Customer — Order.User is the cashier, so emailing that would notify staff instead.
+            var buyer = Buyer(order);
+            if (isCustomerNote && !string.IsNullOrEmpty(buyer?.Email))
             {
-                var html = $"<p>Hello {System.Net.WebUtility.HtmlEncode(order.User.FullName)},</p>"
+                var html = $"<p>Hello {System.Net.WebUtility.HtmlEncode(buyer.FullName)},</p>"
                          + $"<p>A note has been added to your order <strong>{order.OrderNumber}</strong>:</p>"
                          + $"<blockquote style=\"border-left:3px solid #ec1c8e;padding-left:12px;color:#555\">{System.Net.WebUtility.HtmlEncode(content)}</blockquote>";
-                await _email.SendAsync(order.User.Email!, $"Update on your order {order.OrderNumber}", html, order.User.FullName);
+                await _email.SendAsync(buyer.Email!, $"Update on your order {order.OrderNumber}", html, buyer.FullName);
             }
 
-            TempData["Success"] = isCustomerNote ? "Note added and emailed to the customer." : "Private note added.";
+            TempData[isCustomerNote && string.IsNullOrEmpty(buyer?.Email) ? "Warning" : "Success"] =
+                !isCustomerNote ? "Private note added."
+                : string.IsNullOrEmpty(buyer?.Email)
+                    ? "Note added, but there's no customer email on this order so nothing was sent."
+                    : $"Note added and emailed to {buyer!.Email}.";
             return RedirectToAction(nameof(Detail), new { id });
         }
 
@@ -621,6 +656,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var now = DateTime.UtcNow;
             var storeId = order.FulfillingStoreId ?? order.PickupStoreId ?? 0;
             var refundNumber = $"REF-{now:yyMMdd}-{now:HHmmssfff}";
+
+            // With no fulfilling or pickup branch on the order there is nowhere to return the units to,
+            // so a requested restock cannot happen — say so rather than reporting "(restocked)".
+            var didRestock = restock && storeId > 0;
+            var restockNote = didRestock ? " (restocked)"
+                : restock ? " (NOT restocked — this order has no branch recorded, add the stock manually)"
+                : " (no restock)";
 
             await using var tx = await _db.Database.BeginTransactionAsync();
 
@@ -678,7 +720,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     UnitPrice = netUnit
                 });
 
-                if (restock && storeId > 0)
+                if (didRestock)
                     await _stock.ApplyAsync(oi.ProductId, oi.ProductVariantId, storeId, q,
                         StockMovementType.Return, refundNumber, userId: userId);
             }
@@ -733,10 +775,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             order.UpdatedAt = now;
 
             var stamp = $"[{now:u}] Refund {refundNumber}: ₦{amount:N2}, {refund.Items.Sum(r => r.Quantity)} item(s)" +
-                        $"{(restock ? " (restocked)" : " (no restock)")}; {gatewayNote}.";
+                        $"{restockNote}; {gatewayNote}.";
             order.AdminNotes = string.IsNullOrWhiteSpace(order.AdminNotes) ? stamp : order.AdminNotes + "\n" + stamp;
             OrderNotes.AddSystem(_db, order.Id,
-                $"Refunded ₦{amount:N0} ({refund.Items.Sum(r => r.Quantity)} item(s)){(restock ? ", stock restocked" : "")} — {gatewayNote}."
+                $"Refunded ₦{amount:N0} ({refund.Items.Sum(r => r.Quantity)} item(s)){restockNote} — {gatewayNote}."
                 + (fullyRefunded ? " Order fully refunded." : ""));
 
             try
@@ -760,8 +802,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             await LogAsync("Refund", "Order", order.Id.ToString(),
                 $"Refund {refundNumber} for {order.OrderNumber}: ₦{amount:N0}, {refund.Items.Sum(r => r.Quantity)} item(s)" +
-                $"{(fullyRefunded ? " (full)" : " (partial)")}; {gatewayNote}");
-            TempData["Success"] = $"Refund {refundNumber} processed: ₦{amount:N0}. {gatewayNote}.";
+                $"{(fullyRefunded ? " (full)" : " (partial)")}{restockNote}; {gatewayNote}");
+            TempData[restock && !didRestock ? "Warning" : "Success"] =
+                $"Refund {refundNumber} processed: ₦{amount:N0}.{restockNote} {gatewayNote}.";
             return RedirectToAction(nameof(Detail), new { id });
         }
 
@@ -808,20 +851,38 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             if (!Enum.TryParse<OrderStatus>(status, out var newStatus))
                 return RedirectToAction(nameof(Index));
 
+            // Same rule as the per-order screen: a refund is never a status flip.
+            if (newStatus == OrderStatus.Refunded)
+            {
+                TempData["Error"] = "Orders can't be bulk-refunded — use the Refund action on each order so the refund is recorded, stock returns and the gateway is charged.";
+                return RedirectToAction(nameof(Index));
+            }
+
             var orders = await _db.Orders
                 .Where(o => orderIds.Contains(o.Id))
                 .ToListAsync();
 
+            var staff = await CurrentStaffNameAsync();
+            int applied = 0, soldOut = 0, skipped = 0;
+
             foreach (var o in orders)
             {
-                o.Status = newStatus;
-                o.UpdatedAt = DateTime.UtcNow;
+                // Already there, or already refunded (moving a refunded order forward is never right).
+                if (o.Status == newStatus || o.Status == OrderStatus.Refunded) { skipped++; continue; }
+
+                // Every order takes the same route as a single update: stock deduction, timeline note,
+                // logistics push and customer email included.
+                if (await ApplyStatusAsync(o, newStatus, staff) == StatusOutcome.SoldOut) soldOut++;
+                else applied++;
             }
 
-            await _db.SaveChangesAsync();
             await LogAsync("Update", "Order", null,
-                $"Bulk updated {orders.Count} order(s) to {status}");
-            TempData["Success"] = $"{orders.Count} order(s) updated to {status}.";
+                $"Bulk status → {newStatus}: {applied} updated, {soldOut} out of stock, {skipped} skipped");
+
+            var msg = $"{applied} order(s) updated to {newStatus}.";
+            if (soldOut > 0) msg += $" {soldOut} could not be confirmed (out of stock) and were cancelled.";
+            if (skipped > 0) msg += $" {skipped} skipped (already {newStatus}, or refunded).";
+            TempData[applied > 0 ? "Success" : "Error"] = msg;
             return RedirectToAction(nameof(Index));
         }
 

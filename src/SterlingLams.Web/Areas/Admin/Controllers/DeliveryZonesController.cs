@@ -14,17 +14,38 @@ public class DeliveryZonesController : AdminBaseController
     protected override string Section => "Settings";
     protected override bool EnforceManageOnWrite => false; // parity with SettingsController
 
+    // The zones live in the "Shipping" settings group.
+    private const string Group = "Shipping";
+
     private readonly DeliveryZoneService _zones;
     private readonly ISettingsService _settings;
+    private readonly IPermissionService _perms;
 
-    public DeliveryZonesController(DeliveryZoneService zones, ISettingsService settings)
+    public DeliveryZonesController(DeliveryZoneService zones, ISettingsService settings,
+        IPermissionService perms)
     {
         _zones = zones;
         _settings = settings;
+        _perms = perms;
+    }
+
+    /// <summary>
+    /// Write access mirrors SettingsController: because <see cref="EnforceManageOnWrite"/> is off, the
+    /// base class only checks Settings *view* on a POST, so the group grant must be checked here or a
+    /// view-only role could rewrite every delivery fee.
+    /// </summary>
+    private async Task<bool> CanEditAsync()
+    {
+        var allowed = await _perms.GetAllowedSettingsGroupsAsync(User);
+        return allowed == null || allowed.Contains(Group);
     }
 
     public async Task<IActionResult> Index()
     {
+        // Don't show an editor the user can't save — Settings hides groups the same way.
+        if (!await CanEditAsync())
+            return RedirectToAction("AccessDenied", "Account", new { area = "" });
+
         var zones = await _zones.GetZonesAsync();
         return View(zones);
     }
@@ -33,6 +54,9 @@ public class DeliveryZonesController : AdminBaseController
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Save([FromBody] List<DeliveryZoneDef>? zones)
     {
+        if (!await CanEditAsync())
+            return StatusCode(403, new { ok = false, error = "You don't have access to shipping settings." });
+
         var clean = (zones ?? new())
             .Where(z => !string.IsNullOrWhiteSpace(z.Name))
             .Select(z => new DeliveryZoneDef
@@ -63,8 +87,11 @@ public class DeliveryZonesController : AdminBaseController
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public IActionResult Reset()
+    public async Task<IActionResult> Reset()
     {
+        if (!await CanEditAsync())
+            return StatusCode(403, new { ok = false, error = "You don't have access to shipping settings." });
+
         // Return the built-in defaults to the editor (does not persist until Save).
         return Json(new { ok = true, zones = DeliveryZoneService.DefaultZones() });
     }

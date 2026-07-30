@@ -78,8 +78,21 @@ public class AttributesController : AdminBaseController
         }
         else
         {
-            attr = await _db.ProductAttributes.FindAsync(vm.Id) ?? new ProductAttribute();
+            // A stale edit link (attribute since deleted) must not silently "save" nothing.
+            var existing = await _db.ProductAttributes.FindAsync(vm.Id);
+            if (existing == null)
+            {
+                TempData["Error"] = "That attribute no longer exists.";
+                return RedirectToAction(nameof(Index));
+            }
+            attr = existing;
         }
+
+        // Slug is unique in the database — suffix -1, -2… rather than dying on the unique index.
+        if (slug.Length == 0) slug = "attribute";
+        var baseSlug = slug;
+        for (int i = 1; await _db.ProductAttributes.AnyAsync(a => a.Slug == slug && a.Id != attr.Id); i++)
+            slug = $"{baseSlug}-{i}";
 
         attr.Name      = vm.Name.Trim();
         attr.Slug      = slug;

@@ -144,6 +144,13 @@
                 {
                     <span class="text-xs text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full">✓ @TempData["Success"]</span>
                 }
+                @* Warning = the action succeeded but something needs attention (e.g. a refund that
+                   could not restock, a CSV import with skipped rows). Without this it was set by
+                   several actions and never shown. *@
+                @if (TempData["Warning"] != null)
+                {
+                    <span class="text-xs text-amber-700 bg-amber-50 px-3 py-1.5 rounded-full">@TempData["Warning"]</span>
+                }
                 @if (TempData["Error"] != null)
                 {
                     <span class="text-xs text-red-700 bg-red-50 px-3 py-1.5 rounded-full">@TempData["Error"]</span>
