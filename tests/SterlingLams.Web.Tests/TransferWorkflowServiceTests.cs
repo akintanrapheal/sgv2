@@ -52,4 +52,44 @@ public class TransferWorkflowServiceTests
         Assert.Contains(t.Db.StockMovements,
             m => m.ProductId == p.Id && m.StoreId == abuja.Id && m.Type == StockMovementType.Transfer && m.QuantityChange < 0);
     }
+
+    [Fact]
+    public async Task Dispatching_more_than_the_branch_holds_fails_cleanly_instead_of_throwing()
+    {
+        using var t = new TestDb();
+        var (abuja, allen, _) = t.SeedBranches();
+        var p = t.SeedProduct();
+        t.SetStock(p.Id, abuja.Id, onHand: 5);
+
+        var svc = new TransferWorkflowService(t.Db, new StockService(t.Db), new StubFulfilment());
+
+        var req = new TransferRequest
+        {
+            FromStoreId = abuja.Id,
+            ToStoreId = allen.Id,
+            Items = { new TransferLine { ProductId = p.Id, Quantity = 5 } }
+        };
+        var (ok, err, id) = await svc.RequestAsync(req, "staff-1");
+        Assert.True(ok, err);
+        var item = await t.Db.StockTransferItems.AsNoTracking().FirstAsync(i => i.StockTransferId == id!.Value);
+        Assert.True((await svc.ApproveAsync(id!.Value, new() { new ItemQtyDto(item.Id, 5) }, "admin-1")).Success);
+
+        // Approval reserves the units, but a write-off adjusts on-hand without consulting
+        // reservations (deliberate — a POS sale does the same), so on-hand can drop below what was
+        // approved. Dispatching then asks for more than the branch actually holds.
+        await new StockService(t.Db).ApplyAsync(p.Id, null, abuja.Id, -3,
+            StockMovementType.Adjustment, "damage");
+        await t.Db.SaveChangesAsync();
+
+        var result = await svc.DispatchAsync(id.Value, new() { new ItemQtyDto(item.Id, 5) }, null, null, null, "staff-1");
+
+        // A message, not an exception — this used to escape as an error page because the catch sat
+        // around SaveChanges while the stock service throws from ApplyAsync itself.
+        Assert.False(result.Success);
+        Assert.Contains("only has 2", result.Error);
+
+        // And nothing was half-applied: the transfer is still awaiting dispatch.
+        var after = await t.Db.StockTransfers.AsNoTracking().FirstAsync(x => x.Id == id.Value);
+        Assert.Equal(TransferStatus.Approved, after.Status);
+    }
 }

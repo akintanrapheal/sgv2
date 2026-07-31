@@ -166,28 +166,38 @@ public class AdjustmentsController : InventoryAreaController
             CreatedAt = DateTime.UtcNow
         };
 
-        foreach (var l in valid)
-        {
-            var balance = await _stock.ApplyAsync(l.ProductId, l.VariantId, req.StoreId, l.QtyDelta, type,
-                header.AdjustmentNumber, note: reason, userId: userId, materializeVariant: l.VariantId.HasValue);
-            header.Lines.Add(new StockAdjustmentLine
-            {
-                ProductId = l.ProductId,
-                ProductVariantId = l.VariantId,
-                ProductName = products[l.ProductId],
-                VariantName = l.VariantId.HasValue ? variants[l.VariantId.Value].Name : null,
-                QtyDelta = l.QtyDelta,
-                BalanceAfter = balance,
-                UnitCost = l.UnitCost.HasValue && l.UnitCost.Value > 0 ? l.UnitCost : null,
-                ExpiryDate = l.ExpiryDate.HasValue ? DateTime.SpecifyKind(l.ExpiryDate.Value.Date, DateTimeKind.Utc) : null
-            });
-        }
-
-        _db.StockAdjustments.Add(header);
         try
         {
+            foreach (var l in valid)
+            {
+                // A write-off bigger than what's on hand throws InsufficientStockException from the
+                // stock service. That happens HERE, before SaveChanges, so it has to be caught around
+                // the loop — uncaught it surfaced as an error page instead of telling the user that
+                // they're trying to remove more than the branch holds.
+                var balance = await _stock.ApplyAsync(l.ProductId, l.VariantId, req.StoreId, l.QtyDelta, type,
+                    header.AdjustmentNumber, note: reason, userId: userId, materializeVariant: l.VariantId.HasValue);
+                header.Lines.Add(new StockAdjustmentLine
+                {
+                    ProductId = l.ProductId,
+                    ProductVariantId = l.VariantId,
+                    ProductName = products[l.ProductId],
+                    VariantName = l.VariantId.HasValue ? variants[l.VariantId.Value].Name : null,
+                    QtyDelta = l.QtyDelta,
+                    BalanceAfter = balance,
+                    UnitCost = l.UnitCost.HasValue && l.UnitCost.Value > 0 ? l.UnitCost : null,
+                    ExpiryDate = l.ExpiryDate.HasValue ? DateTime.SpecifyKind(l.ExpiryDate.Value.Date, DateTimeKind.Utc) : null
+                });
+            }
+
+            _db.StockAdjustments.Add(header);
             await _db.SaveChangesAsync();
             await tx.CommitAsync();
+        }
+        catch (InsufficientStockException ex)
+        {
+            var name = products.TryGetValue(ex.ProductId, out var pn) ? pn : $"product {ex.ProductId}";
+            return Json(new { success = false, message =
+                $"'{name}' only has {ex.Available} at {store.Name} — you can't take out {ex.Requested}." });
         }
         catch (DbUpdateConcurrencyException)
         {

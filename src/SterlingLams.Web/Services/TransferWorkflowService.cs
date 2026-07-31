@@ -262,19 +262,34 @@ public class TransferWorkflowService : ITransferWorkflowService
                 && si.ProductVariantId == null)   // transfers are product-level (pool) in Phase 1 of variant stock
             .ToListAsync();
 
-        foreach (var item in transfer.Items)
+        // The stock service throws InsufficientStockException from ApplyAsync itself, not on save, so
+        // this loop has to sit inside the try below — the catch was there for exactly this case but
+        // could never fire from out here. It's reachable: approval reserves the units, but a damage
+        // write-off adjusts on-hand without consulting reservations (by design — see the note on
+        // StoreInventory in ApplicationDbContext), so on-hand can fall below what was approved.
+        try
         {
-            var dispatched = qtyByItem.GetValueOrDefault(item.Id, 0);
-            var approved = item.ApprovedQty ?? 0;
+            foreach (var item in transfer.Items)
+            {
+                var dispatched = qtyByItem.GetValueOrDefault(item.Id, 0);
+                var approved = item.ApprovedQty ?? 0;
 
-            var inv = invs.FirstOrDefault(i => i.ProductId == item.ProductId);
-            if (inv != null) inv.QuantityReserved = Math.Max(0, inv.QuantityReserved - approved);
+                var inv = invs.FirstOrDefault(i => i.ProductId == item.ProductId);
+                if (inv != null) inv.QuantityReserved = Math.Max(0, inv.QuantityReserved - approved);
 
-            if (dispatched > 0)
-                await _stock.ApplyAsync(item.ProductId, item.ProductVariantId, transfer.FromStoreId, -dispatched,
-                    StockMovementType.Transfer, transfer.TransferNumber, $"Dispatched to {transfer.ToStore.Name}", userId);
+                if (dispatched > 0)
+                    await _stock.ApplyAsync(item.ProductId, item.ProductVariantId, transfer.FromStoreId, -dispatched,
+                        StockMovementType.Transfer, transfer.TransferNumber, $"Dispatched to {transfer.ToStore.Name}", userId);
 
-            item.DispatchedQty = dispatched;
+                item.DispatchedQty = dispatched;
+            }
+        }
+        catch (InsufficientStockException ex)
+        {
+            var name = transfer.Items.FirstOrDefault(i => i.ProductId == ex.ProductId)?.ProductName ?? "an item";
+            return TransferActionResult.Fail(
+                $"'{name}' only has {ex.Available} left at {transfer.FromStore.Name} — can't dispatch {ex.Requested}. "
+                + "Check the branch's stock and dispatch what's actually there.");
         }
 
         transfer.Status = TransferStatus.InTransit;
@@ -296,10 +311,6 @@ public class TransferWorkflowService : ITransferWorkflowService
         {
             await _db.SaveChangesAsync();
             await tx.CommitAsync();
-        }
-        catch (InsufficientStockException)
-        {
-            return TransferActionResult.Fail("Stock levels changed — not enough stock to dispatch. Please review and try again.");
         }
         catch (DbUpdateConcurrencyException)
         {
