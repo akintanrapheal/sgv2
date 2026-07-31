@@ -238,12 +238,15 @@ public class PosController : Controller
     {
         var register = await BoundRegisterAsync();
         if (register == null) return Json(new { success = false, message = "POS not set up." });
+        // Same branch check the sale and open-session paths make.
+        if (!await _access.CanWriteAsync(User, register.StoreId))
+            return Json(new { success = false, message = "You're not assigned to this branch's POS." });
         var session = await OpenSessionAsync(register.Id);
         if (session == null) return Json(new { success = false, message = "No open POS session." });
 
         session.ClosedAt = DateTime.UtcNow;
         session.ClosedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        session.CountedCash = countedCash;
+        session.CountedCash = Math.Max(0, countedCash);   // a negative count is a typo, not a drawer
         session.ClosingNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
         await _db.SaveChangesAsync();
         return Json(new { success = true, sessionId = session.Id });
@@ -262,6 +265,9 @@ public class PosController : Controller
     {
         var register = await BoundRegisterAsync();
         if (register == null) return Json(new { success = false, message = "This POS isn't set up. Pick a register." });
+        // Same branch check the sale and open-session paths make — this moves real cash.
+        if (!await _access.CanWriteAsync(User, register.StoreId))
+            return Json(new { success = false, message = "You're not assigned to this branch's POS." });
         var session = await OpenSessionAsync(register.Id);
         if (session == null) return Json(new { success = false, message = "Open the POS before recording cash." });
 
@@ -730,11 +736,15 @@ public class PosController : Controller
         // Order-level discounts (loyalty redemption) aren't on any line, so subtract their share of
         // this refund proportionally — otherwise a loyalty-redeemed sale refunds more cash than the
         // customer tendered (they also get the points back via ReverseForOrderAsync on a full refund).
+        // Loyalty now lands on Order.LoyaltyDiscount; till sales taken before that change folded it
+        // into DiscountAmount instead, so fall back to the difference for those older rows.
         var lineDiscountTotal = order.Items.Sum(i => i.DiscountAmount);
-        var orderLevelDiscount = Math.Max(0, order.DiscountAmount - lineDiscountTotal);
+        var orderLevelDiscount = order.LoyaltyDiscount > 0
+            ? order.LoyaltyDiscount
+            : Math.Max(0, order.DiscountAmount - lineDiscountTotal);
         var totalNet = order.Items.Sum(i => i.UnitPrice * i.Quantity - i.DiscountAmount);
         if (orderLevelDiscount > 0 && totalNet > 0)
-            amount -= Math.Round(orderLevelDiscount * amount / totalNet, 2);
+            amount = Math.Max(0, amount - Math.Round(orderLevelDiscount * amount / totalNet, 2));
 
         refund.Amount = amount;
         _db.Refunds.Add(refund);
@@ -1694,7 +1704,11 @@ public class PosController : Controller
             {
                 var loyaltyDiscount = pts * pointValue;
                 order.LoyaltyPointsRedeemed = pts;
-                order.DiscountAmount += loyaltyDiscount;
+                // Recorded on its own field rather than folded into DiscountAmount — that's the
+                // convention the storefront checkout uses, and what Finance → Leakage splits
+                // "Discounts" from "Loyalty" by. Folding it in reported every till redemption as a
+                // plain discount and showed ₦0 of loyalty coming from the POS.
+                order.LoyaltyDiscount = loyaltyDiscount;
                 order.Total -= loyaltyDiscount;
             }
         }

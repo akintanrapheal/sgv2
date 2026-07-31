@@ -746,13 +746,18 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 return RedirectToAction(nameof(Detail), new { id });
             }
 
-            // Subtract the proportional share of any order-level discount (loyalty redemption), which
-            // isn't attached to a line — otherwise a redeemed order refunds more than was tendered.
+            // Subtract the proportional share of everything the customer did NOT tender that isn't
+            // attached to a line: the discount code, loyalty points redeemed, and any gift-card
+            // balance drawn. Only the code discount was subtracted before, so refunding an order
+            // that used points or a gift card paid out their cash value as well — and a full refund
+            // then ALSO returned the points (ReverseForOrderAsync) and the card balance
+            // (GiftCards.ReverseForOrderAsync), compensating the customer twice.
             var lineDiscountTotal = order.Items.Sum(i => i.DiscountAmount);
-            var orderLevelDiscount = Math.Max(0, order.DiscountAmount - lineDiscountTotal);
+            var orderLevelDiscount = Math.Max(0, order.DiscountAmount - lineDiscountTotal)
+                                     + order.LoyaltyDiscount + order.GiftCardAmount;
             var totalNet = order.Items.Sum(i => i.UnitPrice * i.Quantity - i.DiscountAmount);
             if (orderLevelDiscount > 0 && totalNet > 0)
-                amount -= Math.Round(orderLevelDiscount * amount / totalNet, 2);
+                amount = Math.Max(0, amount - Math.Round(orderLevelDiscount * amount / totalNet, 2));
 
             refund.Amount = amount;
             _db.Refunds.Add(refund);
