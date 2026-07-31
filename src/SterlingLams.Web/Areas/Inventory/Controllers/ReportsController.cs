@@ -618,10 +618,17 @@ public class ReportsController : InventoryAreaController
         ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
         ViewBag.StoreId = storeId;
 
+        // One row per product per branch (the pool row carries that branch's Min/Max settings), but
+        // the QUANTITY is the product's whole holding there — pool row plus every variant row.
+        // Comparing the pool row alone reported every product with options as 0 on hand, so they sat
+        // in this list permanently while their variants were fully stocked.
         var q = _db.StoreInventories.Include(si => si.Product).ThenInclude(p => p.Category).Include(si => si.Store)
             .Where(si => si.Product.IsActive && si.ProductVariantId == null && si.Store.IsActive
                       && (si.MinStock ?? si.Product.LowStockThreshold) > 0
-                      && si.QuantityOnHand <= (si.MinStock ?? si.Product.LowStockThreshold));
+                      && _db.StoreInventories
+                             .Where(x => x.ProductId == si.ProductId && x.StoreId == si.StoreId)
+                             .Sum(x => x.QuantityOnHand)
+                         <= (si.MinStock ?? si.Product.LowStockThreshold));
         if (storeId.HasValue) q = q.Where(si => si.StoreId == storeId.Value);
 
         var proj = q.Select(si => new StockWarningRow
@@ -629,9 +636,14 @@ public class ReportsController : InventoryAreaController
             Product = si.Product.Name, Barcode = si.Product.Barcode,
             Category = si.Product.Category != null ? si.Product.Category.Name : "—",
             Location = si.Store.Name,
-            Current = si.QuantityOnHand,
+            Current = _db.StoreInventories
+                .Where(x => x.ProductId == si.ProductId && x.StoreId == si.StoreId)
+                .Sum(x => x.QuantityOnHand),
             Min = si.MinStock ?? si.Product.LowStockThreshold,
-            Max = si.MaxStock, OnOrder = si.OnOrder
+            Max = si.MaxStock,
+            OnOrder = _db.StoreInventories
+                .Where(x => x.ProductId == si.ProductId && x.StoreId == si.StoreId)
+                .Sum(x => x.OnOrder)
         }).OrderBy(r => r.Product).ThenBy(r => r.Location);
 
         if (format == "csv")
@@ -663,10 +675,17 @@ public class ReportsController : InventoryAreaController
 
         // Reorder point reached when on-hand + on-order is at/below the location's min
         // (per-location Min, falling back to the product's low-stock threshold).
+        // As with Stock Warnings: the branch's Min/Max live on the pool row, but on-hand and on-order
+        // are the product's whole holding there (pool + every variant). Reading the pool row alone
+        // showed products with options as 0 and suggested reordering their full maximum, when the
+        // variants were already stocked.
         var q = _db.StoreInventories.Include(si => si.Product).ThenInclude(p => p.Category).Include(si => si.Store)
             .Where(si => si.Product.IsActive && si.ProductVariantId == null && si.Store.IsActive
                       && (si.MinStock ?? si.Product.LowStockThreshold) > 0
-                      && (si.QuantityOnHand + si.OnOrder) <= (si.MinStock ?? si.Product.LowStockThreshold));
+                      && _db.StoreInventories
+                             .Where(x => x.ProductId == si.ProductId && x.StoreId == si.StoreId)
+                             .Sum(x => x.QuantityOnHand + x.OnOrder)
+                         <= (si.MinStock ?? si.Product.LowStockThreshold));
         if (storeId.HasValue) q = q.Where(si => si.StoreId == storeId.Value);
 
         var rows = (await q.Select(si => new
@@ -674,9 +693,14 @@ public class ReportsController : InventoryAreaController
             Product = si.Product.Name, Barcode = si.Product.Barcode,
             Category = si.Product.Category != null ? si.Product.Category.Name : "—",
             Location = si.Store.Name,
-            Current = si.QuantityOnHand,
+            Current = _db.StoreInventories
+                .Where(x => x.ProductId == si.ProductId && x.StoreId == si.StoreId)
+                .Sum(x => x.QuantityOnHand),
             Min = si.MinStock ?? si.Product.LowStockThreshold,
-            si.MaxStock, si.OnOrder
+            si.MaxStock,
+            OnOrder = _db.StoreInventories
+                .Where(x => x.ProductId == si.ProductId && x.StoreId == si.StoreId)
+                .Sum(x => x.OnOrder)
         }).ToListAsync())
         .Select(x => new StockReorderRow
         {
