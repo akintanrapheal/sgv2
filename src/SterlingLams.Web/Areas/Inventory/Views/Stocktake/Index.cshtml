@@ -142,6 +142,13 @@ else
     }
 
     function addProduct(p) {
+        // A product with options keeps its stock per option, so it can't be counted as one number
+        // here — the server refuses it too. Say so now rather than at the end of the count.
+        if (p.hasVariants) {
+            alert(p.name + ' has options, so its stock is counted per option.\n\n'
+                + 'Use Stock → Track Stock for this one.');
+            return;
+        }
         if (!lines[p.id]) lines[p.id] = { name: p.name, barcode: p.barcode, category: p.category, expected: p.expected, counted: '', reason: '' };
         render();
         var tr = el('st-rows').querySelector('tr[data-pid="' + p.id + '"]');
@@ -191,7 +198,12 @@ else
         var code = this.value.trim(); if (!code) return;
         fetch(__invBase + '/Stocktake/ScanLookup?storeId=' + storeId + '&code=' + encodeURIComponent(code))
             .then(function (r) { return r.json(); })
-            .then(function (d) { if (d.found) { addProduct(d); el('st-search').value = ''; sug.classList.add('hidden'); } });
+            .then(function (d) {
+                if (d.found) { addProduct(d); el('st-search').value = ''; sug.classList.add('hidden'); return; }
+                // Not addable — say why when the server explains (e.g. it has options), rather than
+                // the scan appearing to do nothing.
+                if (d.message) { alert(d.message); el('st-search').value = ''; }
+            });
     });
     document.addEventListener('click', function (e) { if (!sug.contains(e.target) && e.target !== el('st-search')) sug.classList.add('hidden'); });
 

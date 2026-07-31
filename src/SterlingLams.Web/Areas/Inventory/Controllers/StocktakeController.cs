@@ -55,7 +55,12 @@ public class StocktakeController : InventoryAreaController
                 id = p.Id, name = p.Name, sku = p.Sku, barcode = p.Barcode,
                 category = p.Category != null ? p.Category.Name : "",
                 expected = p.StoreInventories.Where(si => si.StoreId == storeId && si.ProductVariantId == null)
-                    .Select(si => (int?)si.QuantityOnHand).FirstOrDefault() ?? 0
+                    .Select(si => (int?)si.QuantityOnHand).FirstOrDefault() ?? 0,
+                // Products with options can't be counted as one number here (see Complete) — the
+                // count screen uses this to mark them instead of letting them be added and rejected
+                // only on submit. Their "expected" above is the pool row, which for them is not
+                // where the stock lives.
+                hasVariants = p.Variants.Any(v => v.IsActive)
             })
             .ToListAsync();
         return Json(rows);
@@ -74,10 +79,15 @@ public class StocktakeController : InventoryAreaController
                 x.Id, x.Name, x.Sku, x.Barcode, x.IsActive,
                 category = x.Category != null ? x.Category.Name : "",
                 expected = x.StoreInventories.Where(si => si.StoreId == storeId && si.ProductVariantId == null)
-                    .Select(si => (int?)si.QuantityOnHand).FirstOrDefault() ?? 0
+                    .Select(si => (int?)si.QuantityOnHand).FirstOrDefault() ?? 0,
+                hasVariants = x.Variants.Any(v => v.IsActive)
             })
             .FirstOrDefaultAsync();
         if (p == null || !p.IsActive) return Json(new { found = false });
+        // Scanning a product with options: say so here rather than accepting the count and failing
+        // on submit. Its stock lives on the variant rows, not the pool row this screen reconciles.
+        if (p.hasVariants)
+            return Json(new { found = false, message = $"'{p.Name}' has options — count it per option in Stock → Track Stock." });
         return Json(new { found = true, id = p.Id, name = p.Name, sku = p.Sku, barcode = p.Barcode, category = p.category, expected = p.expected });
     }
 
@@ -105,6 +115,22 @@ public class StocktakeController : InventoryAreaController
             .Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
         var valid = req.Lines.Where(l => l.Counted >= 0 && products.ContainsKey(l.ProductId)).ToList();
         if (valid.Count == 0) return Json(new { success = false, message = "No valid items." });
+
+        // This screen counts a product as ONE number, and reconciles the product-level (pool) row.
+        // A product with options keeps its stock on the variant rows instead — counting it here would
+        // write the count into a pool row that nothing sells from, inventing stock that can't be sold
+        // while leaving the real per-variant counts untouched. Refuse rather than corrupt; those are
+        // counted per option in Stock → Track Stock, which is variant-aware.
+        var variantProductIds = (await _db.ProductVariants
+                .Where(v => ids.Contains(v.ProductId) && v.IsActive)
+                .Select(v => v.ProductId).Distinct().ToListAsync())
+            .ToHashSet();
+        var blocked = valid.Where(l => variantProductIds.Contains(l.ProductId))
+            .Select(l => products[l.ProductId].Name).Distinct().OrderBy(n => n).ToList();
+        if (blocked.Count > 0)
+            return Json(new { success = false, message =
+                $"These have options, so their stock is held per option and can't be counted as a single number here: {string.Join(", ", blocked)}. "
+                + "Remove them from this count and use Stock → Track Stock for those." });
 
         var seq = await NextRefAsync();
         var take = new StockTake
@@ -162,11 +188,14 @@ public class StocktakeController : InventoryAreaController
         ViewData["Title"] = "Stock Takes";
         ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
 
-        var fromD = (from ?? DateTime.UtcNow.AddDays(-30)).Date;
-        var toD = (to ?? DateTime.UtcNow).Date.AddDays(1).AddSeconds(-1);
+        // Lagos days, like every other dated screen — see Services/ReportCalendar.
+        var fromLocal = (from ?? ReportCalendar.Today.AddDays(-30)).Date;
+        var toLocal = (to ?? ReportCalendar.Today).Date;
+        var fromD = ReportCalendar.StartOfDayUtc(fromLocal);
+        var toD = ReportCalendar.StartOfDayUtc(toLocal.AddDays(1));
 
         var query = _db.StockTakes.Include(t => t.Store).Include(t => t.Lines)
-            .Where(t => t.CreatedAt >= fromD && t.CreatedAt <= toD);
+            .Where(t => t.CreatedAt >= fromD && t.CreatedAt < toD);
         if (storeId.HasValue) query = query.Where(t => t.StoreId == storeId.Value);
         if (!string.IsNullOrWhiteSpace(q)) query = query.Where(t => EF.Functions.ILike(t.Reference, $"%{q.Trim()}%"));
 
@@ -174,18 +203,21 @@ public class StocktakeController : InventoryAreaController
         {
             var all = await query.OrderByDescending(t => t.Id).ToListAsync();
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("Stock Ref,Location,Staff,Date,Items,Discrepancies");
+            // Csv handles quoting and neutralises anything a spreadsheet would execute; timestamps in
+            // WAT like the rest of the admin.
+            Csv.AppendRow(sb, "Stock Ref", "Location", "Staff", "Date (WAT)", "Items", "Discrepancies");
             foreach (var t in all)
-                sb.AppendLine($"\"{t.Reference}\",\"{t.Store.Name}\",\"{t.StaffName}\",{t.CreatedAt:yyyy-MM-dd HH:mm},{t.ItemCount},{t.Discrepancies}");
-            var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
-            return File(bytes, "text/csv", $"stock_takes_{DateTime.UtcNow:yyyyMMdd}.csv");
+                Csv.AppendRow(sb, t.Reference, t.Store.Name, t.StaffName,
+                    ReportCalendar.ToLocal(t.CreatedAt).ToString("yyyy-MM-dd HH:mm"),
+                    t.ItemCount.ToString(), t.Discrepancies.ToString());
+            return File(Csv.ToBytes(sb), "text/csv", $"stock_takes_{DateTime.UtcNow:yyyyMMdd}.csv");
         }
 
         var total = await query.CountAsync();
         var takes = await query.OrderByDescending(t => t.Id)
             .Skip((page - 1) * PageSize).Take(PageSize).ToListAsync();
 
-        ViewBag.From = fromD; ViewBag.To = (to ?? DateTime.UtcNow).Date;
+        ViewBag.From = fromLocal; ViewBag.To = toLocal;
         ViewBag.StoreId = storeId; ViewBag.Q = q;
         ViewBag.Page = page; ViewBag.TotalPages = (int)Math.Ceiling(total / (double)PageSize); ViewBag.Total = total;
         return View(takes);
