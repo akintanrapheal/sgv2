@@ -7,7 +7,10 @@ using SterlingLams.Web.Services;
 
 namespace SterlingLams.Web.Areas.Admin.Controllers;
 
-/// <summary>Issue and manage gift cards. Financial — full administrators only (Section = null).</summary>
+/// <summary>
+/// Issue and manage gift cards. A grantable section (so shop staff can issue and check cards); writes
+/// still require GiftCards:manage. Full administrators bypass both, as everywhere else.
+/// </summary>
 public class GiftCardsController : AdminBaseController
 {
     protected override string? Section => "GiftCards";

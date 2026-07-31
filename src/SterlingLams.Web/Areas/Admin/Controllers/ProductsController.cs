@@ -785,6 +785,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             string resolvedUrl;
             if (imageFile != null && imageFile.Length > 0)
             {
+                // Same type/size rules as the shared uploader — this path had none.
+                var invalid = ImageUploadRules.Validate(imageFile);
+                if (invalid != null)
+                {
+                    TempData["Error"] = invalid;
+                    return RedirectToAction(nameof(Edit), new { id });
+                }
+
                 var saved = await SaveProductImageAsync(imageFile);
                 if (saved == null)
                 {

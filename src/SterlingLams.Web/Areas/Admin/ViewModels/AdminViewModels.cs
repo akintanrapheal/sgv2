@@ -582,10 +582,14 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public List<int> SelectedCategoryIds { get; set; } = new();
         public List<int> SelectedProductIds { get; set; } = new();
 
-        // For rendering the pickers
-        public List<Category> AllCategories { get; set; } = new();
-        public List<Product> AllProducts { get; set; } = new();
+        // For rendering the pickers. Deliberately NOT full Category/Product entities — the products
+        // picker loaded every product row (~1,000, with all their columns) just to draw checkboxes.
+        public List<DiscountPickerItem> AllCategories { get; set; } = new();
+        public List<DiscountPickerItem> AllProducts { get; set; } = new();
     }
+
+    /// <summary>One checkbox in the discount scope pickers. Price is 0 for categories.</summary>
+    public record DiscountPickerItem(int Id, string Name, decimal Price);
 
     public class AdminDiscountUsageViewModel
     {

@@ -30,6 +30,18 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return View(new AdminDiscountListViewModel { DiscountCodes = codes });
         }
 
+        // The pickers only need id + name (+ price for products) — projected in SQL rather than
+        // materialising every Category/Product entity to render a list of checkboxes.
+        private Task<List<DiscountPickerItem>> PickerCategoriesAsync() =>
+            _db.Categories.OrderBy(c => c.Name)
+                .Select(c => new DiscountPickerItem(c.Id, c.Name, 0m)).ToListAsync();
+
+        // Every product, active or not: the picker re-posts the full selection on save, so hiding a
+        // deactivated product would silently drop it from an existing discount's scope.
+        private Task<List<DiscountPickerItem>> PickerProductsAsync() =>
+            _db.Products.OrderBy(p => p.Name)
+                .Select(p => new DiscountPickerItem(p.Id, p.Name, p.Price)).ToListAsync();
+
         public async Task<IActionResult> Create()
         {
             ViewData["Title"] = "New Discount Code";
@@ -38,8 +50,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 IsActive = true,
                 Type = "Percentage",
                 Scope = "EntireOrder",
-                AllCategories = await _db.Categories.OrderBy(c => c.Name).ToListAsync(),
-                AllProducts = await _db.Products.OrderBy(p => p.Name).ToListAsync(),
+                AllCategories = await PickerCategoriesAsync(),
+                AllProducts = await PickerProductsAsync(),
             });
         }
 
@@ -71,8 +83,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 ExpiresAt = code.ExpiresAt,
                 SelectedCategoryIds = code.Categories.Select(c => c.CategoryId).ToList(),
                 SelectedProductIds = code.Products.Select(p => p.ProductId).ToList(),
-                AllCategories = await _db.Categories.OrderBy(c => c.Name).ToListAsync(),
-                AllProducts = await _db.Products.OrderBy(p => p.Name).ToListAsync(),
+                AllCategories = await PickerCategoriesAsync(),
+                AllProducts = await PickerProductsAsync(),
             });
         }
 
@@ -122,7 +134,20 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             code.Code = newCode;
             code.Description        = vm.Description;
             code.Type              = Enum.TryParse<DiscountType>(vm.Type, out var t) ? t : DiscountType.Percentage;
-            code.Value             = vm.Value;
+
+            // A percentage has to be 0–100 — nothing stopped "150" being saved, which is 150% off.
+            // Free shipping carries no value at all. Fixed amounts just can't be negative.
+            if (code.Type == DiscountType.Percentage && (vm.Value <= 0m || vm.Value > 100m))
+            {
+                TempData["Error"] = "A percentage discount must be between 0 and 100.";
+                return RedirectToAction(vm.Id == 0 ? nameof(Create) : nameof(Edit), new { id = vm.Id });
+            }
+            if (code.Type == DiscountType.FixedAmount && vm.Value <= 0m)
+            {
+                TempData["Error"] = "A fixed-amount discount must be greater than zero.";
+                return RedirectToAction(vm.Id == 0 ? nameof(Create) : nameof(Edit), new { id = vm.Id });
+            }
+            code.Value             = code.Type == DiscountType.FreeShipping ? 0m : vm.Value;
             code.Scope             = Enum.TryParse<DiscountScope>(vm.Scope, out var sc) ? sc : DiscountScope.EntireOrder;
             code.IsAutomatic       = vm.IsAutomatic;
             code.MinimumOrderAmount = vm.MinimumOrderAmount;

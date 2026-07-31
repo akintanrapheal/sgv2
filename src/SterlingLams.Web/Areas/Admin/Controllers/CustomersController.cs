@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Identity;
@@ -82,7 +83,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             var user = await _userManager.FindByIdAsync(id);
             if (user == null) return NotFound();
-            if (user.Email == User.Identity?.Name)
+            // Compare ids, not Email vs the username claim — see UsersController.IsSelf.
+            if (user.Id == User.FindFirstValue(ClaimTypes.NameIdentifier))
             {
                 TempData["Error"] = "You cannot delete your own account.";
                 return RedirectToAction(nameof(Index));
@@ -300,14 +302,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .ToListAsync();
 
             var sb = new StringBuilder();
-            sb.AppendLine("Full Name,Email,Phone,Orders,Total Spend,Joined");
+            Csv.AppendRow(sb, "Full Name", "Email", "Phone", "Orders", "Total Spend", "Joined");
             foreach (var c in customers)
-                sb.AppendLine($"\"{c.FullName}\",\"{c.Email}\",\"{c.Phone}\",{c.Orders},{c.TotalSpend},\"{c.Joined}\"");
+                Csv.AppendRow(sb, c.FullName, c.Email, c.Phone,
+                    c.Orders.ToString(), c.TotalSpend.ToString("0.##"), c.Joined);
 
             await LogAsync("Export", "Customer", null, $"Exported {customers.Count} customer record(s) to CSV");
 
-            var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
-            return File(bytes, "text/csv", $"customers_{DateTime.UtcNow:yyyyMMdd}.csv");
+            return File(Csv.ToBytes(sb), "text/csv", $"customers_{DateTime.UtcNow:yyyyMMdd}.csv");
         }
     }
 }

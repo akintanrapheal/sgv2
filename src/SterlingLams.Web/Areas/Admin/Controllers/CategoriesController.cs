@@ -83,6 +83,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .OrderBy(c => c.Name)
                 .ToListAsync();
 
+            // Validate the upload before touching the entity — same type/size rules as the shared
+            // uploader, which this path skipped entirely.
+            if (imageFile != null && imageFile.Length > 0)
+            {
+                var invalid = SterlingLams.Web.Services.ImageUploadRules.Validate(imageFile);
+                if (invalid != null) ModelState.AddModelError(nameof(imageFile), invalid);
+            }
+
             if (!ModelState.IsValid)
             {
                 ViewData["Title"] = vm.Id == 0 ? "New Category" : "Edit Category";
@@ -180,7 +188,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Delete(int id)
         {
-            var cat = await _db.Categories.Include(c => c.Products).FirstOrDefaultAsync(c => c.Id == id);
+            var cat = await _db.Categories.Include(c => c.Products).Include(c => c.Children)
+                .FirstOrDefaultAsync(c => c.Id == id);
             if (cat == null) return NotFound();
 
             if (cat.Products.Any())
@@ -189,9 +198,27 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 return RedirectToAction(nameof(Index));
             }
 
+            // Sub-categories point back here, so deleting the parent violated the foreign key and
+            // returned an error page. Say what's in the way instead.
+            if (cat.Children.Any())
+            {
+                TempData["Error"] = $"'{cat.Name}' has {cat.Children.Count} sub-categor"
+                    + (cat.Children.Count == 1 ? "y" : "ies")
+                    + " under it — move or delete those first.";
+                return RedirectToAction(nameof(Index));
+            }
+
             var name = cat.Name;
             _db.Categories.Remove(cat);
-            await _db.SaveChangesAsync();
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch (DbUpdateException)
+            {
+                TempData["Error"] = $"'{name}' is still referenced by other records and can't be deleted.";
+                return RedirectToAction(nameof(Index));
+            }
             await LogAsync("Delete", "Category", id.ToString(), $"Deleted category '{name}'");
             TempData["Success"] = $"Category '{name}' deleted.";
             return RedirectToAction(nameof(Index));

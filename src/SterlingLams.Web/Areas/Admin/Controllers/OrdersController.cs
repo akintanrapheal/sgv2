@@ -80,6 +80,26 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return Json(new { latestTicks = latestTicks.ToString(), orders });
         }
 
+        /// <summary>
+        /// Order-list search predicate, shared by the list and the CSV export so they can never
+        /// disagree. Uses ILike, not <c>Contains</c>: Contains compiles to a case-sensitive LIKE on
+        /// Postgres, so "john" would not find "John". Also matches Order.Customer — on a POS sale that
+        /// is the buyer, while Order.User is the cashier, so searching a walk-in customer's name used
+        /// to return nothing.
+        /// </summary>
+        private static System.Linq.Expressions.Expression<Func<Order, bool>> MatchesSearch(string q)
+        {
+            var like = $"%{q.Trim()}%";
+            return o => EF.Functions.ILike(o.OrderNumber, like)
+                     || EF.Functions.ILike(o.User.FirstName + " " + o.User.LastName, like)
+                     || EF.Functions.ILike(o.User.Email ?? "", like)
+                     || EF.Functions.ILike(o.User.PhoneNumber ?? "", like)
+                     || (o.Customer != null
+                         && (EF.Functions.ILike(o.Customer.FirstName + " " + o.Customer.LastName, like)
+                          || EF.Functions.ILike(o.Customer.Email ?? "", like)
+                          || EF.Functions.ILike(o.Customer.PhoneNumber ?? "", like)));
+        }
+
         public async Task<IActionResult> Index(string status = "", string q = "", string channel = "",
             string paid = "", string? from = null, string? to = null, int page = 1)
         {
@@ -108,12 +128,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 query = query.Where(o => o.CreatedAt < toDate.Date.AddDays(1));
 
             if (!string.IsNullOrWhiteSpace(q))
-                query = query.Where(o =>
-                    o.OrderNumber.Contains(q) ||
-                    o.User.FirstName.Contains(q) ||
-                    o.User.LastName.Contains(q) ||
-                    o.User.Email!.Contains(q) ||
-                    o.User.PhoneNumber!.Contains(q));
+                query = query.Where(MatchesSearch(q));
 
             var total = await query.CountAsync();
             var orders = await query
@@ -906,20 +921,21 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 query = query.Where(o => o.CreatedAt < toDate.Date.AddDays(1));
 
             if (!string.IsNullOrWhiteSpace(q))
-                query = query.Where(o =>
-                    o.OrderNumber.Contains(q) ||
-                    o.User.FirstName.Contains(q) ||
-                    o.User.LastName.Contains(q) ||
-                    o.User.Email!.Contains(q) ||
-                    o.User.PhoneNumber!.Contains(q));
+                query = query.Where(MatchesSearch(q));
 
             var orders = await query
                 .OrderByDescending(o => o.CreatedAt)
                 .Select(o => new
                 {
                     o.OrderNumber,
-                    CustomerName = o.User.FirstName + " " + o.User.LastName,
-                    CustomerEmail = o.User.Email ?? "",
+                    Channel = o.Channel.ToString(),
+                    // The buyer, not the cashier: on a POS sale Order.User is staff.
+                    CustomerName = o.Channel == OrderChannel.Pos
+                        ? (o.Customer != null ? o.Customer.FirstName + " " + o.Customer.LastName : "Walk-in")
+                        : o.User.FirstName + " " + o.User.LastName,
+                    CustomerEmail = o.Channel == OrderChannel.Pos
+                        ? (o.Customer != null ? o.Customer.Email ?? "" : "")
+                        : o.User.Email ?? "",
                     o.Total,
                     o.Subtotal,
                     o.DeliveryFee,
@@ -927,22 +943,24 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     Fulfillment = o.FulfillmentType.ToString(),
                     o.IsPaid,
                     PaymentRef = o.PaymentReference ?? "",
-                    CreatedAt = o.CreatedAt.ToString("yyyy-MM-dd HH:mm")
+                    CreatedAt = o.CreatedAt
                 })
                 .ToListAsync();
 
             var sb = new StringBuilder();
-            sb.AppendLine("Order #,Customer Name,Customer Email,Total,Subtotal,Delivery Fee,Status,Fulfillment,Paid,Payment Ref,Created At");
+            Csv.AppendRow(sb, "Order #", "Channel", "Customer Name", "Customer Email", "Total", "Subtotal",
+                "Delivery Fee", "Status", "Fulfillment", "Paid", "Payment Ref", "Created At");
 
             foreach (var o in orders)
-            {
-                sb.AppendLine($"\"{o.OrderNumber}\",\"{o.CustomerName}\",\"{o.CustomerEmail}\",{o.Total},{o.Subtotal},{o.DeliveryFee},{o.Status},{o.Fulfillment},{o.IsPaid},\"{o.PaymentRef}\",\"{o.CreatedAt}\"");
-            }
+                Csv.AppendRow(sb, o.OrderNumber, o.Channel, o.CustomerName, o.CustomerEmail,
+                    o.Total.ToString("0.##"), o.Subtotal.ToString("0.##"), o.DeliveryFee.ToString("0.##"),
+                    o.Status, o.Fulfillment, o.IsPaid ? "Yes" : "No", o.PaymentRef,
+                    // Stored UTC, shown in West Africa Time like every other timestamp in the admin.
+                    o.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"));
 
             await LogAsync("Export", "Order", null, $"Exported {orders.Count} order(s) to CSV");
 
-            var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
-            return File(bytes, "text/csv", $"orders_{DateTime.UtcNow:yyyyMMdd}.csv");
+            return File(Csv.ToBytes(sb), "text/csv", $"orders_{DateTime.UtcNow:yyyyMMdd}.csv");
         }
     }
 }

@@ -12,9 +12,6 @@ public class UploadController : AdminBaseController
     private readonly IWebHostEnvironment _env;
     private readonly IConfiguration _config;
 
-    private static readonly HashSet<string> _allowedExtensions = new(StringComparer.OrdinalIgnoreCase)
-        { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
-
     public UploadController(IWebHostEnvironment env, IConfiguration config)
     {
         _env = env;
@@ -24,14 +21,11 @@ public class UploadController : AdminBaseController
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Image(IFormFile file, string? subfolder)
     {
-        if (file == null || file.Length == 0)
-            return BadRequest(new { error = "No file provided." });
-        if (file.Length > 10 * 1024 * 1024)
-            return BadRequest(new { error = "File too large. Maximum 10 MB." });
+        // Shared with the product/category image paths — see ImageUploadRules.
+        var invalid = SterlingLams.Web.Services.ImageUploadRules.Validate(file);
+        if (invalid != null) return BadRequest(new { error = invalid });
 
         var ext = Path.GetExtension(file.FileName);
-        if (!_allowedExtensions.Contains(ext))
-            return BadRequest(new { error = "Invalid file type. Allowed: JPG, PNG, WEBP, GIF." });
 
         // Sanitise the subfolder (reused for the Cloudinary folder and the local path).
         var safeSubfolder = "";

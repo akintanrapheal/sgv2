@@ -134,22 +134,47 @@ public class RolesController : AdminBaseController
                 TempData["Error"] = $"A role named '{name}' already exists.";
                 return RedirectToAction(nameof(Create));
             }
-            await _roleManager.CreateAsync(new IdentityRole(name));
+            var created = await _roleManager.CreateAsync(new IdentityRole(name));
+            if (!created.Succeeded)
+            {
+                TempData["Error"] = "Could not create the role: " + string.Join(" ", created.Errors.Select(e => e.Description));
+                return RedirectToAction(nameof(Create));
+            }
             await LogAsync("Create", "Role", null, $"Created role '{name}'");
         }
         else if (vm.OriginalName != name)
         {
-            // Rename: update the Identity role + carry permissions over
-            var role = await _roleManager.FindByNameAsync(vm.OriginalName);
-            if (role != null)
+            // Rename: update the Identity role, then carry its permission rows over.
+            // Both guards matter — the rename used to move the permission rows even when the rename
+            // itself failed (the UpdateAsync result was ignored), which left the role under its old
+            // name with no permissions at all.
+            if (await _roleManager.RoleExistsAsync(name))
             {
-                role.Name = name;
-                await _roleManager.UpdateAsync(role);
-                // Move permission rows to the new name
-                var perms = await _db.RolePermissions.Where(rp => rp.RoleName == vm.OriginalName).ToListAsync();
-                foreach (var p in perms) p.RoleName = name;
-                await _db.SaveChangesAsync();
+                TempData["Error"] = $"A role named '{name}' already exists — pick another name.";
+                return RedirectToAction(nameof(Edit), new { id = vm.OriginalName });
             }
+
+            var role = await _roleManager.FindByNameAsync(vm.OriginalName);
+            if (role == null)
+            {
+                TempData["Error"] = $"The role '{vm.OriginalName}' no longer exists.";
+                return RedirectToAction(nameof(Index));
+            }
+
+            role.Name = name;
+            var renamed = await _roleManager.UpdateAsync(role);
+            if (!renamed.Succeeded)
+            {
+                TempData["Error"] = "Could not rename the role: " + string.Join(" ", renamed.Errors.Select(e => e.Description));
+                return RedirectToAction(nameof(Edit), new { id = vm.OriginalName });
+            }
+
+            // Move permission rows to the new name only now that the rename has stuck.
+            var perms = await _db.RolePermissions.Where(rp => rp.RoleName == vm.OriginalName).ToListAsync();
+            foreach (var p in perms) p.RoleName = name;
+            await _db.SaveChangesAsync();
+            _perms.ClearCache();   // cached grants are keyed by role name
+            await LogAsync("Update", "Role", null, $"Renamed role '{vm.OriginalName}' to '{name}'");
         }
 
         await _perms.SetRoleSectionsAsync(name, sections ?? new List<string>());

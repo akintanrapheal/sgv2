@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Identity;
@@ -10,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Areas.Admin.ViewModels;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.Domain;
+using SterlingLams.Web.Services;
 
 namespace SterlingLams.Web.Areas.Admin.Controllers
 {
@@ -47,6 +49,16 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         // Determines a user's single display role (first backend role, else "Customer")
         private static string PrimaryRole(IList<string> roles) =>
             roles.FirstOrDefault(r => r != "Customer") ?? "Customer";
+
+        /// <summary>
+        /// True when the target account IS the signed-in one - the guard behind "you can't lock,
+        /// revoke, delete or re-role yourself". Compares the user id from the auth cookie, never
+        /// Email against <c>User.Identity.Name</c> (the username): those match for staff today but
+        /// have drifted apart on this system before, and if they drift again these guards stop
+        /// firing and an admin can lock themselves out of production.
+        /// </summary>
+        private bool IsSelf(ApplicationUser user) =>
+            user.Id == User.FindFirstValue(ClaimTypes.NameIdentifier);
 
         public async Task<IActionResult> Index(string q = "", string role = "", string status = "", int page = 1)
         {
@@ -250,7 +262,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         {
             var user = await _userManager.FindByIdAsync(id);
             if (user == null) return NotFound();
-            if (user.Email == User.Identity?.Name)
+            if (IsSelf(user))
                 return RedirectToAction("Index", "MyAccount", new { area = "" }); // edit your own on /me
             ViewData["Title"] = "Edit User";
             ViewBag.Role = (await _userManager.GetRolesAsync(user)).FirstOrDefault(r => r != "Customer") ?? "Customer";
@@ -262,7 +274,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         {
             var user = await _userManager.FindByIdAsync(id);
             if (user == null) return NotFound();
-            if (user.Email == User.Identity?.Name)
+            if (IsSelf(user))
             {
                 TempData["Error"] = "Edit your own details from the account menu.";
                 return RedirectToAction(nameof(Index));
@@ -349,29 +361,47 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         }
 
         // ── CSV export ─────────────────────────────────────────────────────────
+        // Exports exactly what this screen lists: STAFF and administrators. It used to dump every
+        // user - so every customer's email and phone left with it - and label everyone who wasn't an
+        // Admin as "Customer", which mislabelled all real staff. Roles are now the ones actually held.
         public async Task<IActionResult> ExportCsv()
         {
-            var adminIds = (await _userManager.GetUsersInRoleAsync("Admin")).Select(u => u.Id).ToHashSet();
             var now = DateTimeOffset.UtcNow;
 
-            var users = await _db.Users.OrderByDescending(u => u.CreatedAt).ToListAsync();
+            // Everyone holding a backend role, with the role(s) they hold.
+            var staffRoles = await _roleManager.Roles.Where(r => r.Name != "Customer")
+                .Select(r => r.Name!).ToListAsync();
+            var rolesByUserId = new Dictionary<string, List<string>>();
+            foreach (var r in staffRoles)
+                foreach (var u in await _userManager.GetUsersInRoleAsync(r))
+                {
+                    if (!rolesByUserId.TryGetValue(u.Id, out var list))
+                        rolesByUserId[u.Id] = list = new List<string>();
+                    list.Add(r);
+                }
+
+            var staffIds = rolesByUserId.Keys.ToHashSet();
+            var users = await _db.Users.Where(u => staffIds.Contains(u.Id))
+                .OrderByDescending(u => u.CreatedAt).ToListAsync();
 
             var sb = new StringBuilder();
-            sb.AppendLine("Full Name,Email,Phone,Role,Status,Joined,Last Login");
+            Csv.AppendRow(sb, "Full Name", "Email", "Phone", "Role", "Status", "Joined", "Last Login");
             foreach (var u in users)
             {
-                var rl = adminIds.Contains(u.Id) ? "Admin" : "Customer";
-                var st = u.LockoutEnd.HasValue && u.LockoutEnd > now ? "Locked" : "Active";
-                sb.AppendLine(string.Join(",",
-                    $"\"{u.FullName}\"", $"\"{u.Email}\"", $"\"{u.PhoneNumber}\"",
-                    rl, st, $"\"{u.CreatedAt:yyyy-MM-dd}\"",
-                    $"\"{(u.LastLoginAt.HasValue ? u.LastLoginAt.Value.ToString("yyyy-MM-dd HH:mm") : "Never")}\""));
+                var roles = rolesByUserId.TryGetValue(u.Id, out var rs) ? rs : new List<string>();
+                var status = u.AccessRevoked ? "Revoked"
+                    : u.LockoutEnd.HasValue && u.LockoutEnd > now ? "Locked"
+                    : "Active";
+                Csv.AppendRow(sb, u.FullName, u.Email, u.PhoneNumber,
+                    string.Join(" / ", roles.OrderBy(r => r == "Admin" ? 0 : 1).ThenBy(r => r)),
+                    status,
+                    u.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd"),
+                    u.LastLoginAt.HasValue ? u.LastLoginAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "Never");
             }
 
-            await LogAsync("Export", "User", null, $"Exported {users.Count} user(s) to CSV");
+            await LogAsync("Export", "User", null, $"Exported {users.Count} staff account(s) to CSV");
 
-            var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
-            return File(bytes, "text/csv", $"users_{DateTime.UtcNow:yyyyMMdd}.csv");
+            return File(Csv.ToBytes(sb), "text/csv", $"staff_{DateTime.UtcNow:yyyyMMdd}.csv");
         }
 
         [HttpPost, ValidateAntiForgeryToken]
@@ -380,7 +410,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var user = await _userManager.FindByIdAsync(id);
             if (user == null) return NotFound();
 
-            if (user.Email == User.Identity?.Name)
+            if (IsSelf(user))
             {
                 TempData["Error"] = "You cannot change your own role.";
                 return RedirectToAction(nameof(Index));
@@ -425,7 +455,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         {
             var user = await _userManager.FindByIdAsync(id);
             if (user == null) return NotFound();
-            if (user.Email == User.Identity?.Name)
+            if (IsSelf(user))
             {
                 TempData["Error"] = "You cannot revoke your own access.";
                 return RedirectToAction(nameof(Index));
@@ -457,7 +487,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var user = await _userManager.FindByIdAsync(id);
             if (user == null) return NotFound();
 
-            if (user.Email == User.Identity?.Name)
+            if (IsSelf(user))
             {
                 TempData["Error"] = "You cannot delete your own account.";
                 return RedirectToAction(nameof(Index));
@@ -536,7 +566,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var user = await _userManager.FindByIdAsync(id);
             if (user == null) return NotFound();
 
-            if (user.Email == User.Identity?.Name)
+            if (IsSelf(user))
             {
                 TempData["Error"] = "You cannot lock your own account.";
                 return RedirectToAction(nameof(Index));

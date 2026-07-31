@@ -148,17 +148,43 @@ public class StoresController : AdminBaseController
 
         if (store == null) return NotFound();
 
-        if (store.Orders.Any())
+        // A branch that has ever traded is referenced by far more than its inventory rows: the stock
+        // ledger, adjustments, stock-takes, transfers, tills, parked sales and staff assignments all
+        // point at it. Clearing only StoreInventories left those behind, so the delete died on a
+        // foreign key and returned an error page. Name what's in the way and keep the history.
+        var blockers = new List<string>();
+        void Add(int n, string label) { if (n > 0) blockers.Add($"{n} {label}"); }
+
+        Add(store.Orders.Count, "order(s)");
+        Add(await _db.StockMovements.CountAsync(m => m.StoreId == id), "stock movement(s)");
+        Add(await _db.StockAdjustments.CountAsync(a => a.StoreId == id), "stock adjustment(s)");
+        Add(await _db.StockTakes.CountAsync(s => s.StoreId == id), "stock take(s)");
+        Add(await _db.StockTransfers.CountAsync(t => t.FromStoreId == id || t.ToStoreId == id), "transfer(s)");
+        Add(await _db.Registers.CountAsync(r => r.StoreId == id), "till(s)");
+        Add(await _db.ParkedSales.CountAsync(p => p.StoreId == id), "parked sale(s)");
+        Add(await _db.StockReservations.CountAsync(r => r.StoreId == id), "stock hold(s)");
+        Add(await _db.UserStores.CountAsync(us => us.StoreId == id), "staff assignment(s)");
+
+        if (blockers.Count > 0)
         {
-            TempData["Error"] = $"Cannot delete '{store.Name}' — it has {store.Orders.Count} associated order(s). Deactivate it instead.";
+            TempData["Error"] = $"Cannot delete '{store.Name}' — it still has {string.Join(", ", blockers)}. "
+                + "Deactivate it instead, which hides it everywhere but keeps its history.";
             return RedirectToAction(nameof(Index));
         }
 
-        // Remove inventory records first, then the store
+        // Nothing but (empty) inventory rows left — safe to remove those and the store.
         var name = store.Name;
         _db.StoreInventories.RemoveRange(store.Inventories);
         _db.Stores.Remove(store);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            TempData["Error"] = $"'{name}' is still referenced by other records and can't be deleted. Deactivate it instead.";
+            return RedirectToAction(nameof(Index));
+        }
 
         await LogAsync("Delete", "Store", id.ToString(), $"Deleted store '{name}'");
 
