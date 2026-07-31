@@ -380,7 +380,7 @@
                         <p class="text-xs text-neutral-700 whitespace-pre-line">@n.Content</p>
                         <div class="flex items-center justify-between mt-2 text-[11px] text-neutral-400">
                             <span>
-                                @n.CreatedAt.ToString("MMM d, yyyy 'at' h:mm tt")
+                                @n.CreatedAt.ToLocalTime().ToString("MMM d, yyyy 'at' h:mm tt")
                                 @if (!string.IsNullOrEmpty(kind)) { <text> · @kind</text> }
                                 @if (!string.IsNullOrEmpty(n.AuthorName)) { <text> · @n.AuthorName</text> }
                             </span>

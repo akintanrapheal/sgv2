@@ -35,7 +35,7 @@ else
                             <span class="font-mono text-neutral-700">@o.OrderNumber</span>
                             <span class="text-neutral-400"> · @o.CustomerName</span>
                         </span>
-                        <span class="text-xs text-neutral-500">@Money(o.Total) · @o.Status · @o.CreatedAt.ToString("dd MMM yy")</span>
+                        <span class="text-xs text-neutral-500">@Money(o.Total) · @o.Status · @o.CreatedAt.ToLocalTime().ToString("dd MMM yy")</span>
                     </a>
                 }
             </div>

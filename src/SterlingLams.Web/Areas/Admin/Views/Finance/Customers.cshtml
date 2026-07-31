@@ -69,7 +69,7 @@
                         <td class="px-4 py-2.5 text-neutral-500">@(string.IsNullOrWhiteSpace(c.Email) ? "—" : c.Email)</td>
                         <td class="px-4 py-2.5 text-right text-neutral-500">@c.Orders</td>
                         <td class="px-4 py-2.5 text-right text-neutral-800">@Money(c.Revenue)</td>
-                        <td class="px-4 py-2.5 text-neutral-500">@c.Last.ToString("dd MMM yy")</td>
+                        <td class="px-4 py-2.5 text-neutral-500">@c.Last.ToLocalTime().ToString("dd MMM yy")</td>
                     </tr>
                 }
             </tbody>

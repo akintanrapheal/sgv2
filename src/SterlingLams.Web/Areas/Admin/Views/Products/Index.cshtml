@@ -261,7 +261,9 @@
                     <td class="px-4 py-2">
                         @if (!string.IsNullOrEmpty(thumb))
                         {
-                            <img src="@thumb" alt="@p.Name"
+                            @* Cld: a 96px WebP, not the full-resolution original — this list renders
+                               30 of these per page. *@
+                            <img src="@Img.Cld(thumb, 96, 96)" alt="@p.Name" loading="lazy" decoding="async"
                                  class="w-12 h-12 object-cover rounded-sm border border-neutral-100"
                                  onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
                             <div class="w-12 h-12 rounded-sm bg-neutral-100 items-center justify-center hidden">

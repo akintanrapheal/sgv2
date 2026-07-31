@@ -122,7 +122,7 @@ else
                             @if (p.IsPublished) { <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Published</span> }
                             else { <span class="text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">Draft</span> }
                         </td>
-                        <td class="px-4 py-2.5 text-neutral-400 text-xs">@(p.PublishedAt?.ToString("dd MMM yyyy") ?? "—")</td>
+                        <td class="px-4 py-2.5 text-neutral-400 text-xs">@(p.PublishedAt?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")</td>
                         <td class="px-4 py-2.5 text-right whitespace-nowrap">
                             @if (p.IsPublished)
                             {

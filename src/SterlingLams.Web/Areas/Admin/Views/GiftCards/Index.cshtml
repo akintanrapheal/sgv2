@@ -125,7 +125,7 @@ else
                             else if (g.Balance <= 0) { <span class="text-[10px] bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full">Spent</span> }
                             else { <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Active</span> }
                         </td>
-                        <td class="px-4 py-2.5 text-neutral-400 text-xs">@g.CreatedAt.ToString("dd MMM yyyy")</td>
+                        <td class="px-4 py-2.5 text-neutral-400 text-xs">@g.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
                         <td class="px-4 py-2.5 text-right">
                             <a asp-area="Admin" asp-controller="GiftCards" asp-action="Details" asp-route-id="@g.Id" class="text-xs text-neutral-500 hover:text-neutral-900">Manage →</a>
                         </td>

@@ -24,7 +24,8 @@
             <p class="text-[11px] text-neutral-400 mb-1.5">Shown in the homepage “Shop by Category” section. Recommended: square image, at least 600×600px.</p>
             <div class="space-y-3">
                 <div id="cat-img-preview" class="@(string.IsNullOrEmpty(Model.ImageUrl) ? "hidden " : "")inline-block">
-                    <img src="@Model.ImageUrl" alt="Preview"
+                    @* Display only — the saved value is the ImageUrl field below. *@
+                    <img src="@Img.Cld(Model.ImageUrl, 256, 256)" alt="Preview" loading="lazy"
                          class="h-32 w-32 object-cover rounded border border-neutral-200" />
                 </div>
                 <div class="flex gap-2 items-center">

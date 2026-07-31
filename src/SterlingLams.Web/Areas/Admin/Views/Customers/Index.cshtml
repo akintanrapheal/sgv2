@@ -74,8 +74,8 @@
                     <td class="px-6 py-3 text-xs text-neutral-500">@(c.Phone ?? "—")</td>
                     <td class="px-6 py-3 text-xs text-right font-medium">@c.OrderCount</td>
                     <td class="px-6 py-3 text-xs text-right font-medium text-emerald-700">₦@c.TotalSpend.ToString("N0")</td>
-                    <td class="px-6 py-3 text-xs text-neutral-400">@c.JoinedAt.ToString("dd MMM yy")</td>
-                    <td class="px-6 py-3 text-xs text-neutral-400">@(c.LastOrderAt.HasValue ? c.LastOrderAt.Value.ToString("dd MMM yy") : "—")</td>
+                    <td class="px-6 py-3 text-xs text-neutral-400">@c.JoinedAt.ToLocalTime().ToString("dd MMM yy")</td>
+                    <td class="px-6 py-3 text-xs text-neutral-400">@(c.LastOrderAt.HasValue ? c.LastOrderAt.Value.ToLocalTime().ToString("dd MMM yy") : "—")</td>
                     <td class="px-6 py-3">
                         <div class="flex flex-wrap gap-1">
                             @if (c.IsVip) { <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">VIP</span> }

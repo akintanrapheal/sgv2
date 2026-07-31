@@ -152,7 +152,7 @@
                         }
                         <span class="text-[10px] px-2 py-0.5 rounded-full @bc">@(o.Status == "AwaitingTransfer" ? "Awaiting transfer" : o.Status)</span>
                     </td>
-                    <td class="px-4 py-3 text-xs text-neutral-400">@o.CreatedAt.ToString("dd MMM yy")</td>
+                    <td class="px-4 py-3 text-xs text-neutral-400">@o.CreatedAt.ToLocalTime().ToString("dd MMM yy")</td>
                 </tr>
             }
         </tbody>

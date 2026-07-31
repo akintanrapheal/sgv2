@@ -66,7 +66,7 @@
                 {
                     <tr class="hover:bg-neutral-50">
                         <td class="px-4 py-2.5 text-neutral-700">@o.Order</td>
-                        <td class="px-4 py-2.5 text-neutral-500">@o.When.ToString("dd MMM yy")</td>
+                        <td class="px-4 py-2.5 text-neutral-500">@o.When.ToLocalTime().ToString("dd MMM yy")</td>
                         <td class="px-4 py-2.5 text-neutral-600">@o.Customer</td>
                         <td class="px-4 py-2.5 text-neutral-500">@o.Status</td>
                         <td class="px-4 py-2.5 text-right @AgeCls(o.AgeDays)">@o.AgeDays d</td>

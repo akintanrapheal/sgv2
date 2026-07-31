@@ -95,7 +95,8 @@
                                     @if (!string.IsNullOrEmpty(s.Value))
                                     {
                                         <div id="@previewId" class="relative inline-block">
-                                            <img src="@s.Value" alt="Preview"
+                                            @* Display only — the value that gets saved lives in the text input below. *@
+                                            <img src="@Img.Cld(s.Value, 400)" alt="Preview" loading="lazy"
                                                  class="h-32 w-auto object-cover rounded border border-neutral-200" />
                                         </div>
                                     }
@@ -134,8 +135,9 @@
                                     <div id="@listId" class="flex flex-wrap gap-3">
                                         @foreach (var u in urls)
                                         {
+                                            @* data-url keeps the real URL; the thumbnail is a resized copy. *@
                                             <div class="il-item relative" data-url="@u">
-                                                <img src="@u" alt="Slide" class="h-24 w-24 object-cover rounded border border-neutral-200" />
+                                                <img src="@Img.Cld(u, 192, 192)" alt="Slide" loading="lazy" class="h-24 w-24 object-cover rounded border border-neutral-200" />
                                                 <button type="button" class="il-remove absolute -top-2 -right-2 bg-white border border-neutral-300 rounded-full w-6 h-6 text-neutral-500 hover:text-red-600 shadow flex items-center justify-center text-xs">&times;</button>
                                             </div>
                                         }
