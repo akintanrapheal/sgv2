@@ -1522,7 +1522,7 @@ public class PosController : Controller
     // Builds the per-tender rows for a POS order. Cash change is deducted from the cash row so the
     // recorded cash equals what stays in the drawer (keeps cash-up accurate). Returns the rows plus
     // the resolved PaymentProvider label, amount tendered and change.
-    private static (List<OrderPayment> rows, string provider, decimal tendered, decimal change)
+    internal static (List<OrderPayment> rows, string provider, decimal tendered, decimal change)
         BuildPayments(List<PaymentPart>? parts, string fallbackMethod, decimal fallbackTendered, decimal total)
     {
         var clean = (parts ?? new()).Where(p => p.Amount > 0 && !string.IsNullOrWhiteSpace(p.Method))
@@ -1539,11 +1539,27 @@ public class PosController : Controller
 
         var paid = clean.Sum(p => p.Amount);
         var chg = Math.Max(0, paid - total);
-        // Change comes out of cash: reduce the cash row so summed amounts == total.
-        if (chg > 0)
+        // Change comes out of cash first: reduce the cash row so the recorded tenders equal the sale.
+        var over = chg;
+        if (over > 0)
         {
             var cash = clean.FirstOrDefault(p => string.Equals(p.Method, "Cash", StringComparison.OrdinalIgnoreCase));
-            if (cash != null) cash.Amount = Math.Max(0, cash.Amount - chg);
+            if (cash != null)
+            {
+                var fromCash = Math.Min(cash.Amount, over);
+                cash.Amount -= fromCash;
+                over -= fromCash;
+            }
+        }
+        // Overpaid on a non-cash tender, or more change than the cash row could absorb: trim what's
+        // left, largest tender first. The rows must always sum to the sale total — the Z-report and
+        // the finance payment-channel split add them up, and any excess inflated both.
+        foreach (var p in clean.OrderByDescending(p => p.Amount))
+        {
+            if (over <= 0) break;
+            var take = Math.Min(p.Amount, over);
+            p.Amount -= take;
+            over -= take;
         }
         var rows = clean.Where(p => p.Amount > 0).Select(p => new OrderPayment { Method = p.Method, Amount = p.Amount }).ToList();
         var provider = rows.Count == 1 ? rows[0].Method : "Split";

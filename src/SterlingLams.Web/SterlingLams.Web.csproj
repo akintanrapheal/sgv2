@@ -16,6 +16,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Lets the test project reach internal members, so money-handling helpers can be tested
+         directly instead of having their arithmetic re-typed into the test. -->
+    <InternalsVisibleTo Include="SterlingLams.Web.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Entity Framework Core (PostgreSQL) -->
     <PackageReference Include="CloudinaryDotNet" Version="1.29.2" />
     <PackageReference Include="QRCoder" Version="1.6.0" />
