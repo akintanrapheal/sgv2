@@ -35,13 +35,19 @@ else
 
     <div class="mb-5 rounded-sm border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 max-w-3xl">
         <p class="font-medium mb-1">What to do with these</p>
-        <p>
+        <p class="mb-2">
             These units are <strong>not</strong> counted by the storefront or the till, so nothing is
             oversold — but they <em>are</em> counted in the Stock report's totals, which overstates it.
-            For each row, check the shelf: if the units are really there, add them to the right option
-            in <strong>Inventory System → Stock → Track Stock</strong>, then set the pool figure to 0
-            on the Admin inventory grid. If the shelf matches the option counts already, the pool
-            figure is a leftover and can simply be set to 0.
+            Worse, if the options below read <strong>0</strong>, the product is <strong>unsellable
+            right now</strong> even though the units are on the shelf.
+        </p>
+        <p>
+            Both steps happen in <strong>Inventory System → Products</strong>, on the product's
+            <strong>Track Stock</strong> menu. Open it on an <em>option</em> row to put the units where
+            they belong, then open it on the <em>product</em> row to set that branch back to 0.
+            (The Admin inventory grid can't do the second step — for products with options its branch
+            boxes are read-only roll-ups.) If the option counts already match the shelf, only the
+            second step is needed.
         </p>
     </div>
 
