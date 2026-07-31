@@ -90,6 +90,49 @@ public class StockWarningVariantTests
         Assert.DoesNotContain(fine.Id, flagged);
     }
 
+    /// <summary>The Admin → Inventory "Unsellable pool stock" diagnostic: product-level rows holding
+    /// stock on a product whose stock belongs on its options. Nothing sells from those units.</summary>
+    private static IQueryable<StoreInventory> StrandedPoolStock(TestDb t) =>
+        t.Db.StoreInventories
+            .Where(si => si.ProductVariantId == null
+                      && si.QuantityOnHand != 0
+                      && t.Db.ProductVariants.Any(v => v.ProductId == si.ProductId && v.IsActive));
+
+    [Fact]
+    public async Task The_diagnostic_finds_stock_stranded_on_a_product_that_sells_by_option()
+    {
+        using var t = new TestDb();
+        var store = t.SeedStore("Abuja", "Abuja", "Gwarimpa");
+        var p = await SeedVariantProductAsync(t, store.Id, perVariant: 5);
+
+        // Something wrote 7 onto the product-level row — the old stock-take path did exactly this.
+        var pool = await t.Db.StoreInventories
+            .SingleAsync(si => si.ProductId == p.Id && si.StoreId == store.Id && si.ProductVariantId == null);
+        pool.QuantityOnHand = 7;
+        await t.Db.SaveChangesAsync();
+
+        var stranded = await StrandedPoolStock(t).ToListAsync();
+
+        var row = Assert.Single(stranded);
+        Assert.Equal(p.Id, row.ProductId);
+        Assert.Equal(7, row.QuantityOnHand);
+    }
+
+    [Fact]
+    public async Task The_diagnostic_ignores_healthy_data()
+    {
+        using var t = new TestDb();
+        var store = t.SeedStore("Allen", "Lagos", "Ikeja");
+
+        // A product with options whose pool row is correctly empty.
+        await SeedVariantProductAsync(t, store.Id, perVariant: 6);
+        // And a simple product with ordinary stock — its pool row IS where its stock belongs.
+        var simple = t.SeedProduct();
+        t.SetStock(simple.Id, store.Id, onHand: 12);
+
+        Assert.Empty(await StrandedPoolStock(t).ToListAsync());
+    }
+
     [Fact]
     public async Task The_quantity_shown_is_the_whole_branch_holding_not_the_empty_pool_row()
     {

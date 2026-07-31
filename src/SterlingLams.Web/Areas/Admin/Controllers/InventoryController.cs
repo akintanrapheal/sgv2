@@ -215,6 +215,43 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return View(rows);
         }
 
+        // ── Pool stock on products with options — read-only diagnostic ───────────
+        // A product with options keeps its stock on the variant rows. Its product-level ("pool") row
+        // should therefore sit at zero. Anything sitting there is stock nothing can sell: the
+        // storefront and the till both read the variant rows, never the pool. It got there from
+        // screens that predated variant stock — the old Admin inventory grid, and Stock Take, which
+        // wrote a count straight onto the pool row (both fixed, 2026-07-31).
+        //
+        // Read-only. Nothing here changes stock; it just shows where to look.
+        public async Task<IActionResult> PoolStock()
+        {
+            ViewData["Title"] = "Unsellable pool stock";
+
+            var rows = await _db.StoreInventories
+                .Where(si => si.ProductVariantId == null
+                          && si.QuantityOnHand != 0
+                          && _db.ProductVariants.Any(v => v.ProductId == si.ProductId && v.IsActive))
+                .Select(si => new PoolStockRow
+                {
+                    ProductId   = si.ProductId,
+                    ProductName = si.Product.Name,
+                    Sku         = si.Product.Sku,
+                    StoreName   = si.Store.Name,
+                    PoolQty     = si.QuantityOnHand,
+                    VariantQty  = _db.StoreInventories
+                        .Where(x => x.ProductId == si.ProductId && x.StoreId == si.StoreId
+                                 && x.ProductVariantId != null)
+                        .Sum(x => x.QuantityOnHand),
+                    VariantCount = _db.ProductVariants.Count(v => v.ProductId == si.ProductId && v.IsActive),
+                    UpdatedAt   = si.UpdatedAt,
+                })
+                .OrderByDescending(r => r.PoolQty)
+                .ThenBy(r => r.ProductName)
+                .ToListAsync();
+
+            return View(rows);
+        }
+
         // ── Set stock for a product across all stores (saves absolute quantities) ─
         [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> SetProductStock(int productId, IFormCollection form)

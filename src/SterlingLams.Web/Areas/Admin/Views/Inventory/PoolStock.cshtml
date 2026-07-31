@@ -1,0 +1,81 @@
+@model List<SterlingLams.Web.Areas.Admin.ViewModels.PoolStockRow>
+@{
+    ViewData["Title"] = "Unsellable pool stock";
+    var totalUnits = Model.Sum(r => r.PoolQty);
+    var products = Model.Select(r => r.ProductId).Distinct().Count();
+}
+
+<div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+    <div>
+        <h1 class="text-xl font-semibold text-neutral-900">Unsellable pool stock</h1>
+        <p class="text-sm text-neutral-500 mt-0.5 max-w-3xl">
+            A product with options keeps its stock on each option. Its product-level row should sit at
+            zero — anything here is stock the storefront and the till can't see, because both read the
+            options. It was written by screens that predated per-option stock.
+        </p>
+    </div>
+    <a asp-area="Admin" asp-controller="Inventory" asp-action="Index"
+       class="text-sm text-neutral-600 hover:text-neutral-900">← Back to Inventory</a>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="bg-white border border-neutral-200 rounded-sm p-12 text-center">
+        <p class="text-sm text-neutral-700 font-medium">Nothing stranded — every product with options holds its stock on the options.</p>
+        <p class="text-xs text-neutral-400 mt-1">No action needed.</p>
+    </div>
+}
+else
+{
+    <div class="flex gap-3 mb-4 text-sm flex-wrap">
+        <span class="px-3 py-1.5 bg-amber-50 text-amber-800 rounded-sm"><strong>@totalUnits</strong> unit(s) stranded</span>
+        <span class="px-3 py-1.5 bg-neutral-100 rounded-sm text-neutral-700"><strong>@products</strong> product(s) affected</span>
+        <span class="px-3 py-1.5 bg-neutral-100 rounded-sm text-neutral-700"><strong>@Model.Count</strong> product × branch row(s)</span>
+    </div>
+
+    <div class="mb-5 rounded-sm border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 max-w-3xl">
+        <p class="font-medium mb-1">What to do with these</p>
+        <p>
+            These units are <strong>not</strong> counted by the storefront or the till, so nothing is
+            oversold — but they <em>are</em> counted in the Stock report's totals, which overstates it.
+            For each row, check the shelf: if the units are really there, add them to the right option
+            in <strong>Inventory System → Stock → Track Stock</strong>, then set the pool figure to 0
+            on the Admin inventory grid. If the shelf matches the option counts already, the pool
+            figure is a leftover and can simply be set to 0.
+        </p>
+    </div>
+
+    <div class="bg-white border border-neutral-200 rounded-sm overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="text-left text-xs uppercase tracking-wide text-neutral-500 border-b border-neutral-200 bg-neutral-50">
+                    <th class="px-4 py-3 font-medium">Product</th>
+                    <th class="px-4 py-3 font-medium">Branch</th>
+                    <th class="px-4 py-3 font-medium text-center">Stranded on the product</th>
+                    <th class="px-4 py-3 font-medium text-center">Held on its options</th>
+                    <th class="px-4 py-3 font-medium text-right">Last touched</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-100">
+                @foreach (var r in Model)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5">
+                            <a asp-area="Admin" asp-controller="Products" asp-action="Edit" asp-route-id="@r.ProductId"
+                               class="text-neutral-800 hover:text-neutral-900 underline underline-offset-2">@r.ProductName</a>
+                            <span class="block text-[11px] text-neutral-400">
+                                @(string.IsNullOrEmpty(r.Sku) ? "" : r.Sku + " · ")@r.VariantCount option(s)
+                            </span>
+                        </td>
+                        <td class="px-4 py-2.5 text-neutral-600">@r.StoreName</td>
+                        <td class="px-4 py-2.5 text-center font-medium text-amber-700">@r.PoolQty</td>
+                        <td class="px-4 py-2.5 text-center text-neutral-600">@r.VariantQty</td>
+                        <td class="px-4 py-2.5 text-right text-xs text-neutral-400">
+                            @r.UpdatedAt.ToLocalTime().ToString("dd MMM yy HH:mm")
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

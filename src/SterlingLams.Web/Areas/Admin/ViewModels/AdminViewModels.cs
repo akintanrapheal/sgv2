@@ -382,6 +382,22 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         }
     }
 
+    /// <summary>One product×branch whose product-level ("pool") stock row is non-zero even though the
+    /// product has options — stock that exists in the table but that nothing can sell.</summary>
+    public class PoolStockRow
+    {
+        public int ProductId { get; set; }
+        public string ProductName { get; set; } = "";
+        public string? Sku { get; set; }
+        public string StoreName { get; set; } = "";
+        /// <summary>Units stranded on the pool row.</summary>
+        public int PoolQty { get; set; }
+        /// <summary>Units correctly held across that product's variants at the same branch.</summary>
+        public int VariantQty { get; set; }
+        public int VariantCount { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
     public class VariantInventoryRow
     {
         public int VariantId { get; set; }

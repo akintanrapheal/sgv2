@@ -18,6 +18,11 @@
            class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:bg-neutral-50 transition-colors">
             🔒 Stock holds
         </a>
+        <a asp-area="Admin" asp-controller="Inventory" asp-action="PoolStock"
+           class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:bg-neutral-50 transition-colors"
+           title="Stock stranded on a product that keeps its stock per option — invisible to the storefront and the till">
+            ⚠ Unsellable pool stock
+        </a>
         <!-- Ensure all products have inventory rows -->
         @if (canEdit)
         {
