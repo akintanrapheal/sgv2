@@ -61,6 +61,12 @@ public class EmailCustomizerController : AdminBaseController
     // Optional subject/intro overrides let the preview reflect unsaved edits as the admin types.
     public async Task<IActionResult> Preview(string type, string? subject = null, string? intro = null, int? logoHeight = null)
     {
+        // The overrides arrive on the query string and are rendered straight into the returned HTML.
+        // The intro is meant to carry light formatting, so it's sanitised rather than escaped — the
+        // subject is plain text and is escaped outright.
+        subject = subject == null ? null : System.Net.WebUtility.HtmlEncode(subject);
+        intro = intro == null ? null : ProductHtml.Sanitize(intro);
+
         var (s, body) = await BuildSampleAsync(type, subject, intro);
         var html = await _email.RenderAsync(s, body, logoHeight);
         return Content(html, "text/html");

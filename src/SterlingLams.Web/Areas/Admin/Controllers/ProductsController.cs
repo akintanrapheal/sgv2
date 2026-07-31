@@ -220,14 +220,17 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .OrderBy(b => b.Store)
                 .ToListAsync();
 
-            var since90 = DateTime.UtcNow.Date.AddDays(-90);
-            var soldItems = _db.OrderItems.Where(oi => oi.ProductId == id && oi.Order.IsPaid && oi.Order.CreatedAt >= since90);
+            // Dated by payment, in Lagos days — matching Finance, Reports and the Dashboard.
+            var since90 = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(
+                SterlingLams.Web.Services.ReportCalendar.Today.AddDays(-90));
+            var soldItems = _db.OrderItems.Where(oi => oi.ProductId == id && oi.Order.IsPaid
+                && (oi.Order.PaidAt ?? oi.Order.CreatedAt) >= since90);
 
             // The most recent paid sale of this product (all-time), for one-click order tracing.
             var lastSale = await _db.OrderItems
                 .Where(oi => oi.ProductId == id && oi.Order.IsPaid)
-                .OrderByDescending(oi => oi.Order.CreatedAt)
-                .Select(oi => new { oi.Order.CreatedAt, oi.OrderId, oi.Order.OrderNumber })
+                .OrderByDescending(oi => oi.Order.PaidAt ?? oi.Order.CreatedAt)
+                .Select(oi => new { CreatedAt = oi.Order.PaidAt ?? oi.Order.CreatedAt, oi.OrderId, oi.Order.OrderNumber })
                 .FirstOrDefaultAsync();
 
             vm.Sidebar = new ProductEditSidebar

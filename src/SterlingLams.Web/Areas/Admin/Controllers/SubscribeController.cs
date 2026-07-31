@@ -48,10 +48,6 @@ public class SubscribeController : AdminBaseController
     // billing config or the notice (guarded per-action below). The base controller already limits the
     // whole controller to full-access roles.
 
-    /// <summary>Per-store price (USD). Yearly gives two months free.</summary>
-    public const decimal PerStoreMonthly = 50m;
-    public const decimal PerStoreYearly = 500m;
-
     /// <summary>Deterministic, stable-looking fake API key for a store.</summary>
     public static string FakeKey(int storeId, string name)
     {
@@ -133,6 +129,21 @@ public class SubscribeController : AdminBaseController
             return RedirectToAction(nameof(Index));
         }
 
+        // Only references this page generated (see Pay) — not any arbitrary paid reference.
+        if (!reference.StartsWith("SGSUB-", StringComparison.Ordinal))
+        {
+            TempData["Error"] = "That payment reference wasn't issued by this page.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        // Idempotent: reloading the callback URL must not re-activate and push the renewal date out
+        // again. The reference of the payment that activated the current subscription is recorded.
+        if (string.Equals(await _settings.GetAsync("subscription.last_reference", ""), reference, StringComparison.Ordinal))
+        {
+            TempData["Success"] = $"That payment is already applied — active until {await _settings.GetAsync("subscription.renews_on", "")}.";
+            return RedirectToAction(nameof(Index));
+        }
+
         var (ok, paid, error) = await _pay.VerifyAsync(reference);
         if (!ok)
         {
@@ -146,6 +157,7 @@ public class SubscribeController : AdminBaseController
         }
 
         var renews = await _pay.ActivateAsync(plan ?? "monthly");
+        await _settings.SaveManyAsync(new Dictionary<string, string> { ["subscription.last_reference"] = reference });
         await LogAsync("Update", "Subscription", null, $"Paystack payment {reference} verified — active, renews {renews}", performedBy: "API System");
         TempData["Success"] = $"Payment received — your API connector is active until {renews}.";
         return RedirectToAction(nameof(Index));

@@ -54,8 +54,10 @@ public class SeoController : AdminBaseController
     }
 
     // Generate + save descriptions for every product in the category.
+    // overwrite defaults to FALSE: this replaces copy irreversibly across a whole category, so
+    // replacing hand-written descriptions has to be asked for explicitly, never by omission.
     [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> Apply(int categoryId, bool overwrite = true)
+    public async Task<IActionResult> Apply(int categoryId, bool overwrite = false)
     {
         var cat = await _db.Categories.FirstOrDefaultAsync(c => c.Id == categoryId);
         if (cat == null) return Json(new { ok = false, error = "Category not found." });
@@ -72,7 +74,9 @@ public class SeoController : AdminBaseController
             p.UpdatedAt = now;
         }
         await _db.SaveChangesAsync();
-        await LogAsync("Update", "Product", null, $"Generated SEO descriptions for {prods.Count} product(s) in '{cat.Name}'");
+        await LogAsync("Update", "Product", null,
+            $"Generated SEO descriptions for {prods.Count} product(s) in '{cat.Name}'"
+            + (overwrite ? " — REPLACED existing descriptions" : " — only products that had none"));
         return Json(new { ok = true, count = prods.Count, category = cat.Name });
     }
 

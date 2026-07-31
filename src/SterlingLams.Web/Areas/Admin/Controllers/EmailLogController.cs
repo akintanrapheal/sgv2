@@ -27,8 +27,10 @@ public class EmailLogController : AdminBaseController
         else if (status == "sent") query = query.Where(e => e.Sent);
         if (!string.IsNullOrWhiteSpace(q))
         {
-            var term = q.Trim();
-            query = query.Where(e => e.ToEmail.Contains(term) || e.Subject.Contains(term));
+            // ILike, not Contains: Contains compiles to a case-sensitive LIKE on Postgres, so
+            // searching "zino@" would miss "Zino@".
+            var like = $"%{q.Trim()}%";
+            query = query.Where(e => EF.Functions.ILike(e.ToEmail, like) || EF.Functions.ILike(e.Subject, like));
         }
 
         var total = await query.CountAsync();

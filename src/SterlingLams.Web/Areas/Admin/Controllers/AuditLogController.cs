@@ -82,25 +82,24 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .OrderByDescending(l => l.CreatedAt)
                 .ToListAsync();
 
+            // Csv handles the escaping (only two columns were escaped here) and neutralises values a
+            // spreadsheet would execute — audit descriptions contain customer- and staff-typed text.
             var sb = new StringBuilder();
-            sb.AppendLine("Timestamp (UTC),Action,Entity Type,Entity ID,Description,Changes,Performed By,IP Address");
+            SterlingLams.Web.Services.Csv.AppendRow(sb, "Timestamp (WAT)", "Action", "Entity Type",
+                "Entity ID", "Description", "Changes", "Performed By", "IP Address");
             foreach (var l in logs)
             {
-                sb.AppendLine(string.Join(",",
-                    $"\"{l.CreatedAt:yyyy-MM-dd HH:mm:ss}\"",
-                    $"\"{l.Action}\"",
-                    $"\"{l.EntityType}\"",
-                    $"\"{l.EntityId}\"",
-                    $"\"{l.Description.Replace("\"", "\"\"")}\"",
-                    $"\"{(l.Changes ?? "").Replace("\"", "\"\"").Replace("\n", "; ")}\"",
-                    $"\"{l.PerformedBy}\"",
-                    $"\"{l.IpAddress}\""));
+                SterlingLams.Web.Services.Csv.AppendRow(sb,
+                    SterlingLams.Web.Services.ReportCalendar.ToLocal(l.CreatedAt).ToString("yyyy-MM-dd HH:mm:ss"),
+                    l.Action, l.EntityType, l.EntityId, l.Description,
+                    (l.Changes ?? "").Replace("\n", "; "),
+                    l.PerformedBy, l.IpAddress);
             }
 
             await LogAsync("Export", "AuditLog", null, $"Exported {logs.Count} audit log entries to CSV");
 
-            var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
-            return File(bytes, "text/csv", $"audit_log_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv");
+            return File(SterlingLams.Web.Services.Csv.ToBytes(sb), "text/csv",
+                $"audit_log_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv");
         }
 
         // Deleting audit history is restricted to the OWNER account (AdminSections.IsOwner) — not
@@ -144,11 +143,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             if (!string.IsNullOrWhiteSpace(entity))
                 query = query.Where(l => l.EntityType == entity);
 
+            // Lagos dates → UTC instants, the same calendar the money reports use. This used to lean on
+            // ToUniversalTime() (i.e. the server's local zone), which is only right by accident.
             if (DateTime.TryParse(dateFrom, out var from))
-                query = query.Where(l => l.CreatedAt >= from.ToUniversalTime());
+                query = query.Where(l => l.CreatedAt >= SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(from));
 
             if (DateTime.TryParse(dateTo, out var to))
-                query = query.Where(l => l.CreatedAt < to.ToUniversalTime().AddDays(1));
+                query = query.Where(l => l.CreatedAt < SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(to.AddDays(1)));
 
             if (!string.IsNullOrWhiteSpace(q))
                 query = query.Where(l =>

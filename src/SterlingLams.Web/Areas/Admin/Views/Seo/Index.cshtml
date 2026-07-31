@@ -21,7 +21,9 @@
         </div>
         <button type="button" id="preview-btn" class="px-4 py-2 border border-neutral-300 text-neutral-700 text-sm rounded-sm hover:border-neutral-500">Preview</button>
         <label class="flex items-center gap-2 text-sm text-neutral-600 ml-2">
-            <input type="checkbox" id="overwrite" checked /> Overwrite existing descriptions
+            @* Unchecked by default: replacing copy across a whole category can't be undone, so it has
+               to be chosen deliberately rather than being the default. *@
+            <input type="checkbox" id="overwrite" /> Overwrite existing descriptions
         </label>
         <button type="button" id="apply-btn" class="px-5 py-2 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 disabled:opacity-40" disabled>Apply to category</button>
     </div>
@@ -63,11 +65,15 @@
     applyBtn.addEventListener('click', function () {
         var id = cat.value; if (!id) return;
         var name = cat.options[cat.selectedIndex].text;
-        if (!confirm('Generate and SAVE descriptions for all products in "' + name + '"?\nThis overwrites their current descriptions.')) return;
+        var willOverwrite = document.getElementById('overwrite').checked;
+        if (!confirm('Generate and SAVE descriptions in "' + name + '"?\n\n'
+            + (willOverwrite
+                ? 'This REPLACES the current description of every product in the category. It cannot be undone.'
+                : 'Only products that have no description yet will be changed.'))) return;
         applyBtn.disabled = true; setStatus('Applying…');
         var body = new FormData();
         body.append('categoryId', id);
-        body.append('overwrite', document.getElementById('overwrite').checked);
+        body.append('overwrite', willOverwrite);
         body.append('__RequestVerificationToken', token);
         fetch(__adminBase + '/Seo/Apply', { method: 'POST', body: body })
             .then(function (r) { return r.json(); })

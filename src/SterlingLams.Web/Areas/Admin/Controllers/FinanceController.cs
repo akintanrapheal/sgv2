@@ -29,15 +29,14 @@ public class FinanceController : AdminBaseController
         _report = report;
     }
 
-    // Inclusive from/to (days). Defaults to the last 30 days.
-    private static (DateTime From, DateTime ToExclusive) Range(string? from, string? to)
-    {
-        var today = DateTime.UtcNow.Date;
-        var f = DateTime.TryParse(from, out var pf) ? pf.Date : today.AddDays(-29);
-        var t = DateTime.TryParse(to, out var pt) ? pt.Date : today;
-        if (t < f) t = f;
-        return (DateTime.SpecifyKind(f, DateTimeKind.Utc), DateTime.SpecifyKind(t.AddDays(1), DateTimeKind.Utc));
-    }
+    // Inclusive from/to as LAGOS dates, defaulting to the last 30 days. Returns the UTC window to
+    // query with plus the local dates to display — see ReportCalendar for why the two differ.
+    private static (DateTime From, DateTime ToExclusive, DateTime FromLocal, DateTime ToLocal)
+        Range(string? from, string? to) => SterlingLams.Web.Services.ReportCalendar.Range(from, to);
+
+    // Revenue is dated by when a sale was PAID — `o.PaidAt ?? o.CreatedAt` throughout, the fallback
+    // covering older rows written before PaidAt existed. Keying off CreatedAt booked a bank transfer
+    // confirmed on Wednesday against Monday, i.e. money showing up before it actually arrived.
 
     public record ChannelPoint(string Channel, decimal Amount, int Count);
     // Order revenue = merchandise (Total minus the delivery charge); Logistics = the in-house
@@ -178,7 +177,7 @@ public class FinanceController : AdminBaseController
 
     private IQueryable<Order> PaidOrders(DateTime f, DateTime t, int? storeId, string channel)
     {
-        var q = _db.Orders.Where(o => o.IsPaid && o.CreatedAt >= f && o.CreatedAt < t);
+        var q = _db.Orders.Where(o => o.IsPaid && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t);
         if (storeId.HasValue) q = q.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
         if (channel == "Online") q = q.Where(o => o.Channel == OrderChannel.Online);
         else if (channel == "Pos") q = q.Where(o => o.Channel == OrderChannel.Pos);
@@ -264,8 +263,7 @@ public class FinanceController : AdminBaseController
         var totalChannel = vm.ByChannel.Sum(c => c.Amount);
 
         var sb = new StringBuilder();
-        static string Q(string s) => s.Contains(',') || s.Contains('"') ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
-        void Row(params string[] cells) => sb.AppendLine(string.Join(",", cells.Select(Q)));
+        void Row(params string[] cells) => Services.Csv.AppendRow(sb, cells);
 
         var periodName = vm.Period switch { "week" => "Weekly", "month" => "Monthly", "quarter" => "Quarterly", "year" => "Yearly", _ => "Daily" };
         Row("Sterlin Glams — Finance report");
@@ -311,8 +309,7 @@ public class FinanceController : AdminBaseController
             Row(p.Label, p.Count.ToString(), p.OrderRevenue.ToString("0.##"), p.Logistics.ToString("0.##"),
                 p.Total.ToString("0.##"), p.Refunds.ToString("0.##"), p.Net.ToString("0.##"));
 
-        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
-        return File(bytes, "text/csv", $"finance_{vm.From:yyyyMMdd}-{vm.To:yyyyMMdd}.csv");
+        return File(Services.Csv.ToBytes(sb), "text/csv", $"finance_{vm.From:yyyyMMdd}-{vm.To:yyyyMMdd}.csv");
     }
 
     // Print-friendly branded finance statement (browser Print → PDF). Reuses the overview figures.
@@ -325,27 +322,30 @@ public class FinanceController : AdminBaseController
     // ── Accounting export (balanced general journal, QuickBooks/Xero-friendly) ──
     public async Task<IActionResult> Journal(string? from, string? to, int? storeId, string? channel)
     {
-        var (f, t) = Range(from, to);
+        var (f, t, fLocal, tLocal) = Range(from, to);
         channel = channel is "Online" or "Pos" ? channel : "";
         var paid = PaidOrders(f, t, storeId, channel);
 
-        var sales = await paid.GroupBy(o => o.CreatedAt.Date)
+        // Lagos days, dated by payment — see ReportCalendar and PaidOrders.
+        var sales = (await paid.Select(o => new { When = o.PaidAt ?? o.CreatedAt, o.Total, o.DeliveryFee }).ToListAsync())
+            .GroupBy(o => Services.ReportCalendar.LocalDay(o.When))
             .Select(g => new { Day = g.Key, Gross = g.Sum(o => o.Total), Delivery = g.Sum(o => o.DeliveryFee) })
-            .ToListAsync();
+            .ToList();
 
         var refq = _db.Refunds.Where(r => r.CreatedAt >= f && r.CreatedAt < t);
         if (storeId.HasValue) refq = refq.Where(r => r.OriginalOrder.PickupStoreId == storeId || r.OriginalOrder.FulfillingStoreId == storeId);
         if (channel == "Online") refq = refq.Where(r => r.OriginalOrder.Channel == OrderChannel.Online);
         else if (channel == "Pos") refq = refq.Where(r => r.OriginalOrder.Channel == OrderChannel.Pos);
-        var refunds = await refq.GroupBy(r => r.CreatedAt.Date)
-            .Select(g => new { Day = g.Key, Amt = g.Sum(x => x.Amount) }).ToListAsync();
+        var refunds = (await refq.Select(r => new { r.CreatedAt, r.Amount }).ToListAsync())
+            .GroupBy(r => Services.ReportCalendar.LocalDay(r.CreatedAt))
+            .Select(g => new { Day = g.Key, Amt = g.Sum(x => x.Amount) })
+            .ToList();
 
         var sb = new StringBuilder();
-        static string Q(string s) => s.Contains(',') || s.Contains('"') ? "\"" + s.Replace("\"", "\"\"") + "\"" : s;
         void Row(string date, string reference, string account, decimal debit, decimal credit, string memo)
-            => sb.AppendLine(string.Join(",", new[] { date, reference, account, debit.ToString("0.##"), credit.ToString("0.##"), memo }.Select(Q)));
+            => Services.Csv.AppendRow(sb, date, reference, account, debit.ToString("0.##"), credit.ToString("0.##"), memo);
 
-        sb.AppendLine("Date,Reference,Account,Debit,Credit,Description");
+        Services.Csv.AppendRow(sb, "Date", "Reference", "Account", "Debit", "Credit", "Description");
         foreach (var d in sales.OrderBy(x => x.Day))
         {
             var date = d.Day.ToString("yyyy-MM-dd");
@@ -364,8 +364,7 @@ public class FinanceController : AdminBaseController
             Row(date, reference, "Bank", 0, r.Amt, "Refunds paid out");
         }
 
-        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
-        return File(bytes, "text/csv", $"journal_{f:yyyyMMdd}-{t.AddDays(-1):yyyyMMdd}.csv");
+        return File(Services.Csv.ToBytes(sb), "text/csv", $"journal_{fLocal:yyyyMMdd}-{tLocal:yyyyMMdd}.csv");
     }
 
     // ── Cash reconciliation ────────────────────────────────────────────────────
@@ -374,7 +373,7 @@ public class FinanceController : AdminBaseController
     public async Task<IActionResult> Cash(string? from, string? to, int? storeId)
     {
         ViewData["Title"] = "Finance — Cash-up";
-        var (f, t) = Range(from, to);
+        var (f, t, fLocal, tLocal) = Range(from, to);
 
         var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
 
@@ -424,14 +423,14 @@ public class FinanceController : AdminBaseController
                 mv.In, -mv.Out, s.CountedCash ?? 0);
         }).ToList();
 
-        return View(new CashVm { From = f, To = t.AddDays(-1), StoreId = storeId, Stores = stores, Rows = rows });
+        return View(new CashVm { From = fLocal, To = tLocal, StoreId = storeId, Stores = stores, Rows = rows });
     }
 
     // ── Refund analytics ───────────────────────────────────────────────────────
     public async Task<IActionResult> Refunds(string? from, string? to, int? storeId)
     {
         ViewData["Title"] = "Finance — Refunds";
-        var (f, t) = Range(from, to);
+        var (f, t, fLocal, tLocal) = Range(from, to);
         var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
 
         var refq = _db.Refunds.Where(r => r.CreatedAt >= f && r.CreatedAt < t);
@@ -481,7 +480,7 @@ public class FinanceController : AdminBaseController
 
         return View(new RefundVm
         {
-            From = f, To = t.AddDays(-1), StoreId = storeId, Stores = stores,
+            From = fLocal, To = tLocal, StoreId = storeId, Stores = stores,
             GrossSales = gross,
             TotalRefunds = totals?.Amt ?? 0,
             RefundCount = totals?.Count ?? 0,
@@ -510,7 +509,7 @@ public class FinanceController : AdminBaseController
     public async Task<IActionResult> Leakage(string? from, string? to, int? storeId)
     {
         ViewData["Title"] = "Finance — Leakage";
-        var (f, t) = Range(from, to);
+        var (f, t, fLocal, tLocal) = Range(from, to);
         var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
         var paid = PaidOrders(f, t, storeId, "");
 
@@ -531,7 +530,7 @@ public class FinanceController : AdminBaseController
 
         return View(new LeakageVm
         {
-            From = f, To = t.AddDays(-1), StoreId = storeId, Stores = stores,
+            From = fLocal, To = tLocal, StoreId = storeId, Stores = stores,
             Gross = tot?.Gross ?? 0, Discounts = tot?.Disc ?? 0, Loyalty = tot?.Loy ?? 0,
             GiftCards = tot?.Gift ?? 0, PointsRedeemed = tot?.Pts ?? 0, ByCode = byCode
         });
@@ -647,16 +646,16 @@ public class FinanceController : AdminBaseController
     public async Task<IActionResult> Customers(string? from, string? to)
     {
         ViewData["Title"] = "Finance — Customers";
-        var (f, t) = Range(from, to);
+        var (f, t, fLocal, tLocal) = Range(from, to);
 
         // Online orders carry the customer on UserId; a customer is "new" if their first paid online
         // order falls in range, otherwise "repeat".
         var onlinePaid = _db.Orders.Where(o => o.IsPaid && o.Channel == OrderChannel.Online && o.UserId != "");
-        var inRange = await onlinePaid.Where(o => o.CreatedAt >= f && o.CreatedAt < t)
+        var inRange = await onlinePaid.Where(o => (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t)
             .GroupBy(o => o.UserId)
-            .Select(g => new { Uid = g.Key, Rev = g.Sum(o => o.Total), Cnt = g.Count(), Last = g.Max(o => o.CreatedAt) })
+            .Select(g => new { Uid = g.Key, Rev = g.Sum(o => o.Total), Cnt = g.Count(), Last = g.Max(o => o.PaidAt ?? o.CreatedAt) })
             .ToListAsync();
-        var priorIds = (await onlinePaid.Where(o => o.CreatedAt < f).Select(o => o.UserId).Distinct().ToListAsync()).ToHashSet();
+        var priorIds = (await onlinePaid.Where(o => (o.PaidAt ?? o.CreatedAt) < f).Select(o => o.UserId).Distinct().ToListAsync()).ToHashSet();
 
         var uids = inRange.Select(x => x.Uid).ToList();
         var users = (await _db.Users.Where(u => uids.Contains(u.Id))
@@ -672,7 +671,7 @@ public class FinanceController : AdminBaseController
 
         return View(new CustomersVm
         {
-            From = f, To = t.AddDays(-1),
+            From = fLocal, To = tLocal,
             NewRevenue = inRange.Where(x => !priorIds.Contains(x.Uid)).Sum(x => x.Rev),
             RepeatRevenue = inRange.Where(x => priorIds.Contains(x.Uid)).Sum(x => x.Rev),
             NewCustomers = inRange.Count(x => !priorIds.Contains(x.Uid)),
@@ -706,19 +705,20 @@ public class FinanceController : AdminBaseController
     public async Task<IActionResult> Settlement(string? from, string? to)
     {
         ViewData["Title"] = "Finance — Settlement";
-        var (f, t) = Range(from, to);
+        var (f, t, fLocal, tLocal) = Range(from, to);
 
         var orders = await _db.Orders
-            .Where(o => o.IsPaid && o.Channel == OrderChannel.Online && o.CreatedAt >= f && o.CreatedAt < t)
-            .Select(o => new { o.Total, o.CreatedAt }).ToListAsync();
+            .Where(o => o.IsPaid && o.Channel == OrderChannel.Online
+                     && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t)
+            .Select(o => new { o.Total, When = o.PaidAt ?? o.CreatedAt }).ToListAsync();
 
-        var byDay = orders.GroupBy(o => o.CreatedAt.Date)
+        var byDay = orders.GroupBy(o => Services.ReportCalendar.LocalDay(o.When))
             .Select(g => new SettleDay(g.Key, g.Count(), g.Sum(o => o.Total), g.Sum(o => PaystackFee(o.Total))))
             .OrderByDescending(d => d.Day).ToList();
 
         return View(new SettlementVm
         {
-            From = f, To = t.AddDays(-1),
+            From = fLocal, To = tLocal,
             Count = orders.Count,
             Gross = orders.Sum(o => o.Total),
             EstFees = orders.Sum(o => PaystackFee(o.Total)),
@@ -751,11 +751,12 @@ public class FinanceController : AdminBaseController
     public async Task<IActionResult> Profit(string? from, string? to, int? storeId)
     {
         ViewData["Title"] = "Finance — Profit";
-        var (f, t) = Range(from, to);
+        var (f, t, fLocal, tLocal) = Range(from, to);
         var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
 
         // Paid order items in range, joined to the product's current cost price.
-        var itemsQ = _db.OrderItems.Where(i => i.Order.IsPaid && i.Order.CreatedAt >= f && i.Order.CreatedAt < t);
+        var itemsQ = _db.OrderItems.Where(i => i.Order.IsPaid
+            && (i.Order.PaidAt ?? i.Order.CreatedAt) >= f && (i.Order.PaidAt ?? i.Order.CreatedAt) < t);
         if (storeId.HasValue) itemsQ = itemsQ.Where(i => i.Order.PickupStoreId == storeId || i.Order.FulfillingStoreId == storeId);
 
         var grouped = await itemsQ
@@ -778,7 +779,7 @@ public class FinanceController : AdminBaseController
 
         return View(new ProfitVm
         {
-            From = f, To = t.AddDays(-1), StoreId = storeId, Stores = stores,
+            From = fLocal, To = tLocal, StoreId = storeId, Stores = stores,
             Revenue = withCost.Sum(r => r.Revenue),
             Cost = withCost.Sum(r => r.Cost),
             RevenueAll = rows.Sum(r => r.Revenue),
@@ -806,11 +807,11 @@ public class FinanceController : AdminBaseController
     public async Task<IActionResult> Logistics(string? from, string? to, int? storeId)
     {
         ViewData["Title"] = "Finance — Logistics P&L";
-        var (f, t) = Range(from, to);
+        var (f, t, fLocal, tLocal) = Range(from, to);
         var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
 
         var deliveries = _db.Orders.Where(o => o.IsPaid && o.FulfillmentType == FulfillmentType.Delivery
-            && o.CreatedAt >= f && o.CreatedAt < t);
+            && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t);
         if (storeId.HasValue) deliveries = deliveries.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
         var revenue = await deliveries.SumAsync(o => (decimal?)o.DeliveryFee) ?? 0;
         var count = await deliveries.CountAsync(o => o.DeliveryFee > 0);
@@ -822,7 +823,7 @@ public class FinanceController : AdminBaseController
 
         return View(new LogisticsVm
         {
-            From = f, To = t.AddDays(-1), StoreId = storeId, Stores = stores,
+            From = fLocal, To = tLocal, StoreId = storeId, Stores = stores,
             Revenue = revenue,
             Expenses = expList.Sum(e => e.Amount),
             Deliveries = count,
@@ -868,7 +869,7 @@ public class FinanceController : AdminBaseController
 
     private async Task<FinanceVm> BuildAsync(string? from, string? to, int? storeId, string? channel, string? period)
     {
-        var (f, t) = Range(from, to);
+        var (f, t, fLocal, tLocal) = Range(from, to);
         channel = channel is "Online" or "Pos" ? channel : "";
         period = Periods.Contains(period) ? period! : "day";
 
@@ -903,10 +904,20 @@ public class FinanceController : AdminBaseController
         var refundTotal = await refq.SumAsync(r => (decimal?)r.Amount) ?? 0;
 
         // By day: gross/count from orders, refunds from refunds, merged (incl. refund-only days).
-        var grossByDay = await paid.GroupBy(o => o.CreatedAt.Date)
-            .Select(g => new { Day = g.Key, Count = g.Count(), Total = g.Sum(o => o.Total), Logistics = g.Sum(o => o.DeliveryFee) }).ToListAsync();
-        var refByDay = await refq.GroupBy(r => r.CreatedAt.Date)
-            .Select(g => new { Day = g.Key, Refunds = g.Sum(x => x.Amount) }).ToListAsync();
+        // Bucketed in memory on the LAGOS day (ReportCalendar) rather than grouped in SQL: the stored
+        // timestamps are UTC, and truncating a timestamptz in SQL would bucket by whatever timezone
+        // the database session happens to be in. The rows fetched are three columns over the selected
+        // window, so this stays cheap.
+        var grossRows = await paid.Select(o => new { When = o.PaidAt ?? o.CreatedAt, o.Total, o.DeliveryFee }).ToListAsync();
+        var grossByDay = grossRows
+            .GroupBy(o => Services.ReportCalendar.LocalDay(o.When))
+            .Select(g => new { Day = g.Key, Count = g.Count(), Total = g.Sum(o => o.Total), Logistics = g.Sum(o => o.DeliveryFee) })
+            .ToList();
+        var refRows = await refq.Select(r => new { r.CreatedAt, r.Amount }).ToListAsync();
+        var refByDay = refRows
+            .GroupBy(r => Services.ReportCalendar.LocalDay(r.CreatedAt))
+            .Select(g => new { Day = g.Key, Refunds = g.Sum(x => x.Amount) })
+            .ToList();
         var refDayMap = refByDay.ToDictionary(x => x.Day, x => x.Refunds);
         var byDay = grossByDay
             .Select(x => new DayPoint(x.Day, x.Count, x.Total - x.Logistics, x.Logistics, refDayMap.GetValueOrDefault(x.Day, 0)))
@@ -922,10 +933,17 @@ public class FinanceController : AdminBaseController
         var refByStore = await refq.GroupBy(r => r.OriginalOrder.PickupStoreId ?? r.OriginalOrder.FulfillingStoreId)
             .Select(g => new { StoreId = g.Key, Refunds = g.Sum(x => x.Amount) }).ToListAsync();
         var refStoreMap = refByStore.ToDictionary(x => x.StoreId ?? -1, x => x.Refunds);
+        string StoreLabel(int? id) =>
+            id.HasValue && storeName.ContainsKey(id.Value) ? storeName[id.Value] : "Online / unassigned";
+
         var byStore = grossByStore.Select(x => new StorePoint(
-                x.StoreId.HasValue && storeName.ContainsKey(x.StoreId.Value) ? storeName[x.StoreId.Value] : "Online / unassigned",
-                x.Count, x.Gross, refStoreMap.GetValueOrDefault(x.StoreId ?? -1, 0), x.Delivery))
-            .OrderByDescending(s => s.Gross).ToList();
+                StoreLabel(x.StoreId), x.Count, x.Gross, refStoreMap.GetValueOrDefault(x.StoreId ?? -1, 0), x.Delivery))
+            .ToList();
+        // A branch can have refunds in the window without any sales in it (the by-day table already
+        // handles that case). Without this its refunds appeared in the headline but nowhere here.
+        foreach (var r in refByStore.Where(r => grossByStore.All(g => g.StoreId != r.StoreId)))
+            byStore.Add(new StorePoint(StoreLabel(r.StoreId), 0, 0, r.Refunds, 0));
+        byStore = byStore.OrderByDescending(s => s.Gross).ThenByDescending(s => s.Refunds).ToList();
 
         // By cashier — POS only (on a POS sale Order.UserId is the cashier).
         var staffRaw = await paid.Where(o => o.Channel == OrderChannel.Pos)
@@ -965,7 +983,8 @@ public class FinanceController : AdminBaseController
 
         // Payment channels: explicit POS tenders (Cash/Card/Transfer) + provider fallback
         // (e.g. Paystack for online, legacy POS) for orders that carry no tender rows.
-        var payQ = _db.OrderPayments.Where(p => p.Order.IsPaid && p.Order.CreatedAt >= f && p.Order.CreatedAt < t);
+        var payQ = _db.OrderPayments.Where(p => p.Order.IsPaid
+            && (p.Order.PaidAt ?? p.Order.CreatedAt) >= f && (p.Order.PaidAt ?? p.Order.CreatedAt) < t);
         if (storeId.HasValue) payQ = payQ.Where(p => p.Order.PickupStoreId == storeId || p.Order.FulfillingStoreId == storeId);
         if (channel == "Online") payQ = payQ.Where(p => p.Order.Channel == OrderChannel.Online);
         else if (channel == "Pos") payQ = payQ.Where(p => p.Order.Channel == OrderChannel.Pos);
@@ -1010,8 +1029,8 @@ public class FinanceController : AdminBaseController
 
         return new FinanceVm
         {
-            From = f,
-            To = t.AddDays(-1),
+            From = fLocal,
+            To = tLocal,
             StoreId = storeId,
             Channel = channel,
             Period = period,
