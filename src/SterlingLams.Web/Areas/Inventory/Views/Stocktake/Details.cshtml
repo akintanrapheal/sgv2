@@ -1,6 +1,11 @@
 @model SterlingLams.Web.Models.Domain.StockTake
 @{
     ViewData["Title"] = $"Stock Take {Model.Reference}";
+    // Products that keep their stock per option. This screen counted a product as one number and
+    // applied it to the product-level row, so any such line here never reached the option counts.
+    var optionProductIds = ViewBag.OptionProductIds as HashSet<int> ?? new HashSet<int>();
+    var affected = Model.Lines.Where(l => optionProductIds.Contains(l.ProductId))
+                              .OrderBy(l => l.ProductName).ToList();
 }
 
 <div class="flex items-center gap-3 mb-5">
@@ -27,6 +32,28 @@
     }
 </div>
 
+@if (affected.Any())
+{
+    <div class="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800 max-w-3xl">
+        <p class="font-medium mb-1">@affected.Count line(s) in this count didn't reach the shelf figures</p>
+        <p class="mb-2">
+            These products keep their stock <strong>per option</strong>, but this count recorded one
+            number per product and applied it to the product as a whole. The option counts — the ones
+            the storefront and the till actually read — were left untouched, so the units counted here
+            are sitting where nothing can sell them.
+        </p>
+        <p class="mb-2">
+            Put it right in <strong>Inventory System → Products</strong>, on each product's
+            <strong>Track Stock</strong> menu: open it on an <em>option</em> row to enter what's really
+            on the shelf, then on the <em>product</em> row to set this branch back to 0. Admin →
+            Inventory → <strong>Unsellable pool stock</strong> lists everything still stranded.
+        </p>
+        <p class="text-[11px] text-amber-700">
+            Counts taken from 31 July 2026 refuse these products instead, so this can't recur.
+        </p>
+    </div>
+}
+
 <!-- Lines -->
 <div class="bg-white border border-neutral-200 rounded-md overflow-x-auto">
     <table class="w-full text-sm min-w-[720px]">
@@ -44,8 +71,18 @@
         <tbody class="divide-y divide-neutral-100">
             @foreach (var l in Model.Lines.OrderBy(x => x.ProductName))
             {
-                <tr class="hover:bg-neutral-50">
-                    <td class="px-4 py-2.5 text-neutral-800">@l.ProductName</td>
+                var perOption = optionProductIds.Contains(l.ProductId);
+                <tr class="hover:bg-neutral-50 @(perOption ? "bg-amber-50/40" : "")">
+                    <td class="px-4 py-2.5 text-neutral-800">
+                        @l.ProductName
+                        @if (perOption)
+                        {
+                            <span class="ml-1.5 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded"
+                                  title="Stock is held per option — this line was applied to the product as a whole and never reached the option counts">
+                                didn't reach the options
+                            </span>
+                        }
+                    </td>
                     <td class="px-4 py-2.5 text-neutral-500 font-mono text-xs">@(l.Barcode ?? "—")</td>
                     <td class="px-4 py-2.5 text-neutral-500 text-xs">@(string.IsNullOrEmpty(l.CategoryName) ? "—" : l.CategoryName)</td>
                     <td class="px-4 py-2.5 text-center text-neutral-600">@l.ExpectedQty</td>

@@ -5,6 +5,9 @@
     DateTime from = ViewBag.From; DateTime to = ViewBag.To;
     int? storeId = ViewBag.StoreId; string q = ViewBag.Q ?? "";
     int page = ViewBag.Page ?? 1; int totalPages = ViewBag.TotalPages ?? 1; int total = ViewBag.Total ?? 0;
+    // Counts that included a product holding stock per option — those lines were applied to the
+    // product as a whole and never reached the option counts. Marked so they can be found and redone.
+    var affectedIds = ViewBag.AffectedTakeIds as HashSet<int> ?? new HashSet<int>();
     Dictionary<string, string> rd(int pg) => new() {
         ["from"] = from.ToString("yyyy-MM-dd"), ["to"] = to.ToString("yyyy-MM-dd"),
         ["storeId"] = storeId?.ToString() ?? "", ["q"] = q, ["page"] = pg.ToString()
@@ -64,8 +67,18 @@
             }
             @foreach (var t in Model)
             {
+                var needsAttention = affectedIds.Contains(t.Id);
                 <tr class="hover:bg-neutral-50">
-                    <td class="px-4 py-3 font-medium text-neutral-800">@t.Reference</td>
+                    <td class="px-4 py-3 font-medium text-neutral-800">
+                        @t.Reference
+                        @if (needsAttention)
+                        {
+                            <span class="ml-1.5 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded whitespace-nowrap"
+                                  title="Included products that keep stock per option — those lines never reached the option counts. Open for details.">
+                                needs attention
+                            </span>
+                        }
+                    </td>
                     <td class="px-4 py-3 text-neutral-600">@t.Store.Name</td>
                     <td class="px-4 py-3 text-neutral-600">@t.StaffName</td>
                     <td class="px-4 py-3 text-center text-neutral-600">@t.ItemCount</td>

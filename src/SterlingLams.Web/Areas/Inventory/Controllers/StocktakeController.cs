@@ -217,6 +217,18 @@ public class StocktakeController : InventoryAreaController
         var takes = await query.OrderByDescending(t => t.Id)
             .Skip((page - 1) * PageSize).Take(PageSize).ToListAsync();
 
+        // Which of these counts included a product that keeps its stock per option. Those lines were
+        // applied to the product as a whole and never reached the option counts (see Details), so the
+        // list marks them rather than making someone open each one to find out.
+        var pageProductIds = takes.SelectMany(t => t.Lines).Select(l => l.ProductId).Distinct().ToList();
+        var optionProductIds = (await _db.ProductVariants
+                .Where(v => pageProductIds.Contains(v.ProductId) && v.IsActive)
+                .Select(v => v.ProductId).Distinct().ToListAsync())
+            .ToHashSet();
+        ViewBag.AffectedTakeIds = takes
+            .Where(t => t.Lines.Any(l => optionProductIds.Contains(l.ProductId)))
+            .Select(t => t.Id).ToHashSet();
+
         ViewBag.From = fromLocal; ViewBag.To = toLocal;
         ViewBag.StoreId = storeId; ViewBag.Q = q;
         ViewBag.Page = page; ViewBag.TotalPages = (int)Math.Ceiling(total / (double)PageSize); ViewBag.Total = total;
@@ -230,6 +242,17 @@ public class StocktakeController : InventoryAreaController
             .FirstOrDefaultAsync(t => t.Id == id);
         if (take == null) return NotFound();
         ViewData["Title"] = $"Stock Take {take.Reference}";
+
+        // Counts taken before 2026-07-31 could include products that keep their stock per option.
+        // This screen counts a product as ONE number and applied it to the product-level row, so
+        // those lines never touched the real per-option counts and left the units unsellable. Flag
+        // them here so an old count can be put right — new counts refuse those products outright.
+        var lineProductIds = take.Lines.Select(l => l.ProductId).Distinct().ToList();
+        ViewBag.OptionProductIds = (await _db.ProductVariants
+                .Where(v => lineProductIds.Contains(v.ProductId) && v.IsActive)
+                .Select(v => v.ProductId).Distinct().ToListAsync())
+            .ToHashSet();
+
         return View(take);
     }
 }
