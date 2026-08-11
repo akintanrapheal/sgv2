@@ -696,9 +696,18 @@ public class ProductsController : InventoryAreaController
         await using var tx = await _db.Database.BeginTransactionAsync();
 
         if (_db.Database.IsNpgsql())
+        {
+            // Serialize concurrent Track-Stock saves for THIS product (double-click, or two branches
+            // saved at once). The FOR UPDATE below only locks StoreInventory rows that ALREADY exist,
+            // so a first-time save for a product/store with no row yet could let two requests both
+            // INSERT and trip the (ProductId, StoreId, ProductVariantId) unique index. A
+            // transaction-scoped advisory lock also covers those not-yet-created rows.
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock(hashtext('storeinventory'), {req.Id})");
             foreach (var sid in locs.Select(l => l.StoreId).Distinct().OrderBy(x => x))
                 await _db.Database.ExecuteSqlInterpolatedAsync(
                     $"SELECT 1 FROM \"StoreInventories\" WHERE \"ProductId\" = {req.Id} AND \"StoreId\" = {sid} FOR UPDATE");
+        }
 
         var seq = await NextAdjustmentSeqAsync();
         foreach (var l in locs)
@@ -750,6 +759,11 @@ public class ProductsController : InventoryAreaController
         catch (DbUpdateConcurrencyException)
         {
             return Json(new { ok = false, error = "Stock changed while saving — refresh and try again." });
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: "23505" })
+        {
+            // Safety net: a concurrent save already created this inventory row (unique-index race).
+            return Json(new { ok = false, error = "Another update for this product came in at the same time — refresh and try again." });
         }
 
         var variantSuffix = "";
