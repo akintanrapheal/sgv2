@@ -1255,7 +1255,10 @@ public class PosController : Controller
         if (q.Length > 0)
             query = query.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
                                   || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
-                                  || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%"));
+                                  || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
+                                  // Also match a VARIANT's own barcode (e.g. Silver = 011005), so scanning
+                                  // any variant's code surfaces the product — not just the product barcode.
+                                  || p.Variants.Any(v => v.IsActive && v.Barcode != null && EF.Functions.ILike(v.Barcode, $"%{q}%")));
 
         var products = await query.OrderBy(p => p.Name).Take(40)
             .Select(p => new
@@ -1272,18 +1275,22 @@ public class PosController : Controller
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
                 variants = p.ProductType == "variable"
                     ? p.Variants.Where(v => v.IsActive)
-                        .Select(v => new { id = v.Id, name = v.Name, priceAdjustment = v.PriceAdjustment }).ToList()
+                        .Select(v => new { id = v.Id, name = v.Name, barcode = v.Barcode, priceAdjustment = v.PriceAdjustment }).ToList()
                     : null
             })
             .ToListAsync();
         // AVAILABLE (on-hand − reserved) per product and per variant, so the till + variant picker
         // numbers match what checkout will actually allow.
         var inv = await StoreInvAsync(storeId, products.Select(p => p.id).ToList());
+        var qlc = q.ToLowerInvariant();
         return Json(products.Select(p => new
         {
             p.id, p.name, p.sku, p.barcode, p.price, image = PosThumb(p.image),
             stock = ProdAvail(inv, p.id),
-            variants = p.variants?.Select(v => new { v.id, v.name, v.priceAdjustment, stock = VarAvail(inv, p.id, v.id) })
+            // When a specific variant's barcode was scanned, tell the till which one so it can add that
+            // exact variant straight away (no variant-picker prompt).
+            scanVariantId = p.variants?.FirstOrDefault(v => v.barcode != null && v.barcode.ToLowerInvariant() == qlc)?.id,
+            variants = p.variants?.Select(v => new { v.id, v.name, v.barcode, v.priceAdjustment, stock = VarAvail(inv, p.id, v.id) })
         }));
     }
 

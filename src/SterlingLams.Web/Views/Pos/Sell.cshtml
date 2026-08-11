@@ -1020,6 +1020,12 @@
         if (/^SGPICK-/i.test(code)) { if (window.openPickupVerify) window.openPickupVerify(code); searchBox.value = ''; return; }
         const res = await fetch('/Pos/Search?q=' + encodeURIComponent(code));
         const items = await res.json();
+        // A specific variant's barcode was scanned (e.g. Silver 011005) → add that exact variant, no picker.
+        const vm = items.find(p => p.scanVariantId != null);
+        if (vm) {
+            const v = (vm.variants || []).find(x => x.id === vm.scanVariantId);
+            if (v) { await add(vm, v); searchBox.value = ''; return; }
+        }
         const exact = items.find(p => (p.barcode && p.barcode.toLowerCase() === code.toLowerCase()) || (p.sku && p.sku.toLowerCase() === code.toLowerCase()));
         if (exact && exact.stock > 0) { add(exact); searchBox.value = ''; }
         else { lastResults = items; catGrid.classList.add('hidden'); resultsEl.classList.remove('hidden'); renderProducts(items); }
@@ -1227,10 +1233,10 @@
         } catch { showError('Could not add customer.'); }
     });
 
-    async function add(p) {
+    async function add(p, preVariant) {
         let variantId = null, variantName = null, unitPrice = p.price, lineStock = p.stock;
         if (p.variants && p.variants.length) {
-            const v = await pickVariant(p);
+            const v = preVariant || await pickVariant(p);   // preVariant = the exact variant scanned (no picker)
             if (!v) return;
             variantId = v.id; variantName = v.name; unitPrice = p.price + (v.priceAdjustment || 0);
             lineStock = (v.stock != null) ? v.stock : p.stock; // per-variant available
