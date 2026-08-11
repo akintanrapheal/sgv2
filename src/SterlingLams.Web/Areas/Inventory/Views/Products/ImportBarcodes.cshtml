@@ -1,0 +1,156 @@
+@model SterlingLams.Web.Services.NamedBarcodeResult
+@{
+    ViewData["Title"] = "Import Barcodes";
+    var fileName = ViewData["FileName"] as string;
+    var token = ViewData["Token"] as string;
+
+    string Badge(string status) => status switch
+    {
+        "matched" => "bg-emerald-50 text-emerald-700 border-emerald-200",
+        "product-barcode" => "bg-emerald-50 text-emerald-700 border-emerald-200",
+        "ambiguous" => "bg-amber-50 text-amber-700 border-amber-200",
+        "no-variant-match" => "bg-amber-50 text-amber-700 border-amber-200",
+        _ => "bg-rose-50 text-rose-700 border-rose-200"
+    };
+    string Label(string status) => status switch
+    {
+        "matched" => "matched",
+        "product-barcode" => "product",
+        "no-variant-match" => "no variant",
+        "ambiguous" => "ambiguous",
+        "sku-not-found" => "discarded",
+        _ => status
+    };
+}
+
+<div class="mb-5">
+    <h1 class="text-2xl font-semibold text-neutral-900">Import Barcodes</h1>
+    <p class="text-sm text-neutral-500 mt-1">
+        Upload a POS product export (<code class="text-neutral-600">Name;Category;Barcode</code>). We match each row to a
+        product by its <strong>SKU</strong> (the leading number in the name) and place the barcode on the matching
+        <strong>variant</strong> by colour&nbsp;/&nbsp;size — even when the product name differs from your catalogue.
+        You always preview first; nothing is written until you click <strong>Apply</strong>.
+        Existing barcodes are overwritten (the file is the source of truth).
+    </p>
+</div>
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="mb-4 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        @foreach (var e in ViewData.ModelState.Values.SelectMany(v => v.Errors)) { <div>@e.ErrorMessage</div> }
+    </div>
+}
+
+<!-- Upload -->
+<div class="bg-white border border-neutral-200 rounded-md p-6 max-w-3xl">
+    <form asp-action="ImportBarcodes" method="post" enctype="multipart/form-data" class="flex flex-wrap items-end gap-4">
+        @Html.AntiForgeryToken()
+        <div class="flex-1 min-w-[16rem]">
+            <label class="block text-xs text-neutral-500 mb-1">CSV file</label>
+            <input type="file" name="file" accept=".csv,text/csv" required
+                   class="block w-full text-sm text-neutral-700 file:mr-3 file:rounded-md file:border-0 file:bg-neutral-900 file:px-4 file:py-2 file:text-white file:text-sm hover:file:bg-neutral-700" />
+        </div>
+        <button type="submit"
+                class="rounded-md bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700">
+            Preview
+        </button>
+    </form>
+</div>
+
+@if (Model != null)
+{
+    var problems = Model.Rows.Where(r => r.Status != "matched" && r.Status != "product-barcode").ToList();
+    var ok = Model.Rows.Where(r => r.Status == "matched" || r.Status == "product-barcode").ToList();
+
+    <!-- Summary -->
+    <div class="mt-6 rounded-md border @(Model.Committed ? "border-emerald-300 bg-emerald-50" : "border-blue-200 bg-blue-50") px-5 py-4 max-w-5xl">
+        <div class="flex items-center gap-2 text-sm font-semibold @(Model.Committed ? "text-emerald-800" : "text-blue-800")">
+            @if (Model.Committed)
+            {
+                <span>✓ Applied</span> <span class="text-emerald-700/70 font-normal">— barcodes written to the catalogue.</span>
+            }
+            else
+            {
+                <span>Preview</span> <span class="text-blue-700/70 font-normal">— nothing has been written yet.</span>
+            }
+        </div>
+        <div class="mt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center">
+            <div><div class="text-xl font-semibold text-neutral-900">@Model.RowsRead</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">rows</div></div>
+            <div><div class="text-xl font-semibold text-emerald-700">@Model.Assigned</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">@(Model.Committed ? "written" : "to write")</div></div>
+            <div><div class="text-xl font-semibold text-neutral-900">@Model.ProductsMatched</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">products</div></div>
+            <div><div class="text-xl font-semibold text-rose-600">@Model.SkusNotFound</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">SKUs discarded</div></div>
+            <div><div class="text-xl font-semibold text-amber-600">@Model.NoVariantMatch</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">no variant</div></div>
+            <div><div class="text-xl font-semibold text-amber-600">@Model.Ambiguous</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">ambiguous</div></div>
+        </div>
+
+        @if (!Model.Committed && Model.Assigned > 0)
+        {
+            <form asp-action="ApplyBarcodes" method="post" class="mt-4 flex items-center gap-3"
+                  onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Applying…';">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="token" value="@token" />
+                <input type="hidden" name="fileName" value="@fileName" />
+                <button type="submit"
+                        class="rounded-md bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
+                    Apply @Model.Assigned barcodes
+                </button>
+                <span class="text-xs text-neutral-500">Overwrites existing barcodes on these variants.</span>
+            </form>
+        }
+    </div>
+
+    @if (Model.Errors.Any())
+    {
+        <div class="mt-4 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 max-w-5xl">
+            <div class="font-medium mb-1">Errors</div>
+            @foreach (var e in Model.Errors) { <div>@e</div> }
+        </div>
+    }
+
+    @if (Model.NotFoundSkus.Any())
+    {
+        <div class="mt-4 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600 max-w-5xl">
+            <span class="font-medium text-neutral-700">@Model.NotFoundSkus.Count SKUs discarded</span>
+            (not found in the catalogue): <span class="text-neutral-500">@string.Join(", ", Model.NotFoundSkus)</span>
+        </div>
+    }
+
+    <!-- Detail table -->
+    <div class="mt-6 max-w-5xl overflow-x-auto rounded-md border border-neutral-200">
+        <table class="min-w-full text-sm">
+            <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+                <tr>
+                    <th class="text-left font-medium px-3 py-2">SKU</th>
+                    <th class="text-left font-medium px-3 py-2">File row</th>
+                    <th class="text-left font-medium px-3 py-2">Barcode</th>
+                    <th class="text-left font-medium px-3 py-2">→ Variant</th>
+                    <th class="text-left font-medium px-3 py-2">Status</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-100">
+                @* Problems first so they're easy to eyeball *@
+                @foreach (var r in problems.Concat(ok))
+                {
+                    <tr class="@(r.Status is "matched" or "product-barcode" ? "" : "bg-amber-50/40")">
+                        <td class="px-3 py-2 font-mono text-neutral-700">@r.Sku</td>
+                        <td class="px-3 py-2 text-neutral-600">
+                            @r.Name
+                            @if (r.FileColor != null || r.FileSize != null)
+                            {
+                                <span class="text-[11px] text-neutral-400">[@(r.FileColor ?? "–")/@(r.FileSize ?? "–")]</span>
+                            }
+                        </td>
+                        <td class="px-3 py-2 font-mono text-neutral-800">@r.Barcode</td>
+                        <td class="px-3 py-2 text-neutral-700">
+                            @r.VariantName
+                            @if (r.Detail != null) { <div class="text-[11px] text-neutral-400">@r.Detail</div> }
+                        </td>
+                        <td class="px-3 py-2">
+                            <span class="inline-block rounded border px-2 py-0.5 text-[11px] font-medium @Badge(r.Status)">@Label(r.Status)</span>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

@@ -845,6 +845,81 @@ public class ProductsController : InventoryAreaController
         await _db.SaveChangesAsync();
     }
 
+    // ── Barcode import ────────────────────────────────────────────────────────────
+    // Bulk-assign barcodes from a POS "ProductList" export (Name;CategoryId;Barcode where the
+    // SKU leads Name and the variant is embedded in it). Always preview (dry-run) first; the
+    // Apply button re-runs with commit=true. Overwrites existing barcodes (CSV is source of truth).
+    [HttpGet]
+    public IActionResult ImportBarcodes()
+    {
+        ViewData["Title"] = "Import Barcodes";
+        return View();
+    }
+
+    // Upload → always a dry-run preview. The file is stashed to a temp file keyed by a token so
+    // Apply can commit it without a re-upload.
+    [HttpPost]
+    [RequestSizeLimit(20_000_000)]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ImportBarcodes(IFormFile? file)
+    {
+        ViewData["Title"] = "Import Barcodes";
+        if (file == null || file.Length == 0)
+        {
+            ModelState.AddModelError("", "Choose a CSV file to upload.");
+            return View((SterlingLams.Web.Services.NamedBarcodeResult?)null);
+        }
+
+        var lines = await ReadCsvLinesAsync(file.OpenReadStream());
+        var token = Guid.NewGuid().ToString("N");
+        await System.IO.File.WriteAllLinesAsync(BarcodeStashPath(token), lines);
+
+        var svc = HttpContext.RequestServices.GetRequiredService<SterlingLams.Web.Services.BarcodeImportService>();
+        var result = await svc.ImportNamedAsync(lines, commit: false);
+
+        ViewData["FileName"] = file.FileName;
+        ViewData["Token"] = token;
+        return View(result);
+    }
+
+    // Apply the previously-previewed file (commit=true), then delete the stash.
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ApplyBarcodes(string token, string? fileName = null)
+    {
+        ViewData["Title"] = "Import Barcodes";
+        var path = BarcodeStashPath(token);
+        if (string.IsNullOrWhiteSpace(token) || !System.IO.File.Exists(path))
+        {
+            ModelState.AddModelError("", "That upload has expired — please upload the file again.");
+            return View("ImportBarcodes", (SterlingLams.Web.Services.NamedBarcodeResult?)null);
+        }
+
+        var lines = await System.IO.File.ReadAllLinesAsync(path);
+        var svc = HttpContext.RequestServices.GetRequiredService<SterlingLams.Web.Services.BarcodeImportService>();
+        var result = await svc.ImportNamedAsync(lines, commit: true);
+        try { System.IO.File.Delete(path); } catch { /* best effort */ }
+
+        if (result.Assigned > 0)
+            await LogAsync("BarcodeImport", "Product", null,
+                $"Imported barcodes from '{fileName}': {result.Summary}");
+
+        ViewData["FileName"] = fileName;
+        return View("ImportBarcodes", result);
+    }
+
+    private static string BarcodeStashPath(string token) =>
+        Path.Combine(Path.GetTempPath(), $"slbarcode_{new string((token ?? "").Where(char.IsLetterOrDigit).ToArray())}.csv");
+
+    private static async Task<List<string>> ReadCsvLinesAsync(Stream s)
+    {
+        var lines = new List<string>();
+        using var reader = new StreamReader(s, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        string? l;
+        while ((l = await reader.ReadLineAsync()) != null) lines.Add(l);
+        return lines;
+    }
+
     private static string Slugify(string s)
     {
         s = (s ?? "").ToLowerInvariant().Trim();
