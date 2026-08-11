@@ -1,12 +1,14 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  Render Blueprint — Sterlin Glams platform. Developed by Dev Rapheal.
-#  Web service runs on the Pro instance (4 GB / 1 CPU); PostgreSQL is on Pro-4gb
-#  (automated daily backups + point-in-time recovery — the durable home for the store's records).
+#  PRE-LAUNCH cost-saver: web on Starter (always-on, no spin-down, 512 MB), DB on Basic-256mb.
+#  Both are PAID (no free-tier spin-down / retention risk). BEFORE LAUNCH, bump both back up —
+#  web to Pro (more RAM for load) and DB to Pro-4gb (daily backups + point-in-time recovery).
+#  These plan values MUST match the Render dashboard or a blueprint sync will change them.
 #  Wired together automatically. Deploy: Render Dashboard -> New -> Blueprint -> pick this repo.
 # ─────────────────────────────────────────────────────────────────────────────
 databases:
   - name: sterlinglams-db
-    plan: pro-4gb
+    plan: basic-256mb
     databaseName: sterlinglams
     user: sterlinglams
     region: oregon
@@ -15,7 +17,7 @@ services:
   - type: web
     name: sterlinglams
     runtime: docker
-    plan: pro          # Pro instance: 4 GB / 1 CPU (upgraded from free — no more spin-down/cold starts)
+    plan: starter      # Starter: always-on (no spin-down/cold starts), 512 MB. Pre-launch cost-saver — bump to Pro before launch.
     region: oregon
     dockerfilePath: ./Dockerfile
     dockerContext: .
