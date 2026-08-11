@@ -36,11 +36,31 @@ public class ProductsController : InventoryAreaController
         var query = _db.Products.Include(p => p.Category).Include(p => p.Images)
             .Where(p => p.IsArchived == archived);
 
+        // Set when the search is an exact VARIANT-barcode scan → the list then shows ONLY that variant's
+        // row (trimmed in memory after the query). ILike with no wildcards = exact, case-insensitive.
+        string? variantScanTerm = null;
         if (!string.IsNullOrWhiteSpace(q))
-            query = query.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
-                                  || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
-                                  || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
-                                  || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")));
+        {
+            var term = q.Trim();
+            var matchesVariant = await query.AnyAsync(p => p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", term)));
+            var matchesProduct = await query.AnyAsync(p => EF.Functions.ILike(p.Barcode ?? "", term));
+            if (matchesVariant || matchesProduct)
+            {
+                // A scanned barcode narrows to the item that owns it — only the product, and for a
+                // variant barcode only that variant row (see the trim below).
+                query = query.Where(p => EF.Functions.ILike(p.Barcode ?? "", term)
+                                      || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", term)));
+                if (matchesVariant) variantScanTerm = term;
+            }
+            else
+            {
+                // SKU / name / partial → broad search, show ALL matching products.
+                query = query.Where(p => EF.Functions.ILike(p.Name, $"%{term}%")
+                                      || EF.Functions.ILike(p.Sku ?? "", $"%{term}%")
+                                      || EF.Functions.ILike(p.Barcode ?? "", $"%{term}%")
+                                      || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", $"%{term}%")));
+            }
+        }
 
         if (categoryId.HasValue)
             query = query.Where(p => p.CategoryId == categoryId.Value);
@@ -104,6 +124,13 @@ public class ProductsController : InventoryAreaController
                     }).ToList()
             })
             .ToListAsync();
+
+        // On a variant-barcode scan, trim each product's rows down to just the scanned variant.
+        if (variantScanTerm != null)
+            foreach (var pr in products)
+                pr.Variants = pr.Variants
+                    .Where(v => string.Equals(v.Barcode, variantScanTerm, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
 
         await LoadCategories(categoryId);
         ViewBag.Query = q;

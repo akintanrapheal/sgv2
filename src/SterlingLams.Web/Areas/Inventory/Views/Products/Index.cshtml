@@ -64,17 +64,39 @@
         <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="@R(("archived","true"),("page","1"))"
            class="pb-2.5 text-sm font-medium border-b-2 @(archived ? "border-blue-600 text-blue-700" : "border-transparent text-neutral-400 hover:text-neutral-700")">Archived</a>
 
-        <form method="get" class="flex-1 min-w-[220px] max-w-md ml-2 mb-2">
+        <form method="get" id="inv-search-form" class="flex-1 min-w-[220px] max-w-md ml-2 mb-2">
             <input type="hidden" name="archived" value="@archived.ToString().ToLower()" />
             <input type="hidden" name="pageSize" value="@pageSize" />
             <div class="relative">
-                <input type="text" name="q" value="@q" autocomplete="off" placeholder="start typing to search…"
-                       class="w-full border border-neutral-200 rounded-md pl-3 pr-9 py-2 text-sm focus:outline-none focus:border-blue-400" />
-                <button type="submit" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700">
+                <input type="text" id="inv-search" name="q" value="@q" autocomplete="off" placeholder="start typing to search…"
+                       class="w-full border border-neutral-300 rounded-md pl-3 pr-16 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                <button type="button" id="inv-search-clear" aria-label="Clear search"
+                        class="@(string.IsNullOrEmpty(q) ? "hidden " : "")absolute right-9 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+                <button type="submit" aria-label="Search" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                 </button>
             </div>
         </form>
+        <script>
+            (function () {
+                var form = document.getElementById('inv-search-form');
+                var input = document.getElementById('inv-search');
+                var clear = document.getElementById('inv-search-clear');
+                if (!form || !input) return;
+                var t;
+                // Auto-search as you type (debounced) — no need to press the button.
+                input.addEventListener('input', function () {
+                    if (clear) clear.classList.toggle('hidden', !input.value);
+                    clearTimeout(t);
+                    t = setTimeout(function () { form.submit(); }, 350);
+                });
+                if (clear) clear.addEventListener('click', function () { input.value = ''; form.submit(); });
+                // After an auto-search reload, put the cursor back so typing continues seamlessly.
+                if (input.value) { input.focus(); var v = input.value; input.value = ''; input.value = v; }
+            }());
+        </script>
 
         <div class="flex items-center gap-1 ml-auto mb-2 text-neutral-600">
             <button type="button" id="image-import-btn" class="inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-md hover:bg-neutral-50">
