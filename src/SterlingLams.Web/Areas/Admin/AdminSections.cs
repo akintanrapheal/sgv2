@@ -111,8 +111,10 @@ public static class AdminSections
     /// full-access role, so it is deliberately excluded from these management actions.</summary>
     public static bool IsSystemManager(ClaimsPrincipal user) => user.IsInRole("Admin") || user.IsInRole("Developer");
 
-    /// <summary>Roles that ship by default (besides Admin and Customer).</summary>
-    public static readonly string[] DefaultStaffRoles = { "Owner", "Developer", "Operations", "Sales", "Inventory", "Social Media" };
+    /// <summary>Roles selectable when creating/assigning a staff user (Admin included — a full-access
+    /// role, but NOT the email-owner, so Admins run the store yet cannot touch billing/audit-delete,
+    /// which are gated on <see cref="IsOwner"/>). "Customer" is the implicit non-staff role.</summary>
+    public static readonly string[] DefaultStaffRoles = { "Admin", "Owner", "Developer", "Operations", "Sales", "Inventory", "Social Media" };
 
     /// <summary>
     /// Settings groups that can be granted individually (a role with any of these can open the Settings

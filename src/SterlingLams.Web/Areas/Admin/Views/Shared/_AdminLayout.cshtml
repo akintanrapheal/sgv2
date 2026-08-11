@@ -44,8 +44,9 @@
                 // shows if the role has been granted that section.
                 bool Visible(SterlingLams.Web.Areas.Admin.AdminSection s)
                 {
-                    // Subscribe (billing) is Admin + Developer only — hidden from Owner.
-                    if (s.Key == "Subscribe") return SterlingLams.Web.Areas.Admin.AdminSections.IsSystemManager(User);
+                    // Subscribe (billing) is restricted to the configured owner ACCOUNT only (email),
+                    // so even another full-access Admin/Owner/Developer account can't see or reach it.
+                    if (s.Key == "Subscribe") return SterlingLams.Web.Areas.Admin.AdminSections.IsOwner(User);
                     return s.OwnerOnly ? isFullAdmin : allowedSections.Contains(s.Key);
                 }
             }

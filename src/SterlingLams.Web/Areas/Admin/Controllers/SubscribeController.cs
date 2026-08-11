@@ -32,9 +32,23 @@ public class SubscribeController : AdminBaseController
         _pay = pay;
     }
 
-    /// <summary>Config actions (notice + billing settings) are Admin/Developer only; Owner may pay but not configure.</summary>
+    // Billing/subscription is restricted to the configured OWNER ACCOUNT ONLY (Admin:OwnerEmails —
+    // default rapheal@sterlinglamslogistics.com), not merely a role. So no other account — even a
+    // full-access Admin/Owner/Developer created for staff — can view or change billing. Gates EVERY
+    // action here (Index included); matches the Subscribe nav visibility in _AdminLayout.
+    public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    {
+        if (!AdminSections.IsOwner(User))
+        {
+            context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
+            return;
+        }
+        await base.OnActionExecutionAsync(context, next);
+    }
+
+    /// <summary>Belt-and-suspenders per-action guard (the controller is already owner-only above).</summary>
     private IActionResult? RequireManager() =>
-        AdminSections.IsSystemManager(User) ? null : RedirectToAction("AccessDenied", "Account", new { area = "" });
+        AdminSections.IsOwner(User) ? null : RedirectToAction("AccessDenied", "Account", new { area = "" });
 
     /// <summary>Per-store prices in USD (shown to the admin; charged in NGN at the current rate).</summary>
     private async Task<(decimal monthly, decimal yearly)> PricingAsync()
@@ -71,7 +85,7 @@ public class SubscribeController : AdminBaseController
         ViewBag.MonthlyTotalNgn = Math.Round(stores.Count * perMonthly * rate);
         ViewBag.YearlyTotalNgn = Math.Round(stores.Count * perYearly * rate);
         ViewBag.PayConfigured = await _pay.IsConfiguredAsync();
-        ViewBag.CanManage = AdminSections.IsSystemManager(User); // Owner can pay but not configure
+        ViewBag.CanManage = AdminSections.IsOwner(User); // only the owner account reaches this page, and may configure
         ViewBag.PaystackSecretSet = !string.IsNullOrWhiteSpace(await _settings.GetAsync("subscription.paystack_secret"));
         ViewBag.RateOverride = await _settings.GetAsync("subscription.usd_to_ngn", "");
         ViewBag.Keys = stores.ToDictionary(s => s.Id, s => FakeKey(s.Id, s.Name));
