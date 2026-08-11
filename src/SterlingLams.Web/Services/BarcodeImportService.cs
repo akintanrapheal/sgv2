@@ -119,15 +119,17 @@ public class BarcodeImportService
     private static readonly Regex SkuLead = new(@"^\s*([0-9A-Za-z]+)", RegexOptions.Compiled);
     // "SZ7", "SZE9", "SIZE 10" → the size. A bare size number is only trusted when it stands alone
     // (so "3" inside "3TONE" or "2" in "2PIECE" is not mistaken for a size).
-    private static readonly Regex SzTag = new(@"(?:\bsz[e]?|\bsize)\s*0*([0-9]{1,2})(-5)?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex NumTok = new(@"(?<![0-9a-zA-Z])0*([0-9]{1,2})(-5)?(?![0-9a-zA-Z])", RegexOptions.Compiled);
+    // Half sizes appear as "8.5", "8-5" (or "SZ8.5"); the catalogue stores them as "8-5", so the
+    // optional half is captured either way and normalised to "-5".
+    private static readonly Regex SzTag = new(@"(?:\bsz[e]?|\bsize)\s*0*([0-9]{1,2})([.\-]5)?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex NumTok = new(@"(?<![0-9a-zA-Z])0*([0-9]{1,2})([.\-]5)?(?![0-9a-zA-Z])", RegexOptions.Compiled);
 
     // File colour shorthands → the catalogue's colour words (matching is token-based, so an entry
     // per canonical colour is enough; compound colours like "gold-multi-red" match token-by-token).
     private static readonly Dictionary<string, string> ColorSyn = new()
     {
-        ["slvr"] = "silver", ["slv"] = "silver", ["silv"] = "silver", ["sliver"] = "silver",
-        ["gld"] = "gold", ["gd"] = "gold",
+        ["slvr"] = "silver", ["slv"] = "silver", ["silv"] = "silver", ["sliver"] = "silver", ["svlr"] = "silver",
+        ["gld"] = "gold", ["gd"] = "gold", ["g0ld"] = "gold",
         ["rsgld"] = "rosegold", ["rsgd"] = "rosegold", ["rosegld"] = "rosegold", ["rgold"] = "rosegold", ["rgld"] = "rosegold", ["rsgold"] = "rosegold",
         ["yelo"] = "yellow", ["yel0"] = "yellow", ["yel"] = "yellow", ["ylw"] = "yellow", ["yellw"] = "yellow",
         ["gren"] = "green", ["grn"] = "green",
