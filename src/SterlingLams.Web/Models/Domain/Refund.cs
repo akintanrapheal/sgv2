@@ -1,8 +1,19 @@
 namespace SterlingLams.Web.Models.Domain;
 
+/// <summary>Finance approval state of a refund. A refund is REQUESTED first and does not move any
+/// money or stock until Finance approves it (or rejects it).</summary>
+public enum RefundStatus
+{
+    PendingApproval = 0,
+    Approved = 1,
+    Rejected = 2,
+}
+
 /// <summary>
-/// A return/refund against a POS sale. Puts stock back (via the ledger) and records the money
-/// returned. Kept separate from Orders so sales totals and refunds report cleanly.
+/// A return/refund against a sale (POS or online). It is created as a REQUEST (PendingApproval) —
+/// nothing is paid out or restocked until Finance approves it, at which point the payout, stock
+/// return, loyalty/gift-card reversal and gateway refund are applied. Kept separate from Orders so
+/// sales totals and refunds report cleanly.
 /// </summary>
 public class Refund
 {
@@ -21,6 +32,23 @@ public class Refund
     public string? Reason { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    // ── Finance approval ────────────────────────────────────────────────────────
+    /// <summary>Only an Approved refund has actually paid out money / moved stock. Reports count
+    /// approved refunds only; pending/rejected must not inflate figures.</summary>
+    public RefundStatus Status { get; set; } = RefundStatus.PendingApproval;
+    public string? ApprovedByUserId { get; set; }
+    public DateTime? DecisionAt { get; set; }
+    public string? DecisionNote { get; set; }
+
+    /// <summary>Whether the requester intends the returned items to go back to sellable stock. The
+    /// actual stock return happens on approval (and, later, via the Inventory restock queue).</summary>
+    public bool RestockRequested { get; set; }
+    /// <summary>Store the units return to when restocked (order's fulfilling/pickup branch, or the till's).</summary>
+    public int? RestockStoreId { get; set; }
+    /// <summary>Captured at request time — whether this refund fully covers the order (drives loyalty /
+    /// gift-card reversal and the order's Refunded status when approved).</summary>
+    public bool WasFullRefund { get; set; }
 
     public ICollection<RefundItem> Items { get; set; } = new List<RefundItem>();
 }

@@ -65,7 +65,7 @@ public class TillController : InventoryAreaController
             .GroupBy(m => m.TillSessionId)
             .Select(g => new { Id = g.Key, Net = g.Sum(x => x.Amount) })
             .ToListAsync();
-        var refunds = await _db.Refunds.Where(r => r.TillSessionId != null && ids.Contains(r.TillSessionId!.Value))
+        var refunds = await _db.Refunds.Where(r => r.Status == RefundStatus.Approved && r.TillSessionId != null && ids.Contains(r.TillSessionId!.Value))
             .GroupBy(r => r.TillSessionId!.Value)
             .Select(g => new { Id = g.Key, CashRef = g.Where(x => x.RefundMethod == "Cash").Sum(x => x.Amount) })
             .ToListAsync();

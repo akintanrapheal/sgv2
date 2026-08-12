@@ -672,12 +672,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var storeId = order.FulfillingStoreId ?? order.PickupStoreId ?? 0;
             var refundNumber = $"REF-{now:yyMMdd}-{now:HHmmssfff}";
 
-            // With no fulfilling or pickup branch on the order there is nowhere to return the units to,
-            // so a requested restock cannot happen — say so rather than reporting "(restocked)".
-            var didRestock = restock && storeId > 0;
-            var restockNote = didRestock ? " (restocked)"
-                : restock ? " (NOT restocked — this order has no branch recorded, add the stock manually)"
-                : " (no restock)";
+            // Whether a restock is intended AND possible (needs a branch on the order). The actual stock
+            // return happens when Finance approves — nothing moves here.
+            var willRestock = restock && storeId > 0;
 
             await using var tx = await _db.Database.BeginTransactionAsync();
 
@@ -687,7 +684,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 await _db.Database.ExecuteSqlInterpolatedAsync(
                     $"SELECT 1 FROM \"Orders\" WHERE \"Id\" = {order.Id} FOR UPDATE");
 
-            var refundIds = _db.Refunds.Where(r => r.OriginalOrderId == order.Id).Select(r => r.Id);
+            // Rejected requests free their quantity; pending + approved still count.
+            var refundIds = _db.Refunds.Where(r => r.OriginalOrderId == order.Id && r.Status != RefundStatus.Rejected).Select(r => r.Id);
             var alreadyRefunded = await _db.RefundItems.Where(ri => refundIds.Contains(ri.RefundId))
                 .GroupBy(ri => new { ri.ProductId, ri.ProductVariantId })
                 .Select(g => new { g.Key.ProductId, g.Key.ProductVariantId, Qty = g.Sum(x => x.Quantity) })
@@ -702,7 +700,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 CashierUserId = userId,
                 RefundMethod = string.IsNullOrWhiteSpace(method) ? (order.PaymentProvider ?? "Manual") : method,
                 Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(),
-                CreatedAt = now
+                CreatedAt = now,
+                // Requested only — Finance approves before the gateway refund, payout and restock run.
+                Status = RefundStatus.PendingApproval,
+                RestockRequested = willRestock,
+                RestockStoreId = willRestock ? storeId : (int?)null,
             };
 
             decimal amount = 0;
@@ -734,10 +736,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     Quantity = q,
                     UnitPrice = netUnit
                 });
-
-                if (didRestock)
-                    await _stock.ApplyAsync(oi.ProductId, oi.ProductVariantId, storeId, q,
-                        StockMovementType.Return, refundNumber, userId: userId);
+                // Stock is NOT returned here — it moves when Finance approves the refund.
             }
 
             if (refund.Items.Count == 0)
@@ -760,46 +759,25 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 amount = Math.Max(0, amount - Math.Round(orderLevelDiscount * amount / totalNet, 2));
 
             refund.Amount = amount;
-            _db.Refunds.Add(refund);
 
-            // Attempt the gateway refund. Best-effort: the refund record + restock are authoritative,
-            // so a gateway failure (or an unsupported provider) is flagged for a manual refund rather
-            // than blocking the operation.
-            string gatewayNote;
-            if (!string.IsNullOrEmpty(order.PaymentReference))
-            {
-                var gw = await _payment.RefundPaymentAsync(new RefundPaymentRequest
-                {
-                    Reference = order.PaymentReference,
-                    Amount = amount,
-                    Reason = refund.Reason
-                });
-                gatewayNote = gw.Success
-                    ? $"gateway refund OK ({gw.ProviderReference ?? "no ref"})"
-                    : gw.Supported
-                        ? $"gateway refund FAILED — refund manually: {gw.ErrorMessage}"
-                        : $"gateway refund not automated — {gw.ErrorMessage}";
-            }
-            else
-            {
-                gatewayNote = "no payment reference on file — refund manually";
-            }
-
-            // Fully refunded (every line's refunded qty now covers the ordered qty) → mark Refunded.
+            // Fully refunded? Captured now so approval knows to reverse loyalty/gift-card + mark the
+            // order Refunded. NOTHING is applied here — the gateway refund, restock and order status
+            // all run when Finance approves.
             bool fullyRefunded = order.Items.All(oi =>
                 Done(oi.ProductId, oi.ProductVariantId)
                     + refund.Items.Where(ri => ri.ProductId == oi.ProductId && ri.ProductVariantId == oi.ProductVariantId)
                                   .Sum(ri => ri.Quantity)
                 >= oi.Quantity);
-            if (fullyRefunded) order.Status = OrderStatus.Refunded;
-            order.UpdatedAt = now;
+            refund.WasFullRefund = fullyRefunded;
+            _db.Refunds.Add(refund);
 
-            var stamp = $"[{now:u}] Refund {refundNumber}: ₦{amount:N2}, {refund.Items.Sum(r => r.Quantity)} item(s)" +
-                        $"{restockNote}; {gatewayNote}.";
-            order.AdminNotes = string.IsNullOrWhiteSpace(order.AdminNotes) ? stamp : order.AdminNotes + "\n" + stamp;
+            var restockIntent = willRestock ? " (will restock on approval)"
+                : restock ? " (cannot restock — no branch on this order; add stock manually)"
+                : " (no restock)";
+            order.UpdatedAt = now;
             OrderNotes.AddSystem(_db, order.Id,
-                $"Refunded ₦{amount:N0} ({refund.Items.Sum(r => r.Quantity)} item(s)){restockNote} — {gatewayNote}."
-                + (fullyRefunded ? " Order fully refunded." : ""));
+                $"Refund requested {refundNumber}: ₦{amount:N0} ({refund.Items.Sum(r => r.Quantity)} item(s)){restockIntent} — pending Finance approval."
+                + (fullyRefunded ? " Full refund." : ""));
 
             try
             {
@@ -808,23 +786,15 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
             catch (DbUpdateConcurrencyException)
             {
-                TempData["Error"] = "Stock levels changed while processing the refund. Please try again.";
+                TempData["Error"] = "Stock levels changed while creating the refund request. Please try again.";
                 return RedirectToAction(nameof(Detail), new { id });
             }
 
-            // On a full refund, reverse loyalty (claw back earned, return redeemed) and return any
-            // gift-card balance that was drawn on the order.
-            if (fullyRefunded)
-            {
-                await _loyalty.ReverseForOrderAsync(order.Id);
-                await _giftCards.ReverseForOrderAsync(order.Id);
-            }
-
-            await LogAsync("Refund", "Order", order.Id.ToString(),
-                $"Refund {refundNumber} for {order.OrderNumber}: ₦{amount:N0}, {refund.Items.Sum(r => r.Quantity)} item(s)" +
-                $"{(fullyRefunded ? " (full)" : " (partial)")}{restockNote}; {gatewayNote}");
-            TempData[restock && !didRestock ? "Warning" : "Success"] =
-                $"Refund {refundNumber} processed: ₦{amount:N0}.{restockNote} {gatewayNote}.";
+            await LogAsync("RefundRequested", "Order", order.Id.ToString(),
+                $"Refund requested {refundNumber} for {order.OrderNumber}: ₦{amount:N0}, {refund.Items.Sum(r => r.Quantity)} item(s)" +
+                $"{(fullyRefunded ? " (full)" : " (partial)")}{restockIntent} — pending Finance approval");
+            TempData["Success"] =
+                $"Refund request {refundNumber} for ₦{amount:N0} sent to Finance for approval. No money or stock has moved yet.";
             return RedirectToAction(nameof(Detail), new { id });
         }
 

@@ -587,7 +587,8 @@ public class PosController : Controller
             + sales.Where(o => !withRows.Contains(o.Id) && o.PaymentProvider == m).Sum(o => o.Total);
         var cash = SumOf("Cash");
 
-        var refunds = await _db.Refunds.Where(r => r.TillSessionId == session.Id).ToListAsync();
+        // Only approved refunds have actually paid cash out of the drawer.
+        var refunds = await _db.Refunds.Where(r => r.TillSessionId == session.Id && r.Status == RefundStatus.Approved).ToListAsync();
         var cashRefunds = refunds.Where(r => r.RefundMethod == "Cash").Sum(r => r.Amount);
 
         // Cash drops/top-ups during the shift (pay-in positive, pay-out negative) move the drawer.
@@ -620,7 +621,8 @@ public class PosController : Controller
             .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber && o.Channel == OrderChannel.Pos);
         if (order == null) return Json(new { found = false });
 
-        var refundIds = _db.Refunds.Where(r => r.OriginalOrderId == order.Id).Select(r => r.Id);
+        // Rejected requests free their quantity back up; pending + approved still count.
+        var refundIds = _db.Refunds.Where(r => r.OriginalOrderId == order.Id && r.Status != RefundStatus.Rejected).Select(r => r.Id);
         var refunded = await _db.RefundItems.Where(ri => refundIds.Contains(ri.RefundId))
             .GroupBy(ri => new { ri.ProductId, ri.ProductVariantId })
             .Select(g => new { g.Key.ProductId, g.Key.ProductVariantId, Qty = g.Sum(x => x.Quantity) })
@@ -688,7 +690,8 @@ public class PosController : Controller
             await _db.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT 1 FROM \"Orders\" WHERE \"Id\" = {order.Id} FOR UPDATE");
 
-        var refundIds = _db.Refunds.Where(r => r.OriginalOrderId == order.Id).Select(r => r.Id);
+        // Rejected requests free their quantity back up; pending + approved still count.
+        var refundIds = _db.Refunds.Where(r => r.OriginalOrderId == order.Id && r.Status != RefundStatus.Rejected).Select(r => r.Id);
         var refunded = await _db.RefundItems.Where(ri => refundIds.Contains(ri.RefundId))
             .GroupBy(ri => new { ri.ProductId, ri.ProductVariantId })
             .Select(g => new { g.Key.ProductId, g.Key.ProductVariantId, Qty = g.Sum(x => x.Quantity) })
@@ -704,7 +707,11 @@ public class PosController : Controller
             CashierUserId = userId,
             RefundMethod = req.Method,
             Reason = string.IsNullOrWhiteSpace(req.Reason) ? null : req.Reason.Trim(),
-            CreatedAt = now
+            CreatedAt = now,
+            // Requested only — Finance approves before any cash leaves the drawer or stock returns.
+            Status = RefundStatus.PendingApproval,
+            RestockRequested = storeId > 0,
+            RestockStoreId = storeId > 0 ? storeId : (int?)null,
         };
 
         decimal amount = 0;
@@ -726,9 +733,7 @@ public class PosController : Controller
                 ProductName = oi.ProductName, VariantName = oi.VariantName,
                 Quantity = qty, UnitPrice = netUnit
             });
-            if (storeId > 0)
-                await _stock.ApplyAsync(oi.ProductId, oi.ProductVariantId, storeId, qty,
-                    StockMovementType.Return, refundNumber, userId: userId);
+            // Stock is NOT returned here — it moves when Finance approves the refund.
         }
 
         if (refund.Items.Count == 0) return Json(new { success = false, message = "Nothing left to refund on this sale." });
@@ -749,12 +754,14 @@ public class PosController : Controller
         refund.Amount = amount;
         _db.Refunds.Add(refund);
 
-        // Whole sale refunded (every line's prior + this refund covers the qty sold)?
+        // Whole sale refunded (every line's prior + this refund covers the qty sold)? Captured now so
+        // approval knows whether to reverse loyalty / mark the order Refunded.
         bool fullyRefunded = order.Items.All(oi =>
             Done(oi.ProductId, oi.ProductVariantId)
                 + refund.Items.Where(ri => ri.ProductId == oi.ProductId && ri.ProductVariantId == oi.ProductVariantId)
                               .Sum(ri => ri.Quantity)
             >= oi.Quantity);
+        refund.WasFullRefund = fullyRefunded;
 
         try
         {
@@ -766,13 +773,11 @@ public class PosController : Controller
             return Json(new { success = false, message = "Stock levels changed while processing this refund. Please try again." });
         }
 
-        // On a full refund, claw back any loyalty points the attached customer earned on this sale.
-        if (fullyRefunded)
-            await _loyalty.ReverseForOrderAsync(order.Id);
+        // No money or stock has moved yet — this is a request awaiting Finance approval.
+        try { await _audit.LogAsync("RefundRequested", "Order", order.Id.ToString(), $"POS refund requested {refundNumber} — ₦{amount:N0} on {order.OrderNumber}{(fullyRefunded ? " (full)" : " (partial)")} — pending Finance approval{refundApprovalNote}"); } catch { }
 
-        try { await _audit.LogAsync("Refund", "Order", order.Id.ToString(), $"POS refund {refundNumber} — ₦{amount:N0} on {order.OrderNumber}{(fullyRefunded ? " (full)" : " (partial)")}{refundApprovalNote}"); } catch { }
-
-        return Json(new { success = true, refundNumber, amount, refundId = refund.Id });
+        return Json(new { success = true, pending = true, refundNumber, amount, refundId = refund.Id,
+            message = $"Refund of ₦{amount:N0} sent to Finance for approval. No cash has left the drawer yet." });
     }
 
     /// <summary>Printable refund/return receipt (same thermal format as a sale receipt).</summary>
