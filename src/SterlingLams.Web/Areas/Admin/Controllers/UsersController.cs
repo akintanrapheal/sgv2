@@ -159,7 +159,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 StatusFilter   = status,
                 AvailableRoles = staffRoles,
                 // Assignable per user: staff roles (never Admin) + Customer (removes backend access).
-                AssignableRoles = staffRoles.Where(r => r != "Admin").Append("Customer").ToList(),
+                // Admin included — it's a full-access role (assignable like the Create form). Only
+                // Admins/Developers can reach this action at all (see OnActionExecutionAsync).
+                AssignableRoles = staffRoles.Append("Customer").ToList(),
                 CurrentPage    = page,
                 TotalPages     = (int)Math.Ceiling(total / (double)PageSize),
                 TotalCount     = total,
@@ -467,13 +469,6 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
 
             role = (role ?? "Customer").Trim();
-
-            // Full admin access can't be granted here.
-            if (role == "Admin")
-            {
-                TempData["Error"] = "Full administrator access can't be granted from this list.";
-                return RedirectToAction(nameof(Index));
-            }
 
             // Validate the target role exists (Customer = no backend role)
             if (role != "Customer" && !await _roleManager.RoleExistsAsync(role))
