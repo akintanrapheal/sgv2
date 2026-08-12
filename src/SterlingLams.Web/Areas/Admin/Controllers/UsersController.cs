@@ -36,14 +36,18 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;
         private readonly RoleManager<IdentityRole> _roleManager;
+        private readonly IEmailService _email;
+        private readonly ISettingsService _settings;
         private const int PageSize = 30;
 
         public UsersController(ApplicationDbContext db, UserManager<ApplicationUser> userManager,
-            RoleManager<IdentityRole> roleManager)
+            RoleManager<IdentityRole> roleManager, IEmailService email, ISettingsService settings)
         {
             _db = db;
             _userManager = userManager;
             _roleManager = roleManager;
+            _email = email;
+            _settings = settings;
         }
 
         // Determines a user's single display role (first backend role, else "Customer")
@@ -187,9 +191,15 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             ViewData["Title"] = "New User";
             ViewBag.Roles = StaffRoles;
 
-            if (string.IsNullOrWhiteSpace(vm.Email) || string.IsNullOrWhiteSpace(vm.Password))
+            if (string.IsNullOrWhiteSpace(vm.Email))
             {
-                TempData["Error"] = "Email and password are required.";
+                TempData["Error"] = "Email is required.";
+                return View(vm);
+            }
+            // When not inviting, the admin must supply the password themselves.
+            if (!vm.SendInvite && string.IsNullOrWhiteSpace(vm.Password))
+            {
+                TempData["Error"] = "Enter a password, or choose to email an invite instead.";
                 return View(vm);
             }
 
@@ -210,7 +220,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 CreatedAt      = DateTime.UtcNow,
             };
 
-            var result = await _userManager.CreateAsync(user, vm.Password);
+            // Invite flow: create the account with a throwaway strong password, then email a set-password
+            // link so the user chooses their own (nothing to share by hand).
+            var initialPassword = vm.SendInvite ? $"{Guid.NewGuid():N}Aa1!" : vm.Password;
+            var result = await _userManager.CreateAsync(user, initialPassword);
             if (!result.Succeeded)
             {
                 TempData["Error"] = string.Join(" ", result.Errors.Select(e => e.Description));
@@ -222,9 +235,46 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var role = StaffRoles.Contains(vm.Role) ? vm.Role : StaffRoles.First();
             await _userManager.AddToRoleAsync(user, role);
 
+            if (vm.SendInvite)
+            {
+                var sent = await SendSetPasswordInviteAsync(user);
+                await LogAsync("Create", "User", user.Id, $"Created staff account {user.Email} ({role}); invite {(sent ? "emailed" : "FAILED to send")}");
+                TempData[sent ? "Success" : "Error"] = sent
+                    ? $"User {user.Email} created as {role}. An invite to set their password has been emailed."
+                    : $"User {user.Email} created as {role}, but the invite email could not be sent (check SMTP). Use “Reset password” on the Users page to give them access.";
+                return RedirectToAction(nameof(Index));
+            }
+
             await LogAsync("Create", "User", user.Id, $"Created staff account {user.Email} ({role})");
             TempData["Success"] = $"User {user.Email} created as {role}. They can sign in to the backend and the storefront.";
             return RedirectToAction(nameof(Index));
+        }
+
+        // Emails a "set your password" link (a password-reset token) using the customizable
+        // "staff_invite" template. Returns false if the send failed.
+        private async Task<bool> SendSetPasswordInviteAsync(ApplicationUser user)
+        {
+            try
+            {
+                var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+                var link = Url.Action("ResetPassword", "Account",
+                    new { area = "", token, email = user.Email }, protocol: Request.Scheme)!;
+
+                var subject = await _settings.GetAsync("email.staff_invite.subject", "You've been added to Sterlin Glams — set your password");
+                var intro = await _settings.GetAsync("email.staff_invite.intro",
+                    "You've been given backend access to Sterlin Glams. Click below to set your password, then sign in with your email.");
+                intro = intro.Replace("{name}", System.Net.WebUtility.HtmlEncode(user.FirstName ?? ""));
+
+                var body = $@"
+                    <h2 style=""font-size:18px;margin:0 0 16px;"">Set your password</h2>
+                    <p>{System.Net.WebUtility.HtmlEncode(intro)}</p>
+                    <p style=""margin:28px 0;"">
+                        <a href=""{link}"" style=""background:#0a0a0a;color:#ffffff;text-decoration:none;padding:12px 28px;display:inline-block;font-size:13px;letter-spacing:1px;text-transform:uppercase;"">Set your password</a>
+                    </p>
+                    <p style=""font-size:13px;color:#78716c;"">This link expires shortly. If you weren't expecting this, you can ignore this email.</p>";
+                return await _email.SendAsync(user.Email!, subject, body);
+            }
+            catch { return false; }
         }
 
         // ── Reset password (admin sets a new one) ──────────────────────────────

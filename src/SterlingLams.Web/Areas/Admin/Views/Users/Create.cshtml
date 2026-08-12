@@ -42,9 +42,28 @@
             </div>
 
             <div>
+                <span class="block text-xs text-neutral-500 mb-1.5">How should they get their password?</span>
+                <div class="space-y-2">
+                    <label class="flex items-start gap-2 cursor-pointer">
+                        <input type="radio" asp-for="SendInvite" value="true" id="pw-invite" class="mt-0.5 accent-neutral-900" />
+                        <span class="text-sm text-neutral-700">
+                            <span class="font-medium">Email an invite</span> — the user sets their own password via a secure link.
+                            <span class="block text-[11px] text-neutral-400">Nothing to share by hand. Requires email to be configured.</span>
+                        </span>
+                    </label>
+                    <label class="flex items-start gap-2 cursor-pointer">
+                        <input type="radio" asp-for="SendInvite" value="false" id="pw-setnow" class="mt-0.5 accent-neutral-900" />
+                        <span class="text-sm text-neutral-700">
+                            <span class="font-medium">Set a password now</span> — you type it and share it with them.
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            <div id="pwd-block" class="hidden">
                 <label asp-for="Password" class="block text-xs text-neutral-500 mb-1">Password <span class="text-red-400">*</span></label>
                 <div class="flex gap-2">
-                    <input asp-for="Password" type="text" id="pwd-field" required minlength="8" autocomplete="new-password"
+                    <input asp-for="Password" type="text" id="pwd-field" minlength="8" autocomplete="new-password"
                            class="flex-1 border border-neutral-200 rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:border-neutral-400" />
                     <button type="button" onclick="genPwd()"
                             class="px-3 py-2 border border-neutral-200 text-neutral-600 text-xs rounded-sm hover:bg-neutral-50 transition-colors whitespace-nowrap">
@@ -87,5 +106,20 @@ function genPwd() {
     for (let i = 0; i < 12; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
     document.getElementById('pwd-field').value = pwd;
 }
+
+// Show the password field only when "Set a password now" is chosen; make it required only then.
+(function () {
+    const block = document.getElementById('pwd-block');
+    const field = document.getElementById('pwd-field');
+    const invite = document.getElementById('pw-invite');
+    function sync() {
+        const setNow = document.getElementById('pw-setnow').checked;
+        block.classList.toggle('hidden', !setNow);
+        field.required = setNow;
+        if (setNow && !field.value) genPwd();   // convenience: prefill a strong one
+    }
+    document.querySelectorAll('input[name="SendInvite"]').forEach(r => r.addEventListener('change', sync));
+    sync();
+})();
 </script>
 }
