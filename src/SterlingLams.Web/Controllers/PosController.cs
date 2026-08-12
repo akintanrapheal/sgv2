@@ -311,22 +311,40 @@ public class PosController : Controller
         var reg = await BoundRegisterAsync();
         if (reg == null) return Json(Array.Empty<object>());
         var term = (q ?? "").Trim().ToLower();   // case-insensitive (Postgres LIKE is case-sensitive)
-        var rows = await _db.StoreInventories
-            .Where(si => si.StoreId == reg.StoreId && si.ProductVariantId == null
-                      && si.QuantityOnHand - si.QuantityReserved > 0)
-            .Join(_db.Products.Where(p => p.IsActive && (term == "" || p.Name.ToLower().Contains(term)
+        var raw = await _db.Products
+            .Where(p => p.IsActive && (term == "" || p.Name.ToLower().Contains(term)
                       || (p.Sku != null && p.Sku.ToLower().Contains(term))
-                      || (p.Barcode != null && p.Barcode.ToLower().Contains(term)))),
-                  si => si.ProductId, p => p.Id,
-                  (si, p) => new { id = p.Id, name = p.Name, sku = p.Sku, barcode = p.Barcode,
-                      available = si.QuantityOnHand - si.QuantityReserved,
-                      image = _db.ProductImages.Where(im => im.ProductId == p.Id)
-                          .OrderByDescending(im => im.IsPrimary).ThenBy(im => im.SortOrder).Select(im => im.Url).FirstOrDefault() })
-            .OrderBy(x => x.name).Take(25).ToListAsync();
-        return Json(rows.Select(x => new { x.id, x.name, x.sku, x.barcode, x.available, image = PosThumb(x.image) }));
+                      || (p.Barcode != null && p.Barcode.ToLower().Contains(term))
+                      || p.Variants.Any(v => v.Barcode != null && v.Barcode.ToLower().Contains(term))))
+            .OrderBy(p => p.Name).Take(25)
+            .Select(p => new
+            {
+                id = p.Id, name = p.Name, sku = p.Sku, barcode = p.Barcode,
+                image = _db.ProductImages.Where(im => im.ProductId == p.Id)
+                    .OrderByDescending(im => im.IsPrimary).ThenBy(im => im.SortOrder).Select(im => im.Url).FirstOrDefault(),
+                productAvail = p.StoreInventories.Where(si => si.StoreId == reg.StoreId && si.ProductVariantId == null)
+                    .Select(si => si.QuantityOnHand - si.QuantityReserved).FirstOrDefault(),
+                variants = p.Variants.Select(v => new
+                {
+                    id = v.Id, name = v.Name, barcode = v.Barcode,
+                    available = p.StoreInventories.Where(si => si.StoreId == reg.StoreId && si.ProductVariantId == v.Id)
+                        .Select(si => si.QuantityOnHand - si.QuantityReserved).FirstOrDefault()
+                }).ToList()
+            }).ToListAsync();
+        // Variant products send a specific variant (stock is on the variant rows); plain products send
+        // from their own (null-variant) pool. Only surface things that actually have stock to move.
+        var rows = raw.Select(p => new
+        {
+            p.id, p.name, p.sku, p.barcode, image = PosThumb(p.image),
+            hasVariants = p.variants.Count > 0,
+            available = p.variants.Count > 0 ? p.variants.Sum(v => v.available) : p.productAvail,
+            variants = p.variants.Where(v => v.available > 0).OrderBy(v => v.name)
+                .Select(v => new { v.id, v.name, v.barcode, v.available }).ToList()
+        }).Where(p => p.available > 0).ToList();
+        return Json(rows);
     }
 
-    public class PosTransferLine { public int ProductId { get; set; } public int Qty { get; set; } }
+    public class PosTransferLine { public int ProductId { get; set; } public int? ProductVariantId { get; set; } public int Qty { get; set; } }
     public class PosTransferRequestDto { public int ToStoreId { get; set; } public string? Reason { get; set; } public List<PosTransferLine> Items { get; set; } = new(); }
     public class PosTransferIdDto { public int Id { get; set; } }
 
@@ -351,7 +369,7 @@ public class PosController : Controller
             ToStoreId = req.ToStoreId,
             Note = reason,
             Items = req.Items.Where(i => i.Qty > 0)
-                .Select(i => new SterlingLams.Web.Services.TransferLine { ProductId = i.ProductId, Quantity = i.Qty }).ToList()
+                .Select(i => new SterlingLams.Web.Services.TransferLine { ProductId = i.ProductId, ProductVariantId = i.ProductVariantId, Quantity = i.Qty }).ToList()
         }, userId);
         if (!ok) return Json(new { success = false, message = error ?? "Could not create the transfer." });
         var number = await _db.StockTransfers.Where(t => t.Id == id).Select(t => t.TransferNumber).FirstOrDefaultAsync();

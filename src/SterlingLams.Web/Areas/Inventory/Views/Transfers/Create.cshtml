@@ -73,7 +73,7 @@
         if (fromSel.value) { runSearch(); scanBox.focus(); } else resultsEl.innerHTML = '';
     });
 
-    // Barcode scan → look up at the source branch and add straight to the transfer.
+    // Barcode scan → resolve to the exact product/variant at the source branch and add it.
     scanBox.addEventListener('keydown', async (e) => {
         if (e.key !== 'Enter') return;
         e.preventDefault();
@@ -81,13 +81,19 @@
         if (!code || !fromSel.value) return;
         const res = await fetch(`${__invBase}/Transfers/SearchStock?fromStoreId=${fromSel.value}&q=${encodeURIComponent(code)}`);
         const items = await res.json();
-        const match = items.find(p => p.barcode === code || p.sku === code) || items[0];
-        if (match) {
-            add(match);
-            scanMsg.textContent = `Added ${match.name}`; scanMsg.className = 'text-[11px] mb-3 min-h-[14px] text-emerald-600';
-        } else {
-            scanMsg.textContent = `No stock for “${code}” at the source branch.`; scanMsg.className = 'text-[11px] mb-3 min-h-[14px] text-red-500';
+        let mp = null, mv = null;
+        for (const p of items) {
+            if (p.barcode === code || p.sku === code) { mp = p; break; }
+            const v = (p.variants || []).find(x => x.barcode === code);
+            if (v) { mp = p; mv = v; break; }
         }
+        const ok = (t) => { scanMsg.textContent = t; scanMsg.className = 'text-[11px] mb-3 min-h-[14px] text-emerald-600'; };
+        const bad = (t) => { scanMsg.textContent = t; scanMsg.className = 'text-[11px] mb-3 min-h-[14px] text-red-500'; };
+        if (mp && mv) { add(mp, mv); ok(`Added ${mp.name} (${mv.name})`); }
+        else if (mp && mp.hasVariants && mp.variants.length === 1) { add(mp, mp.variants[0]); ok(`Added ${mp.name} (${mp.variants[0].name})`); }
+        else if (mp && mp.hasVariants) { render(items); bad(`“${mp.name}” has variants — pick one below.`); }
+        else if (mp) { add(mp); ok(`Added ${mp.name}`); }
+        else bad(`No stock for “${code}” at the source branch.`);
         scanBox.value = ''; scanBox.focus();
     });
     searchBox.addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(runSearch, 180); });
@@ -96,18 +102,36 @@
     async function runSearch() {
         if (!fromSel.value) return;
         const res = await fetch(`${__invBase}/Transfers/SearchStock?fromStoreId=${fromSel.value}&q=${encodeURIComponent(searchBox.value.trim())}`);
-        const items = await res.json();
+        render(await res.json());
+    }
+    function render(items) {
         if (!items.length) { resultsEl.innerHTML = '<p class="col-span-full text-sm text-neutral-400">No products with stock here.</p>'; return; }
         lastResults = items;
-        resultsEl.innerHTML = items.map((p, idx) => `<button type="button" class="t-prod text-left border border-neutral-200 rounded-sm p-3 hover:border-emerald-500 transition-colors" data-i="${idx}">
-            <p class="text-xs text-neutral-800 leading-snug line-clamp-2">${esc(p.name)}</p>
-            <p class="text-[10px] text-emerald-600 mt-1">${p.stock} in stock</p></button>`).join('');
+        // A product with variants shows a chip per in-stock variant (pick which one to send); a plain
+        // product is a single add button.
+        resultsEl.innerHTML = items.map((p, idx) => {
+            if (p.hasVariants) {
+                const chips = p.variants.map(v => `<button type="button" class="t-var border border-neutral-200 rounded px-2 py-1 text-[11px] hover:border-emerald-500 transition-colors mr-1 mb-1" data-i="${idx}" data-v="${v.id}">${esc(v.name)} · <span class="text-emerald-600">${v.stock}</span></button>`).join('');
+                return `<div class="border border-neutral-200 rounded-sm p-3">
+                    <p class="text-xs text-neutral-800 leading-snug mb-1.5">${esc(p.name)}</p>
+                    <div class="flex flex-wrap">${chips}</div></div>`;
+            }
+            return `<button type="button" class="t-prod text-left border border-neutral-200 rounded-sm p-3 hover:border-emerald-500 transition-colors" data-i="${idx}">
+                <p class="text-xs text-neutral-800 leading-snug line-clamp-2">${esc(p.name)}</p>
+                <p class="text-[10px] text-emerald-600 mt-1">${p.stock} in stock</p></button>`;
+        }).join('');
         resultsEl.querySelectorAll('.t-prod').forEach(b => b.addEventListener('click', () => add(lastResults[+b.dataset.i])));
+        resultsEl.querySelectorAll('.t-var').forEach(b => b.addEventListener('click', () => {
+            const p = lastResults[+b.dataset.i]; add(p, p.variants.find(x => x.id === +b.dataset.v));
+        }));
     }
-    function add(p) {
-        const ex = cart.find(c => c.productId === p.id);
-        if ((ex ? ex.qty : 0) + 1 > p.stock) { alert('Not enough stock at source.'); return; }
-        if (ex) ex.qty++; else cart.push({ productId: p.id, name: p.name, qty: 1, stock: p.stock });
+    function add(p, variant) {
+        const vid = variant ? variant.id : null;
+        const stock = variant ? variant.stock : p.stock;
+        const name = variant ? `${p.name} (${variant.name})` : p.name;
+        const ex = cart.find(c => c.productId === p.id && c.productVariantId === vid);
+        if ((ex ? ex.qty : 0) + 1 > stock) { alert('Not enough stock at source.'); return; }
+        if (ex) ex.qty++; else cart.push({ productId: p.id, productVariantId: vid, name, qty: 1, stock });
         renderCart();
     }
     function renderCart() {
@@ -130,7 +154,7 @@
         try {
             const res = await fetch(__invBase + '/Transfers/Request', { method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
-                body: JSON.stringify({ fromStoreId: +fromSel.value, toStoreId: +toSel.value, note: document.getElementById('t-note').value, items: cart.map(c => ({ productId: c.productId, quantity: c.qty })) }) });
+                body: JSON.stringify({ fromStoreId: +fromSel.value, toStoreId: +toSel.value, note: document.getElementById('t-note').value, items: cart.map(c => ({ productId: c.productId, productVariantId: c.productVariantId, quantity: c.qty })) }) });
             const data = await res.json();
             if (data.success) location.href = __invBase + '/Transfers/Detail/' + data.id;
             else { alert(data.message || 'Request failed.'); }

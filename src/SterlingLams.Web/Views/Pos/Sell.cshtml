@@ -2335,9 +2335,13 @@
         }).join('') : '<p class="text-xs text-neutral-400 py-3 text-center">No items yet — search or scan above.</p>';
         submitBtn.disabled = !(basket.length && destSel.value && reasonSel.value);
     }
-    function addToBasket(r) {
-        var ex = basket.find(function (x) { return x.productId === r.id; });
-        if (ex) { if (ex.qty < ex.available) ex.qty++; } else basket.push({ productId: r.id, name: r.name, image: r.image, available: r.available, qty: 1 });
+    function addToBasket(r, variant) {
+        var vid = variant ? variant.id : null;
+        var avail = variant ? variant.available : r.available;
+        var name = variant ? (r.name + ' (' + variant.name + ')') : r.name;
+        var ex = basket.find(function (x) { return x.productId === r.id && x.productVariantId === vid; });
+        if (ex) { if (ex.qty < ex.available) ex.qty++; }
+        else basket.push({ productId: r.id, productVariantId: vid, name: name, image: r.image, available: avail, qty: 1 });
         renderBasket();
     }
     basketBox.addEventListener('click', function (e) {
@@ -2350,20 +2354,36 @@
     destSel.addEventListener('change', renderBasket);
     reasonSel.addEventListener('change', renderBasket);
     var sdeb; searchIn.addEventListener('input', function () { clearTimeout(sdeb); sdeb = setTimeout(searchProducts, 250); });
-    // Enter = scanner submit: exact barcode/SKU match (or a lone result) is added straight to the basket.
+    // Enter = scanner submit: match a product barcode/SKU OR a specific variant barcode, and add it.
     searchIn.addEventListener('keydown', function (e) {
         if (e.key !== 'Enter') return;
         e.preventDefault();
         var q = searchIn.value.trim().toLowerCase(); if (!q) return;
-        var exact = lastResults.find(function (r) { return (r.barcode && r.barcode.toLowerCase() === q) || (r.sku && r.sku.toLowerCase() === q); });
-        var pick = exact || (lastResults.length === 1 ? lastResults[0] : null);
-        if (pick) { addToBasket(pick); searchIn.value = ''; resultsBox.classList.add('hidden'); }
+        var mp = null, mv = null;
+        for (var k = 0; k < lastResults.length; k++) {
+            var r = lastResults[k];
+            if ((r.barcode && r.barcode.toLowerCase() === q) || (r.sku && r.sku.toLowerCase() === q)) { mp = r; break; }
+            var v = (r.variants || []).find(function (x) { return x.barcode && x.barcode.toLowerCase() === q; });
+            if (v) { mp = r; mv = v; break; }
+        }
+        if (!mp && lastResults.length === 1 && !lastResults[0].hasVariants) mp = lastResults[0];
+        var done = function () { searchIn.value = ''; resultsBox.classList.add('hidden'); };
+        if (mp && mv) { addToBasket(mp, mv); done(); }
+        else if (mp && mp.hasVariants && mp.variants.length === 1) { addToBasket(mp, mp.variants[0]); done(); }
+        else if (mp && !mp.hasVariants) { addToBasket(mp); done(); }
+        // variant product with 2+ options → leave the list open so the cashier picks the variant
     });
     function searchProducts() {
         var q = searchIn.value.trim(); if (!q) { resultsBox.classList.add('hidden'); return; }
         get('/Pos/TransferSearch?q=' + encodeURIComponent(q)).then(function (rows) {
             lastResults = rows || [];
             resultsBox.innerHTML = lastResults.length ? lastResults.map(function (r, i) {
+                if (r.hasVariants) {
+                    var chips = r.variants.map(function (v) {
+                        return '<button type="button" data-add="' + i + '" data-v="' + v.id + '" class="border border-neutral-200 rounded px-2 py-1 text-[11px] hover:border-brand-500 mr-1 mb-1">' + esc(v.name) + ' · ' + v.available + '</button>';
+                    }).join('');
+                    return '<div class="px-3 py-2 border-b border-neutral-50">' + '<div class="flex items-center gap-2 mb-1">' + thumb(r.image) + '<span class="text-sm text-neutral-800 truncate">' + esc(r.name) + '</span></div><div class="flex flex-wrap">' + chips + '</div></div>';
+                }
                 return '<button type="button" data-add="' + i + '" class="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-neutral-50 border-b border-neutral-50">' + thumb(r.image) + '<span class="flex-1 min-w-0"><span class="block text-sm text-neutral-800 truncate">' + esc(r.name) + '</span><span class="block text-[11px] text-neutral-400">' + r.available + ' available' + (r.sku ? ' · ' + esc(r.sku) : '') + '</span></span></button>';
             }).join('') : '<p class="px-3 py-2 text-xs text-neutral-400">No products with stock here.</p>';
             resultsBox.classList.remove('hidden');
@@ -2372,13 +2392,14 @@
     resultsBox.addEventListener('click', function (e) {
         var btn = e.target.closest('[data-add]'); if (!btn) return;
         var r = lastResults[+btn.dataset.add]; if (!r) return;
-        addToBasket(r);
+        if (btn.dataset.v) { var v = (r.variants || []).find(function (x) { return x.id === +btn.dataset.v; }); addToBasket(r, v); }
+        else addToBasket(r);
         searchIn.value = ''; resultsBox.classList.add('hidden'); searchIn.focus();
     });
     submitBtn.addEventListener('click', function () {
         if (!basket.length || !destSel.value || !reasonSel.value) return;
         submitBtn.disabled = true; sendMsg.className = 'text-xs text-center h-4 text-neutral-500'; sendMsg.textContent = 'Sending…';
-        post('/Pos/TransferRequest', { toStoreId: +destSel.value, reason: reasonSel.value, items: basket.map(function (b) { return { productId: b.productId, qty: b.qty }; }) }).then(function (d) {
+        post('/Pos/TransferRequest', { toStoreId: +destSel.value, reason: reasonSel.value, items: basket.map(function (b) { return { productId: b.productId, productVariantId: b.productVariantId, qty: b.qty }; }) }).then(function (d) {
             if (d.success) { sendMsg.className = 'text-xs text-center h-4 text-emerald-600'; sendMsg.textContent = '✓ Request ' + (d.number || '') + ' sent for approval.'; basket = []; reasonSel.value = ''; renderBasket(); loadLists(); }
             else { sendMsg.className = 'text-xs text-center h-4 text-red-600'; sendMsg.textContent = d.message || 'Failed.'; submitBtn.disabled = false; }
         });

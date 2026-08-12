@@ -88,17 +88,37 @@ public class TransfersController : InventoryAreaController
                                   || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
                                   || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")));
 
-        var products = await query.OrderBy(p => p.Name).Take(40)
+        var raw = await query.OrderBy(p => p.Name).Take(40)
             .Select(p => new
             {
                 id = p.Id,
                 name = p.Name,
                 sku = p.Sku,
                 barcode = p.Barcode,
-                stock = p.StoreInventories.Where(si => si.StoreId == fromStoreId).Select(si => si.QuantityOnHand).FirstOrDefault()
+                // Product-level stock (for products with no variants) lives on the null-variant row.
+                productStock = p.StoreInventories.Where(si => si.StoreId == fromStoreId && si.ProductVariantId == null)
+                    .Select(si => si.QuantityOnHand).FirstOrDefault(),
+                variants = p.Variants.Select(v => new
+                {
+                    id = v.Id,
+                    name = v.Name,
+                    barcode = v.Barcode,
+                    stock = p.StoreInventories.Where(si => si.StoreId == fromStoreId && si.ProductVariantId == v.Id)
+                        .Select(si => si.QuantityOnHand).FirstOrDefault()
+                }).ToList()
             })
-            .Where(x => x.stock > 0)
             .ToListAsync();
+
+        // A variant product's stock lives on its variant rows — surface each in-stock variant so the
+        // UI can prompt for which one. A plain product uses its own (null-variant) stock.
+        var products = raw.Select(p => new
+        {
+            p.id, p.name, p.sku, p.barcode,
+            hasVariants = p.variants.Count > 0,
+            stock = p.variants.Count > 0 ? p.variants.Sum(v => v.stock) : p.productStock,
+            variants = p.variants.Where(v => v.stock > 0).OrderBy(v => v.name)
+                .Select(v => new { v.id, v.name, v.barcode, v.stock }).ToList()
+        }).Where(p => p.stock > 0).ToList();
         return Json(products);
     }
 
