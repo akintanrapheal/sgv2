@@ -872,7 +872,7 @@ public class ProductsController : InventoryAreaController
 
         var lines = await ReadCsvLinesAsync(file.OpenReadStream());
         var token = Guid.NewGuid().ToString("N");
-        await System.IO.File.WriteAllLinesAsync(BarcodeStashPath(token), lines);
+        await System.IO.File.WriteAllLinesAsync(BarcodeStashPath(token)!, lines);
 
         var svc = HttpContext.RequestServices.GetRequiredService<SterlingLams.Web.Services.BarcodeImportService>();
         var result = await svc.ImportNamedAsync(lines, commit: false);
@@ -889,7 +889,7 @@ public class ProductsController : InventoryAreaController
     {
         ViewData["Title"] = "Import Barcodes";
         var path = BarcodeStashPath(token);
-        if (string.IsNullOrWhiteSpace(token) || !System.IO.File.Exists(path))
+        if (path == null || !System.IO.File.Exists(path))
         {
             ModelState.AddModelError("", "That upload has expired — please upload the file again.");
             return View("ImportBarcodes", (SterlingLams.Web.Services.NamedBarcodeResult?)null);
@@ -908,8 +908,13 @@ public class ProductsController : InventoryAreaController
         return View("ImportBarcodes", result);
     }
 
-    private static string BarcodeStashPath(string token) =>
-        Path.Combine(Path.GetTempPath(), $"slbarcode_{new string((token ?? "").Where(char.IsLetterOrDigit).ToArray())}.csv");
+    // The stash token is always a Guid ("N" = 32 hex chars). Validate it and build the path from the
+    // PARSED guid, so no user-controlled text ever reaches a filesystem path (path-traversal safe).
+    // Returns null for a missing/invalid token — callers treat that as "expired upload".
+    private static string? BarcodeStashPath(string? token) =>
+        Guid.TryParseExact(token, "N", out var g)
+            ? Path.Combine(Path.GetTempPath(), $"slbarcode_{g:N}.csv")
+            : null;
 
     private static async Task<List<string>> ReadCsvLinesAsync(Stream s)
     {
