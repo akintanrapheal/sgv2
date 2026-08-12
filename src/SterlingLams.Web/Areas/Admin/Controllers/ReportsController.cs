@@ -57,7 +57,7 @@ public class ReportsController : AdminBaseController
         var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
         var storeName = stores.ToDictionary(s => s.Id, s => s.Name);
 
-        var refunds = _db.Refunds.Where(r => r.CreatedAt >= f && r.CreatedAt < t);
+        var refunds = _db.Refunds.Where(r => r.Status == RefundStatus.Approved && r.CreatedAt >= f && r.CreatedAt < t);
         if (storeId.HasValue) refunds = refunds.Where(r =>
             r.OriginalOrder.PickupStoreId == storeId || r.OriginalOrder.FulfillingStoreId == storeId);
         var refundTotal = await refunds.SumAsync(r => (decimal?)r.Amount) ?? 0;

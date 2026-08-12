@@ -1,5 +1,7 @@
 @model string
+@inject SterlingLams.Web.Services.IRefundApprovalService Approvals
 @{
+    var pendingRefunds = await Approvals.PendingCountAsync();
     // (Key, Action, Label) — Key matches the value each view passes as the model.
     // Tabs are added here as each report lands (keeps every tab a live link).
     var tabs = new (string Key, string Action, string Label)[]
@@ -26,6 +28,9 @@
     @foreach (var (key, action, label) in tabs)
     {
         <a asp-area="Admin" asp-controller="Finance" asp-action="@action"
-           class="px-4 py-2.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors @Cls(key)">@label</a>
+           class="px-4 py-2.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors @Cls(key)">
+            @label@if (key == "Refunds" && pendingRefunds > 0)
+            {<span class="ml-1.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[10px] font-semibold align-middle">@pendingRefunds</span>}
+        </a>
     }
 </div>

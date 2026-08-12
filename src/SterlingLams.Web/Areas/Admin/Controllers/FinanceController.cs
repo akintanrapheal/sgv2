@@ -20,13 +20,16 @@ public class FinanceController : AdminBaseController
     private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
     private readonly SterlingLams.Web.Services.ISettingsService _settings;
     private readonly SterlingLams.Web.Infrastructure.IFinanceReportService _report;
+    private readonly SterlingLams.Web.Services.IRefundApprovalService _approvals;
     public FinanceController(ApplicationDbContext db, SterlingLams.Web.Services.ILoyaltyService loyalty,
-        SterlingLams.Web.Services.ISettingsService settings, SterlingLams.Web.Infrastructure.IFinanceReportService report)
+        SterlingLams.Web.Services.ISettingsService settings, SterlingLams.Web.Infrastructure.IFinanceReportService report,
+        SterlingLams.Web.Services.IRefundApprovalService approvals)
     {
         _db = db;
         _loyalty = loyalty;
         _settings = settings;
         _report = report;
+        _approvals = approvals;
     }
 
     // Inclusive from/to as LAGOS dates, defaulting to the last 30 days. Returns the UTC window to
@@ -97,7 +100,16 @@ public class FinanceController : AdminBaseController
         public List<NameAmount> ByCashier { get; set; } = new();
         public List<RefundProductRow> ByProduct { get; set; } = new();
         public List<RefundListRow> Recent { get; set; } = new();
+        // Refund REQUESTS awaiting Finance approval — shown regardless of the date filter (they need
+        // action). Nothing has been paid out or restocked for these yet.
+        public List<PendingRefundRow> Pending { get; set; } = new();
+        public bool CanApprove { get; set; }
     }
+
+    public record PendingRefundItem(string Name, string? Variant, int Qty, decimal UnitPrice);
+    public record PendingRefundRow(int Id, string Number, DateTime When, string Order, string Channel,
+        decimal Amount, string Method, string Reason, string RequestedBy, bool RestockRequested,
+        bool FullRefund, List<PendingRefundItem> Items);
 
     private static readonly string[] Periods = { "day", "week", "month", "quarter", "year" };
 
@@ -191,7 +203,7 @@ public class FinanceController : AdminBaseController
         var g = await PaidOrders(f, t, storeId, channel).GroupBy(_ => 1)
             .Select(x => new { Count = x.Count(), Gross = x.Sum(o => o.Total), Logistics = x.Sum(o => o.DeliveryFee) })
             .FirstOrDefaultAsync();
-        var refq = _db.Refunds.Where(r => r.CreatedAt >= f && r.CreatedAt < t);
+        var refq = _db.Refunds.Where(r => r.Status == RefundStatus.Approved && r.CreatedAt >= f && r.CreatedAt < t);
         if (storeId.HasValue) refq = refq.Where(r => r.OriginalOrder.PickupStoreId == storeId || r.OriginalOrder.FulfillingStoreId == storeId);
         if (channel == "Online") refq = refq.Where(r => r.OriginalOrder.Channel == OrderChannel.Online);
         else if (channel == "Pos") refq = refq.Where(r => r.OriginalOrder.Channel == OrderChannel.Pos);
@@ -332,7 +344,7 @@ public class FinanceController : AdminBaseController
             .Select(g => new { Day = g.Key, Gross = g.Sum(o => o.Total), Delivery = g.Sum(o => o.DeliveryFee) })
             .ToList();
 
-        var refq = _db.Refunds.Where(r => r.CreatedAt >= f && r.CreatedAt < t);
+        var refq = _db.Refunds.Where(r => r.Status == RefundStatus.Approved && r.CreatedAt >= f && r.CreatedAt < t);
         if (storeId.HasValue) refq = refq.Where(r => r.OriginalOrder.PickupStoreId == storeId || r.OriginalOrder.FulfillingStoreId == storeId);
         if (channel == "Online") refq = refq.Where(r => r.OriginalOrder.Channel == OrderChannel.Online);
         else if (channel == "Pos") refq = refq.Where(r => r.OriginalOrder.Channel == OrderChannel.Pos);
@@ -390,7 +402,7 @@ public class FinanceController : AdminBaseController
                 .Select(g => new { Sid = g.Key, Amt = g.Sum(x => x.Amount) }).ToListAsync())
             .ToDictionary(x => x.Sid, x => x.Amt);
         var cashRefunds = (await _db.Refunds
-                .Where(r => r.RefundMethod == "Cash" && r.OriginalOrder.TillSessionId != null && ids.Contains(r.OriginalOrder.TillSessionId!.Value))
+                .Where(r => r.Status == RefundStatus.Approved && r.RefundMethod == "Cash" && r.OriginalOrder.TillSessionId != null && ids.Contains(r.OriginalOrder.TillSessionId!.Value))
                 .GroupBy(r => r.OriginalOrder.TillSessionId!.Value)
                 .Select(g => new { Sid = g.Key, Amt = g.Sum(x => x.Amount) }).ToListAsync())
             .ToDictionary(x => x.Sid, x => x.Amt);
@@ -433,7 +445,7 @@ public class FinanceController : AdminBaseController
         var (f, t, fLocal, tLocal) = Range(from, to);
         var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
 
-        var refq = _db.Refunds.Where(r => r.CreatedAt >= f && r.CreatedAt < t);
+        var refq = _db.Refunds.Where(r => r.Status == RefundStatus.Approved && r.CreatedAt >= f && r.CreatedAt < t);
         if (storeId.HasValue) refq = refq.Where(r => r.OriginalOrder.PickupStoreId == storeId || r.OriginalOrder.FulfillingStoreId == storeId);
 
         var totals = await refq.GroupBy(_ => 1)
@@ -463,7 +475,7 @@ public class FinanceController : AdminBaseController
             .Select(c => new NameAmount(string.IsNullOrWhiteSpace(c.Key) ? "—" : cNames.GetValueOrDefault(c.Key, "Unknown"), c.Count, c.Amt))
             .OrderByDescending(x => x.Amount).ToList();
 
-        var itemsQ = _db.RefundItems.Where(i => i.Refund.CreatedAt >= f && i.Refund.CreatedAt < t);
+        var itemsQ = _db.RefundItems.Where(i => i.Refund.Status == RefundStatus.Approved && i.Refund.CreatedAt >= f && i.Refund.CreatedAt < t);
         if (storeId.HasValue) itemsQ = itemsQ.Where(i => i.Refund.OriginalOrder.PickupStoreId == storeId || i.Refund.OriginalOrder.FulfillingStoreId == storeId);
         var byProduct = (await itemsQ.GroupBy(i => i.ProductName)
                 .Select(g => new { g.Key, Qty = g.Sum(x => x.Quantity), Amt = g.Sum(x => x.Quantity * x.UnitPrice) })
@@ -478,6 +490,27 @@ public class FinanceController : AdminBaseController
 
         var gross = await PaidOrders(f, t, storeId, "").SumAsync(o => (decimal?)o.Total) ?? 0;
 
+        // Pending approval queue — ALL pending requests (ignores the date filter; they need action).
+        var pendingRaw = await _db.Refunds.Where(r => r.Status == RefundStatus.PendingApproval)
+            .OrderBy(r => r.CreatedAt)
+            .Select(r => new
+            {
+                r.Id, r.RefundNumber, r.CreatedAt, Order = r.OriginalOrder.OrderNumber,
+                r.OriginalOrder.Channel, r.Amount, r.RefundMethod, r.Reason, r.CashierUserId,
+                r.RestockRequested, r.WasFullRefund,
+                Items = r.Items.Select(i => new PendingRefundItem(i.ProductName, i.VariantName, i.Quantity, i.UnitPrice)).ToList()
+            }).ToListAsync();
+        var pIds = pendingRaw.Select(p => p.CashierUserId).Distinct().ToList();
+        var pNames = (await _db.Users.Where(u => pIds.Contains(u.Id))
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.UserName }).ToListAsync())
+            .ToDictionary(u => u.Id, u => { var n = $"{u.FirstName} {u.LastName}".Trim(); return string.IsNullOrWhiteSpace(n) ? (u.UserName ?? "—") : n; });
+        var pending = pendingRaw.Select(p => new PendingRefundRow(p.Id, p.RefundNumber, p.CreatedAt, p.Order,
+            p.Channel.ToString(), p.Amount, p.RefundMethod, string.IsNullOrWhiteSpace(p.Reason) ? "—" : p.Reason!,
+            pNames.GetValueOrDefault(p.CashierUserId ?? "", "—"), p.RestockRequested, p.WasFullRefund, p.Items)).ToList();
+
+        var perms = HttpContext.RequestServices.GetRequiredService<SterlingLams.Web.Services.IPermissionService>();
+        var canApprove = await perms.CanManageAsync(User, "Finance");
+
         return View(new RefundVm
         {
             From = fLocal, To = tLocal, StoreId = storeId, Stores = stores,
@@ -485,8 +518,29 @@ public class FinanceController : AdminBaseController
             TotalRefunds = totals?.Amt ?? 0,
             RefundCount = totals?.Count ?? 0,
             OrdersRefunded = totals?.Orders ?? 0,
-            ByReason = byReason, ByMethod = byMethod, ByCashier = byCashier, ByProduct = byProduct, Recent = recent
+            ByReason = byReason, ByMethod = byMethod, ByCashier = byCashier, ByProduct = byProduct, Recent = recent,
+            Pending = pending, CanApprove = canApprove
         });
+    }
+
+    // ── Approve / reject a pending refund ─────────────────────────────────────────
+    // Writes to the Finance section already require "Finance:manage" (enforced in AdminBaseController).
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ApproveRefund(int id, string? note, string? from, string? to, int? storeId)
+    {
+        var userId = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier) ?? "";
+        var res = await _approvals.ApproveAsync(id, userId, note);
+        TempData[res.Success ? "Success" : "Error"] = res.Message;
+        return RedirectToAction(nameof(Refunds), new { from, to, storeId });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> RejectRefund(int id, string? note, string? from, string? to, int? storeId)
+    {
+        var userId = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier) ?? "";
+        var res = await _approvals.RejectAsync(id, userId, note);
+        TempData[res.Success ? "Success" : "Error"] = res.Message;
+        return RedirectToAction(nameof(Refunds), new { from, to, storeId });
     }
 
     // ── Discount & giveaway leakage ────────────────────────────────────────────
@@ -897,7 +951,7 @@ public class FinanceController : AdminBaseController
         var onlineCount = chan.Where(c => c.Key == OrderChannel.Online).Sum(c => c.Count);
 
         // Refunds in range, attributed via the original order (respects the same filters).
-        var refq = _db.Refunds.Where(r => r.CreatedAt >= f && r.CreatedAt < t);
+        var refq = _db.Refunds.Where(r => r.Status == RefundStatus.Approved && r.CreatedAt >= f && r.CreatedAt < t);
         if (storeId.HasValue) refq = refq.Where(r => r.OriginalOrder.PickupStoreId == storeId || r.OriginalOrder.FulfillingStoreId == storeId);
         if (channel == "Online") refq = refq.Where(r => r.OriginalOrder.Channel == OrderChannel.Online);
         else if (channel == "Pos") refq = refq.Where(r => r.OriginalOrder.Channel == OrderChannel.Pos);
