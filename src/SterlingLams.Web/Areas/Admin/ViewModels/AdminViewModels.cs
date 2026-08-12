@@ -514,6 +514,9 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string Password { get; set; } = "";
         /// <summary>Backend staff role to assign (e.g. Operations/Sales/Inventory/Social Media).</summary>
         public string Role { get; set; } = "";
+        /// <summary>When true, email the new user a link to set their own password instead of the
+        /// admin typing one. Defaults to true (the preferred flow).</summary>
+        public bool SendInvite { get; set; } = true;
     }
 
     // ─── Roles & Permissions ───────────────────────────────────────────────

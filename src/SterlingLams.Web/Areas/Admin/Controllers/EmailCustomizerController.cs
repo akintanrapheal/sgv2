@@ -29,6 +29,8 @@ public class EmailCustomizerController : AdminBaseController
         ("abandoned_cart",  "Abandoned cart",     "You left something in your bag", "You have items waiting in your bag — we've saved them for you."),
         ("password_reset",  "Password reset",     "Reset your password", "We received a request to reset your password. Click below to choose a new one. This link expires shortly."),
         ("email_confirm",   "Email confirmation", "Confirm your email", "Thanks for creating an account with us. Please confirm this is your email address by clicking below."),
+        // Sent to a NEW staff member the admin adds — a link to set their own password. Placeholder: {name}.
+        ("staff_invite",    "Staff invite — set password", "You've been added to Sterlin Glams — set your password", "You've been given backend access to Sterlin Glams. Click below to set your password, then sign in with your email."),
         // Branch/staff emails — sent to a store's email (not the customer). Placeholders: {branch}, {order}.
         ("branch_transfer_request", "Transfer request (to branch)", "Send stock to {branch} — order {order}", "Please pack and send the stock below to {branch} so order {order} can be fulfilled."),
         ("branch_dispatch",         "Order dispatch (to branch)",   "Dispatch order {order}",                 "All stock for order {order} is now at your branch — please pack and fulfil it."),
@@ -220,6 +222,11 @@ public class EmailCustomizerController : AdminBaseController
                 <h2 style=""font-size:18px;margin:0 0 16px;"">Confirm your email</h2>
                 <p>{E(intro)}</p>
                 {Button("Confirm email", "#")}",
+            "staff_invite" => $@"
+                <h2 style=""font-size:18px;margin:0 0 16px;"">Set your password</h2>
+                <p>{E(intro.Replace("{name}", "Zino"))}</p>
+                {Button("Set your password", "#")}
+                <p style=""font-size:13px;color:#78716c;"">This link expires shortly. If you weren't expecting this, you can ignore this email.</p>",
             _ => $"<p>{E(intro)}</p>"
         };
         return (subject, body);
