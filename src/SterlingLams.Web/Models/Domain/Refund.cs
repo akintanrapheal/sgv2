@@ -9,6 +9,16 @@ public enum RefundStatus
     Rejected = 2,
 }
 
+/// <summary>Inventory's per-item decision on a returned unit once Finance has approved the refund:
+/// put it back on the shelf, or write it off as damaged (recorded as shrinkage). Only meaningful when
+/// the refund requested a restock.</summary>
+public enum RestockDecision
+{
+    Pending = 0,
+    Restocked = 1,
+    WrittenOff = 2,
+}
+
 /// <summary>
 /// A return/refund against a sale (POS or online). It is created as a REQUEST (PendingApproval) —
 /// nothing is paid out or restocked until Finance approves it, at which point the payout, stock
@@ -68,4 +78,11 @@ public class RefundItem
     public int Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public decimal LineTotal => Quantity * UnitPrice;
+
+    // ── Inventory restock decision (Step 2) ──────────────────────────────────────
+    /// <summary>Set by Inventory after Finance approves a restock-requested refund: Restocked puts the
+    /// units back; WrittenOff records a damaged-return write-off (shrinkage) and keeps them off the shelf.</summary>
+    public RestockDecision RestockDecision { get; set; } = RestockDecision.Pending;
+    public string? RestockDecidedByUserId { get; set; }
+    public DateTime? RestockDecidedAt { get; set; }
 }
