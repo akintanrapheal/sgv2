@@ -322,7 +322,8 @@
                         id = v.Id,
                         name = v.Name,
                         priceAdjustment = v.PriceAdjustment,
-                        imageUrl = v.ImageUrl,
+                        // Same 1000px WebP transform as the main image/thumbnails — the raw URL renders soft.
+                        imageUrl = string.IsNullOrEmpty(v.ImageUrl) ? null : Img.Cld(v.ImageUrl, 1000),
                         inStock = v.Available > 0,
                         available = v.Available,
                         lowStock = v.Available > 0 && v.Available <= lowStockThreshold,

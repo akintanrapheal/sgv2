@@ -150,7 +150,11 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
                     </svg>
                     <input id="till-search" type="text" autocomplete="off" placeholder="Search or scan barcode…"
-                           class="w-full pl-9 pr-4 py-2 text-sm bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:border-brand-500 focus:bg-white transition-colors" />
+                           class="w-full pl-9 pr-9 py-2 text-sm bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:border-brand-500 focus:bg-white transition-colors" />
+                    <button type="button" id="till-search-clear" title="Clear (Esc)"
+                            class="hidden absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 items-center justify-center rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
                 </div>
                 <button type="button" id="quick-item-btn" title="Add a one-off / un-barcoded item"
                         class="flex-shrink-0 flex items-center gap-1 px-3 py-2 text-xs font-medium text-brand-600 border border-brand-200 rounded-lg hover:bg-brand-50 transition-colors">
@@ -832,7 +836,32 @@
     const homeBtn = document.getElementById('home-btn');
     const breadcrumbDivider = document.getElementById('breadcrumb-divider');
     const breadcrumbCat = document.getElementById('breadcrumb-cat');
+    const clearBtn = document.getElementById('till-search-clear');
     let activeCategoryId = null, debounce, lastResults = [];
+
+    // Show the ✕ whenever the search/scan box has text.
+    function toggleClear() {
+        if (!clearBtn) return;
+        const has = !!searchBox.value;
+        clearBtn.classList.toggle('hidden', !has);
+        clearBtn.classList.toggle('flex', has);
+    }
+    // Clear the box and return to browsing (the active category, or the category grid).
+    function clearSearch() {
+        searchBox.value = '';
+        toggleClear();
+        if (activeCategoryId !== null) {
+            showCategoryProducts(activeCategoryId, breadcrumbCat.textContent);
+        } else {
+            catGrid.classList.remove('hidden');
+            resultsEl.classList.add('hidden');
+            homeBtn.classList.add('hidden'); homeBtn.classList.remove('flex');
+            breadcrumbDivider.classList.add('hidden'); breadcrumbCat.classList.add('hidden');
+        }
+        searchBox.focus();
+    }
+    clearBtn?.addEventListener('click', clearSearch);
+    searchBox.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); clearSearch(); } });
 
     async function loadCategories() {
         const res = await fetch('/Pos/Categories');
@@ -909,6 +938,7 @@
     });
 
     searchBox.addEventListener('input', () => {
+        toggleClear();
         clearTimeout(debounce);
         debounce = setTimeout(() => {
             if (searchBox.value.trim()) {
@@ -1016,19 +1046,21 @@
 
     async function onScan(code) {
         if (!code) return;
+        const clearBox = () => { searchBox.value = ''; toggleClear(); };
         // Store-pickup QR pass — verify instead of product search.
-        if (/^SGPICK-/i.test(code)) { if (window.openPickupVerify) window.openPickupVerify(code); searchBox.value = ''; return; }
+        if (/^SGPICK-/i.test(code)) { if (window.openPickupVerify) window.openPickupVerify(code); clearBox(); return; }
         const res = await fetch('/Pos/Search?q=' + encodeURIComponent(code));
         const items = await res.json();
         // A specific variant's barcode was scanned (e.g. Silver 011005) → add that exact variant, no picker.
         const vm = items.find(p => p.scanVariantId != null);
         if (vm) {
             const v = (vm.variants || []).find(x => x.id === vm.scanVariantId);
-            if (v) { await add(vm, v); searchBox.value = ''; return; }
+            if (v) { await add(vm, v); clearBox(); return; }
         }
         const exact = items.find(p => (p.barcode && p.barcode.toLowerCase() === code.toLowerCase()) || (p.sku && p.sku.toLowerCase() === code.toLowerCase()));
-        if (exact && exact.stock > 0) { add(exact); searchBox.value = ''; }
-        else { lastResults = items; catGrid.classList.add('hidden'); resultsEl.classList.remove('hidden'); renderProducts(items); }
+        if (exact && exact.stock > 0) { add(exact); clearBox(); }
+        // No exact hit — show the matches so the user can pick one (then the ✕ clears them).
+        else { lastResults = items; catGrid.classList.add('hidden'); resultsEl.classList.remove('hidden'); toggleClear(); renderProducts(items); }
     }
 
     // ── Variant picker ────────────────────────────────────────────────────────
