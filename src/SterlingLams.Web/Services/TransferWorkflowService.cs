@@ -16,7 +16,7 @@ public record ItemQtyDto(int ItemId, int Qty);
 /// damaged, or are written off as won't-fulfil (this round). Pending is derived.</summary>
 public record ReceiveLineDto(int ItemId, int Received, int Damaged, int WontFulfil);
 
-public class TransferLine { public int ProductId { get; set; } public int Quantity { get; set; } }
+public class TransferLine { public int ProductId { get; set; } public int? ProductVariantId { get; set; } public int Quantity { get; set; } }
 public class TransferRequest
 {
     public int FromStoreId { get; set; }
@@ -96,6 +96,12 @@ public class TransferWorkflowService : ITransferWorkflowService
         if (lines.Select(l => l.ProductId).Distinct().Any(id => !products.ContainsKey(id)))
             return (false, "A product no longer exists.", null);
 
+        // Load the chosen variants so we can stamp their names and validate they exist.
+        var variantIds = lines.Where(l => l.ProductVariantId.HasValue).Select(l => l.ProductVariantId!.Value).Distinct().ToList();
+        var variants = await _db.ProductVariants.Where(v => variantIds.Contains(v.Id)).ToDictionaryAsync(v => v.Id);
+        if (variantIds.Any(vid => !variants.ContainsKey(vid)))
+            return (false, "A selected variant no longer exists.", null);
+
         var now = DateTime.UtcNow;
         var transferNumber = $"TRF-{now:yyMMdd}-{now:HHmmssfff}";
 
@@ -110,13 +116,18 @@ public class TransferWorkflowService : ITransferWorkflowService
             CreatedAt = now
         };
 
-        foreach (var grp in lines.GroupBy(l => l.ProductId))
+        // One line per (product, variant): a variant product transfers its specific variants; a plain
+        // product keeps ProductVariantId null (its stock lives on the null-variant row).
+        foreach (var grp in lines.GroupBy(l => new { l.ProductId, l.ProductVariantId }))
         {
-            var prod = products[grp.Key];
+            var prod = products[grp.Key.ProductId];
+            var variant = grp.Key.ProductVariantId.HasValue ? variants[grp.Key.ProductVariantId.Value] : null;
             transfer.Items.Add(new StockTransferItem
             {
                 ProductId = prod.Id,
+                ProductVariantId = grp.Key.ProductVariantId,
                 ProductName = prod.Name,
+                VariantName = variant?.Name,
                 RequestedQty = grp.Sum(l => l.Quantity)
             });
         }
@@ -162,14 +173,14 @@ public class TransferWorkflowService : ITransferWorkflowService
 
         var invs = await _db.StoreInventories
             .Where(si => si.StoreId == transfer.FromStoreId && productIds.Contains(si.ProductId)
-                && si.ProductVariantId == null)   // transfers are product-level (pool) in Phase 1 of variant stock
+                )   // all rows (incl. variants) at the branch — matched per item by (product, variant) below
             .ToListAsync();
 
         foreach (var item in transfer.Items)
         {
             var qty = qtyByItem.GetValueOrDefault(item.Id, 0);
             if (qty == 0) continue;
-            var available = invs.FirstOrDefault(i => i.ProductId == item.ProductId)?.AvailableQuantity ?? 0;
+            var available = invs.FirstOrDefault(i => i.ProductId == item.ProductId && i.ProductVariantId == item.ProductVariantId)?.AvailableQuantity ?? 0;
             if (qty > available)
                 return TransferActionResult.Fail($"Not enough available stock of '{item.ProductName}' at {transfer.FromStore.Name} (requested {qty}, available {available}).");
         }
@@ -179,7 +190,7 @@ public class TransferWorkflowService : ITransferWorkflowService
             var qty = qtyByItem.GetValueOrDefault(item.Id, 0);
             item.ApprovedQty = qty;
             if (qty > 0)
-                invs.First(i => i.ProductId == item.ProductId).QuantityReserved += qty;
+                invs.First(i => i.ProductId == item.ProductId && i.ProductVariantId == item.ProductVariantId).QuantityReserved += qty;
         }
 
         transfer.Status = TransferStatus.Approved;
@@ -259,7 +270,7 @@ public class TransferWorkflowService : ITransferWorkflowService
 
         var invs = await _db.StoreInventories
             .Where(si => si.StoreId == transfer.FromStoreId && productIds.Contains(si.ProductId)
-                && si.ProductVariantId == null)   // transfers are product-level (pool) in Phase 1 of variant stock
+                )   // all rows (incl. variants) at the branch — matched per item by (product, variant) below
             .ToListAsync();
 
         // The stock service throws InsufficientStockException from ApplyAsync itself, not on save, so
@@ -274,7 +285,7 @@ public class TransferWorkflowService : ITransferWorkflowService
                 var dispatched = qtyByItem.GetValueOrDefault(item.Id, 0);
                 var approved = item.ApprovedQty ?? 0;
 
-                var inv = invs.FirstOrDefault(i => i.ProductId == item.ProductId);
+                var inv = invs.FirstOrDefault(i => i.ProductId == item.ProductId && i.ProductVariantId == item.ProductVariantId);
                 if (inv != null) inv.QuantityReserved = Math.Max(0, inv.QuantityReserved - approved);
 
                 if (dispatched > 0)
@@ -432,13 +443,13 @@ public class TransferWorkflowService : ITransferWorkflowService
             await LockInventoryRowsAsync(productIds.Select(pid => (pid, transfer.FromStoreId)));
             var invs = await _db.StoreInventories
                 .Where(si => si.StoreId == transfer.FromStoreId && productIds.Contains(si.ProductId)
-                && si.ProductVariantId == null)   // transfers are product-level (pool) in Phase 1 of variant stock
+                )   // all rows (incl. variants) at the branch — matched per item by (product, variant) below
                 .ToListAsync();
             foreach (var item in transfer.Items)
             {
                 var approved = item.ApprovedQty ?? 0;
                 if (approved == 0) continue;
-                var inv = invs.FirstOrDefault(i => i.ProductId == item.ProductId);
+                var inv = invs.FirstOrDefault(i => i.ProductId == item.ProductId && i.ProductVariantId == item.ProductVariantId);
                 if (inv != null) inv.QuantityReserved = Math.Max(0, inv.QuantityReserved - approved);
             }
         }
