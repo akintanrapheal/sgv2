@@ -920,6 +920,32 @@ public class ProductsController : InventoryAreaController
         return lines;
     }
 
+    // ── Duplicate-variant cleanup ─────────────────────────────────────────────────
+    // Finds variants of the same product that mean the same colour+size (e.g. "9 / Silver"
+    // and "Silver / 9") and removes the empty duplicates, keeping the one that carries
+    // stock/sales/a barcode. Preview (GET) → Apply (POST). Groups where two+ variants hold
+    // stock/sales are skipped for manual review.
+    [HttpGet]
+    public async Task<IActionResult> DedupeVariants()
+    {
+        ViewData["Title"] = "Clean up duplicate variants";
+        var svc = HttpContext.RequestServices.GetRequiredService<SterlingLams.Web.Services.VariantDedupeService>();
+        return View(await svc.ScanAsync(commit: false));
+    }
+
+    [HttpPost, ActionName("DedupeVariants")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DedupeVariantsApply()
+    {
+        ViewData["Title"] = "Clean up duplicate variants";
+        var svc = HttpContext.RequestServices.GetRequiredService<SterlingLams.Web.Services.VariantDedupeService>();
+        var result = await svc.ScanAsync(commit: true);
+        if (result.VariantsDeleted > 0)
+            await LogAsync("VariantDedupe", "Product", null, $"Merged duplicate variants: {result.Summary}");
+        ViewData["Applied"] = true;
+        return View(result);
+    }
+
     private static string Slugify(string s)
     {
         s = (s ?? "").ToLowerInvariant().Trim();

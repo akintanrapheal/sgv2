@@ -219,6 +219,7 @@ builder.Services.AddSterlingLamsServices(builder.Configuration);
 builder.Services.Configure<SterlingLams.Web.Services.EmailOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.AddScoped<SterlingLams.Web.Services.IEmailService, SterlingLams.Web.Services.SmtpEmailService>();
 builder.Services.AddScoped<SterlingLams.Web.Services.BarcodeImportService>();
+builder.Services.AddScoped<SterlingLams.Web.Services.VariantDedupeService>();
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 // Per-IP throttle on auth & email-sending endpoints (brute-force / abuse protection).
