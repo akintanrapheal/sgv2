@@ -40,11 +40,15 @@ public class RefundApprovalService : IRefundApprovalService
     private readonly IGiftCardService _giftCards;
     private readonly IPaymentService _payment;
     private readonly IAuditService _audit;
+    private readonly IEmailService _email;
+    private readonly ISettingsService _settings;
     private readonly ILogger<RefundApprovalService> _log;
 
     public RefundApprovalService(ApplicationDbContext db, IStockService stock, ILoyaltyService loyalty,
-        IGiftCardService giftCards, IPaymentService payment, IAuditService audit, ILogger<RefundApprovalService> log)
+        IGiftCardService giftCards, IPaymentService payment, IAuditService audit,
+        IEmailService email, ISettingsService settings, ILogger<RefundApprovalService> log)
     {
+        _email = email; _settings = settings;
         _db = db; _stock = stock; _loyalty = loyalty; _giftCards = giftCards;
         _payment = payment; _audit = audit; _log = log;
     }
@@ -190,6 +194,10 @@ public class RefundApprovalService : IRefundApprovalService
         }
         catch { }
 
+        // 5) Tell the branch that returned items are waiting in the restock queue (best-effort).
+        if (refund.RestockRequested)
+            await NotifyRestockAsync(refund);
+
         return new RefundApprovalResult
         {
             Success = true,
@@ -197,6 +205,40 @@ public class RefundApprovalService : IRefundApprovalService
                 + (refund.RestockRequested ? " Returned items sent to Inventory for restock/write-off review." : "")
                 + (gatewayNote.Length > 0 ? $" {gatewayNote}." : "")
         };
+    }
+
+    /// <summary>Emails the destination branch (+ admin copy) that a refund's returned items are waiting
+    /// in Inventory → Returns to restock. Editable template "returns_to_restock". Never throws.</summary>
+    private async Task NotifyRestockAsync(Refund refund)
+    {
+        try
+        {
+            if (!await _settings.GetBoolAsync("notifications.branch_fulfilment", true)) return;
+            var store = refund.RestockStoreId is int sid
+                ? await _db.Stores.Where(s => s.Id == sid).Select(s => new { s.Name, s.Email }).FirstOrDefaultAsync()
+                : null;
+            var branch = (store?.Name ?? "your branch").Replace("Sterlin Glams ", "");
+
+            var subjT = await _settings.GetAsync("email.returns_to_restock.subject", "Returned items to restock at {branch}");
+            var introT = await _settings.GetAsync("email.returns_to_restock.intro",
+                "A refund has been approved and returned items are waiting at {branch}. Check each one in Inventory → Returns to restock and put it back on the shelf or write it off as damaged.");
+            string Fill(string s) => s.Replace("{branch}", branch);
+
+            string E(string s) => System.Net.WebUtility.HtmlEncode(s);
+            var rows = string.Concat(refund.Items.Select(i =>
+                $"<tr><td style=\"padding:8px 0;border-bottom:1px solid #f0efee;color:#374151;\"><strong style=\"color:#1c1917;\">{E(i.ProductName)}{(i.VariantName != null ? $" ({E(i.VariantName)})" : "")}</strong> &times; {i.Quantity}</td></tr>"));
+            var html = $"<h2 style=\"font-size:18px;margin:0 0 12px;\">Returned items to restock</h2>"
+                + $"<p style=\"color:#44403c;\">{E(Fill(introT))}</p>"
+                + $"<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"font-size:14px;border-collapse:collapse;margin:14px 0;\">{rows}</table>"
+                + "<p style=\"color:#57534e;font-size:13px;\">Open <strong>Inventory System → Returns to restock</strong> to put each item back on the shelf or write it off as damaged.</p>";
+
+            var subject = Fill(subjT);
+            if (!string.IsNullOrWhiteSpace(store?.Email)) await _email.SendAsync(store!.Email!, subject, html);
+            var admin = await _settings.GetAsync("notifications.admin_email", "");
+            if (!string.IsNullOrWhiteSpace(admin) && !string.Equals(admin, store?.Email, StringComparison.OrdinalIgnoreCase))
+                await _email.SendAsync(admin, "[copy] " + subject, html);
+        }
+        catch (Exception ex) { _log.LogError(ex, "Restock-notify email failed for {RefundNumber}", refund.RefundNumber); }
     }
 
     public async Task<RefundApprovalResult> RejectAsync(int refundId, string approverUserId, string? note = null)

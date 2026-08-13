@@ -182,7 +182,7 @@ public class ReportsController : InventoryAreaController
         if (categoryId.HasValue) q = q.Where(m => m.Product.CategoryId == categoryId.Value);
 
         // Shrinkage data is small; group in memory (avoids GroupBy-translation pitfalls).
-        var moves = await q.Select(m => new { m.ProductId, m.Product.Name, m.Product.Sku, m.Product.Price, m.Type, m.QuantityChange })
+        var moves = await q.Select(m => new { m.ProductId, m.Product.Name, m.Product.Sku, m.Product.Price, m.Type, m.QuantityChange, m.Note })
             .ToListAsync();
 
         var rows = moves
@@ -193,6 +193,9 @@ public class ReportsController : InventoryAreaController
                 Sku = g.Key.Sku,
                 DamageUnits = g.Where(x => x.Type == StockMovementType.Damage).Sum(x => -x.QuantityChange),
                 LossUnits = g.Where(x => x.Type == StockMovementType.Loss).Sum(x => -x.QuantityChange),
+                // Why it was written off — the distinct movement notes (e.g. "Damaged return write-off").
+                Reason = string.Join(", ", g.Where(x => !string.IsNullOrWhiteSpace(x.Note))
+                    .Select(x => x.Note!.Trim()).Distinct()),
                 Value = (g.Sum(x => -x.QuantityChange)) * g.Key.Price
             })
             .OrderByDescending(r => r.Value)
@@ -216,20 +219,21 @@ public class ReportsController : InventoryAreaController
             .Where(m => (m.Type == StockMovementType.Damage || m.Type == StockMovementType.Loss)
                      && m.CreatedAt >= f && m.CreatedAt < t.AddDays(1));
         if (categoryId.HasValue) q = q.Where(m => m.Product.CategoryId == categoryId.Value);
-        var moves = await q.Select(m => new { m.Product.Name, m.Product.Sku, m.Product.Price, m.Type, m.QuantityChange }).ToListAsync();
+        var moves = await q.Select(m => new { m.Product.Name, m.Product.Sku, m.Product.Price, m.Type, m.QuantityChange, m.Note }).ToListAsync();
         var rows = moves.GroupBy(m => new { m.Name, m.Sku, m.Price })
             .Select(g => new ShrinkageRow
             {
                 Name = g.Key.Name, Sku = g.Key.Sku,
                 DamageUnits = g.Where(x => x.Type == StockMovementType.Damage).Sum(x => -x.QuantityChange),
                 LossUnits = g.Where(x => x.Type == StockMovementType.Loss).Sum(x => -x.QuantityChange),
+                Reason = string.Join("; ", g.Where(x => !string.IsNullOrWhiteSpace(x.Note)).Select(x => x.Note!.Trim()).Distinct()),
                 Value = (g.Sum(x => -x.QuantityChange)) * g.Key.Price
             }).OrderByDescending(r => r.Value).ToList();
 
         var sb = new StringBuilder();
-        sb.AppendLine("Product,SKU,Damaged,Lost,Total units,Value");
+        sb.AppendLine("Product,SKU,Reason,Damaged,Lost,Total units,Value");
         foreach (var r in rows)
-            sb.Append(Csv(r.Name)).Append(',').Append(Csv(r.Sku)).Append(',').Append(r.DamageUnits)
+            sb.Append(Csv(r.Name)).Append(',').Append(Csv(r.Sku)).Append(',').Append(Csv(r.Reason)).Append(',').Append(r.DamageUnits)
               .Append(',').Append(r.LossUnits).Append(',').Append(r.DamageUnits + r.LossUnits)
               .Append(',').Append(r.Value).AppendLine();
         await LogAsync("Export", "Inventory", null, $"Exported shrinkage report ({rows.Count} product(s))");
@@ -834,6 +838,7 @@ public class ShrinkageRow
     public string? Sku { get; set; }
     public int DamageUnits { get; set; }
     public int LossUnits { get; set; }
+    public string Reason { get; set; } = "";
     public decimal Value { get; set; }
 }
 public class ShrinkageVm
