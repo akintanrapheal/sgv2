@@ -7,12 +7,14 @@
     bool showCategory = ViewBag.ShowCategory ?? false;
     bool showDescription = ViewBag.ShowDescription ?? false;
     bool showQr = ViewBag.ShowQr ?? false;
+    bool showSku = ViewBag.ShowSku ?? false;
+    bool showBarcodeNumber = ViewBag.ShowBarcodeNumber ?? false;
     string? customText = ViewBag.CustomText;
     string preset = ViewBag.Preset ?? "barcode";
     string printer = ViewBag.Printer ?? "a4";
     var json = System.Text.Json.JsonSerializer.Serialize(
-        Model.Select(p => new { name = p.Name, code = p.Code, price = p.Price, category = p.Category, description = p.Description ?? "" }));
-    var flags = System.Text.Json.JsonSerializer.Serialize(new { showName, showPrice, showBarcode, showCategory, showDescription, showQr, customText = customText ?? "", preset, printer });
+        Model.Select(p => new { name = p.Name, code = p.Code, price = p.Price, category = p.Category, description = p.Description ?? "", sku = p.Sku ?? "" }));
+    var flags = System.Text.Json.JsonSerializer.Serialize(new { showName, showPrice, showBarcode, showCategory, showDescription, showQr, showSku, showBarcodeNumber, customText = customText ?? "", preset, printer });
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -42,6 +44,8 @@
         .ldesc { font-size: 9px; color: #57534e; line-height: 1.2; margin-bottom: 4px; max-height: 24px; overflow: hidden; }
         .lprice { font-size: 13px; font-weight: bold; margin-top: 2px; }
         .lcustom { font-size: 9px; color: #57534e; margin-top: 3px; }
+        .lsku { font-size: 9px; color: #57534e; margin-bottom: 2px; font-family: monospace; }
+        .lcode { font-size: 10px; color: #1c1917; margin-top: 1px; font-family: monospace; letter-spacing: .5px; }
         .qr { width: 46px; height: 46px; margin: 3px auto 0; display: block; }
         .butterfly .qr { width: 34px; height: 34px; }
         .lpick { position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; cursor: pointer; }
@@ -111,8 +115,10 @@
                     let html = '<input type="checkbox" class="lpick no-print" checked title="Print this label" />';
                     if (F.showCategory && p.category) html += `<div class="lcat">${esc(p.category)}</div>`;
                     if (F.showName) html += `<div class="lname">${esc(p.name)}</div>`;
+                    if (F.showSku && p.sku) html += `<div class="lsku">SKU: ${esc(p.sku)}</div>`;
                     if (F.showDescription && p.description) html += `<div class="ldesc">${esc(p.description)}</div>`;
                     if (F.showBarcode) html += `<svg class="bc"></svg>`;
+                    if (F.showBarcodeNumber && p.code) html += `<div class="lcode">${esc(p.code)}</div>`;
                     if (F.showQr) html += `<img class="qr" alt="QR" src="Qr?text=${encodeURIComponent(p.code)}" />`;
                     if (F.showPrice) html += `<div class="lprice">₦${(+p.price).toLocaleString()}</div>`;
                     if (F.customText) html += `<div class="lcustom">${esc(F.customText)}</div>`;
