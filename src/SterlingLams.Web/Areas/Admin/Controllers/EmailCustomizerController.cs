@@ -34,6 +34,7 @@ public class EmailCustomizerController : AdminBaseController
         // Branch/staff emails — sent to a store's email (not the customer). Placeholders: {branch}, {order}.
         ("branch_transfer_request", "Transfer request (to branch)", "Send stock to {branch} — order {order}", "Please pack and send the stock below to {branch} so order {order} can be fulfilled."),
         ("branch_dispatch",         "Order dispatch (to branch)",   "Dispatch order {order}",                 "All stock for order {order} is now at your branch — please pack and fulfil it."),
+        ("returns_to_restock",      "Returns to restock (to branch)", "Returned items to restock at {branch}", "A refund has been approved and returned items are waiting at {branch}. Check each one in Inventory → Returns to restock and put it back on the shelf or write it off as damaged."),
         // Internal alert to the shop when an online order is placed. Placeholders: {order}, {date}, {name}.
         ("new_order_admin",         "New order alert (admin)",      "New order {order}",                      "A new order has come in — full details below. View it in the admin dashboard under Orders."),
     };
@@ -174,6 +175,21 @@ public class EmailCustomizerController : AdminBaseController
                 buttonLabel: type == "ready_for_pickup" ? "View pickup pass" : null,
                 buttonHref: type == "ready_for_pickup" ? "#" : null);
             return (subject, statusBody);
+        }
+
+        // Returns-to-restock: sent to the branch when a refund is approved with items to review.
+        if (type is "returns_to_restock")
+        {
+            string Fill(string s) => s.Replace("{branch}", "Lekki").Replace("{order}", "62175");
+            var thumb = OrderEmailTemplate.Thumb(SampleImg);
+            var items = $@"<table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""font-size:14px;border-collapse:collapse;"">
+                <tr><td style=""padding:8px 0;border-bottom:1px solid #f0efee;color:#374151;vertical-align:middle;"">{thumb}<strong style=""color:#1c1917;"">Pearl Dangle Loop Earrings (Silver)</strong> &times; 1</td></tr>
+              </table>";
+            var bodyR = $@"<h2 style=""font-size:18px;margin:0 0 12px;"">Returned items to restock</h2>
+                     <p style=""color:#44403c;"">{E(Fill(intro))}</p>
+                     <div style=""margin:14px 0;"">{items}</div>
+                     <p style=""color:#57534e;font-size:13px;"">Open <strong>Inventory System → Returns to restock</strong> to put each item back on the shelf or write it off as damaged.</p>";
+            return (Fill(subject), bodyR);
         }
 
         // Branch/staff emails — subject + intro carry {branch}/{order}; the rest (item list, transfer
