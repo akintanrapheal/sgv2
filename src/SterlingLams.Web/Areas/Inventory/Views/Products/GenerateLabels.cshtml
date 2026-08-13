@@ -9,6 +9,22 @@
     <p class="text-sm text-neutral-500 mt-1">Search or scan products (or pick a whole location / category), choose what to print, then generate the label sheet.</p>
 </div>
 
+<style>
+    /* Single-label live preview — mirrors the printed label (Labels.cshtml). Width follows the preset. */
+    #lbl-preview-box .label { position: relative; border: 1px solid #d6d3d1; border-radius: 4px; padding: 8px; text-align: center; background: #fff; font-family: Arial, Helvetica, sans-serif; color: #1c1917; }
+    #lbl-preview-box .label.shelf { width: 280px; }
+    #lbl-preview-box .label.barcode { width: 200px; }
+    #lbl-preview-box .label.butterfly { width: 150px; }
+    #lbl-preview-box .label.custom { width: 230px; }
+    #lbl-preview-box .lcat { font-size: 9px; text-transform: uppercase; letter-spacing: .5px; color: #78716c; margin-bottom: 2px; }
+    #lbl-preview-box .lname { font-size: 11px; line-height: 1.2; min-height: 14px; margin-bottom: 4px; font-weight: 600; }
+    #lbl-preview-box .ldesc { font-size: 9px; color: #57534e; line-height: 1.2; margin-bottom: 4px; }
+    #lbl-preview-box .lprice { font-size: 13px; font-weight: bold; margin-top: 2px; }
+    #lbl-preview-box .lcustom { font-size: 9px; color: #57534e; margin-top: 3px; }
+    #lbl-preview-box svg.bc { max-width: 100%; }
+    #lbl-preview-box .qr { width: 46px; height: 46px; margin: 3px auto 0; display: block; }
+</style>
+
 <div class="bg-white border border-neutral-200 rounded-md p-6 space-y-6 max-w-4xl">
     <!-- Search -->
     <div class="relative">
@@ -67,11 +83,32 @@
             <label class="flex items-center gap-2"><input type="checkbox" id="d-name" checked class="accent-blue-600" /> Name</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="d-price" checked class="accent-blue-600" /> Price</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="d-barcode" checked class="accent-blue-600" /> Barcode</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="d-qr" class="accent-blue-600" /> QR code</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="d-category" class="accent-blue-600" /> Category</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="d-description" class="accent-blue-600" /> Description</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="d-customtext-on" class="accent-blue-600" /> Custom text</label>
         </div>
         <input id="d-customtext" type="text" placeholder="Custom text to print on each label…" class="mt-2 w-full border border-neutral-200 rounded-md px-3 py-2 text-sm hidden focus:outline-none focus:border-blue-400" />
+    </div>
+
+    <!-- Printer + live preview -->
+    <div class="border-t border-neutral-100 pt-5">
+        <div class="grid sm:grid-cols-2 gap-5 items-start">
+            <div>
+                <h3 class="text-sm font-medium text-neutral-800 mb-2">Printer / label size</h3>
+                <select id="lbl-printer" class="w-full border border-neutral-200 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-blue-400">
+                    <option value="a4">A4 label sheet — many per page (Avery-style)</option>
+                    <option value="thermal">Barcode / thermal printer — label roll (50×30mm)</option>
+                    <option value="butterfly">Butterfly labels — jewellery tags (56×13mm)</option>
+                </select>
+                <p class="text-[11px] text-neutral-400 mt-1">Sets the page size when you print. A4 tiles many labels on a sheet; thermal &amp; butterfly print one label per page for a roll printer.</p>
+            </div>
+            <div>
+                <h3 class="text-sm font-medium text-neutral-800 mb-2">Live preview</h3>
+                <div id="lbl-preview-box" class="flex items-center justify-center bg-neutral-50 border border-neutral-200 rounded-md p-4 min-h-[130px]"></div>
+                <p id="lbl-preview-note" class="text-[11px] text-neutral-400 mt-1 text-center">Sample — reflects your choices above.</p>
+            </div>
+        </div>
     </div>
 
     <!-- Picked products -->
@@ -98,10 +135,12 @@
 </div>
 
 @section Scripts {
+<script src="~/js/jsbarcode.min.js" asp-append-version="true"></script>
 <script>
 (function () {
     var picks = {};   // id → { name, qty }
     var el = function (id) { return document.getElementById(id); };
+    function esc(s) { return String(s).replace(/[&<>]/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;' }[m]; }); }
 
     // ── Quantity stepper ──
     el('qty-minus').addEventListener('click', function () { el('lbl-qty').value = Math.max(1, (parseInt(el('lbl-qty').value, 10) || 1) - 1); });
@@ -126,9 +165,9 @@
         var id = e.target.getAttribute('data-qty'); if (id && picks[id]) picks[id].qty = Math.max(1, parseInt(e.target.value, 10) || 1);
     });
     el('lbl-rows').addEventListener('click', function (e) {
-        var rm = e.target.getAttribute('data-rm'); if (rm) { delete picks[rm]; renderRows(); }
+        var rm = e.target.getAttribute('data-rm'); if (rm) { delete picks[rm]; renderRows(); updatePreview(); }
     });
-    function addPick(id, nm) { if (!picks[id]) picks[id] = { name: nm, qty: parseInt(el('lbl-qty').value, 10) || 1 }; renderRows(); }
+    function addPick(id, nm) { if (!picks[id]) picks[id] = { name: nm, qty: parseInt(el('lbl-qty').value, 10) || 1 }; renderRows(); updatePreview(); }
 
     // ── Search typeahead ──
     var sug = el('lbl-suggest'); var t;
@@ -173,10 +212,43 @@
         params.set('name', el('d-name').checked); params.set('price', el('d-price').checked);
         params.set('barcode', el('d-barcode').checked); params.set('category', el('d-category').checked);
         params.set('description', el('d-description').checked);
+        params.set('qr', el('d-qr').checked);
         if (el('d-customtext-on').checked && el('d-customtext').value) params.set('customText', el('d-customtext').value);
         var preset = document.querySelector('input[name="preset"]:checked'); params.set('preset', preset ? preset.value : 'barcode');
+        params.set('printer', el('lbl-printer').value || 'a4');
         return __invBase + '/Products/Labels?' + params.toString();
     }
+
+    // ── Live single-label preview (mirrors Labels.cshtml) ──
+    function currentPreset() { var p = document.querySelector('input[name="preset"]:checked'); return p ? p.value : 'barcode'; }
+    function updatePreview() {
+        var box = el('lbl-preview-box'); if (!box) return;
+        var ids = Object.keys(picks);
+        var fp = ids.length ? picks[ids[0]] : null;
+        var name = fp ? fp.name : 'Product Name';
+        var code = '12345678';   // sample — each real product prints its own barcode/SKU
+        var lab = document.createElement('div');
+        lab.className = 'label ' + currentPreset();
+        var html = '';
+        if (el('d-category').checked) html += '<div class="lcat">Category</div>';
+        if (el('d-name').checked) html += '<div class="lname">' + esc(name) + '</div>';
+        if (el('d-description').checked) html += '<div class="ldesc">Sample description</div>';
+        if (el('d-barcode').checked) html += '<svg class="bc"></svg>';
+        if (el('d-qr').checked) html += '<img class="qr" alt="QR" src="' + __invBase + '/Products/Qr?text=' + encodeURIComponent(code) + '" />';
+        if (el('d-price').checked) html += '<div class="lprice">₦100.58</div>';
+        if (el('d-customtext-on').checked && el('d-customtext').value) html += '<div class="lcustom">' + esc(el('d-customtext').value) + '</div>';
+        lab.innerHTML = html || '<span style="color:#a3a3a3;font-size:12px;">Nothing selected to print</span>';
+        box.innerHTML = ''; box.appendChild(lab);
+        if (el('d-barcode').checked && window.JsBarcode) {
+            try { JsBarcode(lab.querySelector('.bc'), code, { format: 'CODE39', width: 1.0, height: 38, fontSize: 11, margin: 2 }); } catch (e) { }
+        }
+        var note = el('lbl-preview-note');
+        if (note) note.textContent = fp ? ('Preview of "' + fp.name + '" — barcode/QR shown are samples.') : 'Sample — reflects your choices above.';
+    }
+    // Re-render the preview whenever any option changes.
+    ['d-name', 'd-price', 'd-barcode', 'd-qr', 'd-category', 'd-description', 'd-customtext-on', 'd-customtext', 'lbl-printer']
+        .forEach(function (id) { var n = el(id); if (n) { n.addEventListener('change', updatePreview); n.addEventListener('input', updatePreview); } });
+    document.querySelectorAll('input[name="preset"]').forEach(function (r) { r.addEventListener('change', updatePreview); });
     function go() {
         if (!Object.keys(picks).length && !el('lbl-store').value && !el('lbl-category').value) {
             alert('Add at least one product, or choose a location / category.'); return;
@@ -185,6 +257,8 @@
     }
     el('lbl-preview').addEventListener('click', go);
     el('lbl-generate').addEventListener('click', go);
+
+    updatePreview();   // initial render
 })();
 </script>
 }

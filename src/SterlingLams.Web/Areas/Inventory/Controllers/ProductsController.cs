@@ -397,9 +397,24 @@ public class ProductsController : InventoryAreaController
     // Printable barcode label sheet. Accepts an explicit pick list ("pid:qty,…") and/or a bulk
     // selection (all products in a category and/or in stock at a location). Detail flags choose
     // which fields print. Products with per-variant barcodes get one label per variant.
+    // Small QR (PNG) for a label — encodes the item's barcode/SKU so a scan resolves the product.
+    // Cross-platform via QRCoder (no System.Drawing), same pattern as PickupController.Qr.
+    [HttpGet]
+    [Microsoft.AspNetCore.OutputCaching.OutputCache(Duration = 3600, VaryByQueryKeys = new[] { "text" })]
+    public IActionResult Qr(string? text)
+    {
+        text = (text ?? "").Trim();
+        if (text.Length == 0 || text.Length > 512) return NotFound();
+        using var gen = new QRCoder.QRCodeGenerator();
+        using var data = gen.CreateQrCode(text, QRCoder.QRCodeGenerator.ECCLevel.M);
+        var png = new QRCoder.PngByteQRCode(data).GetGraphic(6);
+        return File(png, "image/png");
+    }
+
     public async Task<IActionResult> Labels(string? ids, int? categoryId, int? storeId, int qty = 1,
         bool name = true, bool price = true, bool barcode = true, bool category = false,
-        bool description = false, string? customText = null, string preset = "barcode")
+        bool description = false, string? customText = null, string preset = "barcode", string printer = "a4",
+        bool qr = false)
     {
         if (qty < 1) qty = 1;
         if (qty > 200) qty = 200;
@@ -444,8 +459,9 @@ public class ProductsController : InventoryAreaController
 
         ViewData["Title"] = "Barcode Labels";
         ViewBag.ShowName = name; ViewBag.ShowPrice = price; ViewBag.ShowBarcode = barcode;
-        ViewBag.ShowCategory = category; ViewBag.ShowDescription = description;
+        ViewBag.ShowCategory = category; ViewBag.ShowDescription = description; ViewBag.ShowQr = qr;
         ViewBag.CustomText = customText; ViewBag.Preset = preset;
+        ViewBag.Printer = new[] { "a4", "thermal", "butterfly" }.Contains(printer) ? printer : "a4";
         return View(rows);
     }
 
