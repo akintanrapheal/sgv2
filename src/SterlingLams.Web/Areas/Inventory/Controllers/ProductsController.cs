@@ -414,7 +414,7 @@ public class ProductsController : InventoryAreaController
     public async Task<IActionResult> Labels(string? ids, int? categoryId, int? storeId, int qty = 1,
         bool name = true, bool price = true, bool barcode = true, bool category = false,
         bool description = false, string? customText = null, string preset = "barcode", string printer = "a4",
-        bool qr = false)
+        bool qr = false, bool sku = false, bool barcodeNumber = false)
     {
         if (qty < 1) qty = 1;
         if (qty > 200) qty = 200;
@@ -452,14 +452,15 @@ public class ProductsController : InventoryAreaController
             var variants = p.Variants.Where(v => v.IsActive && !string.IsNullOrEmpty(v.Barcode))
                 .OrderBy(v => v.Name).ToList();
             var labels = variants.Count > 0
-                ? variants.Select(v => new LabelRow { Name = $"{p.Name} – {v.Name}", Price = p.Price + (v.PriceAdjustment ?? 0), Code = v.Barcode!, Category = catName, Description = desc }).ToList()
-                : new List<LabelRow> { new() { Name = p.Name, Price = p.Price, Code = p.Barcode ?? p.Sku ?? ("P" + p.Id), Category = catName, Description = desc } };
+                ? variants.Select(v => new LabelRow { Name = $"{p.Name} – {v.Name}", Price = p.Price + (v.PriceAdjustment ?? 0), Code = v.Barcode!, Sku = v.Sku ?? p.Sku, Category = catName, Description = desc }).ToList()
+                : new List<LabelRow> { new() { Name = p.Name, Price = p.Price, Code = p.Barcode ?? p.Sku ?? ("P" + p.Id), Sku = p.Sku, Category = catName, Description = desc } };
             for (var i = 0; i < copies; i++) rows.AddRange(labels);
         }
 
         ViewData["Title"] = "Barcode Labels";
         ViewBag.ShowName = name; ViewBag.ShowPrice = price; ViewBag.ShowBarcode = barcode;
         ViewBag.ShowCategory = category; ViewBag.ShowDescription = description; ViewBag.ShowQr = qr;
+        ViewBag.ShowSku = sku; ViewBag.ShowBarcodeNumber = barcodeNumber;
         ViewBag.CustomText = customText; ViewBag.Preset = preset;
         ViewBag.Printer = new[] { "a4", "thermal", "butterfly" }.Contains(printer) ? printer : "a4";
         return View(rows);
@@ -986,7 +987,8 @@ public class LabelRow
 {
     public string Name { get; set; } = "";
     public decimal Price { get; set; }
-    public string Code { get; set; } = "";
+    public string Code { get; set; } = "";       // the barcode value (also printable as a number)
+    public string? Sku { get; set; }
     public string Category { get; set; } = "";
     public string? Description { get; set; }
 }

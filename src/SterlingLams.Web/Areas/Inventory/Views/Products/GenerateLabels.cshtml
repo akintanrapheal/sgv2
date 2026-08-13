@@ -16,11 +16,19 @@
     #lbl-preview-box .label.barcode { width: 200px; }
     #lbl-preview-box .label.butterfly { width: 150px; }
     #lbl-preview-box .label.custom { width: 230px; }
+    /* Printer/label-stock sizes (mm to px at 96dpi) — the preview matches the physical label. */
+    #lbl-preview-box .label.pr-thermal { width: 189px; min-height: 113px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    #lbl-preview-box .label.pr-butterfly { width: 212px; min-height: 49px; padding: 3px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    #lbl-preview-box .label.pr-butterfly .lname { font-size: 8px; min-height: 0; margin-bottom: 1px; }
+    #lbl-preview-box .label.pr-butterfly .lprice { font-size: 9px; }
+    #lbl-preview-box .label.pr-butterfly .qr { width: 30px; height: 30px; }
     #lbl-preview-box .lcat { font-size: 9px; text-transform: uppercase; letter-spacing: .5px; color: #78716c; margin-bottom: 2px; }
     #lbl-preview-box .lname { font-size: 11px; line-height: 1.2; min-height: 14px; margin-bottom: 4px; font-weight: 600; }
     #lbl-preview-box .ldesc { font-size: 9px; color: #57534e; line-height: 1.2; margin-bottom: 4px; }
     #lbl-preview-box .lprice { font-size: 13px; font-weight: bold; margin-top: 2px; }
     #lbl-preview-box .lcustom { font-size: 9px; color: #57534e; margin-top: 3px; }
+    #lbl-preview-box .lsku { font-size: 9px; color: #57534e; margin-bottom: 2px; font-family: monospace; }
+    #lbl-preview-box .lcode { font-size: 10px; color: #1c1917; margin-top: 1px; font-family: monospace; letter-spacing: .5px; }
     #lbl-preview-box svg.bc { max-width: 100%; }
     #lbl-preview-box .qr { width: 46px; height: 46px; margin: 3px auto 0; display: block; }
 </style>
@@ -83,7 +91,9 @@
             <label class="flex items-center gap-2"><input type="checkbox" id="d-name" checked class="accent-blue-600" /> Name</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="d-price" checked class="accent-blue-600" /> Price</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="d-barcode" checked class="accent-blue-600" /> Barcode</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="d-barcodenum" class="accent-blue-600" /> Barcode number</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="d-qr" class="accent-blue-600" /> QR code</label>
+            <label class="flex items-center gap-2"><input type="checkbox" id="d-sku" class="accent-blue-600" /> SKU</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="d-category" class="accent-blue-600" /> Category</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="d-description" class="accent-blue-600" /> Description</label>
             <label class="flex items-center gap-2"><input type="checkbox" id="d-customtext-on" class="accent-blue-600" /> Custom text</label>
@@ -211,6 +221,7 @@
         params.set('qty', el('lbl-qty').value || '1');
         params.set('name', el('d-name').checked); params.set('price', el('d-price').checked);
         params.set('barcode', el('d-barcode').checked); params.set('category', el('d-category').checked);
+        params.set('sku', el('d-sku').checked); params.set('barcodeNumber', el('d-barcodenum').checked);
         params.set('description', el('d-description').checked);
         params.set('qr', el('d-qr').checked);
         if (el('d-customtext-on').checked && el('d-customtext').value) params.set('customText', el('d-customtext').value);
@@ -227,13 +238,17 @@
         var fp = ids.length ? picks[ids[0]] : null;
         var name = fp ? fp.name : 'Product Name';
         var code = '12345678';   // sample — each real product prints its own barcode/SKU
+        var printer = el('lbl-printer').value || 'a4';
         var lab = document.createElement('div');
-        lab.className = 'label ' + currentPreset();
+        // A4 uses the preset's label width; thermal/butterfly show the physical label size instead.
+        lab.className = 'label ' + (printer === 'a4' ? currentPreset() : 'pr-' + printer);
         var html = '';
         if (el('d-category').checked) html += '<div class="lcat">Category</div>';
         if (el('d-name').checked) html += '<div class="lname">' + esc(name) + '</div>';
+        if (el('d-sku').checked) html += '<div class="lsku">SKU: SG-1234</div>';
         if (el('d-description').checked) html += '<div class="ldesc">Sample description</div>';
         if (el('d-barcode').checked) html += '<svg class="bc"></svg>';
+        if (el('d-barcodenum').checked) html += '<div class="lcode">' + code + '</div>';
         if (el('d-qr').checked) html += '<img class="qr" alt="QR" src="' + __invBase + '/Products/Qr?text=' + encodeURIComponent(code) + '" />';
         if (el('d-price').checked) html += '<div class="lprice">₦100.58</div>';
         if (el('d-customtext-on').checked && el('d-customtext').value) html += '<div class="lcustom">' + esc(el('d-customtext').value) + '</div>';
@@ -246,7 +261,7 @@
         if (note) note.textContent = fp ? ('Preview of "' + fp.name + '" — barcode/QR shown are samples.') : 'Sample — reflects your choices above.';
     }
     // Re-render the preview whenever any option changes.
-    ['d-name', 'd-price', 'd-barcode', 'd-qr', 'd-category', 'd-description', 'd-customtext-on', 'd-customtext', 'lbl-printer']
+    ['d-name', 'd-price', 'd-barcode', 'd-barcodenum', 'd-qr', 'd-sku', 'd-category', 'd-description', 'd-customtext-on', 'd-customtext', 'lbl-printer']
         .forEach(function (id) { var n = el(id); if (n) { n.addEventListener('change', updatePreview); n.addEventListener('input', updatePreview); } });
     document.querySelectorAll('input[name="preset"]').forEach(function (r) { r.addEventListener('change', updatePreview); });
     function go() {
