@@ -8,12 +8,21 @@ namespace SterlingLams.Web.Infrastructure;
 
 public static class RoleSeedData
 {
+    // FULL grantable access — every section + its :manage + all settings groups. Given to the built-in
+    // privileged roles so they behave exactly as before this change; the super admin (owner) then
+    // restricts them on Roles & Permissions. (Only the owner ACCOUNT bypasses permissions entirely.)
+    private static readonly string[] FullGrants = AdminSections.All
+        .SelectMany(s => new[] { s.Key, s.Key + ":manage" })
+        .Append("Settings:manage").Distinct().ToArray();
+
     // Default staff roles and the sections they can access out of the box.
     private static readonly Dictionary<string, string[]> DefaultRoles = new()
     {
-        // Owner & Developer ship empty — the administrator ticks exactly what each can access.
-        ["Owner"]        = Array.Empty<string>(),
-        ["Developer"]    = Array.Empty<string>(),
+        // Admin/Owner/Developer are now permission-driven (restrictable) — seeded with full access so
+        // nothing breaks on upgrade. Only seeded when the role has NO permissions yet (see below).
+        ["Admin"]        = FullGrants,
+        ["Owner"]        = FullGrants,
+        ["Developer"]    = FullGrants,
         ["Operations"]   = new[] { "Dashboard", "Orders", "Inventory", "Stores" },
         ["Sales"]        = new[] { "Dashboard", "Orders", "Customers", "Discounts" },
         ["Inventory"]    = new[] { "Dashboard", "Products", "Inventory", "Stores", "Categories", "Attributes" },

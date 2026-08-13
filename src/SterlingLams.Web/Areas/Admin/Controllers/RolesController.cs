@@ -15,12 +15,14 @@ public class RolesController : AdminBaseController
     // Section == null → only full Administrators can manage roles (privilege-escalation guard)
     protected override string? Section => null;
 
-    // Owner is view-only here: only Admin + Developer may create/edit/delete roles.
+    // Roles & Permissions is super-admin-only: only the owner account can create, edit or delete roles
+    // (the base controller already blocks non-super-admins since Section == null; this is belt-and-braces
+    // for writes).
     public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
         var m = context.HttpContext.Request.Method;
         var isWrite = m == "POST" || m == "PUT" || m == "DELETE" || m == "PATCH";
-        if (isWrite && !AdminSections.IsSystemManager(User))
+        if (isWrite && !AdminSections.IsSuperAdmin(User))
         {
             context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
             return;
@@ -33,8 +35,11 @@ public class RolesController : AdminBaseController
     private readonly IPermissionService _perms;
     private readonly ApplicationDbContext _db;
 
-    // Roles that cannot be edited or deleted (built-in full-access roles + the Customer role).
-    private static readonly string[] SystemRoles = { "Admin", "Owner", "Developer", "Customer" };
+    // Built-in roles: their PERMISSIONS are editable by the super admin (so Admin/Owner/Developer can be
+    // restricted), but they cannot be renamed or deleted (code references them by name). "Customer" is
+    // not a backend role and is never editable here.
+    private static readonly string[] LockedRoles = { "Admin", "Owner", "Developer", "Customer" };
+    private static bool IsCustomer(string? name) => string.Equals(name, "Customer", StringComparison.OrdinalIgnoreCase);
 
     public RolesController(
         RoleManager<IdentityRole> roleManager,
@@ -61,21 +66,21 @@ public class RolesController : AdminBaseController
             if (name == "Customer") continue; // not a backend role
 
             var usersInRole = await _userManager.GetUsersInRoleAsync(name);
-            // Collapse granular grants ("Orders", "Orders:manage", "Settings:General") to distinct
-            // base-section labels for the summary column.
-            var sections = AdminSections.FullAccessRoles.Contains(name)
-                ? AdminSections.All.Select(s => s.Label).ToList()
-                : (await _perms.GetRoleSectionsAsync(name))
-                    .Select(key => { var i = key.IndexOf(':'); return i < 0 ? key : key[..i]; })
-                    .Distinct()
-                    .Select(baseKey => AdminSections.All.FirstOrDefault(s => s.Key == baseKey)?.Label ?? baseKey)
-                    .ToList();
+            // Every role (Admin included) is now permission-driven, so the summary reflects the actual
+            // granted sections. Collapse granular grants ("Orders", "Orders:manage", "Settings:General")
+            // to distinct base-section labels.
+            var sections = (await _perms.GetRoleSectionsAsync(name))
+                .Select(key => { var i = key.IndexOf(':'); return i < 0 ? key : key[..i]; })
+                .Distinct()
+                .Select(baseKey => AdminSections.All.FirstOrDefault(s => s.Key == baseKey)?.Label ?? baseKey)
+                .ToList();
 
             rows.Add(new AdminRoleRow
             {
                 Name = name,
-                IsSystem = SystemRoles.Contains(name),
-                IsFullAccess = AdminSections.FullAccessRoles.Contains(name),
+                IsSystem = LockedRoles.Contains(name),   // built-in → not deletable/renamable
+                CanEdit = !IsCustomer(name),             // permissions editable (Admin/Owner/Developer too)
+                IsFullAccess = false,                    // no role is unconditionally full any more — only the super admin
                 UserCount = usersInRole.Count,
                 Sections = sections,
             });
@@ -94,7 +99,7 @@ public class RolesController : AdminBaseController
     {
         ViewData["Title"] = "Edit Role";
 
-        if (string.IsNullOrEmpty(id) || SystemRoles.Contains(id))
+        if (string.IsNullOrEmpty(id) || IsCustomer(id))
         {
             TempData["Error"] = "That role cannot be edited.";
             return RedirectToAction(nameof(Index));
@@ -121,10 +126,22 @@ public class RolesController : AdminBaseController
             return RedirectToAction(nameof(Create));
         }
 
-        if (SystemRoles.Contains(name))
+        // Customer isn't a backend role; built-in roles can't be created-over or renamed, but their
+        // permissions ARE editable (that's the whole point of this change).
+        if (IsCustomer(name))
+        {
+            TempData["Error"] = "That role cannot be edited.";
+            return RedirectToAction(nameof(Index));
+        }
+        if (vm.IsNew && LockedRoles.Contains(name))
         {
             TempData["Error"] = "That role name is reserved.";
             return RedirectToAction(nameof(Index));
+        }
+        if (!vm.IsNew && LockedRoles.Contains(vm.OriginalName ?? "") && !name.Equals(vm.OriginalName, StringComparison.OrdinalIgnoreCase))
+        {
+            TempData["Error"] = "Built-in roles can't be renamed — you can still change their permissions.";
+            return RedirectToAction(nameof(Edit), new { id = vm.OriginalName });
         }
 
         if (vm.IsNew)
@@ -188,9 +205,9 @@ public class RolesController : AdminBaseController
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete(string id)
     {
-        if (SystemRoles.Contains(id))
+        if (LockedRoles.Contains(id))
         {
-            TempData["Error"] = "System roles cannot be deleted.";
+            TempData["Error"] = "Built-in roles cannot be deleted.";
             return RedirectToAction(nameof(Index));
         }
 
