@@ -528,8 +528,9 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
     public class AdminRoleRow
     {
         public string Name { get; set; } = "";
-        public bool IsSystem { get; set; }          // Admin / Customer — not editable/deletable
-        public bool IsFullAccess { get; set; }      // Admin
+        public bool IsSystem { get; set; }          // built-in (Admin/Owner/Developer/Customer) — not deletable/renamable
+        public bool CanEdit { get; set; }           // permissions editable (everything except Customer)
+        public bool IsFullAccess { get; set; }      // legacy display flag — always false now (only the super admin is unrestricted)
         public int UserCount { get; set; }
         public List<string> Sections { get; set; } = new();  // section labels
     }

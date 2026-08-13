@@ -31,6 +31,8 @@ public static class SeedData
                     logger.LogInformation("Created role: {Role}", role);
                 }
             }
+            // Admin/Owner/Developer full-permission seeding happens in RoleSeedData (after those roles
+            // exist) — see RoleSeedData.DefaultRoles.
 
             // â”€â”€â”€ Categories â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             var categories = new[]

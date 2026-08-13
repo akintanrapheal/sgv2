@@ -35,7 +35,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             // Expose allowed sections to the shared layout (sidebar)
             var allowed = await perms.GetAllowedSectionsAsync(User);
             ViewData["AllowedSections"] = allowed;
-            ViewData["IsFullAdmin"] = AdminSections.IsFullAccess(User);
+            // "Full admin" in the admin area now means the SUPER ADMIN (owner): only they see every
+            // section + the owner-only screens. Every other role — Admin included — is shown only what
+            // its permissions grant.
+            ViewData["IsFullAdmin"] = AdminSections.IsSuperAdmin(User);
             ViewData["IsOwner"] = AdminSections.IsOwner(User);   // stricter: the configured owner account only
 
             // Inventory-team staff operate in the dedicated Inventory System, not the website admin.
@@ -54,10 +57,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             var section = Section;
 
-            // Admin-only controllers (Section == null): only full admins pass
+            // Super-admin-only controllers (Section == null: Users, Roles, Integrations): only the
+            // super admin (owner) passes. These manage roles, staff, billing and gateway keys.
             if (section == null)
             {
-                if (!AdminSections.IsFullAccess(User))
+                if (!AdminSections.IsSuperAdmin(User))
                 {
                     context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
                     return;

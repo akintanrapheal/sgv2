@@ -107,6 +107,18 @@ public static class AdminSections
         return false;
     }
 
+    /// <summary>The SUPER ADMIN — the configured owner account (by email). Has unconditional access to
+    /// the whole admin area (bypasses section permissions) and is the ONLY account that can edit roles,
+    /// manage users, and touch billing/integrations. Every other role — including Admin/Owner/Developer —
+    /// is governed by its granted permissions, so the super admin can restrict them. Same identity as
+    /// <see cref="IsOwner"/>; named separately for clarity at the admin-area gates.</summary>
+    public static bool IsSuperAdmin(ClaimsPrincipal user) => IsOwner(user);
+
+    /// <summary>True if the given email/username belongs to a configured owner (super-admin) account.
+    /// Used to protect the owner account from being deleted, locked, demoted or role-changed by anyone.</summary>
+    public static bool IsOwnerEmail(string? email) =>
+        !string.IsNullOrWhiteSpace(email) && _ownerEmails.Any(o => o.Equals(email, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Admin + Developer — the roles that manage billing, users and roles. Owner is a view-only
     /// full-access role, so it is deliberately excluded from these management actions.</summary>
     public static bool IsSystemManager(ClaimsPrincipal user) => user.IsInRole("Admin") || user.IsInRole("Developer");

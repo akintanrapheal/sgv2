@@ -64,6 +64,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private bool IsSelf(ApplicationUser user) =>
             user.Id == User.FindFirstValue(ClaimTypes.NameIdentifier);
 
+        /// <summary>The configured owner (super-admin) account — protected from being deleted, locked,
+        /// demoted or role-changed by ANYONE, including other admins.</summary>
+        private static bool IsOwnerAccount(ApplicationUser user) =>
+            AdminSections.IsOwnerEmail(user.Email) || AdminSections.IsOwnerEmail(user.UserName);
+
         public async Task<IActionResult> Index(string q = "", string role = "", string status = "", int page = 1)
         {
             ViewData["Title"] = "User Management";
@@ -462,6 +467,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var user = await _userManager.FindByIdAsync(id);
             if (user == null) return NotFound();
 
+            if (IsOwnerAccount(user))
+            {
+                TempData["Error"] = "The super-admin account is protected — its role can't be changed.";
+                return RedirectToAction(nameof(Index));
+            }
             if (IsSelf(user))
             {
                 TempData["Error"] = "You cannot change your own role.";
@@ -500,6 +510,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         {
             var user = await _userManager.FindByIdAsync(id);
             if (user == null) return NotFound();
+            if (IsOwnerAccount(user))
+            {
+                TempData["Error"] = "The super-admin account is protected and can't be revoked.";
+                return RedirectToAction(nameof(Index));
+            }
             if (IsSelf(user))
             {
                 TempData["Error"] = "You cannot revoke your own access.";
@@ -532,6 +547,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var user = await _userManager.FindByIdAsync(id);
             if (user == null) return NotFound();
 
+            if (IsOwnerAccount(user))
+            {
+                TempData["Error"] = "The super-admin account is protected and can't be deleted.";
+                return RedirectToAction(nameof(Index));
+            }
             if (IsSelf(user))
             {
                 TempData["Error"] = "You cannot delete your own account.";
@@ -611,6 +631,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var user = await _userManager.FindByIdAsync(id);
             if (user == null) return NotFound();
 
+            if (IsOwnerAccount(user))
+            {
+                TempData["Error"] = "The super-admin account is protected and can't be locked.";
+                return RedirectToAction(nameof(Index));
+            }
             if (IsSelf(user))
             {
                 TempData["Error"] = "You cannot lock your own account.";
