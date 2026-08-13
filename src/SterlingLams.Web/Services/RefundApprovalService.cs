@@ -19,6 +19,12 @@ public interface IRefundApprovalService
     /// <summary>Reject a pending refund — nothing is paid out or restocked; the quantity frees up.</summary>
     Task<RefundApprovalResult> RejectAsync(int refundId, string approverUserId, string? note = null);
     Task<int> PendingCountAsync();
+
+    /// <summary>Refunds whose returned items still need Inventory's restock/write-off decision.</summary>
+    Task<int> PendingRestockCountAsync();
+    /// <summary>Inventory resolves each returned unit: Restocked → back on the shelf; WrittenOff →
+    /// brought in then written off as damaged (nets to zero stock, shows in the Shrinkage report).</summary>
+    Task<RefundApprovalResult> ResolveStockAsync(int refundId, IDictionary<int, RestockDecision> decisions, string userId);
 }
 
 /// <summary>
@@ -46,6 +52,67 @@ public class RefundApprovalService : IRefundApprovalService
     public Task<int> PendingCountAsync() =>
         _db.Refunds.CountAsync(r => r.Status == RefundStatus.PendingApproval);
 
+    public Task<int> PendingRestockCountAsync() =>
+        _db.Refunds.CountAsync(r => r.Status == RefundStatus.Approved && r.RestockRequested
+            && r.Items.Any(i => i.RestockDecision == RestockDecision.Pending));
+
+    public async Task<RefundApprovalResult> ResolveStockAsync(int refundId, IDictionary<int, RestockDecision> decisions, string userId)
+    {
+        var refund = await _db.Refunds.Include(r => r.Items).FirstOrDefaultAsync(r => r.Id == refundId);
+        if (refund == null) return Fail("Refund not found.");
+        if (refund.Status != RefundStatus.Approved) return Fail("Only an approved refund's stock can be resolved.");
+        if (!refund.RestockRequested || refund.RestockStoreId is not int store || store <= 0)
+            return Fail("This refund has no items to return to stock.");
+
+        var now = DateTime.UtcNow;
+        int restocked = 0, wroteOff = 0;
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            foreach (var it in refund.Items.Where(i => i.RestockDecision == RestockDecision.Pending))
+            {
+                if (!decisions.TryGetValue(it.Id, out var d) || d == RestockDecision.Pending) continue;
+
+                if (d == RestockDecision.Restocked)
+                {
+                    await _stock.ApplyAsync(it.ProductId, it.ProductVariantId, store, it.Quantity,
+                        StockMovementType.Return, refund.RefundNumber, "Refund restock", userId, materializeVariant: true);
+                    restocked += it.Quantity;
+                }
+                else // WrittenOff — the unit came back damaged: bring it in, then write it off, so stock
+                     // nets to zero and the loss shows in the Shrinkage report as a Damage movement.
+                {
+                    await _stock.ApplyAsync(it.ProductId, it.ProductVariantId, store, it.Quantity,
+                        StockMovementType.Return, refund.RefundNumber, "Damaged return (in)", userId, materializeVariant: true);
+                    await _stock.ApplyAsync(it.ProductId, it.ProductVariantId, store, -it.Quantity,
+                        StockMovementType.Damage, refund.RefundNumber, "Damaged return write-off", userId);
+                    wroteOff += it.Quantity;
+                }
+                it.RestockDecision = d;
+                it.RestockDecidedByUserId = userId;
+                it.RestockDecidedAt = now;
+            }
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            var inner = ex; while (inner.InnerException != null) inner = inner.InnerException;
+            _log.LogError(ex, "Refund stock resolution failed for {RefundNumber}", refund.RefundNumber);
+            return Fail($"Could not update stock: {inner.Message}");
+        }
+
+        if (restocked == 0 && wroteOff == 0) return Fail("Choose restock or damaged for at least one item.");
+        try
+        {
+            await _audit.LogAsync("RefundRestock", "Refund", refund.Id.ToString(),
+                $"Resolved {refund.RefundNumber}: {restocked} restocked, {wroteOff} written off (damaged)", performedBy: userId);
+        }
+        catch { }
+        return new RefundApprovalResult { Success = true, Message = $"Updated — {restocked} restocked, {wroteOff} written off as damaged." };
+    }
+
     public async Task<RefundApprovalResult> ApproveAsync(int refundId, string approverUserId, string? note = null)
     {
         var refund = await _db.Refunds.Include(r => r.Items).FirstOrDefaultAsync(r => r.Id == refundId);
@@ -61,11 +128,9 @@ public class RefundApprovalService : IRefundApprovalService
         await using var tx = await _db.Database.BeginTransactionAsync();
         try
         {
-            // 1) Stock return (to the branch captured at request time).
-            if (refund.RestockRequested && refund.RestockStoreId is int store && store > 0)
-                foreach (var it in refund.Items)
-                    await _stock.ApplyAsync(it.ProductId, it.ProductVariantId, store, it.Quantity,
-                        StockMovementType.Return, refund.RefundNumber, userId: approverUserId);
+            // 1) Stock is NOT returned here. Approving pays out the money; a restock-requested refund
+            //    then goes to the Inventory restock queue, where each returned unit is put back or
+            //    written off as damaged (Step 2). Items stay RestockDecision.Pending until resolved.
 
             // 2) Gateway refund for online orders that were paid through a provider (best-effort).
             if (order.Channel == OrderChannel.Online && !string.IsNullOrEmpty(order.PaymentReference))
@@ -93,7 +158,7 @@ public class RefundApprovalService : IRefundApprovalService
             refund.DecisionNote = note;
 
             var stamp = $"Refund {refund.RefundNumber} approved: ₦{refund.Amount:N0}, {refund.Items.Sum(i => i.Quantity)} item(s)"
-                + (refund.RestockRequested ? " (restocked)" : " (no restock)")
+                + (refund.RestockRequested ? " (returned items pending Inventory restock/write-off review)" : " (no restock)")
                 + (gatewayNote.Length > 0 ? $"; {gatewayNote}" : "")
                 + (refund.WasFullRefund ? ". Order fully refunded." : ".");
             OrderNotes.AddSystem(_db, order.Id, stamp);
@@ -129,6 +194,7 @@ public class RefundApprovalService : IRefundApprovalService
         {
             Success = true,
             Message = $"Refund {refund.RefundNumber} approved — ₦{refund.Amount:N0} paid out."
+                + (refund.RestockRequested ? " Returned items sent to Inventory for restock/write-off review." : "")
                 + (gatewayNote.Length > 0 ? $" {gatewayNote}." : "")
         };
     }

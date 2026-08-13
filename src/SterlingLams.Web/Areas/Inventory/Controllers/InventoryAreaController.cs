@@ -73,6 +73,10 @@ public abstract class InventoryAreaController : Controller
         var db = HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
         ViewData["PendingTransfersCount"] = await db.StockTransfers.CountAsync(
             t => t.Status == TransferStatus.PendingApproval || t.Status == TransferStatus.InTransit);
+        // Approved refunds whose returned items still need a restock / write-off decision (Step 2).
+        ViewData["PendingReturnsCount"] = await db.Refunds.CountAsync(
+            r => r.Status == RefundStatus.Approved && r.RestockRequested
+                && r.Items.Any(i => i.RestockDecision == RestockDecision.Pending));
 
         await next();
     }

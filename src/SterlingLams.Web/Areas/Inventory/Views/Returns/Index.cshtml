@@ -1,0 +1,70 @@
+@model List<SterlingLams.Web.Areas.Inventory.Controllers.PendingReturnVm>
+@{
+    ViewData["Title"] = "Returns to restock";
+}
+
+<div class="mb-5">
+    <h1 class="text-2xl font-semibold text-neutral-900">Returns to restock</h1>
+    <p class="text-sm text-neutral-500 mt-1">
+        Finance has approved these refunds and paid the customer. Decide what happens to each returned
+        item: <strong>Restock</strong> puts it back on the shelf; <strong>Damaged</strong> writes it off
+        (it stays off the shelf and shows in the Shrinkage report). Money isn't involved here.
+    </p>
+</div>
+
+@if (!Model.Any())
+{
+    <div class="bg-white border border-neutral-200 rounded-md p-10 text-center text-sm text-neutral-400">
+        Nothing waiting. Approved refunds with items to return will appear here.
+    </div>
+}
+else
+{
+    <div class="space-y-4 max-w-3xl">
+        @foreach (var r in Model)
+        {
+            <form asp-area="Inventory" asp-controller="Returns" asp-action="Resolve" method="post"
+                  class="bg-white border border-neutral-200 rounded-md p-4">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@r.Id" />
+
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-mono text-[11px] text-neutral-400">@r.Number</span>
+                            <span class="text-sm font-medium text-neutral-800">Order @r.Order</span>
+                            <span class="text-[11px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">@r.Channel</span>
+                        </div>
+                        <div class="text-xs text-neutral-500 mt-0.5">
+                            Returns to <span class="text-neutral-700">@r.StoreName</span>
+                            @if (r.ApprovedAt.HasValue) { <text>· approved @r.ApprovedAt.Value.ToLocalTime().ToString("dd MMM, HH:mm")</text> }
+                            · @r.Reason
+                        </div>
+                    </div>
+                    <button type="submit" class="rounded-md bg-neutral-900 text-white text-sm px-4 py-2 hover:bg-neutral-700 transition-colors">Apply</button>
+                </div>
+
+                <div class="divide-y divide-neutral-100 border-t border-neutral-100">
+                    @foreach (var it in r.Items)
+                    {
+                        <div class="flex flex-wrap items-center justify-between gap-3 py-2.5">
+                            <div class="text-sm text-neutral-800">
+                                @it.Qty× @it.Name@(it.Variant != null ? $" ({it.Variant})" : "")
+                            </div>
+                            <div class="flex items-center gap-4 text-sm">
+                                <label class="flex items-center gap-1.5 cursor-pointer">
+                                    <input type="radio" name="decisions[@it.ItemId]" value="restock" checked class="accent-emerald-600" />
+                                    <span class="text-emerald-700">Restock</span>
+                                </label>
+                                <label class="flex items-center gap-1.5 cursor-pointer">
+                                    <input type="radio" name="decisions[@it.ItemId]" value="writeoff" class="accent-rose-600" />
+                                    <span class="text-rose-600">Damaged — write off</span>
+                                </label>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </form>
+        }
+    </div>
+}
