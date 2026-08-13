@@ -95,6 +95,7 @@ public class HomeController : Controller
     }
 
     [HttpPost]
+    [ValidateAntiForgeryToken]
     [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("auth")]
     public async Task<IActionResult> Subscribe(string email)
     {
@@ -114,6 +115,7 @@ public class HomeController : Controller
     /// discount. A unique single-use coupon is minted only for a genuinely new subscriber (so it can't be
     /// farmed by re-submitting), and only while the offer is switched on.</summary>
     [HttpPost]
+    [ValidateAntiForgeryToken]
     [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("auth")]
     public async Task<IActionResult> WelcomeOffer(string email)
     {

@@ -644,10 +644,11 @@ function bindProductCards(root) {
         const btn = form.querySelector('button[type=submit]');
         btn.disabled = true; if (msg) msg.textContent = '';
         try {
+            const tok = pop.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
             const res = await fetch('/Home/WelcomeOffer', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'email=' + encodeURIComponent(email)
+                body: 'email=' + encodeURIComponent(email) + '&__RequestVerificationToken=' + encodeURIComponent(tok)
             });
             const data = await res.json();
             if (data.success) {
