@@ -6,11 +6,13 @@
     bool showBarcode = ViewBag.ShowBarcode ?? true;
     bool showCategory = ViewBag.ShowCategory ?? false;
     bool showDescription = ViewBag.ShowDescription ?? false;
+    bool showQr = ViewBag.ShowQr ?? false;
     string? customText = ViewBag.CustomText;
     string preset = ViewBag.Preset ?? "barcode";
+    string printer = ViewBag.Printer ?? "a4";
     var json = System.Text.Json.JsonSerializer.Serialize(
         Model.Select(p => new { name = p.Name, code = p.Code, price = p.Price, category = p.Category, description = p.Description ?? "" }));
-    var flags = System.Text.Json.JsonSerializer.Serialize(new { showName, showPrice, showBarcode, showCategory, showDescription, customText = customText ?? "", preset });
+    var flags = System.Text.Json.JsonSerializer.Serialize(new { showName, showPrice, showBarcode, showCategory, showDescription, showQr, customText = customText ?? "", preset, printer });
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -40,6 +42,8 @@
         .ldesc { font-size: 9px; color: #57534e; line-height: 1.2; margin-bottom: 4px; max-height: 24px; overflow: hidden; }
         .lprice { font-size: 13px; font-weight: bold; margin-top: 2px; }
         .lcustom { font-size: 9px; color: #57534e; margin-top: 3px; }
+        .qr { width: 46px; height: 46px; margin: 3px auto 0; display: block; }
+        .butterfly .qr { width: 34px; height: 34px; }
         .lpick { position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; cursor: pointer; }
         @@media print {
             .no-print { display: none !important; }
@@ -49,8 +53,37 @@
             .label.unchecked { display: none !important; }
         }
     </style>
+    @* Printer / label-stock specific page + label sizing. A4 = a grid on a sheet; thermal &
+       butterfly = one label per page sized to the physical stock (roll / dumbbell labels). *@
+    @if (printer == "thermal")
+    {
+        <style>
+            @@page { size: 50mm 30mm; margin: 1mm; }
+            .pr-thermal .sheet { display: block; padding: 0; gap: 0; }
+            .pr-thermal .label { width: 50mm; min-height: 28mm; border-radius: 0; display: flex;
+                flex-direction: column; align-items: center; justify-content: center; }
+            @@media print { .pr-thermal .label { border: 0; page-break-after: always; } }
+        </style>
+    }
+    else if (printer == "butterfly")
+    {
+        <style>
+            @@page { size: 56mm 13mm; margin: 0; }
+            .pr-butterfly .sheet { display: block; padding: 0; gap: 0; }
+            /* Dumbbell jewellery label: barcode sits on the tail that wraps the item. */
+            .pr-butterfly .label { width: 56mm; height: 13mm; border-radius: 0; padding: 1mm 2mm;
+                display: flex; flex-direction: column; align-items: center; justify-content: center; }
+            .pr-butterfly .lname { font-size: 8px; min-height: 0; margin: 0; }
+            .pr-butterfly .lprice { font-size: 9px; margin: 0; }
+            @@media print { .pr-butterfly .label { border: 0; page-break-after: always; } }
+        </style>
+    }
+    else
+    {
+        <style>@@page { size: A4; margin: 8mm; }</style>
+    }
 </head>
-<body>
+<body class="pr-@printer">
     <div class="toolbar no-print">
         <span>Copies each:</span>
         <input id="copies" type="number" value="1" min="1" max="50" />
@@ -80,6 +113,7 @@
                     if (F.showName) html += `<div class="lname">${esc(p.name)}</div>`;
                     if (F.showDescription && p.description) html += `<div class="ldesc">${esc(p.description)}</div>`;
                     if (F.showBarcode) html += `<svg class="bc"></svg>`;
+                    if (F.showQr) html += `<img class="qr" alt="QR" src="Qr?text=${encodeURIComponent(p.code)}" />`;
                     if (F.showPrice) html += `<div class="lprice">₦${(+p.price).toLocaleString()}</div>`;
                     if (F.customText) html += `<div class="lcustom">${esc(F.customText)}</div>`;
                     el.innerHTML = html;
