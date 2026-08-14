@@ -1204,7 +1204,7 @@ public class PosController : Controller
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
                 variants = p.ProductType == "variable"
                     ? p.Variants.Where(v => v.IsActive)
-                        .Select(v => new { id = v.Id, name = v.Name, priceAdjustment = v.PriceAdjustment }).ToList()
+                        .Select(v => new { id = v.Id, name = v.Name, price = v.Price }).ToList()
                     : null
             })
             .ToListAsync();
@@ -1246,7 +1246,7 @@ public class PosController : Controller
             {
                 p.id, p.name, p.sku, p.barcode, p.categoryId, p.price, image = PosThumb(p.image),
                 stock = ProdAvail(snapInv, p.id),
-                variants = p.variants?.Select(v => new { v.id, v.name, v.priceAdjustment, stock = VarAvail(snapInv, p.id, v.id) })
+                variants = p.variants?.Select(v => new { v.id, v.name, v.price, stock = VarAvail(snapInv, p.id, v.id) })
             }),
             customers
         });
@@ -1298,7 +1298,7 @@ public class PosController : Controller
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
                 variants = p.ProductType == "variable"
                     ? p.Variants.Where(v => v.IsActive)
-                        .Select(v => new { id = v.Id, name = v.Name, barcode = v.Barcode, priceAdjustment = v.PriceAdjustment }).ToList()
+                        .Select(v => new { id = v.Id, name = v.Name, barcode = v.Barcode, price = v.Price }).ToList()
                     : null
             })
             .ToListAsync();
@@ -1313,7 +1313,7 @@ public class PosController : Controller
             // When a specific variant's barcode was scanned, tell the till which one so it can add that
             // exact variant straight away (no variant-picker prompt).
             scanVariantId = p.variants?.FirstOrDefault(v => v.barcode != null && v.barcode.ToLowerInvariant() == qlc)?.id,
-            variants = p.variants?.Select(v => new { v.id, v.name, v.barcode, v.priceAdjustment, stock = VarAvail(inv, p.id, v.id) })
+            variants = p.variants?.Select(v => new { v.id, v.name, v.barcode, v.price, stock = VarAvail(inv, p.id, v.id) })
         }));
     }
 
@@ -1693,7 +1693,7 @@ public class PosController : Controller
             var isCustom = prod.IsCustomItem;
             var variant = (!isCustom && line.VariantId.HasValue) ? prod.Variants.FirstOrDefault(v => v.Id == line.VariantId) : null;
             // Custom (one-off) lines carry their own name + price; everything else uses the catalog.
-            var unitPrice = isCustom ? Math.Max(0, line.UnitPrice ?? 0) : prod.EffectivePrice + (variant?.PriceAdjustment ?? 0);
+            var unitPrice = isCustom ? Math.Max(0, line.UnitPrice ?? 0) : (variant?.Price ?? prod.EffectivePrice);
             var lineName = isCustom ? (string.IsNullOrWhiteSpace(line.Name) ? "Custom item" : line.Name.Trim()) : prod.Name;
             var lineDiscount = Math.Max(0, Math.Min(line.DiscountAmount, unitPrice * qty));
             subtotal += unitPrice * qty;
@@ -1905,7 +1905,7 @@ public class PosController : Controller
             if (!products.TryGetValue(line.ProductId, out var prod)) { shortfalls.Add($"#{line.ProductId} (removed)"); continue; }
             var qty = Math.Max(1, line.Quantity);
             var variant = line.VariantId.HasValue ? prod.Variants.FirstOrDefault(v => v.Id == line.VariantId) : null;
-            var unitPrice = prod.EffectivePrice + (variant?.PriceAdjustment ?? 0);
+            var unitPrice = (variant?.Price ?? prod.EffectivePrice);
             var lineDiscount = Math.Max(0, Math.Min(line.DiscountAmount, unitPrice * qty));
             subtotal += unitPrice * qty;
             totalDiscount += lineDiscount;

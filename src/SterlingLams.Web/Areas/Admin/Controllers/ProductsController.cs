@@ -198,7 +198,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     Name            = v.Name,
                     Sku             = v.Sku,
                     ImageUrl        = v.ImageUrl,
-                    PriceAdjustment = v.PriceAdjustment,
+                    Price           = v.Price,
                     StockQuantity   = v.StockQuantity,
                     IsActive        = v.IsActive,
                     AttributeLabels = v.AttributeValues
@@ -339,16 +339,17 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             int saved = 0;
             foreach (var variant in variants)
             {
-                var sku  = form[$"sku_{variant.Id}"].FirstOrDefault()?.Trim();
-                var adj  = form[$"adj_{variant.Id}"].FirstOrDefault();
-                var img  = form[$"img_{variant.Id}"].FirstOrDefault()?.Trim();
+                var sku   = form[$"sku_{variant.Id}"].FirstOrDefault()?.Trim();
+                var price = form[$"price_{variant.Id}"].FirstOrDefault();
+                var img   = form[$"img_{variant.Id}"].FirstOrDefault()?.Trim();
                 // The form sends hidden=false + optional checkbox=true; last value wins
                 var activeVals = form[$"active_{variant.Id}"];
                 var active = activeVals.Contains("true");
 
                 variant.Sku             = sku;
                 variant.ImageUrl        = string.IsNullOrWhiteSpace(img) ? null : img;
-                variant.PriceAdjustment = decimal.TryParse(adj,
+                // Blank = follow the base price (null); otherwise the exact price typed.
+                variant.Price           = decimal.TryParse(price,
                     System.Globalization.NumberStyles.Any,
                     System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
                 variant.IsActive        = active;

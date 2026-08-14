@@ -120,7 +120,7 @@ public class ProductsController : InventoryAreaController
                         Name = v.Name,
                         Sku = v.Sku,
                         Barcode = v.Barcode,
-                        Price = p.Price + (v.PriceAdjustment ?? 0)
+                        Price = v.Price ?? p.Price
                     }).ToList()
             })
             .ToListAsync();
@@ -465,7 +465,7 @@ public class ProductsController : InventoryAreaController
             var variants = p.Variants.Where(v => v.IsActive && !string.IsNullOrEmpty(v.Barcode))
                 .OrderBy(v => v.Name).ToList();
             var labels = variants.Count > 0
-                ? variants.Select(v => new LabelRow { Name = $"{p.Name} – {v.Name}", Price = p.Price + (v.PriceAdjustment ?? 0), Code = v.Barcode!, Sku = v.Sku ?? p.Sku, Category = catName, Description = desc }).ToList()
+                ? variants.Select(v => new LabelRow { Name = $"{p.Name} – {v.Name}", Price = v.Price ?? p.Price, Code = v.Barcode!, Sku = v.Sku ?? p.Sku, Category = catName, Description = desc }).ToList()
                 : new List<LabelRow> { new() { Name = p.Name, Price = p.Price, Code = p.Barcode ?? p.Sku ?? ("P" + p.Id), Sku = p.Sku, Category = catName, Description = desc } };
             for (var i = 0; i < copies; i++) rows.AddRange(labels);
         }

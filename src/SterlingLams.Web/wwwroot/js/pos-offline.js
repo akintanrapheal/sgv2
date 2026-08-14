@@ -98,7 +98,7 @@
       var variantName = null;
       if (prod && it.variantId && prod.variants) {
         var v = prod.variants.find(function (x) { return x.id === it.variantId; });
-        if (v) { if (v.priceAdjustment) unit += v.priceAdjustment; variantName = v.name; }
+        if (v) { if (v.price != null) unit = v.price; variantName = v.name; }
       }
       var qty = Math.max(1, it.quantity || 1);
       var lineDisc = Math.max(0, Math.min(it.discountAmount || 0, unit * qty));

@@ -133,7 +133,7 @@
                     <tr class="bg-neutral-50 text-xs text-neutral-400 border-b border-neutral-100">
                         <th class="text-left px-3 py-2 font-medium">Name</th>
                         <th class="text-left px-3 py-2 font-medium">SKU</th>
-                        <th class="text-right px-3 py-2 font-medium">Price adj.</th>
+                        <th class="text-right px-3 py-2 font-medium">Price</th>
                         <th class="text-left px-3 py-2 font-medium">Barcode</th>
                         <th class="px-2 py-2 w-10"></th>
                     </tr>
@@ -144,7 +144,7 @@
                         <tr>
                             <td class="px-3 py-2 text-neutral-700 text-xs">@v.Name</td>
                             <td class="px-3 py-2 text-neutral-500 text-xs font-mono">@(v.Sku ?? "—")</td>
-                            <td class="px-3 py-2 text-right text-neutral-500 text-xs">@(v.PriceAdjustment.HasValue ? "₦" + v.PriceAdjustment.Value.ToString("N2") : "—")</td>
+                            <td class="px-3 py-2 text-right text-neutral-500 text-xs">@(v.Price.HasValue ? "₦" + v.Price.Value.ToString("N2") : "— (base)")</td>
                             <td class="px-3 py-2">
                                 <input type="hidden" name="variantId" value="@v.Id" form="save-variants" />
                                 <input name="barcode" value="@v.Barcode" autocomplete="off" placeholder="Scan / type…" form="save-variants"

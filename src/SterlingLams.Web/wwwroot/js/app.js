@@ -414,19 +414,22 @@ function onQuickViewSelect() {
 }
 
 function updateQuickViewPrice() {
-    let adj = 0;
+    let variantPrice = null;
     if (qvState.variantId) {
         const v = qvState.variants.find(x => x.id === qvState.variantId);
-        if (v && v.priceAdjustment) adj = v.priceAdjustment;
+        if (v && v.price != null) variantPrice = v.price;
     }
     const eff = document.getElementById('qv-price-effective');
     const reg = document.getElementById('qv-price-regular');
-    const regular = qvState.price + adj;
-    if (qvState.salePrice != null) {
-        eff.textContent = fmtNaira(qvState.salePrice + adj); eff.classList.add('text-brand-600');
-        reg.textContent = fmtNaira(regular); reg.classList.remove('hidden');
+    // A variant with its own price wins outright (no sale strike-through); otherwise base/sale.
+    if (variantPrice != null) {
+        eff.textContent = fmtNaira(variantPrice); eff.classList.remove('text-brand-600');
+        reg.classList.add('hidden');
+    } else if (qvState.salePrice != null) {
+        eff.textContent = fmtNaira(qvState.salePrice); eff.classList.add('text-brand-600');
+        reg.textContent = fmtNaira(qvState.price); reg.classList.remove('hidden');
     } else {
-        eff.textContent = fmtNaira(regular); eff.classList.remove('text-brand-600');
+        eff.textContent = fmtNaira(qvState.price); eff.classList.remove('text-brand-600');
         reg.classList.add('hidden');
     }
 }

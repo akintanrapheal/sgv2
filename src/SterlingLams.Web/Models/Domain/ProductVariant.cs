@@ -11,7 +11,9 @@ public class ProductVariant
     public string Name { get; set; } = string.Empty;
     public string? Sku { get; set; }
     public string? Barcode { get; set; }
-    public decimal? PriceAdjustment { get; set; }
+    // Absolute selling price for this variant, set manually. Null = fall back to the product's
+    // (sale-aware) price. There is no auto-calculation from the base price any more.
+    public decimal? Price { get; set; }
     public int StockQuantity { get; set; }
     public bool IsActive { get; set; } = true;
 

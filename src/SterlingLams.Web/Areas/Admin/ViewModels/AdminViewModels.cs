@@ -303,7 +303,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string Name { get; set; } = "";
         public string? Sku { get; set; }
         public string? ImageUrl { get; set; }
-        public decimal? PriceAdjustment { get; set; }
+        public decimal? Price { get; set; }   // absolute variant price; null = use base price
         public int StockQuantity { get; set; }
         public bool IsActive { get; set; } = true;
         public List<string> AttributeLabels { get; set; } = new();  // e.g. ["Gold", "18\""]

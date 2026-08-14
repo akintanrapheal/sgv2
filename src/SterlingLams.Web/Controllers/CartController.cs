@@ -69,7 +69,7 @@ public class CartController : Controller
                 VariantName = variant?.Name,
                 Slug = product.Slug,
                 ImageUrl = product.Images.FirstOrDefault(i => i.IsPrimary)?.Url ?? "/images/placeholder.jpg",
-                UnitPrice = product.EffectivePrice + (variant?.PriceAdjustment ?? 0),
+                UnitPrice = (variant?.Price ?? product.EffectivePrice),
                 Quantity = Math.Min(Math.Max(1, quantity), available),
                 MaxQuantity = available
             });
@@ -123,7 +123,7 @@ public class CartController : Controller
                     VariantName = variant?.Name,
                     Slug = product.Slug,
                     ImageUrl = product.Images.FirstOrDefault(i => i.IsPrimary)?.Url ?? "/images/placeholder.jpg",
-                    UnitPrice = product.EffectivePrice + (variant?.PriceAdjustment ?? 0),
+                    UnitPrice = (variant?.Price ?? product.EffectivePrice),
                     Quantity = Math.Min(qty, available),
                     MaxQuantity = available
                 });
@@ -378,7 +378,7 @@ public class CartController : Controller
                 VariantName = variant?.Name,
                 Slug = product.Slug,
                 ImageUrl = product.Images.FirstOrDefault(i => i.IsPrimary)?.Url ?? product.Images.FirstOrDefault()?.Url ?? "/images/placeholder.jpg",
-                UnitPrice = product.EffectivePrice + (variant?.PriceAdjustment ?? 0),
+                UnitPrice = (variant?.Price ?? product.EffectivePrice),
                 Quantity = Math.Min(Math.Max(1, s.Quantity), available),
                 MaxQuantity = available
             });
