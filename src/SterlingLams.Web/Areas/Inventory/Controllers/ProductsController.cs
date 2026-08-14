@@ -479,7 +479,7 @@ public class ProductsController : InventoryAreaController
         ViewBag.Font = LabelFonts.TryGetValue(font, out var stack) ? stack : LabelFonts["arial"];
         ViewBag.FontSize = Math.Clamp(fontSize, 6, 24);
         ViewBag.CustomText = customText; ViewBag.Preset = preset;
-        ViewBag.Printer = new[] { "a4", "thermal", "butterfly" }.Contains(printer) ? printer : "a4";
+        ViewBag.Printer = new[] { "a4", "thermal", "tag30x15", "butterfly" }.Contains(printer) ? printer : "a4";
         return View(rows);
     }
 
