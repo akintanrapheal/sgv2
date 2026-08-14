@@ -23,6 +23,13 @@
     #lbl-preview-box .label.pr-thermal { width: 189px; min-height: 113px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     #lbl-preview-box .label.pr-butterfly { width: 212px; min-height: 49px; padding: 3px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     #lbl-preview-box .label.pr-butterfly .qr { width: 30px; height: 30px; }
+    /* 30x15mm tag (about 113x57px at 96dpi) — force everything tiny so name + QR + number fit. */
+    #lbl-preview-box .label.pr-tag30x15 { width: 113px; height: 57px; padding: 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; overflow: hidden; }
+    #lbl-preview-box .label.pr-tag30x15 .lname { font-size: 6px; line-height: 1.05; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    #lbl-preview-box .label.pr-tag30x15 .lsku,
+    #lbl-preview-box .label.pr-tag30x15 .lcode,
+    #lbl-preview-box .label.pr-tag30x15 .lprice { font-size: 6px; line-height: 1.05; margin: 0; }
+    #lbl-preview-box .label.pr-tag30x15 .qr { width: 32px; height: 32px; margin: 0; }
     #lbl-preview-box .lcat { font-size: var(--lbl-fs, 9px); text-transform: uppercase; letter-spacing: .5px; color: #78716c; margin-bottom: 2px; }
     #lbl-preview-box .lname { font-size: var(--lbl-fs, 9px); line-height: 1.25; margin-bottom: 2px; font-weight: 600; }
     #lbl-preview-box .ldesc { font-size: var(--lbl-fs, 9px); color: #57534e; line-height: 1.2; margin-bottom: 2px; }
@@ -110,6 +117,7 @@
                 <select id="lbl-printer" class="w-full border border-neutral-200 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-blue-400">
                     <option value="a4">A4 label sheet — many per page (Avery-style)</option>
                     <option value="thermal">Barcode / thermal printer — label roll (50×30mm)</option>
+                    <option value="tag30x15">Tag — 3×1.5cm (30×15mm)</option>
                     <option value="butterfly">Butterfly labels — jewellery tags (56×13mm)</option>
                 </select>
                 <p class="text-[11px] text-neutral-400 mt-1">Sets the page size when you print. A4 tiles many labels on a sheet; thermal &amp; butterfly print one label per page for a roll printer.</p>
