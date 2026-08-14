@@ -411,10 +411,23 @@ public class ProductsController : InventoryAreaController
         return File(png, "image/png");
     }
 
+    /// <summary>Label fonts the user can pick, keyed so nothing user-supplied reaches the stylesheet.
+    /// The key comes from the form; the CSS stack is what renders. Keep in sync with GenerateLabels.cshtml.</summary>
+    public static readonly Dictionary<string, string> LabelFonts = new()
+    {
+        ["arial"]     = "Arial, Helvetica, sans-serif",
+        ["verdana"]   = "Verdana, Geneva, sans-serif",
+        ["tahoma"]    = "Tahoma, Geneva, sans-serif",
+        ["trebuchet"] = "'Trebuchet MS', Helvetica, sans-serif",
+        ["georgia"]   = "Georgia, 'Times New Roman', serif",
+        ["times"]     = "'Times New Roman', Times, serif",
+        ["courier"]   = "'Courier New', Courier, monospace",
+    };
+
     public async Task<IActionResult> Labels(string? ids, int? categoryId, int? storeId, int qty = 1,
         bool name = true, bool price = true, bool barcode = true, bool category = false,
         bool description = false, string? customText = null, string preset = "barcode", string printer = "a4",
-        bool qr = false, bool sku = false, bool barcodeNumber = false)
+        bool qr = false, bool sku = false, bool barcodeNumber = false, string font = "arial", int fontSize = 9)
     {
         if (qty < 1) qty = 1;
         if (qty > 200) qty = 200;
@@ -461,6 +474,10 @@ public class ProductsController : InventoryAreaController
         ViewBag.ShowName = name; ViewBag.ShowPrice = price; ViewBag.ShowBarcode = barcode;
         ViewBag.ShowCategory = category; ViewBag.ShowDescription = description; ViewBag.ShowQr = qr;
         ViewBag.ShowSku = sku; ViewBag.ShowBarcodeNumber = barcodeNumber;
+        // Font is chosen from a fixed allow-list (key → CSS stack) so nothing user-supplied reaches the
+        // stylesheet; size is clamped to a sane label range.
+        ViewBag.Font = LabelFonts.TryGetValue(font, out var stack) ? stack : LabelFonts["arial"];
+        ViewBag.FontSize = Math.Clamp(fontSize, 6, 24);
         ViewBag.CustomText = customText; ViewBag.Preset = preset;
         ViewBag.Printer = new[] { "a4", "thermal", "butterfly" }.Contains(printer) ? printer : "a4";
         return View(rows);

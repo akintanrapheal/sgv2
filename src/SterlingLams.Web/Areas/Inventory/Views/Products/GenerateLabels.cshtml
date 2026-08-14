@@ -11,7 +11,10 @@
 
 <style>
     /* Single-label live preview — mirrors the printed label (Labels.cshtml). Width follows the preset. */
-    #lbl-preview-box .label { position: relative; border: 1px solid #d6d3d1; border-radius: 4px; padding: 8px; text-align: center; background: #fff; font-family: Arial, Helvetica, sans-serif; color: #1c1917; }
+    /* Font family (--lbl-ff) + base size (--lbl-fs) are set per preview render, so name/SKU/number/price
+       share one small consistent look — exactly what prints (Labels.cshtml). */
+    #lbl-preview-box .label { position: relative; border: 1px solid #d6d3d1; border-radius: 4px; padding: 8px; text-align: center; background: #fff; color: #1c1917;
+        font-family: var(--lbl-ff, Arial, Helvetica, sans-serif); font-size: var(--lbl-fs, 9px); }
     #lbl-preview-box .label.shelf { width: 280px; }
     #lbl-preview-box .label.barcode { width: 200px; }
     #lbl-preview-box .label.butterfly { width: 150px; }
@@ -19,16 +22,14 @@
     /* Printer/label-stock sizes (mm to px at 96dpi) — the preview matches the physical label. */
     #lbl-preview-box .label.pr-thermal { width: 189px; min-height: 113px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     #lbl-preview-box .label.pr-butterfly { width: 212px; min-height: 49px; padding: 3px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    #lbl-preview-box .label.pr-butterfly .lname { font-size: 8px; min-height: 0; margin-bottom: 1px; }
-    #lbl-preview-box .label.pr-butterfly .lprice { font-size: 9px; }
     #lbl-preview-box .label.pr-butterfly .qr { width: 30px; height: 30px; }
-    #lbl-preview-box .lcat { font-size: 9px; text-transform: uppercase; letter-spacing: .5px; color: #78716c; margin-bottom: 2px; }
-    #lbl-preview-box .lname { font-size: 11px; line-height: 1.2; min-height: 14px; margin-bottom: 4px; font-weight: 600; }
-    #lbl-preview-box .ldesc { font-size: 9px; color: #57534e; line-height: 1.2; margin-bottom: 4px; }
-    #lbl-preview-box .lprice { font-size: 13px; font-weight: bold; margin-top: 2px; }
-    #lbl-preview-box .lcustom { font-size: 9px; color: #57534e; margin-top: 3px; }
-    #lbl-preview-box .lsku { font-size: 9px; color: #57534e; margin-bottom: 2px; font-family: monospace; }
-    #lbl-preview-box .lcode { font-size: 10px; color: #1c1917; margin-top: 1px; font-family: monospace; letter-spacing: .5px; }
+    #lbl-preview-box .lcat { font-size: var(--lbl-fs, 9px); text-transform: uppercase; letter-spacing: .5px; color: #78716c; margin-bottom: 2px; }
+    #lbl-preview-box .lname { font-size: var(--lbl-fs, 9px); line-height: 1.25; margin-bottom: 2px; font-weight: 600; }
+    #lbl-preview-box .ldesc { font-size: var(--lbl-fs, 9px); color: #57534e; line-height: 1.2; margin-bottom: 2px; }
+    #lbl-preview-box .lprice { font-size: var(--lbl-fs, 9px); font-weight: bold; margin-top: 2px; }
+    #lbl-preview-box .lcustom { font-size: var(--lbl-fs, 9px); color: #57534e; margin-top: 3px; }
+    #lbl-preview-box .lsku { font-size: var(--lbl-fs, 9px); color: #57534e; margin-bottom: 2px; letter-spacing: .5px; }
+    #lbl-preview-box .lcode { font-size: var(--lbl-fs, 9px); color: #1c1917; margin-top: 1px; letter-spacing: .5px; }
     #lbl-preview-box svg.bc { max-width: 100%; }
     #lbl-preview-box .qr { width: 46px; height: 46px; margin: 3px auto 0; display: block; }
 </style>
@@ -112,6 +113,30 @@
                     <option value="butterfly">Butterfly labels — jewellery tags (56×13mm)</option>
                 </select>
                 <p class="text-[11px] text-neutral-400 mt-1">Sets the page size when you print. A4 tiles many labels on a sheet; thermal &amp; butterfly print one label per page for a roll printer.</p>
+
+                <div class="mt-4 grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs text-neutral-500 mb-1">Font</label>
+                        <select id="lbl-font" class="w-full border border-neutral-200 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-blue-400">
+                            <option value="arial">Arial</option>
+                            <option value="verdana">Verdana</option>
+                            <option value="tahoma">Tahoma</option>
+                            <option value="trebuchet">Trebuchet MS</option>
+                            <option value="georgia">Georgia</option>
+                            <option value="times">Times New Roman</option>
+                            <option value="courier">Courier New</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs text-neutral-500 mb-1">Font size (px)</label>
+                        <div class="inline-flex items-center border border-neutral-200 rounded-md overflow-hidden w-full">
+                            <button type="button" id="fs-minus" class="px-3 py-2 text-neutral-500 hover:bg-neutral-100">−</button>
+                            <input id="lbl-fontsize" type="number" min="6" max="24" value="9" class="flex-1 w-full text-center text-sm py-2 focus:outline-none" />
+                            <button type="button" id="fs-plus" class="px-3 py-2 text-neutral-500 hover:bg-neutral-100">+</button>
+                        </div>
+                    </div>
+                </div>
+                <p class="text-[11px] text-neutral-400 mt-1">Name, SKU, number &amp; price all print in this font &amp; size so everything fits small stock.</p>
             </div>
             <div>
                 <h3 class="text-sm font-medium text-neutral-800 mb-2">Live preview</h3>
@@ -227,10 +252,19 @@
         if (el('d-customtext-on').checked && el('d-customtext').value) params.set('customText', el('d-customtext').value);
         var preset = document.querySelector('input[name="preset"]:checked'); params.set('preset', preset ? preset.value : 'barcode');
         params.set('printer', el('lbl-printer').value || 'a4');
+        params.set('font', el('lbl-font').value || 'arial');
+        params.set('fontSize', el('lbl-fontsize').value || '9');
         return __invBase + '/Products/Labels?' + params.toString();
     }
 
     // ── Live single-label preview (mirrors Labels.cshtml) ──
+    // Font keys → CSS stacks. Keep in sync with ProductsController.LabelFonts.
+    var LBL_FONTS = {
+        arial: 'Arial, Helvetica, sans-serif', verdana: 'Verdana, Geneva, sans-serif',
+        tahoma: 'Tahoma, Geneva, sans-serif', trebuchet: "'Trebuchet MS', Helvetica, sans-serif",
+        georgia: "Georgia, 'Times New Roman', serif", times: "'Times New Roman', Times, serif",
+        courier: "'Courier New', Courier, monospace"
+    };
     function currentPreset() { var p = document.querySelector('input[name="preset"]:checked'); return p ? p.value : 'barcode'; }
     function updatePreview() {
         var box = el('lbl-preview-box'); if (!box) return;
@@ -238,30 +272,38 @@
         var fp = ids.length ? picks[ids[0]] : null;
         var name = fp ? fp.name : 'Product Name';
         var code = '12345678';   // sample — each real product prints its own barcode/SKU
+        var sku = '6012298';     // sample SKU number (no "SKU:" prefix on the label)
         var printer = el('lbl-printer').value || 'a4';
         var lab = document.createElement('div');
         // A4 uses the preset's label width; thermal/butterfly show the physical label size instead.
         lab.className = 'label ' + (printer === 'a4' ? currentPreset() : 'pr-' + printer);
+        lab.style.setProperty('--lbl-ff', LBL_FONTS[el('lbl-font').value] || LBL_FONTS.arial);
+        lab.style.setProperty('--lbl-fs', (parseInt(el('lbl-fontsize').value, 10) || 9) + 'px');
+        // Order: name · SKU (above QR) · QR · barcode number (below QR) · price.
         var html = '';
         if (el('d-category').checked) html += '<div class="lcat">Category</div>';
         if (el('d-name').checked) html += '<div class="lname">' + esc(name) + '</div>';
-        if (el('d-sku').checked) html += '<div class="lsku">SKU: SG-1234</div>';
         if (el('d-description').checked) html += '<div class="ldesc">Sample description</div>';
         if (el('d-barcode').checked) html += '<svg class="bc"></svg>';
-        if (el('d-barcodenum').checked) html += '<div class="lcode">' + code + '</div>';
+        if (el('d-sku').checked) html += '<div class="lsku">' + esc(sku) + '</div>';
         if (el('d-qr').checked) html += '<img class="qr" alt="QR" src="' + __invBase + '/Products/Qr?text=' + encodeURIComponent(code) + '" />';
+        if (el('d-barcodenum').checked) html += '<div class="lcode">' + code + '</div>';
         if (el('d-price').checked) html += '<div class="lprice">₦100.58</div>';
         if (el('d-customtext-on').checked && el('d-customtext').value) html += '<div class="lcustom">' + esc(el('d-customtext').value) + '</div>';
         lab.innerHTML = html || '<span style="color:#a3a3a3;font-size:12px;">Nothing selected to print</span>';
         box.innerHTML = ''; box.appendChild(lab);
         if (el('d-barcode').checked && window.JsBarcode) {
-            try { JsBarcode(lab.querySelector('.bc'), code, { format: 'CODE39', width: 1.0, height: 38, fontSize: 11, margin: 2 }); } catch (e) { }
+            try { JsBarcode(lab.querySelector('.bc'), code, { format: 'CODE39', width: 1.0, height: 38, displayValue: false, margin: 2 }); } catch (e) { }
         }
         var note = el('lbl-preview-note');
         if (note) note.textContent = fp ? ('Preview of "' + fp.name + '" — barcode/QR shown are samples.') : 'Sample — reflects your choices above.';
     }
+    // Font-size steppers.
+    el('fs-minus').addEventListener('click', function () { el('lbl-fontsize').value = Math.max(6, (parseInt(el('lbl-fontsize').value, 10) || 9) - 1); updatePreview(); });
+    el('fs-plus').addEventListener('click', function () { el('lbl-fontsize').value = Math.min(24, (parseInt(el('lbl-fontsize').value, 10) || 9) + 1); updatePreview(); });
+
     // Re-render the preview whenever any option changes.
-    ['d-name', 'd-price', 'd-barcode', 'd-barcodenum', 'd-qr', 'd-sku', 'd-category', 'd-description', 'd-customtext-on', 'd-customtext', 'lbl-printer']
+    ['d-name', 'd-price', 'd-barcode', 'd-barcodenum', 'd-qr', 'd-sku', 'd-category', 'd-description', 'd-customtext-on', 'd-customtext', 'lbl-printer', 'lbl-font', 'lbl-fontsize']
         .forEach(function (id) { var n = el(id); if (n) { n.addEventListener('change', updatePreview); n.addEventListener('input', updatePreview); } });
     document.querySelectorAll('input[name="preset"]').forEach(function (r) { r.addEventListener('change', updatePreview); });
     function go() {
