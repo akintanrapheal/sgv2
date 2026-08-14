@@ -105,18 +105,19 @@ else
     var reasons = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(reasons));
     var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
     var el = function (id) { return document.getElementById(id); };
-    var lines = {};   // pid → { name, barcode, category, expected, counted, reason }
+    var lines = {};   // "productId:variantId" → { id, variantId, name, barcode, category, expected, counted, reason }
     var reviewing = false;
+    function keyOf(id, variantId) { return id + ':' + (variantId != null && variantId !== '' ? variantId : ''); }
 
     function reasonOptions(sel) {
         return '<option value="">Reason…</option>' + reasons.map(function (r) { return '<option value="' + r + '"' + (r === sel ? ' selected' : '') + '>' + r + '</option>'; }).join('');
     }
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]); }); }
 
-    function rowHtml(pid, l) {
+    function rowHtml(key, l) {
         var counted = (l.counted === null || l.counted === undefined) ? '' : l.counted;
         var diff = counted !== '' && parseInt(counted, 10) !== l.expected;
-        return '<tr data-pid="' + pid + '">'
+        return '<tr data-key="' + esc(key) + '">'
             + '<td class="px-4 py-2.5 text-neutral-800">' + esc(l.name) + '</td>'
             + '<td class="px-4 py-2.5 text-neutral-500 font-mono text-xs">' + esc(l.barcode || '—') + '</td>'
             + '<td class="px-4 py-2.5 text-neutral-500 text-xs">' + esc(l.category || '—') + '</td>'
@@ -128,7 +129,7 @@ else
     function render() {
         var rows = el('st-rows'); var ids = Object.keys(lines);
         if (!ids.length) { rows.innerHTML = '<tr id="st-empty"><td colspan="6" class="px-4 py-16 text-center text-neutral-400 text-sm">Search or scan a product to add it to the count.</td></tr>'; updateCards(); return; }
-        rows.innerHTML = ids.map(function (pid) { return rowHtml(pid, lines[pid]); }).join('');
+        rows.innerHTML = ids.map(function (key) { return rowHtml(key, lines[key]); }).join('');
         updateCards();
     }
     function updateCards() {
@@ -141,33 +142,28 @@ else
         el('c-unc').textContent = ids.length - counted.length;
     }
 
-    function addProduct(p) {
-        // A product with options keeps its stock per option, so it can't be counted as one number
-        // here — the server refuses it too. Say so now rather than at the end of the count.
-        if (p.hasVariants) {
-            alert(p.name + ' has options, so its stock is counted per option.\n\n'
-                + 'Use Stock → Track Stock for this one.');
-            return;
-        }
-        if (!lines[p.id]) lines[p.id] = { name: p.name, barcode: p.barcode, category: p.category, expected: p.expected, counted: '', reason: '' };
+    function addLine(p) {
+        var key = keyOf(p.id, p.variantId);
+        if (!lines[key]) lines[key] = { id: p.id, variantId: (p.variantId != null ? p.variantId : null),
+            name: p.name, barcode: p.barcode, category: p.category, expected: p.expected, counted: '', reason: '' };
         render();
-        var tr = el('st-rows').querySelector('tr[data-pid="' + p.id + '"]');
+        var tr = el('st-rows').querySelector('tr[data-key="' + key + '"]');
         if (tr) { tr.scrollIntoView({ block: 'center' }); var i = tr.querySelector('[data-counted]'); if (i) i.focus(); }
     }
 
     el('st-rows').addEventListener('input', function (e) {
         if (!e.target.hasAttribute('data-counted')) return;
-        var tr = e.target.closest('tr'); var pid = tr.dataset.pid;
-        lines[pid].counted = e.target.value;
-        var diff = e.target.value !== '' && parseInt(e.target.value, 10) !== lines[pid].expected;
+        var tr = e.target.closest('tr'); var key = tr.dataset.key;
+        lines[key].counted = e.target.value;
+        var diff = e.target.value !== '' && parseInt(e.target.value, 10) !== lines[key].expected;
         tr.querySelector('[data-reasonwrap]').classList.toggle('hidden', !diff);
         updateCards();
     });
     el('st-rows').addEventListener('change', function (e) {
-        if (e.target.hasAttribute('data-reason')) lines[e.target.closest('tr').dataset.pid].reason = e.target.value;
+        if (e.target.hasAttribute('data-reason')) lines[e.target.closest('tr').dataset.key].reason = e.target.value;
     });
     el('st-rows').addEventListener('click', function (e) {
-        if (e.target.hasAttribute('data-rm')) { delete lines[e.target.closest('tr').dataset.pid]; render(); }
+        if (e.target.hasAttribute('data-rm')) { delete lines[e.target.closest('tr').dataset.key]; render(); }
     });
 
     var sug = el('st-suggest'); var t;
@@ -177,20 +173,21 @@ else
         t = setTimeout(function () {
             fetch(__invBase + '/Stocktake/StSearch?storeId=' + storeId + '&q=' + encodeURIComponent(q))
                 .then(function (r) { return r.json(); })
-                .then(function (list) {
-                    if (!list.length) { sug.classList.add('hidden'); return; }
-                    sug.innerHTML = list.map(function (p) {
-                        return '<button type="button" data-p="' + esc(JSON.stringify(p)) + '" class="flex items-center justify-between gap-3 w-full text-left px-4 py-2.5 text-sm hover:bg-neutral-50 border-b border-neutral-50">'
-                            + '<span>' + esc(p.name) + '</span><span class="text-blue-600 text-xs">Add</span></button>';
-                    }).join('');
-                    sug.classList.remove('hidden');
-                });
+                .then(function (list) { showSuggestions(list); });
         }, 200);
     });
+    function showSuggestions(list) {
+        if (!list || !list.length) { sug.classList.add('hidden'); return; }
+        sug.innerHTML = list.map(function (p) {
+            return '<button type="button" data-p="' + esc(JSON.stringify(p)) + '" class="flex items-center justify-between gap-3 w-full text-left px-4 py-2.5 text-sm hover:bg-neutral-50 border-b border-neutral-50">'
+                + '<span>' + esc(p.name) + '</span><span class="text-blue-600 text-xs">Add</span></button>';
+        }).join('');
+        sug.classList.remove('hidden');
+    }
     sug.addEventListener('click', function (e) {
         var b = e.target.closest('[data-p]'); if (!b) return;
         var raw = b.getAttribute('data-p').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-        addProduct(JSON.parse(raw));
+        addLine(JSON.parse(raw));
         el('st-search').value = ''; sug.classList.add('hidden');
     });
     el('st-search').addEventListener('keydown', function (e) {
@@ -199,9 +196,9 @@ else
         fetch(__invBase + '/Stocktake/ScanLookup?storeId=' + storeId + '&code=' + encodeURIComponent(code))
             .then(function (r) { return r.json(); })
             .then(function (d) {
-                if (d.found) { addProduct(d); el('st-search').value = ''; sug.classList.add('hidden'); return; }
-                // Not addable — say why when the server explains (e.g. it has options), rather than
-                // the scan appearing to do nothing.
+                if (d.found) { addLine(d); el('st-search').value = ''; sug.classList.add('hidden'); return; }
+                // Variant product scanned by its product code → let the user pick the exact option.
+                if (d.needsVariant && d.variants && d.variants.length) { showSuggestions(d.variants); return; }
                 if (d.message) { alert(d.message); el('st-search').value = ''; }
             });
     });
@@ -218,12 +215,12 @@ else
 
     el('st-complete').addEventListener('click', function () {
         var payload = []; var missingReason = false;
-        Object.keys(lines).forEach(function (pid) {
-            var l = lines[pid];
+        Object.keys(lines).forEach(function (key) {
+            var l = lines[key];
             if (l.counted === '' || l.counted === null) return;
             var c = parseInt(l.counted, 10); if (isNaN(c)) return;
             if (c !== l.expected && !l.reason) missingReason = true;
-            payload.push({ productId: parseInt(pid, 10), counted: c, reason: l.reason || null });
+            payload.push({ productId: l.id, variantId: (l.variantId != null ? l.variantId : null), counted: c, reason: l.reason || null });
         });
         if (!payload.length) { alert('Enter at least one count.'); return; }
         if (missingReason) { alert('Please select a reason for each difference.'); return; }

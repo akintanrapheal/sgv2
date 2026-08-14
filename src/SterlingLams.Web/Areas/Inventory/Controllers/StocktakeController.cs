@@ -45,24 +45,33 @@ public class StocktakeController : InventoryAreaController
     {
         q = (q ?? "").Trim();
         if (q.Length < 2) return Json(Array.Empty<object>());
-        var rows = await _db.Products
-            .Where(p => p.IsActive && (EF.Functions.ILike(p.Name, $"%{q}%")
-                     || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
-                     || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")))
-            .OrderBy(p => p.Name).Take(20)
-            .Select(p => new
-            {
-                id = p.Id, name = p.Name, sku = p.Sku, barcode = p.Barcode,
-                category = p.Category != null ? p.Category.Name : "",
-                expected = p.StoreInventories.Where(si => si.StoreId == storeId && si.ProductVariantId == null)
-                    .Select(si => (int?)si.QuantityOnHand).FirstOrDefault() ?? 0,
-                // Products with options can't be counted as one number here (see Complete) — the
-                // count screen uses this to mark them instead of letting them be added and rejected
-                // only on submit. Their "expected" above is the pool row, which for them is not
-                // where the stock lives.
-                hasVariants = p.Variants.Any(v => v.IsActive)
-            })
-            .ToListAsync();
+        // Match on the product OR any of its variants (name/sku/barcode). A variant product returns ONE
+        // row per option so the counter adds — and counts — the exact variant, never a shared pool.
+        var products = await _db.Products.Include(p => p.Variants).Include(p => p.Category)
+            .Where(p => p.IsActive && (
+                EF.Functions.ILike(p.Name, $"%{q}%")
+                || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
+                || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
+                || p.Variants.Any(v => v.IsActive && (EF.Functions.ILike(v.Sku ?? "", $"%{q}%") || EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")))))
+            .OrderBy(p => p.Name).Take(20).ToListAsync();
+
+        var pids = products.Select(p => p.Id).ToList();
+        var inv = await _db.StoreInventories.Where(si => si.StoreId == storeId && pids.Contains(si.ProductId))
+            .Select(si => new { si.ProductId, si.ProductVariantId, si.QuantityOnHand }).ToListAsync();
+        int Qty(int pid, int? vid) => inv.FirstOrDefault(x => x.ProductId == pid && x.ProductVariantId == vid)?.QuantityOnHand ?? 0;
+
+        var rows = new List<object>();
+        foreach (var p in products)
+        {
+            var cat = p.Category?.Name ?? "";
+            var vars = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).ToList();
+            if (vars.Count == 0)
+                rows.Add(new { id = p.Id, variantId = (int?)null, name = p.Name, sku = p.Sku, barcode = p.Barcode, category = cat, expected = Qty(p.Id, null) });
+            else
+                foreach (var v in vars)
+                    rows.Add(new { id = p.Id, variantId = (int?)v.Id, name = $"{p.Name} – {v.Name}", sku = v.Sku ?? p.Sku, barcode = v.Barcode ?? p.Barcode, category = cat, expected = Qty(p.Id, v.Id) });
+            if (rows.Count >= 30) break;
+        }
         return Json(rows);
     }
 
@@ -72,26 +81,42 @@ public class StocktakeController : InventoryAreaController
     {
         code = (code ?? "").Trim();
         if (code.Length == 0) return Json(new { found = false });
-        var p = await _db.Products
-            .Where(x => x.Barcode == code || x.Sku == code || x.Variants.Any(v => v.Barcode == code || v.Sku == code))
-            .Select(x => new
-            {
-                x.Id, x.Name, x.Sku, x.Barcode, x.IsActive,
-                category = x.Category != null ? x.Category.Name : "",
-                expected = x.StoreInventories.Where(si => si.StoreId == storeId && si.ProductVariantId == null)
-                    .Select(si => (int?)si.QuantityOnHand).FirstOrDefault() ?? 0,
-                hasVariants = x.Variants.Any(v => v.IsActive)
-            })
-            .FirstOrDefaultAsync();
-        if (p == null || !p.IsActive) return Json(new { found = false });
-        // Scanning a product with options: say so here rather than accepting the count and failing
-        // on submit. Its stock lives on the variant rows, not the pool row this screen reconciles.
-        if (p.hasVariants)
-            return Json(new { found = false, message = $"'{p.Name}' has options — count it per option in Stock → Track Stock." });
-        return Json(new { found = true, id = p.Id, name = p.Name, sku = p.Sku, barcode = p.Barcode, category = p.category, expected = p.expected });
+
+        // 1) A variant's own barcode/SKU → count THAT exact variant (its own expected qty).
+        var v = await _db.ProductVariants.Include(x => x.Product).ThenInclude(p => p.Category)
+            .FirstOrDefaultAsync(x => x.IsActive && x.Product.IsActive && (x.Barcode == code || x.Sku == code));
+        if (v != null)
+        {
+            var exp = await _stock.GetStockAsync(v.ProductId, v.Id, storeId, fallback: false);
+            return Json(new { found = true, id = v.ProductId, variantId = (int?)v.Id,
+                name = $"{v.Product.Name} – {v.Name}", sku = v.Sku ?? v.Product.Sku, barcode = v.Barcode,
+                category = v.Product.Category != null ? v.Product.Category.Name : "", expected = exp });
+        }
+
+        // 2) A product's own barcode/SKU.
+        var p = await _db.Products.Include(x => x.Variants).Include(x => x.Category)
+            .FirstOrDefaultAsync(x => x.IsActive && (x.Barcode == code || x.Sku == code));
+        if (p == null) return Json(new { found = false });
+
+        var vars = p.Variants.Where(x => x.IsActive).OrderBy(x => x.Name).ToList();
+        if (vars.Count == 0)
+        {
+            var exp = await _stock.GetStockAsync(p.Id, null, storeId, fallback: false);
+            return Json(new { found = true, id = p.Id, variantId = (int?)null, name = p.Name, sku = p.Sku,
+                barcode = p.Barcode, category = p.Category != null ? p.Category.Name : "", expected = exp });
+        }
+
+        // Variant product scanned by its PRODUCT code → let the counter pick which option.
+        var cat = p.Category?.Name ?? "";
+        var invp = await _db.StoreInventories.Where(si => si.StoreId == storeId && si.ProductId == p.Id)
+            .Select(si => new { si.ProductVariantId, si.QuantityOnHand }).ToListAsync();
+        int Qty(int? vid) => invp.FirstOrDefault(x => x.ProductVariantId == vid)?.QuantityOnHand ?? 0;
+        var variants = vars.Select(x => new { id = p.Id, variantId = (int?)x.Id, name = $"{p.Name} – {x.Name}",
+            sku = x.Sku ?? p.Sku, barcode = x.Barcode ?? p.Barcode, category = cat, expected = Qty(x.Id) }).ToList();
+        return Json(new { found = false, needsVariant = true, name = p.Name, variants });
     }
 
-    public class CountLine { public int ProductId { get; set; } public int Counted { get; set; } public string? Reason { get; set; } }
+    public class CountLine { public int ProductId { get; set; } public int? VariantId { get; set; } public int Counted { get; set; } public string? Reason { get; set; } }
     public class CompleteRequest { public int StoreId { get; set; } public string? StaffId { get; set; } public string? Note { get; set; } public List<CountLine> Lines { get; set; } = new(); }
 
     // Complete the stock-take: persist the StockTake record + reconcile each counted line through the
@@ -113,24 +138,13 @@ public class StocktakeController : InventoryAreaController
         var ids = req.Lines.Select(l => l.ProductId).Distinct().ToList();
         var products = await _db.Products.Include(p => p.Category)
             .Where(p => ids.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
-        var valid = req.Lines.Where(l => l.Counted >= 0 && products.ContainsKey(l.ProductId)).ToList();
+        // Variant lines carry a VariantId — load those so we can reconcile each variant's own row and
+        // snapshot its name/barcode. (Stock-take is now variant-aware; no more pool-only restriction.)
+        var vids = req.Lines.Where(l => l.VariantId.HasValue).Select(l => l.VariantId!.Value).Distinct().ToList();
+        var variants = await _db.ProductVariants.Where(v => vids.Contains(v.Id)).ToDictionaryAsync(v => v.Id);
+        var valid = req.Lines.Where(l => l.Counted >= 0 && products.ContainsKey(l.ProductId)
+            && (!l.VariantId.HasValue || variants.ContainsKey(l.VariantId.Value))).ToList();
         if (valid.Count == 0) return Json(new { success = false, message = "No valid items." });
-
-        // This screen counts a product as ONE number, and reconciles the product-level (pool) row.
-        // A product with options keeps its stock on the variant rows instead — counting it here would
-        // write the count into a pool row that nothing sells from, inventing stock that can't be sold
-        // while leaving the real per-variant counts untouched. Refuse rather than corrupt; those are
-        // counted per option in Stock → Track Stock, which is variant-aware.
-        var variantProductIds = (await _db.ProductVariants
-                .Where(v => ids.Contains(v.ProductId) && v.IsActive)
-                .Select(v => v.ProductId).Distinct().ToListAsync())
-            .ToHashSet();
-        var blocked = valid.Where(l => variantProductIds.Contains(l.ProductId))
-            .Select(l => products[l.ProductId].Name).Distinct().OrderBy(n => n).ToList();
-        if (blocked.Count > 0)
-            return Json(new { success = false, message =
-                $"These have options, so their stock is held per option and can't be counted as a single number here: {string.Join(", ", blocked)}. "
-                + "Remove them from this count and use Stock → Track Stock for those." });
 
         var seq = await NextRefAsync();
         var take = new StockTake
@@ -148,14 +162,18 @@ public class StocktakeController : InventoryAreaController
         foreach (var l in valid)
         {
             var p = products[l.ProductId];
-            var current = await _stock.GetStockAsync(l.ProductId, null, store.Id, fallback: false);
+            var variant = l.VariantId.HasValue ? variants[l.VariantId.Value] : null;
+            var current = await _stock.GetStockAsync(l.ProductId, l.VariantId, store.Id, fallback: false);
             var delta = l.Counted - current;
             if (delta != 0)
-                await _stock.ApplyAsync(l.ProductId, null, store.Id, delta, StockMovementType.Adjustment,
-                    take.Reference, note: l.Reason ?? "Stock-take", userId: userId);
+                await _stock.ApplyAsync(l.ProductId, l.VariantId, store.Id, delta, StockMovementType.Adjustment,
+                    take.Reference, note: l.Reason ?? "Stock-take", userId: userId, materializeVariant: true);
             take.Lines.Add(new StockTakeLine
             {
-                ProductId = p.Id, ProductName = p.Name, Barcode = p.Barcode,
+                ProductId = p.Id,
+                ProductVariantId = l.VariantId,
+                ProductName = variant != null ? $"{p.Name} – {variant.Name}" : p.Name,
+                Barcode = variant != null ? variant.Barcode : p.Barcode,
                 CategoryName = p.Category?.Name ?? "", ExpectedQty = current, CountedQty = l.Counted,
                 Reason = delta != 0 ? l.Reason : null
             });
