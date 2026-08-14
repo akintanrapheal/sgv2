@@ -407,7 +407,7 @@ public class ProductsController : InventoryAreaController
         if (text.Length == 0 || text.Length > 512) return NotFound();
         using var gen = new QRCoder.QRCodeGenerator();
         using var data = gen.CreateQrCode(text, QRCoder.QRCodeGenerator.ECCLevel.M);
-        var png = new QRCoder.PngByteQRCode(data).GetGraphic(6);
+        var png = new QRCoder.PngByteQRCode(data).GetGraphic(10);   // higher-res source → crisper when the printer scales it
         return File(png, "image/png");
     }
 
