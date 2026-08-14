@@ -3,10 +3,12 @@ namespace SterlingLams.Web.Infrastructure;
 /// <summary>
 /// Rewrites Cloudinary image URLs to serve right-sized, modern-format (WebP/AVIF) variants instead
 /// of the full-resolution original. A 1.6 MB product PNG becomes ~70 KB at card size with no visible
-/// quality loss. Non-Cloudinary URLs, blanks, or already-transformed URLs are returned unchanged, so
-/// it's always safe to wrap an <c>src</c>.
+/// quality loss. If a URL already carries a delivery-transform block (e.g. a variant image saved
+/// with "w_200,h_200,c_fill" baked in), that block is REPLACED with the size we actually want — the
+/// original full-res asset is unchanged on Cloudinary, so an undersized thumbnail becomes sharp again.
+/// Non-Cloudinary URLs and blanks are returned unchanged, so it's always safe to wrap an <c>src</c>.
 /// </summary>
-public static class Img
+public static partial class Img
 {
     private const string Marker = "/image/upload/";
 
@@ -24,14 +26,18 @@ public static class Img
         var at = i + Marker.Length;
         var end = url.IndexOf('/', at);
         var firstSeg = end < 0 ? url[at..] : url[at..end];
-        // Already carries a transform block (e.g. "f_auto,q_auto,w_600") — don't double-wrap.
-        if (firstSeg.Contains(',') || firstSeg.StartsWith("f_") || firstSeg.StartsWith("w_")
-            || firstSeg.StartsWith("q_") || firstSeg.StartsWith("c_"))
-            return url;
+        // Detect an existing delivery-transform block right after /upload/ (has commas, or starts with
+        // a short "xx_" param like f_/q_/w_/h_/c_). A version segment ("v1712…") has no underscore, so
+        // it's treated as the base, not a transform. When present, drop it and re-apply our own size.
+        var isTransform = end > 0 && (firstSeg.Contains(',') || TransformSeg().IsMatch(firstSeg));
+        var basePart = isTransform ? url[(end + 1)..] : url[at..];
 
         var t = height is int h
             ? $"f_auto,q_auto,w_{width},h_{h},c_{(fill ? "fill" : "fit")}"
             : $"f_auto,q_auto,w_{width},c_limit"; // width-only: keep aspect, never upscale
-        return url[..at] + t + "/" + url[at..];
+        return url[..at] + t + "/" + basePart;
     }
+
+    [System.Text.RegularExpressions.GeneratedRegex("^[a-z]{1,3}_[^/]")]
+    private static partial System.Text.RegularExpressions.Regex TransformSeg();
 }
