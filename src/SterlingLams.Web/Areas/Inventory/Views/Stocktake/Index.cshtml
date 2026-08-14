@@ -50,10 +50,16 @@ else
         </div>
 
         <div class="px-5 py-4">
-            <div class="relative">
-                <input id="st-search" type="text" autocomplete="off" placeholder="Search for products…"
-                       class="w-full border border-neutral-300 rounded-md px-4 py-3 text-sm focus:outline-none focus:border-blue-400" />
-                <div id="st-suggest" class="hidden absolute z-20 left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-md shadow-lg max-h-72 overflow-y-auto"></div>
+            <div class="flex items-center gap-4">
+                <div class="relative flex-1">
+                    <input id="st-search" type="text" autocomplete="off" placeholder="Scan a barcode…"
+                           class="w-full border border-neutral-300 rounded-md px-4 py-3 text-sm focus:outline-none focus:border-blue-400" />
+                    <div id="st-suggest" class="hidden absolute z-20 left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-md shadow-lg max-h-72 overflow-y-auto"></div>
+                </div>
+                <label class="flex items-center gap-2 text-sm text-neutral-600 whitespace-nowrap cursor-pointer select-none">
+                    <input type="checkbox" id="st-quick" checked class="w-4 h-4 rounded accent-blue-600" />
+                    Quick scan
+                </label>
             </div>
         </div>
 
@@ -107,6 +113,8 @@ else
     var el = function (id) { return document.getElementById(id); };
     var lines = {};   // "productId:variantId" → { id, variantId, name, barcode, category, expected, counted, reason }
     var reviewing = false;
+    var quickScan = el('st-quick') ? el('st-quick').checked : true;   // scan straight into the box, no click
+    function refocusScan() { var s = el('st-search'); if (s) s.focus(); }
     function keyOf(id, variantId) { return id + ':' + (variantId != null && variantId !== '' ? variantId : ''); }
 
     function reasonOptions(sel) {
@@ -148,7 +156,12 @@ else
             name: p.name, barcode: p.barcode, category: p.category, expected: p.expected, counted: '', reason: '' };
         render();
         var tr = el('st-rows').querySelector('tr[data-key="' + key + '"]');
-        if (tr) { tr.scrollIntoView({ block: 'center' }); var i = tr.querySelector('[data-counted]'); if (i) i.focus(); }
+        if (tr) {
+            tr.scrollIntoView({ block: 'center' });
+            // Quick scan → keep the search box focused for the next scan; manual → focus the count field.
+            if (quickScan) refocusScan();
+            else { var i = tr.querySelector('[data-counted]'); if (i) i.focus(); }
+        }
     }
 
     el('st-rows').addEventListener('input', function (e) {
@@ -169,7 +182,8 @@ else
     var sug = el('st-suggest'); var t;
     el('st-search').addEventListener('input', function () {
         var q = this.value.trim(); clearTimeout(t);
-        if (q.length < 2) { sug.classList.add('hidden'); return; }
+        // In quick-scan mode the box is for scanning (Enter → lookup); no typeahead dropdown.
+        if (quickScan || q.length < 2) { sug.classList.add('hidden'); return; }
         t = setTimeout(function () {
             fetch(__invBase + '/Stocktake/StSearch?storeId=' + storeId + '&q=' + encodeURIComponent(q))
                 .then(function (r) { return r.json(); })
@@ -203,6 +217,24 @@ else
             });
     });
     document.addEventListener('click', function (e) { if (!sug.contains(e.target) && e.target !== el('st-search')) sug.classList.add('hidden'); });
+
+    // ── Quick scan: keep the search box focused so a scanner fires without clicking first ──
+    (function () {
+        var chk = el('st-quick'); if (!chk) return;
+        function applyMode() {
+            quickScan = chk.checked;
+            el('st-search').placeholder = quickScan ? 'Scan a barcode…' : 'Search for products…';
+            if (quickScan) { sug.classList.add('hidden'); refocusScan(); }
+        }
+        chk.addEventListener('change', applyMode);
+        // If focus drops back to the page body (e.g. after a scan), grab it again — but never steal
+        // it from a count/reason field the user is editing.
+        el('st-search').addEventListener('blur', function () {
+            if (!quickScan) return;
+            setTimeout(function () { var a = document.activeElement; if (!a || a === document.body) refocusScan(); }, 0);
+        });
+        applyMode();   // initial placeholder + focus on load
+    })();
 
     el('st-notes-btn').addEventListener('click', function () { el('st-notes').classList.toggle('hidden'); });
     el('st-review-btn').addEventListener('click', function () { reviewing = !reviewing; el('st-cards').classList.toggle('hidden', !reviewing); });
