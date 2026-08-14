@@ -12,9 +12,11 @@
     string? customText = ViewBag.CustomText;
     string preset = ViewBag.Preset ?? "barcode";
     string printer = ViewBag.Printer ?? "a4";
+    string font = ViewBag.Font ?? "Arial, Helvetica, sans-serif";   // validated server-side
+    int fontSize = ViewBag.FontSize ?? 9;                            // base label font size (px)
     var json = System.Text.Json.JsonSerializer.Serialize(
         Model.Select(p => new { name = p.Name, code = p.Code, price = p.Price, category = p.Category, description = p.Description ?? "", sku = p.Sku ?? "" }));
-    var flags = System.Text.Json.JsonSerializer.Serialize(new { showName, showPrice, showBarcode, showCategory, showDescription, showQr, showSku, showBarcodeNumber, customText = customText ?? "", preset, printer });
+    var flags = System.Text.Json.JsonSerializer.Serialize(new { showName, showPrice, showBarcode, showCategory, showDescription, showQr, showSku, showBarcodeNumber, customText = customText ?? "", preset, printer, font, fontSize });
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -33,19 +35,23 @@
         .btn-print { background: #059669; color: #fff; }
         .btn-gen { background: #ffffff22; color: #fff; border: 1px solid #ffffff44 !important; }
         .sheet { padding: 16px; display: flex; flex-wrap: wrap; gap: 8px; }
-        .label { position: relative; border: 1px solid #d6d3d1; border-radius: 4px; padding: 8px; text-align: center; background: #fff; page-break-inside: avoid; }
+        /* --lbl-ff (font family) and --lbl-fs (base size) are set per-label from the chosen font/size,
+           so name, SKU, barcode number and price all share ONE small, consistent look that fits small
+           stock. Weights/casing still vary a touch so the name and price stay legible. */
+        .label { position: relative; border: 1px solid #d6d3d1; border-radius: 4px; padding: 8px; text-align: center; background: #fff; page-break-inside: avoid;
+                 font-family: var(--lbl-ff, Arial, Helvetica, sans-serif); font-size: var(--lbl-fs, 9px); }
         .label.shelf { width: 280px; }
         .label.barcode { width: 200px; }
         .label.butterfly { width: 150px; }
         .label.custom { width: 230px; }
         .label.unchecked { opacity: .35; }
-        .lcat { font-size: 9px; text-transform: uppercase; letter-spacing: .5px; color: #78716c; margin-bottom: 2px; }
-        .lname { font-size: 11px; line-height: 1.2; min-height: 14px; margin-bottom: 4px; font-weight: 600; }
-        .ldesc { font-size: 9px; color: #57534e; line-height: 1.2; margin-bottom: 4px; max-height: 24px; overflow: hidden; }
-        .lprice { font-size: 13px; font-weight: bold; margin-top: 2px; }
-        .lcustom { font-size: 9px; color: #57534e; margin-top: 3px; }
-        .lsku { font-size: 9px; color: #57534e; margin-bottom: 2px; font-family: monospace; }
-        .lcode { font-size: 10px; color: #1c1917; margin-top: 1px; font-family: monospace; letter-spacing: .5px; }
+        .lcat { font-size: var(--lbl-fs, 9px); text-transform: uppercase; letter-spacing: .5px; color: #78716c; margin-bottom: 2px; }
+        .lname { font-size: var(--lbl-fs, 9px); line-height: 1.25; margin-bottom: 2px; font-weight: 600; }
+        .ldesc { font-size: var(--lbl-fs, 9px); color: #57534e; line-height: 1.2; margin-bottom: 2px; max-height: 24px; overflow: hidden; }
+        .lprice { font-size: var(--lbl-fs, 9px); font-weight: bold; margin-top: 2px; }
+        .lcustom { font-size: var(--lbl-fs, 9px); color: #57534e; margin-top: 3px; }
+        .lsku { font-size: var(--lbl-fs, 9px); color: #57534e; margin-bottom: 2px; letter-spacing: .5px; }
+        .lcode { font-size: var(--lbl-fs, 9px); color: #1c1917; margin-top: 1px; letter-spacing: .5px; }
         .qr { width: 46px; height: 46px; margin: 3px auto 0; display: block; }
         .butterfly .qr { width: 34px; height: 34px; }
         .lpick { position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; cursor: pointer; }
@@ -112,19 +118,22 @@
             products.forEach(p => {
                 for (let i = 0; i < copies; i++) {
                     const el = document.createElement('div'); el.className = 'label ' + (F.preset || 'barcode');
+                    if (F.font) el.style.setProperty('--lbl-ff', F.font);
+                    if (F.fontSize) el.style.setProperty('--lbl-fs', F.fontSize + 'px');
+                    // Order: name · SKU (above QR) · QR · barcode number (below QR) · price.
                     let html = '<input type="checkbox" class="lpick no-print" checked title="Print this label" />';
                     if (F.showCategory && p.category) html += `<div class="lcat">${esc(p.category)}</div>`;
                     if (F.showName) html += `<div class="lname">${esc(p.name)}</div>`;
-                    if (F.showSku && p.sku) html += `<div class="lsku">SKU: ${esc(p.sku)}</div>`;
                     if (F.showDescription && p.description) html += `<div class="ldesc">${esc(p.description)}</div>`;
                     if (F.showBarcode) html += `<svg class="bc"></svg>`;
-                    if (F.showBarcodeNumber && p.code) html += `<div class="lcode">${esc(p.code)}</div>`;
+                    if (F.showSku && p.sku) html += `<div class="lsku">${esc(p.sku)}</div>`;
                     if (F.showQr) html += `<img class="qr" alt="QR" src="Qr?text=${encodeURIComponent(p.code)}" />`;
+                    if (F.showBarcodeNumber && p.code) html += `<div class="lcode">${esc(p.code)}</div>`;
                     if (F.showPrice) html += `<div class="lprice">₦${(+p.price).toLocaleString()}</div>`;
                     if (F.customText) html += `<div class="lcustom">${esc(F.customText)}</div>`;
                     el.innerHTML = html;
                     sheet.appendChild(el);
-                    if (F.showBarcode) { try { JsBarcode(el.querySelector('.bc'), p.code, { format: 'CODE39', width: 1.0, height: 38, fontSize: 11, margin: 2 }); } catch (e) { } }
+                    if (F.showBarcode) { try { JsBarcode(el.querySelector('.bc'), p.code, { format: 'CODE39', width: 1.0, height: 38, displayValue: false, margin: 2 }); } catch (e) { } }
                     el.querySelector('.lpick').addEventListener('change', e => el.classList.toggle('unchecked', !e.target.checked));
                 }
             });
