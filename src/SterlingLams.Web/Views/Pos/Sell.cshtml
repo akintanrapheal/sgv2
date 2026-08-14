@@ -425,14 +425,24 @@
 
 <!-- ── Variant picker modal ──────────────────────────────────────────────── -->
 <div id="variant-modal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-4">
-    <div class="bg-white rounded-xl p-6 w-full max-w-sm">
-        <h3 id="variant-title" class="text-base font-medium text-neutral-900 mb-1"></h3>
-        <p class="text-xs text-neutral-400 mb-4">Choose an option to add to the cart.</p>
-        <div id="variant-list" class="space-y-2 max-h-60 overflow-y-auto mb-4"></div>
-        <button type="button" id="variant-cancel"
-                class="w-full border border-neutral-200 rounded-lg py-2.5 text-sm text-neutral-600 hover:border-neutral-400 transition-colors">
-            Cancel
-        </button>
+    <div class="bg-white rounded-xl w-full max-w-sm overflow-hidden">
+        <!-- Product picture, with an ✕ to close the picker and return to the category page. -->
+        <div class="relative">
+            <div id="variant-image" class="h-44 bg-neutral-50 flex items-center justify-center overflow-hidden"></div>
+            <button type="button" id="variant-x" title="Close and return to categories"
+                    class="absolute top-2 right-2 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="p-6">
+            <h3 id="variant-title" class="text-base font-medium text-neutral-900 mb-1"></h3>
+            <p class="text-xs text-neutral-400 mb-4">Choose an option to add to the cart.</p>
+            <div id="variant-list" class="space-y-2 max-h-52 overflow-y-auto mb-4"></div>
+            <button type="button" id="variant-cancel"
+                    class="w-full border border-neutral-200 rounded-lg py-2.5 text-sm text-neutral-600 hover:border-neutral-400 transition-colors">
+                Cancel
+            </button>
+        </div>
     </div>
 </div>
 
@@ -926,7 +936,7 @@
         renderProducts(lastResults);
     }
 
-    homeBtn.addEventListener('click', () => {
+    function goHome() {
         catGrid.classList.remove('hidden');
         resultsEl.classList.add('hidden');
         homeBtn.classList.add('hidden');
@@ -935,7 +945,9 @@
         breadcrumbCat.classList.add('hidden');
         activeCategoryId = null;
         searchBox.value = '';
-    });
+        toggleClear();
+    }
+    homeBtn.addEventListener('click', goHome);
 
     searchBox.addEventListener('input', () => {
         toggleClear();
@@ -1067,22 +1079,25 @@
     const variantModal = document.getElementById('variant-modal');
     const variantTitle = document.getElementById('variant-title');
     const variantList = document.getElementById('variant-list');
+    const variantImage = document.getElementById('variant-image');
+    const imgPlaceholder = '<svg class="w-10 h-10 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>';
     let resolveVariant = null;
-    document.getElementById('variant-cancel').addEventListener('click', () => {
+    function closeVariant() {
         variantModal.classList.add('hidden');
         if (resolveVariant) { resolveVariant(null); resolveVariant = null; }
-    });
-    variantModal.addEventListener('click', e => {
-        if (e.target === variantModal) {
-            variantModal.classList.add('hidden');
-            if (resolveVariant) { resolveVariant(null); resolveVariant = null; }
-        }
-    });
+    }
+    document.getElementById('variant-cancel').addEventListener('click', closeVariant);
+    // ✕ on the picture: cancel the pick and go back to the category page.
+    document.getElementById('variant-x').addEventListener('click', () => { closeVariant(); goHome(); });
+    variantModal.addEventListener('click', e => { if (e.target === variantModal) closeVariant(); });
 
     function pickVariant(p) {
         return new Promise(resolve => {
             resolveVariant = resolve;
             variantTitle.textContent = p.name;
+            variantImage.innerHTML = p.image
+                ? '<img src="' + p.image + '" alt="" class="w-full h-full object-cover">'
+                : imgPlaceholder;
             variantList.innerHTML = p.variants.map((v, i) => {
                 const price = p.price + (v.priceAdjustment || 0);
                 const st = (v.stock != null) ? v.stock : 0;
