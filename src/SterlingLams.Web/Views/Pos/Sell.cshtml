@@ -1099,7 +1099,7 @@
                 ? '<img src="' + p.image + '" alt="" class="w-full h-full object-cover">'
                 : imgPlaceholder;
             variantList.innerHTML = p.variants.map((v, i) => {
-                const price = p.price + (v.priceAdjustment || 0);
+                const price = (v.price != null ? v.price : p.price);
                 const st = (v.stock != null) ? v.stock : 0;
                 const out = st <= 0;
                 const stockLabel = out
@@ -1285,7 +1285,7 @@
         if (p.variants && p.variants.length) {
             const v = preVariant || await pickVariant(p);   // preVariant = the exact variant scanned (no picker)
             if (!v) return;
-            variantId = v.id; variantName = v.name; unitPrice = p.price + (v.priceAdjustment || 0);
+            variantId = v.id; variantName = v.name; unitPrice = (v.price != null ? v.price : p.price);
             lineStock = (v.stock != null) ? v.stock : p.stock; // per-variant available
         }
         if (lineStock <= 0) { showError('Out of stock.'); return; }

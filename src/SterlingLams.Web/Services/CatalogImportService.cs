@@ -220,7 +220,7 @@ public class CatalogImportService : ICatalogImportService
                     product.Variants.Add(new ProductVariant
                     {
                         Name = string.Join(" / ", values.Select(x => x.Value)),
-                        PriceAdjustment = vprice > 0 ? vprice - price : null,
+                        Price = vprice > 0 ? vprice : null,   // absolute variant price; null = follow base
                         StockQuantity = 0,
                         IsActive = true,
                         AttributeValues = values

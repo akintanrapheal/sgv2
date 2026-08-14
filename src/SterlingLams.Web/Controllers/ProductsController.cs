@@ -288,7 +288,7 @@ public class ProductsController : Controller
             {
                 Id = v.Id,
                 Name = v.Name,
-                PriceAdjustment = v.PriceAdjustment,
+                Price = v.Price,
                 ImageUrl = v.ImageUrl,
                 Available = VariantAvailable(v.Id),
                 StoreStock = VariantStoreStock(v.Id),
@@ -425,7 +425,7 @@ public class ProductsController : Controller
             {
                 id = v.Id,
                 imageUrl = v.ImageUrl,
-                priceAdjustment = v.PriceAdjustment,
+                price = v.Price,
                 inStock = VariantAvailable(v.Id) > 0,
                 attributes = v.AttributeValues.ToDictionary(av => av.Attribute.Name, av => av.Value)
             })

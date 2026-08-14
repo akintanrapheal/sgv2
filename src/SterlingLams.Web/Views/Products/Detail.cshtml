@@ -321,7 +321,7 @@
                     @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Variants.Select(v => new {
                         id = v.Id,
                         name = v.Name,
-                        priceAdjustment = v.PriceAdjustment,
+                        price = v.Price,
                         // Same 1000px WebP transform as the main image/thumbnails — the raw URL renders soft.
                         imageUrl = string.IsNullOrEmpty(v.ImageUrl) ? null : Img.Cld(v.ImageUrl, 1000),
                         inStock = v.Available > 0,
@@ -869,20 +869,23 @@
         });
     }
 
-    // Re-price using the resolved variant's adjustment (regular + sale both shift).
+    // Re-price using the resolved variant. A variant with its own price wins outright (no sale
+    // strike-through); otherwise fall back to the product's regular/sale price.
     function applyVariantPrice() {
         if (!priceEff) return;
-        let adj = 0;
+        let variantPrice = null;
         if (selectedVariantId) {
             const v = variants.find(x => x.id === selectedVariantId);
-            if (v && v.priceAdjustment) adj = v.priceAdjustment;
+            if (v && v.price != null) variantPrice = v.price;
         }
-        const reg = PRICE.regular + adj;
-        if (PRICE.sale != null) {
-            priceEff.textContent = fmtPrice(PRICE.sale + adj);
-            if (priceReg) { priceReg.textContent = fmtPrice(reg); priceReg.classList.remove('hidden'); }
+        if (variantPrice != null) {
+            priceEff.textContent = fmtPrice(variantPrice);
+            if (priceReg) priceReg.classList.add('hidden');
+        } else if (PRICE.sale != null) {
+            priceEff.textContent = fmtPrice(PRICE.sale);
+            if (priceReg) { priceReg.textContent = fmtPrice(PRICE.regular); priceReg.classList.remove('hidden'); }
         } else {
-            priceEff.textContent = fmtPrice(reg);
+            priceEff.textContent = fmtPrice(PRICE.regular);
             if (priceReg) priceReg.classList.add('hidden');
         }
     }
