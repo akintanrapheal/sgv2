@@ -191,19 +191,59 @@ public class ProductsController : InventoryAreaController
         return RedirectToAction(nameof(Edit), new { id = productId });
     }
 
-    // Save per-variant barcodes (parallel arrays from the variants table).
+    // Save per-variant barcodes (parallel arrays from the variants table). Barcodes are unique
+    // (IX_ProductVariants_Barcode); we validate up front and return a friendly message rather than
+    // letting a collision surface as a raw 500 (was an ongoing Sentry DbUpdateException / 23505).
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveVariants(int productId, int[] variantId, string[] barcode)
     {
         var variants = await _db.ProductVariants.Where(v => v.ProductId == productId).ToListAsync();
+
+        // Intended barcode per variant (trimmed; blanks → null).
+        var intended = new Dictionary<int, string?>();
         for (int i = 0; variantId != null && i < variantId.Length; i++)
+            intended[variantId[i]] = (barcode != null && i < barcode.Length && !string.IsNullOrWhiteSpace(barcode[i]))
+                ? barcode[i].Trim() : null;
+
+        // 1) Same barcode entered on two variants in this submission.
+        var dupInBatch = intended.Values.Where(b => b != null)
+            .GroupBy(b => b!, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1);
+        if (dupInBatch != null)
         {
-            var v = variants.FirstOrDefault(x => x.Id == variantId[i]);
-            if (v != null)
-                v.Barcode = (barcode != null && i < barcode.Length && !string.IsNullOrWhiteSpace(barcode[i]))
-                    ? barcode[i].Trim() : null;
+            TempData["Error"] = $"Barcode \"{dupInBatch.Key}\" is entered on more than one variant — each barcode must be unique.";
+            return RedirectToAction(nameof(Edit), new { id = productId });
         }
-        await _db.SaveChangesAsync();
+
+        // 2) Barcode already used by another product's variant.
+        var codes = intended.Values.Where(b => b != null).Select(b => b!).ToList();
+        var ownIds = variants.Select(v => v.Id).ToList();
+        if (codes.Count > 0)
+        {
+            var clash = await _db.ProductVariants
+                .Where(v => v.Barcode != null && codes.Contains(v.Barcode) && !ownIds.Contains(v.Id))
+                .Select(v => v.Barcode).FirstOrDefaultAsync();
+            if (clash != null)
+            {
+                TempData["Error"] = $"Barcode \"{clash}\" is already used by another product — pick a different one.";
+                return RedirectToAction(nameof(Edit), new { id = productId });
+            }
+        }
+
+        foreach (var v in variants)
+            if (intended.TryGetValue(v.Id, out var bc))
+                v.Barcode = bc;
+
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Safety net for a race or an in-place swap of two barcodes in one save.
+            TempData["Error"] = "That barcode is already in use — please check the barcodes and try again.";
+            return RedirectToAction(nameof(Edit), new { id = productId });
+        }
+
         await LogAsync("Update", "Product", productId.ToString(), "Updated variant barcodes");
         TempData["Success"] = "Variant barcodes saved.";
         return RedirectToAction(nameof(Edit), new { id = productId });
