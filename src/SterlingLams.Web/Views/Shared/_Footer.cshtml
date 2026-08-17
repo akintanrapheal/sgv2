@@ -1,8 +1,11 @@
 @using Microsoft.EntityFrameworkCore
+@using Microsoft.Extensions.Caching.Memory
 @using SterlingLams.Web.Services
 @using SterlingLams.Web.Data
+@using SterlingLams.Web.Models.Domain
 @inject ISettingsService SettingsService
 @inject ApplicationDbContext Db
+@inject IMemoryCache Cache
 @{
     var instagram  = await SettingsService.GetAsync("general.instagram_url");
     var whatsapp   = await SettingsService.GetAsync("general.whatsapp_number");
@@ -11,10 +14,25 @@
     var tagline    = await SettingsService.GetAsync("general.tagline", "Timeless luxury jewellery crafted with the finest materials.");
     var logoUrl    = await SettingsService.GetAsync("general.logo_url");
 
-    var activeStores = await Db.Stores
-        .Where(s => s.IsActive)
-        .OrderBy(s => s.Name)
-        .ToListAsync();
+    // The footer renders on every page, so this store list is cached for 10 min (one DB hit per
+    // window, not per request) and wrapped so a transient DB hiccup degrades to "Coming soon"
+    // instead of 500-ing the whole page. (Was an uncached per-request query — see Sentry
+    // _Footer.cshtml transient-failure crash.)
+    List<Store> activeStores;
+    try
+    {
+        activeStores = await Cache.GetOrCreateAsync("footer.active_stores", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10);
+            return await Db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+        }) ?? new List<Store>();
+    }
+    catch
+    {
+        // DB blip on a cold cache → serve whatever we last had, else an empty list.
+        activeStores = Cache.TryGetValue("footer.active_stores", out List<Store>? cached) && cached != null
+            ? cached : new List<Store>();
+    }
 
     // Pages that end on a dark full-bleed section (e.g. Home's newsletter) set FooterFlush
     // so the footer butts straight against it — no cream body-gap above the footer.

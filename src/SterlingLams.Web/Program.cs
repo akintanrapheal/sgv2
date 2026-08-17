@@ -89,6 +89,21 @@ if (!string.IsNullOrWhiteSpace(databaseUrl))
         SslMode = Npgsql.SslMode.Require
     }.ConnectionString;
 }
+// Connection resilience: keep pooled connections healthy so the host's network dropping idle
+// sockets doesn't surface as transient "Exception while reading from stream" / timeouts on the
+// next use (seen in prod on the homepage + footer queries). Pure connection-string tuning — it
+// does NOT change the execution strategy, so explicit transactions are unaffected.
+if (!string.IsNullOrWhiteSpace(connectionString))
+{
+    connectionString = new Npgsql.NpgsqlConnectionStringBuilder(connectionString)
+    {
+        KeepAlive = 30,                  // TCP keepalive (s) — keeps sockets warm / detects dead ones
+        ConnectionIdleLifetime = 60,     // prune pooled conns idle > 60s, before the proxy kills them
+        ConnectionPruningInterval = 10,
+        Timeout = 15,                    // connection-open timeout (s)
+        CommandTimeout = 30
+    }.ConnectionString;
+}
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
