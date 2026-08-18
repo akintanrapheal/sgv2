@@ -81,7 +81,7 @@ public class FinanceController : AdminBaseController
 
     public record NameAmount(string Label, int Count, decimal Amount);
     public record RefundProductRow(string Product, int Qty, decimal Amount);
-    public record RefundListRow(string Number, DateTime When, string Order, decimal Amount, string Method, string Reason, string Cashier);
+    public record RefundListRow(int Id, string Number, DateTime When, string Order, decimal Amount, string Method, string Reason, string Cashier, string Status);
 
     public class RefundVm
     {
@@ -482,11 +482,16 @@ public class FinanceController : AdminBaseController
                 .OrderByDescending(x => x.Amt).Take(15).ToListAsync())
             .Select(x => new RefundProductRow(x.Key, x.Qty, x.Amt)).ToList();
 
-        var recentRaw = await refq.OrderByDescending(r => r.CreatedAt).Take(50)
-            .Select(r => new { r.RefundNumber, r.CreatedAt, Order = r.OriginalOrder.OrderNumber, r.Amount, r.RefundMethod, r.Reason, r.CashierUserId })
+        // Recent list shows EVERY refund in range — approved, rejected AND pending — so all are on record.
+        var allQ = _db.Refunds.Where(r => r.CreatedAt >= f && r.CreatedAt < t);
+        if (storeId.HasValue) allQ = allQ.Where(r => r.OriginalOrder.PickupStoreId == storeId || r.OriginalOrder.FulfillingStoreId == storeId);
+        var recentRaw = await allQ.OrderByDescending(r => r.CreatedAt).Take(100)
+            .Select(r => new { r.Id, r.RefundNumber, r.CreatedAt, Order = r.OriginalOrder.OrderNumber, r.Amount, r.RefundMethod, r.Reason, r.CashierUserId, r.Status })
             .ToListAsync();
-        var recent = recentRaw.Select(r => new RefundListRow(r.RefundNumber, r.CreatedAt, r.Order, r.Amount,
-            r.RefundMethod, string.IsNullOrWhiteSpace(r.Reason) ? "—" : r.Reason!, cNames.GetValueOrDefault(r.CashierUserId ?? "", "—"))).ToList();
+        var recentNames = await UserNamesAsync(recentRaw.Select(r => r.CashierUserId));
+        var recent = recentRaw.Select(r => new RefundListRow(r.Id, r.RefundNumber, r.CreatedAt, r.Order, r.Amount,
+            r.RefundMethod, string.IsNullOrWhiteSpace(r.Reason) ? "—" : r.Reason!,
+            recentNames.GetValueOrDefault(r.CashierUserId ?? "", "—"), r.Status.ToString())).ToList();
 
         var gross = await PaidOrders(f, t, storeId, "").SumAsync(o => (decimal?)o.Total) ?? 0;
 
@@ -541,6 +546,88 @@ public class FinanceController : AdminBaseController
         var res = await _approvals.RejectAsync(id, userId, note);
         TempData[res.Success ? "Success" : "Error"] = res.Message;
         return RedirectToAction(nameof(Refunds), new { from, to, storeId });
+    }
+
+    // ── Full refund detail (order + items + pictures + customer + requester) ──────
+    public class RefundDetailVm
+    {
+        public Refund Refund { get; set; } = null!;
+        public Order Order { get; set; } = null!;
+        public string RequesterName { get; set; } = "—";
+        public string? ApproverName { get; set; }
+        public string CustomerName { get; set; } = "Walk-in";
+        public string? CustomerEmail { get; set; }
+        public string? CustomerPhone { get; set; }
+        public Address? DeliveryAddress { get; set; }
+        public string StoreName { get; set; } = "—";
+        public string Channel { get; set; } = "";
+        public Dictionary<int, string?> Images { get; set; } = new();
+        public bool CanManage { get; set; }
+    }
+
+    public async Task<IActionResult> RefundDetail(int id)
+    {
+        var r = await _db.Refunds
+            .Include(x => x.Items)
+            .Include(x => x.OriginalOrder).ThenInclude(o => o.Customer)
+            .Include(x => x.OriginalOrder).ThenInclude(o => o.DeliveryAddress)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (r == null) return NotFound();
+        ViewData["Title"] = $"Refund {r.RefundNumber}";
+        var o = r.OriginalOrder;
+
+        var pids = r.Items.Select(i => i.ProductId).Distinct().ToList();
+        var images = (await _db.ProductImages.Where(im => pids.Contains(im.ProductId))
+                .Select(im => new { im.ProductId, im.Url, im.IsPrimary, im.SortOrder }).ToListAsync())
+            .GroupBy(im => im.ProductId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.IsPrimary).ThenBy(x => x.SortOrder).Select(x => x.Url).FirstOrDefault());
+
+        var names = await UserNamesAsync(new[] { r.CashierUserId, r.ApprovedByUserId });
+        var sid = o.PickupStoreId ?? o.FulfillingStoreId;
+        var storeName = sid.HasValue ? (await _db.Stores.Where(s => s.Id == sid).Select(s => s.Name).FirstOrDefaultAsync() ?? "—") : "Online / unassigned";
+
+        var cust = o.Customer;
+        var custName = cust != null ? $"{cust.FirstName} {cust.LastName}".Trim() : "";
+        if (string.IsNullOrWhiteSpace(custName)) custName = o.DeliveryAddress?.FullName ?? "Walk-in";
+
+        var perms = HttpContext.RequestServices.GetRequiredService<SterlingLams.Web.Services.IPermissionService>();
+        return View(new RefundDetailVm
+        {
+            Refund = r, Order = o,
+            RequesterName = names.GetValueOrDefault(r.CashierUserId ?? "", "—"),
+            ApproverName = string.IsNullOrEmpty(r.ApprovedByUserId) ? null : names.GetValueOrDefault(r.ApprovedByUserId!, "—"),
+            CustomerName = custName,
+            CustomerEmail = cust?.Email,
+            CustomerPhone = cust?.PhoneNumber ?? o.DeliveryAddress?.Phone,
+            DeliveryAddress = o.DeliveryAddress,
+            StoreName = storeName, Channel = o.Channel.ToString(),
+            Images = images,
+            CanManage = await perms.CanManageAsync(User, "Finance")
+        });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> DetailApproveRefund(int id, string? note)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        var res = await _approvals.ApproveAsync(id, userId, note);
+        TempData[res.Success ? "Success" : "Error"] = res.Message;
+        return RedirectToAction(nameof(RefundDetail), new { id });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> DetailRejectRefund(int id, string? reason)
+    {
+        // A reason is REQUIRED to reject — so the requester and the record show why.
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            TempData["Error"] = "Please enter a reason before rejecting the refund.";
+            return RedirectToAction(nameof(RefundDetail), new { id });
+        }
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        var res = await _approvals.RejectAsync(id, userId, reason.Trim());
+        TempData[res.Success ? "Success" : "Error"] = res.Message;
+        return RedirectToAction(nameof(RefundDetail), new { id });
     }
 
     // ── Transactions ledger ────────────────────────────────────────────────────
@@ -644,7 +731,7 @@ public class FinanceController : AdminBaseController
                 rows.Add(new TxnRow(r.CreatedAt, "Refund", StoreLabel(r.Sid), r.Sid, r.Channel.ToString(),
                     r.RefundNumber, string.IsNullOrWhiteSpace(r.Reason) ? "—" : r.Reason!.Trim(),
                     r.RefundMethod, -r.Amount, !pending, pending ? "Pending" : "Approved",
-                    pending ? "refund-pending" : "order", pending ? r.Id : r.OriginalOrderId, "Order " + r.Order));
+                    pending ? "refund-pending" : "refund", r.Id, "Order " + r.Order));
             }
         }
 
