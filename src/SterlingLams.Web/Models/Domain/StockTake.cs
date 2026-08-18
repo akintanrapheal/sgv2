@@ -20,7 +20,14 @@ public class StockTake
     public string Status { get; set; } = "Completed";
     public string? Note { get; set; }
 
+    /// <summary>For an in-progress count (Status = "Draft"): the working list (items + partial counts +
+    /// reasons) as JSON, so a refresh / leaving the page can be resumed. Cleared when the count is
+    /// completed (real StockTakeLine rows are written then).</summary>
+    public string? DraftJson { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>Last time a draft was auto-saved (null for legacy/completed records).</summary>
+    public DateTime? UpdatedAt { get; set; }
 
     public ICollection<StockTakeLine> Lines { get; set; } = new List<StockTakeLine>();
 

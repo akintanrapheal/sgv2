@@ -7,6 +7,10 @@
     string? staffId = ViewBag.StaffId;
     string storeName = ViewBag.StoreName ?? "";
     bool started = storeId != null;
+    int? draftId = ViewBag.DraftId;
+    string draftJson = ViewBag.DraftJson ?? "[]";
+    string? draftNote = ViewBag.DraftNote;
+    var drafts = (ViewBag.Drafts as IEnumerable<dynamic>) ?? Enumerable.Empty<dynamic>();
 }
 @Html.AntiForgeryToken()
 
@@ -30,6 +34,36 @@
             <button type="submit" class="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700">Start Stock Take</button>
         </form>
     </div>
+
+    @* Unfinished counts — resume exactly where it was left, or discard. *@
+    @if (drafts.Any())
+    {
+        <div class="bg-white border border-neutral-200 rounded-md p-6 max-w-3xl mt-6">
+            <h2 class="text-sm font-semibold text-neutral-800 mb-1">Resume previous</h2>
+            <p class="text-xs text-neutral-500 mb-4">Unfinished stock takes — pick up where you left off, then complete them.</p>
+            <div class="divide-y divide-neutral-100 border-t border-neutral-100">
+                @foreach (var d in drafts)
+                {
+                    <div class="flex items-center justify-between gap-3 py-3">
+                        <div class="min-w-0">
+                            <p class="text-sm text-neutral-800 font-medium">@(((string)d.storeName).Replace("Sterlin Glams ", "")) · @d.itemCount item(s)</p>
+                            <p class="text-xs text-neutral-500">@d.staffName · saved @(((DateTime)d.updatedAt).ToLocalTime().ToString("dd MMM, HH:mm"))</p>
+                        </div>
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                            <a asp-area="Inventory" asp-controller="Stocktake" asp-action="Index" asp-route-draftId="@d.id"
+                               class="px-4 py-2 bg-sky-500 text-white text-xs font-medium rounded-md hover:bg-sky-600">Resume Previous</a>
+                            <form asp-area="Inventory" asp-controller="Stocktake" asp-action="DiscardDraft" method="post" class="inline"
+                                  onsubmit="return confirm('Discard this unfinished stock take?');">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@d.id" />
+                                <button type="submit" class="px-3 py-2 border border-neutral-200 text-neutral-500 text-xs rounded-md hover:border-red-300 hover:text-red-600">Discard</button>
+                            </form>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
 }
 else
 {
@@ -117,6 +151,38 @@ else
     function refocusScan() { var s = el('st-search'); if (s) s.focus(); }
     function keyOf(id, variantId) { return id + ':' + (variantId != null && variantId !== '' ? variantId : ''); }
 
+    // ── Draft auto-save (resume after refresh / leaving the page) ──────────────
+    var draftId = @(draftId?.ToString() ?? "null");
+    var preloaded = @Html.Raw(draftJson);            // saved working list when resuming
+    var draftNote = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(draftNote));
+    var saveTimer = null, restoring = false;
+
+    function currentLinesForSave() {
+        return Object.keys(lines).map(function (key) {
+            var l = lines[key];
+            return { id: l.id, variantId: (l.variantId != null ? l.variantId : null), name: l.name,
+                barcode: l.barcode, category: l.category, expected: l.expected,
+                counted: (l.counted === null || l.counted === undefined) ? '' : String(l.counted),
+                reason: l.reason || null };
+        });
+    }
+    function saveDraft(keepalive) {
+        if (restoring) return Promise.resolve();
+        return fetch(__invBase + '/Stocktake/SaveDraft', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+            keepalive: !!keepalive,
+            body: JSON.stringify({ draftId: draftId, storeId: storeId, staffId: staffId,
+                note: el('st-note') ? el('st-note').value : null, lines: currentLinesForSave() })
+        }).then(function (r) { return r.json(); })
+          .then(function (d) { if (d && d.success && d.draftId) draftId = d.draftId; })
+          .catch(function () {});
+    }
+    function scheduleSave() {
+        if (restoring) return;
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(function () { saveDraft(false); }, 1200);
+    }
+
     function reasonOptions(sel) {
         return '<option value="">Reason…</option>' + reasons.map(function (r) { return '<option value="' + r + '"' + (r === sel ? ' selected' : '') + '>' + r + '</option>'; }).join('');
     }
@@ -162,6 +228,7 @@ else
             if (quickScan) refocusScan();
             else { var i = tr.querySelector('[data-counted]'); if (i) i.focus(); }
         }
+        scheduleSave();
     }
 
     el('st-rows').addEventListener('input', function (e) {
@@ -170,13 +237,13 @@ else
         lines[key].counted = e.target.value;
         var diff = e.target.value !== '' && parseInt(e.target.value, 10) !== lines[key].expected;
         tr.querySelector('[data-reasonwrap]').classList.toggle('hidden', !diff);
-        updateCards();
+        updateCards(); scheduleSave();
     });
     el('st-rows').addEventListener('change', function (e) {
-        if (e.target.hasAttribute('data-reason')) lines[e.target.closest('tr').dataset.key].reason = e.target.value;
+        if (e.target.hasAttribute('data-reason')) { lines[e.target.closest('tr').dataset.key].reason = e.target.value; scheduleSave(); }
     });
     el('st-rows').addEventListener('click', function (e) {
-        if (e.target.hasAttribute('data-rm')) { delete lines[e.target.closest('tr').dataset.key]; render(); }
+        if (e.target.hasAttribute('data-rm')) { delete lines[e.target.closest('tr').dataset.key]; render(); scheduleSave(); }
     });
 
     var sug = el('st-suggest'); var t;
@@ -238,12 +305,16 @@ else
 
     el('st-notes-btn').addEventListener('click', function () { el('st-notes').classList.toggle('hidden'); });
     el('st-review-btn').addEventListener('click', function () { reviewing = !reviewing; el('st-cards').classList.toggle('hidden', !reviewing); });
+    if (el('st-note')) el('st-note').addEventListener('input', scheduleSave);
     el('st-apply-all').addEventListener('click', function () {
         var r = el('st-reason-all').value; if (!r) { alert('Pick a reason first.'); return; }
         Object.keys(lines).forEach(function (pid) { if (lines[pid].counted !== '' && parseInt(lines[pid].counted, 10) !== lines[pid].expected) lines[pid].reason = r; });
-        render();
+        render(); scheduleSave();
     });
-    el('st-clear').addEventListener('click', function () { if (confirm('Clear the count list?')) { lines = {}; render(); } });
+    el('st-clear').addEventListener('click', function () { if (confirm('Clear the count list?')) { lines = {}; render(); scheduleSave(); } });
+
+    // Best-effort flush when leaving the page so the very latest edit is kept.
+    window.addEventListener('pagehide', function () { if (Object.keys(lines).length) saveDraft(true); });
 
     el('st-complete').addEventListener('click', function () {
         var payload = []; var missingReason = false;
@@ -259,15 +330,30 @@ else
         var btn = el('st-complete'); btn.disabled = true; btn.textContent = 'Completing…';
         fetch(__invBase + '/Stocktake/Complete', {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
-            body: JSON.stringify({ storeId: storeId, staffId: staffId, note: el('st-note').value, lines: payload })
+            body: JSON.stringify({ draftId: draftId, storeId: storeId, staffId: staffId, note: el('st-note').value, lines: payload })
         })
             .then(function (r) { return r.json(); })
             .then(function (d) {
-                if (d.success) { window.location.href = __invBase + '/Stocktake/Details/' + d.id; }
+                if (d.success) { restoring = true; window.location.href = __invBase + '/Stocktake/Details/' + d.id; }
                 else { alert(d.message || 'Could not complete.'); btn.disabled = false; btn.textContent = 'Complete Stocktake'; }
             })
             .catch(function () { alert('Could not complete.'); btn.disabled = false; btn.textContent = 'Complete Stocktake'; });
     });
+
+    // ── Resume: rebuild the working list from the saved draft ──────────────────
+    if (preloaded && preloaded.length) {
+        restoring = true;
+        preloaded.forEach(function (l) {
+            if (l == null || l.id == null) return;
+            var key = keyOf(l.id, l.variantId);
+            lines[key] = { id: l.id, variantId: (l.variantId != null ? l.variantId : null),
+                name: l.name, barcode: l.barcode, category: l.category, expected: l.expected,
+                counted: (l.counted == null ? '' : l.counted), reason: l.reason || '' };
+        });
+        render();
+        if (draftNote && el('st-note')) { el('st-note').value = draftNote; el('st-notes').classList.remove('hidden'); }
+        restoring = false;
+    }
 })();
 </script>
 }
