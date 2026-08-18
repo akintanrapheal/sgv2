@@ -551,6 +551,10 @@ public class FinanceController : AdminBaseController
         string Reference, string Party, string Method, decimal Amount, bool Settled, string Status,
         string ActionKind, int? ActionId, string Detail);
 
+    // Per-store / per-type roll-ups over the filtered set of settled movements.
+    public record StoreTotal(string Store, decimal In, decimal Out, int Count) { public decimal Net => In - Out; }
+    public record TypeTotal(string Type, decimal Net, int Count);
+
     public class TxnVm
     {
         public DateTime From { get; set; }
@@ -558,6 +562,7 @@ public class FinanceController : AdminBaseController
         public int? StoreId { get; set; }
         public string Channel { get; set; } = "";
         public string Type { get; set; } = "";
+        public string Method { get; set; } = "";
         public string Q { get; set; } = "";
         public string Sort { get; set; } = "date";
         public string Dir { get; set; } = "desc";
@@ -573,6 +578,9 @@ public class FinanceController : AdminBaseController
         public int PendingRefunds { get; set; }
         public decimal Net => SumIn - SumOut;
         public bool CanManage { get; set; }
+        public List<StoreTotal> ByStore { get; set; } = new();
+        public List<TypeTotal> ByType { get; set; } = new();
+        public string[] Methods { get; set; } = { "Cash", "Card", "Transfer", "Paystack" };
         public string[] ExpenseCategories { get; set; } = { "Logistics", "Rent", "Salaries", "Utilities", "Supplies", "Marketing", "Bank charges", "Other" };
     }
 
@@ -666,11 +674,52 @@ public class FinanceController : AdminBaseController
                     m.Amount >= 0 ? "Cash in" : "Cash out", names.GetValueOrDefault(m.UserId, "—"),
                     "Cash", m.Amount, true, "", "", null, m.Reason ?? ""));
         }
+
+        // 5) Cash-up drawer over/short — one row per closed till session (variance = counted − expected).
+        // Informational (not a money movement) so it does NOT count toward the in/out/net totals.
+        if ((type is "" or "Cashup") && channel == "")
+        {
+            var sessQ = _db.TillSessions.Include(s => s.Register)
+                .Where(s => s.ClosedAt != null && s.ClosedAt >= f && s.ClosedAt < t);
+            if (storeId.HasValue) sessQ = sessQ.Where(s => s.Register.StoreId == storeId);
+            var sessions = await sessQ.ToListAsync();
+            var sids = sessions.Select(s => s.Id).ToList();
+            if (sids.Count > 0)
+            {
+                var cashSales = (await _db.OrderPayments
+                        .Where(pp => pp.Method == "Cash" && pp.Order.TillSessionId != null && sids.Contains(pp.Order.TillSessionId!.Value))
+                        .GroupBy(pp => pp.Order.TillSessionId!.Value)
+                        .Select(g => new { Sid = g.Key, Amt = g.Sum(x => x.Amount) }).ToListAsync())
+                    .ToDictionary(x => x.Sid, x => x.Amt);
+                var cashRefunds = (await _db.Refunds
+                        .Where(rr => rr.Status == RefundStatus.Approved && rr.RefundMethod == "Cash" && rr.OriginalOrder.TillSessionId != null && sids.Contains(rr.OriginalOrder.TillSessionId!.Value))
+                        .GroupBy(rr => rr.OriginalOrder.TillSessionId!.Value)
+                        .Select(g => new { Sid = g.Key, Amt = g.Sum(x => x.Amount) }).ToListAsync())
+                    .ToDictionary(x => x.Sid, x => x.Amt);
+                var moves = (await _db.CashMovements.Where(mm => sids.Contains(mm.TillSessionId))
+                        .GroupBy(mm => mm.TillSessionId)
+                        .Select(g => new { Sid = g.Key, In = g.Where(x => x.Amount > 0).Sum(x => x.Amount), Out = g.Where(x => x.Amount < 0).Sum(x => x.Amount) }).ToListAsync())
+                    .ToDictionary(x => x.Sid, x => (x.In, x.Out));
+                var names = await UserNamesAsync(sessions.Select(s => s.OpenedByUserId));
+                foreach (var s in sessions)
+                {
+                    var mv = moves.GetValueOrDefault(s.Id);
+                    var expected = s.OpeningFloat + cashSales.GetValueOrDefault(s.Id) - cashRefunds.GetValueOrDefault(s.Id) + mv.In + mv.Out;
+                    var variance = (s.CountedCash ?? 0) - expected;
+                    var status = variance == 0 ? "balanced" : (variance > 0 ? "over" : "short");
+                    rows.Add(new TxnRow(s.ClosedAt!.Value, "Cash-up", StoreLabel(s.Register.StoreId), s.Register.StoreId, "",
+                        s.Register.Name, names.GetValueOrDefault(s.OpenedByUserId, "—"), "Drawer",
+                        variance, false, status, "", null, $"counted {(s.CountedCash ?? 0):N0} vs expected {expected:N0}"));
+                }
+            }
+        }
         return rows;
     }
 
-    private static IEnumerable<TxnRow> ApplyTxnFilterSort(List<TxnRow> rows, string q, string sort, string dir)
+    private static IEnumerable<TxnRow> ApplyTxnFilterSort(List<TxnRow> rows, string q, string method, string sort, string dir)
     {
+        if (!string.IsNullOrWhiteSpace(method))
+            rows = rows.Where(r => string.Equals(r.Method, method, StringComparison.OrdinalIgnoreCase)).ToList();
         if (!string.IsNullOrWhiteSpace(q))
         {
             var ql = q.Trim().ToLowerInvariant();
@@ -693,22 +742,33 @@ public class FinanceController : AdminBaseController
     }
 
     public async Task<IActionResult> Transactions(string? from, string? to, int? storeId, string? channel,
-        string? type, string? q, string? sort, string? dir, int page = 1, string? format = null)
+        string? type, string? method, string? q, string? sort, string? dir, int page = 1, string? format = null)
     {
         ViewData["Title"] = "Finance — Transactions";
         var (f, t, fLocal, tLocal) = Range(from, to);
         channel = channel is "Online" or "Pos" ? channel : "";
-        type = new[] { "Sale", "Refund", "Expense", "Cash" }.Contains(type) ? type! : "";
+        type = new[] { "Sale", "Refund", "Expense", "Cash", "Cashup" }.Contains(type) ? type! : "";
+        method = new[] { "Cash", "Card", "Transfer", "Paystack" }.Contains(method) ? method! : "";
         q = (q ?? "").Trim();
         sort = new[] { "date", "amount", "type", "store" }.Contains(sort) ? sort! : "date";
         dir = dir == "asc" ? "asc" : "desc";
 
         var all = await BuildTxnRowsAsync(f, t, storeId, channel, type);
-        var filtered = ApplyTxnFilterSort(all, q, sort, dir).ToList();
+        var filtered = ApplyTxnFilterSort(all, q, method, sort, dir).ToList();
 
-        // Totals over the whole filtered set (settled movements only).
+        // Totals over the whole filtered set (settled movements only — excludes cash-up variance).
         var sumIn = filtered.Where(r => r.Settled && r.Amount > 0).Sum(r => r.Amount);
         var sumOut = filtered.Where(r => r.Settled && r.Amount < 0).Sum(r => -r.Amount);
+
+        // Per-store and per-type roll-ups over the filtered set.
+        var byStore = filtered.Where(r => r.Settled)
+            .GroupBy(r => r.Store)
+            .Select(g => new StoreTotal(g.Key, g.Where(x => x.Amount > 0).Sum(x => x.Amount),
+                g.Where(x => x.Amount < 0).Sum(x => -x.Amount), g.Count()))
+            .OrderByDescending(x => x.Net).ToList();
+        var byType = filtered.GroupBy(r => r.Type)
+            .Select(g => new TypeTotal(g.Key, g.Sum(x => x.Amount), g.Count()))
+            .OrderByDescending(x => Math.Abs(x.Net)).ToList();
 
         if (format == "csv")
         {
@@ -730,11 +790,11 @@ public class FinanceController : AdminBaseController
         var perms = HttpContext.RequestServices.GetRequiredService<SterlingLams.Web.Services.IPermissionService>();
         return View(new TxnVm
         {
-            From = fLocal, To = tLocal, StoreId = storeId, Channel = channel, Type = type, Q = q,
+            From = fLocal, To = tLocal, StoreId = storeId, Channel = channel, Type = type, Method = method, Q = q,
             Sort = sort, Dir = dir, Page = page, PageSize = pageSize, Total = total, TotalPages = totalPages,
             Stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync(),
             Presets = BuildPresets(), Rows = pageRows,
-            SumIn = sumIn, SumOut = sumOut,
+            SumIn = sumIn, SumOut = sumOut, ByStore = byStore, ByType = byType,
             PendingRefunds = filtered.Count(r => r.ActionKind == "refund-pending"),
             CanManage = await perms.CanManageAsync(User, "Finance")
         });
@@ -743,28 +803,28 @@ public class FinanceController : AdminBaseController
     // Inline actions from the Transactions ledger — redirect back to it keeping the current filters.
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> TxnApproveRefund(int id, string? note, string? from, string? to,
-        int? storeId, string? channel, string? type, string? q, string? sort, string? dir, int page = 1)
+        int? storeId, string? channel, string? type, string? method, string? q, string? sort, string? dir, int page = 1)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         var res = await _approvals.ApproveAsync(id, userId, note);
         TempData[res.Success ? "Success" : "Error"] = res.Message;
-        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, q, sort, dir, page });
+        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, method, q, sort, dir, page });
     }
 
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> TxnRejectRefund(int id, string? note, string? from, string? to,
-        int? storeId, string? channel, string? type, string? q, string? sort, string? dir, int page = 1)
+        int? storeId, string? channel, string? type, string? method, string? q, string? sort, string? dir, int page = 1)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         var res = await _approvals.RejectAsync(id, userId, note);
         TempData[res.Success ? "Success" : "Error"] = res.Message;
-        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, q, sort, dir, page });
+        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, method, q, sort, dir, page });
     }
 
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> TxnAddExpense(string category, decimal amount, DateTime? occurredOn,
         string? note, int? expenseStoreId, string? from, string? to, int? storeId, string? channel,
-        string? type, string? q, string? sort, string? dir, int page = 1)
+        string? type, string? method, string? q, string? sort, string? dir, int page = 1)
     {
         if (amount > 0)
         {
@@ -783,12 +843,12 @@ public class FinanceController : AdminBaseController
             TempData["Success"] = "Expense recorded.";
         }
         else TempData["Error"] = "Enter an amount greater than zero.";
-        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, q, sort, dir, page });
+        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, method, q, sort, dir, page });
     }
 
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> TxnDeleteExpense(int id, string? from, string? to, int? storeId,
-        string? channel, string? type, string? q, string? sort, string? dir, int page = 1)
+        string? channel, string? type, string? method, string? q, string? sort, string? dir, int page = 1)
     {
         var e = await _db.Expenses.FindAsync(id);
         if (e != null)
@@ -798,7 +858,7 @@ public class FinanceController : AdminBaseController
             await LogAsync("Delete", "Expense", id.ToString(), $"Deleted expense ₦{e.Amount:N0}");
             TempData["Success"] = "Expense deleted.";
         }
-        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, q, sort, dir, page });
+        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, method, q, sort, dir, page });
     }
 
     // ── Discount & giveaway leakage ────────────────────────────────────────────

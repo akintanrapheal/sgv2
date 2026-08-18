@@ -10,8 +10,8 @@
         var d = new Dictionary<string, string>
         {
             ["from"] = F, ["to"] = T, ["storeId"] = Model.StoreId?.ToString() ?? "",
-            ["channel"] = Model.Channel ?? "", ["type"] = Model.Type ?? "", ["q"] = Model.Q ?? "",
-            ["sort"] = Model.Sort ?? "", ["dir"] = Model.Dir ?? "", ["page"] = Model.Page.ToString()
+            ["channel"] = Model.Channel ?? "", ["type"] = Model.Type ?? "", ["method"] = Model.Method ?? "",
+            ["q"] = Model.Q ?? "", ["sort"] = Model.Sort ?? "", ["dir"] = Model.Dir ?? "", ["page"] = Model.Page.ToString()
         };
         foreach (var p in ov.GetType().GetProperties()) d[p.Name] = p.GetValue(ov)?.ToString() ?? "";
         return d;
@@ -30,8 +30,10 @@
         "Refund" => "bg-rose-50 text-rose-700",
         "Expense" => "bg-amber-50 text-amber-700",
         "Cash" => "bg-sky-50 text-sky-700",
+        "Cash-up" => "bg-violet-50 text-violet-700",
         _ => "bg-neutral-100 text-neutral-600"
     };
+    string Money2(decimal v) => (v < 0 ? "-₦" : "₦") + Math.Abs(v).ToString("N0");
 }
 
 <partial name="_FinanceTabs" model="@("Transactions")" />
@@ -72,8 +74,19 @@
             <label class="block text-[11px] text-neutral-500 mb-1">Type</label>
             <select name="type" class="border border-neutral-300 rounded px-2.5 py-1.5 text-sm bg-white">
                 <option value="">All types</option>
-                @foreach (var tp in new[] { "Sale", "Refund", "Expense", "Cash" })
-                { <option value="@tp" selected="@(Model.Type == tp)">@tp</option> }
+                <option value="Sale" selected="@(Model.Type == "Sale")">Sale</option>
+                <option value="Refund" selected="@(Model.Type == "Refund")">Refund</option>
+                <option value="Expense" selected="@(Model.Type == "Expense")">Expense</option>
+                <option value="Cash" selected="@(Model.Type == "Cash")">Cash in/out</option>
+                <option value="Cashup" selected="@(Model.Type == "Cashup")">Cash-up (over/short)</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-[11px] text-neutral-500 mb-1">Method</label>
+            <select name="method" class="border border-neutral-300 rounded px-2.5 py-1.5 text-sm bg-white">
+                <option value="">All methods</option>
+                @foreach (var mth in Model.Methods)
+                { <option value="@mth" selected="@(Model.Method == mth)">@mth</option> }
             </select>
         </div>
         <div class="flex-1 min-w-[180px]">
@@ -117,6 +130,50 @@
     </div>
 </div>
 
+@if (Model.ByStore.Any() || Model.ByType.Any())
+{
+    <div class="grid md:grid-cols-2 gap-3 mb-4">
+        <div class="bg-white border border-neutral-200 rounded-md overflow-hidden">
+            <div class="px-4 py-2.5 border-b border-neutral-100 text-xs font-semibold text-neutral-600">By store</div>
+            <table class="w-full text-sm">
+                <thead class="bg-neutral-50 text-[11px] text-neutral-400">
+                    <tr><th class="text-left px-4 py-2 font-medium">Store</th><th class="text-right px-4 py-2 font-medium">In</th><th class="text-right px-4 py-2 font-medium">Out</th><th class="text-right px-4 py-2 font-medium">Net</th><th class="text-right px-4 py-2 font-medium">#</th></tr>
+                </thead>
+                <tbody class="divide-y divide-neutral-50">
+                    @foreach (var s in Model.ByStore)
+                    {
+                        <tr>
+                            <td class="px-4 py-2 text-neutral-700 text-xs">@s.Store.Replace("Sterlin Glams ", "")</td>
+                            <td class="px-4 py-2 text-right text-emerald-600 text-xs">@Money2(s.In)</td>
+                            <td class="px-4 py-2 text-right text-rose-600 text-xs">@Money2(-s.Out)</td>
+                            <td class="px-4 py-2 text-right font-semibold text-xs @(s.Net < 0 ? "text-rose-600" : "text-neutral-900")">@Money2(s.Net)</td>
+                            <td class="px-4 py-2 text-right text-neutral-400 text-xs">@s.Count</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="bg-white border border-neutral-200 rounded-md overflow-hidden">
+            <div class="px-4 py-2.5 border-b border-neutral-100 text-xs font-semibold text-neutral-600">By type</div>
+            <table class="w-full text-sm">
+                <thead class="bg-neutral-50 text-[11px] text-neutral-400">
+                    <tr><th class="text-left px-4 py-2 font-medium">Type</th><th class="text-right px-4 py-2 font-medium">Net</th><th class="text-right px-4 py-2 font-medium">#</th></tr>
+                </thead>
+                <tbody class="divide-y divide-neutral-50">
+                    @foreach (var ty in Model.ByType)
+                    {
+                        <tr>
+                            <td class="px-4 py-2"><span class="text-[11px] px-1.5 py-0.5 rounded @typeBadge(ty.Type)">@ty.Type</span></td>
+                            <td class="px-4 py-2 text-right font-semibold text-xs @(ty.Net < 0 ? "text-rose-600" : "text-emerald-600")">@Money2(ty.Net)</td>
+                            <td class="px-4 py-2 text-right text-neutral-400 text-xs">@ty.Count</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
 @if (Model.CanManage)
 {
     <details class="bg-white border border-neutral-200 rounded-md mb-4">
@@ -125,7 +182,7 @@
             @Html.AntiForgeryToken()
             <input type="hidden" name="from" value="@F" /><input type="hidden" name="to" value="@T" />
             <input type="hidden" name="storeId" value="@Model.StoreId" /><input type="hidden" name="channel" value="@Model.Channel" />
-            <input type="hidden" name="type" value="@Model.Type" /><input type="hidden" name="q" value="@Model.Q" />
+            <input type="hidden" name="type" value="@Model.Type" /><input type="hidden" name="method" value="@Model.Method" /><input type="hidden" name="q" value="@Model.Q" />
             <input type="hidden" name="sort" value="@Model.Sort" /><input type="hidden" name="dir" value="@Model.Dir" />
             <div>
                 <label class="block text-[11px] text-neutral-500 mb-1">Category</label>
@@ -185,6 +242,10 @@
                         <td class="px-4 py-2.5 whitespace-nowrap">
                             <span class="text-[11px] px-1.5 py-0.5 rounded @typeBadge(r.Type)">@r.Type</span>
                             @if (r.Status == "Pending") { <span class="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 ml-1">pending</span> }
+                            else if (r.Type == "Cash-up")
+                            {
+                                <span class="text-[11px] px-1.5 py-0.5 rounded ml-1 @(r.Status == "over" ? "bg-emerald-100 text-emerald-700" : r.Status == "short" ? "bg-rose-100 text-rose-700" : "bg-neutral-100 text-neutral-500")">@r.Status</span>
+                            }
                         </td>
                         <td class="px-4 py-2.5 whitespace-nowrap text-neutral-700 text-xs">@r.Store.Replace("Sterlin Glams ", "")@(string.IsNullOrEmpty(r.Channel) ? "" : $" · {r.Channel}")</td>
                         <td class="px-4 py-2.5 whitespace-nowrap font-mono text-xs text-neutral-500">@r.Reference</td>
@@ -204,7 +265,7 @@
                                         <input type="hidden" name="id" value="@r.ActionId" />
                                         <input type="hidden" name="from" value="@F" /><input type="hidden" name="to" value="@T" />
                                         <input type="hidden" name="storeId" value="@Model.StoreId" /><input type="hidden" name="channel" value="@Model.Channel" />
-                                        <input type="hidden" name="type" value="@Model.Type" /><input type="hidden" name="q" value="@Model.Q" />
+                                        <input type="hidden" name="type" value="@Model.Type" /><input type="hidden" name="method" value="@Model.Method" /><input type="hidden" name="q" value="@Model.Q" />
                                         <input type="hidden" name="sort" value="@Model.Sort" /><input type="hidden" name="dir" value="@Model.Dir" /><input type="hidden" name="page" value="@Model.Page" />
                                         <button type="submit" class="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700">Approve</button>
                                     </form>
@@ -213,7 +274,7 @@
                                         <input type="hidden" name="id" value="@r.ActionId" />
                                         <input type="hidden" name="from" value="@F" /><input type="hidden" name="to" value="@T" />
                                         <input type="hidden" name="storeId" value="@Model.StoreId" /><input type="hidden" name="channel" value="@Model.Channel" />
-                                        <input type="hidden" name="type" value="@Model.Type" /><input type="hidden" name="q" value="@Model.Q" />
+                                        <input type="hidden" name="type" value="@Model.Type" /><input type="hidden" name="method" value="@Model.Method" /><input type="hidden" name="q" value="@Model.Q" />
                                         <input type="hidden" name="sort" value="@Model.Sort" /><input type="hidden" name="dir" value="@Model.Dir" /><input type="hidden" name="page" value="@Model.Page" />
                                         <button type="submit" class="text-xs px-2 py-1 rounded border border-neutral-300 text-neutral-600 hover:bg-neutral-50">Reject</button>
                                     </form>
@@ -226,7 +287,7 @@
                                     <input type="hidden" name="id" value="@r.ActionId" />
                                     <input type="hidden" name="from" value="@F" /><input type="hidden" name="to" value="@T" />
                                     <input type="hidden" name="storeId" value="@Model.StoreId" /><input type="hidden" name="channel" value="@Model.Channel" />
-                                    <input type="hidden" name="type" value="@Model.Type" /><input type="hidden" name="q" value="@Model.Q" />
+                                    <input type="hidden" name="type" value="@Model.Type" /><input type="hidden" name="method" value="@Model.Method" /><input type="hidden" name="q" value="@Model.Q" />
                                     <input type="hidden" name="sort" value="@Model.Sort" /><input type="hidden" name="dir" value="@Model.Dir" /><input type="hidden" name="page" value="@Model.Page" />
                                     <button type="submit" class="text-xs text-rose-500 hover:text-rose-700">Delete</button>
                                 </form>
