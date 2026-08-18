@@ -472,14 +472,22 @@ public class ProductsController : InventoryAreaController
         if (qty < 1) qty = 1;
         if (qty > 200) qty = 200;
 
-        // Explicit picks "pid:qty,pid" (qty optional → defaults to the page qty).
-        var qtyById = new Dictionary<int, int>();
+        // Explicit picks: "key:qty" where key = pid (whole product → all variants) OR pid.vid (just
+        // that one scanned variant). qty optional → defaults to the page qty.
+        var qtyById = new Dictionary<int, int>();                        // product → copies (all variants)
+        var variantQty = new Dictionary<int, Dictionary<int, int>>();    // pid → (vid → copies)
         foreach (var part in (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries))
         {
             var bits = part.Split(':');
-            if (!int.TryParse(bits[0], out var pid) || pid <= 0) continue;
             var q = bits.Length > 1 && int.TryParse(bits[1], out var qq) && qq > 0 ? qq : qty;
-            qtyById[pid] = qtyById.TryGetValue(pid, out var ex) ? ex + q : q;
+            var key = bits[0].Split('.');
+            if (!int.TryParse(key[0], out var pid) || pid <= 0) continue;
+            if (key.Length > 1 && int.TryParse(key[1], out var vid) && vid > 0)
+            {
+                if (!variantQty.TryGetValue(pid, out var m)) variantQty[pid] = m = new();
+                m[vid] = m.TryGetValue(vid, out var ev) ? ev + q : q;
+            }
+            else qtyById[pid] = qtyById.TryGetValue(pid, out var ex) ? ex + q : q;
         }
 
         // Bulk: every active product in the chosen category and/or in stock at the chosen location.
@@ -492,30 +500,42 @@ public class ProductsController : InventoryAreaController
                 if (!qtyById.ContainsKey(pid)) qtyById[pid] = qty;
         }
 
-        var idList = qtyById.Keys.ToList();
+        var idList = qtyById.Keys.Union(variantQty.Keys).ToList();
         var products = await _db.Products.Include(p => p.Variants).Include(p => p.Category)
             .Where(p => idList.Contains(p.Id)).OrderBy(p => p.Name).ToListAsync();
 
         var rows = new List<LabelRow>();
         foreach (var p in products)
         {
-            var copies = qtyById[p.Id];
             var catName = p.Category?.Name ?? "";
             var desc = p.ShortDescription ?? p.Description;
-            // Every ACTIVE variant gets a label. A variant with no barcode falls back to its SKU (which
-            // still scans at the till), then the product's barcode/SKU, so none are silently dropped.
-            var variants = p.Variants.Where(v => v.IsActive)
-                .OrderBy(v => v.Name).ToList();
-            var labels = variants.Count > 0
-                ? variants.Select(v => new LabelRow { Name = $"{p.Name} – {v.Name}", Price = v.Price ?? p.Price,
-                    Code = !string.IsNullOrWhiteSpace(v.Barcode) ? v.Barcode!
-                         : !string.IsNullOrWhiteSpace(v.Sku) ? v.Sku!
-                         : !string.IsNullOrWhiteSpace(p.Barcode) ? p.Barcode!
-                         : !string.IsNullOrWhiteSpace(p.Sku) ? p.Sku!
-                         : $"P{p.Id}V{v.Id}",
-                    Sku = v.Sku ?? p.Sku, Category = catName, Description = desc }).ToList()
-                : new List<LabelRow> { new() { Name = p.Name, Price = p.Price, Code = p.Barcode ?? p.Sku ?? ("P" + p.Id), Sku = p.Sku, Category = catName, Description = desc } };
-            for (var i = 0; i < copies; i++) rows.AddRange(labels);
+            // A variant with no barcode falls back to its SKU (still scans at the till), then the
+            // product's barcode/SKU, so none are silently dropped.
+            LabelRow VarRow(Models.Domain.ProductVariant v) => new()
+            {
+                Name = $"{p.Name} – {v.Name}", Price = v.Price ?? p.Price,
+                Code = !string.IsNullOrWhiteSpace(v.Barcode) ? v.Barcode!
+                     : !string.IsNullOrWhiteSpace(v.Sku) ? v.Sku!
+                     : !string.IsNullOrWhiteSpace(p.Barcode) ? p.Barcode!
+                     : !string.IsNullOrWhiteSpace(p.Sku) ? p.Sku!
+                     : $"P{p.Id}V{v.Id}",
+                Sku = v.Sku ?? p.Sku, Category = catName, Description = desc
+            };
+
+            // Variant-specific picks (a scanned variant) → print only those variants.
+            if (variantQty.TryGetValue(p.Id, out var vmap))
+                foreach (var v in p.Variants.Where(v => vmap.ContainsKey(v.Id)).OrderBy(v => v.Name))
+                    for (var i = 0; i < vmap[v.Id]; i++) rows.Add(VarRow(v));
+
+            // Whole-product pick → every active variant (or a single label for a plain product).
+            if (qtyById.TryGetValue(p.Id, out var copies))
+            {
+                var variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).ToList();
+                var labels = variants.Count > 0
+                    ? variants.Select(VarRow).ToList()
+                    : new List<LabelRow> { new() { Name = p.Name, Price = p.Price, Code = p.Barcode ?? p.Sku ?? ("P" + p.Id), Sku = p.Sku, Category = catName, Description = desc } };
+                for (var i = 0; i < copies; i++) rows.AddRange(labels);
+            }
         }
 
         ViewData["Title"] = "Barcode Labels";
@@ -562,12 +582,20 @@ public class ProductsController : InventoryAreaController
     {
         barcode = (barcode ?? "").Trim();
         if (barcode.Length == 0) return Json(new { found = false });
-        var p = await _db.Products
-            .Where(x => x.Barcode == barcode || x.Sku == barcode
-                     || x.Variants.Any(v => v.Barcode == barcode || v.Sku == barcode))
-            .Select(x => new { x.Id, x.Name, x.Sku, x.Barcode })
+        // A variant's own barcode/SKU → return THAT variant so only it prints (label search by scan).
+        var v = await _db.ProductVariants
+            .Where(x => (x.Barcode == barcode || x.Sku == barcode))
+            .Select(x => new { x.Id, x.ProductId, ProductName = x.Product.Name, VariantName = x.Name })
             .FirstOrDefaultAsync();
-        return p == null ? Json(new { found = false }) : Json(new { found = true, id = p.Id, name = p.Name });
+        if (v != null)
+            return Json(new { found = true, id = v.ProductId, variantId = v.Id, name = $"{v.ProductName} – {v.VariantName}" });
+
+        // Otherwise a product's own barcode/SKU → the whole product (all its variants print).
+        var p = await _db.Products
+            .Where(x => x.Barcode == barcode || x.Sku == barcode)
+            .Select(x => new { x.Id, x.Name })
+            .FirstOrDefaultAsync();
+        return p == null ? Json(new { found = false }) : Json(new { found = true, id = p.Id, variantId = (int?)null, name = p.Name });
     }
 
     // ── Quick-Edit slide-in modal (Product List "Edit") ─────────────────────────
