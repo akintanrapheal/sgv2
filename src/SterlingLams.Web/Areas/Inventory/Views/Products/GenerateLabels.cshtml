@@ -236,13 +236,19 @@
         addPick(b.getAttribute('data-id'), b.getAttribute('data-name'));
         el('lbl-search').value = ''; sug.classList.add('hidden');
     });
-    // Enter → exact barcode/SKU lookup (scanner-friendly)
+    // Enter → exact barcode/SKU lookup (scanner-friendly). A scanned VARIANT barcode adds just that
+    // variant (key "pid.vid"); a product barcode/SKU adds the whole product (all its variants).
     el('lbl-search').addEventListener('keydown', function (e) {
         if (e.key !== 'Enter') return; e.preventDefault();
         var code = this.value.trim(); if (!code) return;
         fetch(__invBase + '/Products/Lookup?barcode=' + encodeURIComponent(code))
             .then(function (r) { return r.json(); })
-            .then(function (d) { if (d.found) { addPick(d.id, d.name); el('lbl-search').value = ''; sug.classList.add('hidden'); } });
+            .then(function (d) {
+                if (!d.found) { return; }
+                var key = (d.variantId != null) ? (d.id + '.' + d.variantId) : ('' + d.id);
+                addPick(key, d.name);
+                el('lbl-search').value = ''; sug.classList.add('hidden');
+            });
     });
     document.addEventListener('click', function (e) { if (!sug.contains(e.target) && e.target !== el('lbl-search')) sug.classList.add('hidden'); });
 
