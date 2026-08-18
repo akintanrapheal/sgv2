@@ -502,10 +502,18 @@ public class ProductsController : InventoryAreaController
             var copies = qtyById[p.Id];
             var catName = p.Category?.Name ?? "";
             var desc = p.ShortDescription ?? p.Description;
-            var variants = p.Variants.Where(v => v.IsActive && !string.IsNullOrEmpty(v.Barcode))
+            // Every ACTIVE variant gets a label. A variant with no barcode falls back to its SKU (which
+            // still scans at the till), then the product's barcode/SKU, so none are silently dropped.
+            var variants = p.Variants.Where(v => v.IsActive)
                 .OrderBy(v => v.Name).ToList();
             var labels = variants.Count > 0
-                ? variants.Select(v => new LabelRow { Name = $"{p.Name} – {v.Name}", Price = v.Price ?? p.Price, Code = v.Barcode!, Sku = v.Sku ?? p.Sku, Category = catName, Description = desc }).ToList()
+                ? variants.Select(v => new LabelRow { Name = $"{p.Name} – {v.Name}", Price = v.Price ?? p.Price,
+                    Code = !string.IsNullOrWhiteSpace(v.Barcode) ? v.Barcode!
+                         : !string.IsNullOrWhiteSpace(v.Sku) ? v.Sku!
+                         : !string.IsNullOrWhiteSpace(p.Barcode) ? p.Barcode!
+                         : !string.IsNullOrWhiteSpace(p.Sku) ? p.Sku!
+                         : $"P{p.Id}V{v.Id}",
+                    Sku = v.Sku ?? p.Sku, Category = catName, Description = desc }).ToList()
                 : new List<LabelRow> { new() { Name = p.Name, Price = p.Price, Code = p.Barcode ?? p.Sku ?? ("P" + p.Id), Sku = p.Sku, Category = catName, Description = desc } };
             for (var i = 0; i < copies; i++) rows.AddRange(labels);
         }

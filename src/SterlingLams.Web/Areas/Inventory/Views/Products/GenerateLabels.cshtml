@@ -24,12 +24,14 @@
     #lbl-preview-box .label.pr-butterfly { width: 212px; min-height: 49px; padding: 3px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
     #lbl-preview-box .label.pr-butterfly .qr { width: 30px; height: 30px; }
     /* 30x15mm tag (about 113x57px at 96dpi) — force everything tiny so name + QR + number fit. */
-    #lbl-preview-box .label.pr-tag30x15 { width: 113px; height: 57px; padding: 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; overflow: hidden; }
-    #lbl-preview-box .label.pr-tag30x15 .lname { font-size: 6px; line-height: 1.05; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-    #lbl-preview-box .label.pr-tag30x15 .lsku,
-    #lbl-preview-box .label.pr-tag30x15 .lcode,
-    #lbl-preview-box .label.pr-tag30x15 .lprice { font-size: 6px; line-height: 1.05; margin: 0; }
-    #lbl-preview-box .label.pr-tag30x15 .qr { width: 38px; height: 38px; margin: 0; }
+    #lbl-preview-box .label.pr-tag30x15 { width: 113px; height: 57px; padding: 3px; overflow: hidden; }
+    #lbl-preview-box .label.pr-tag30x15 .tagrow { display: flex; align-items: center; gap: 4px; height: 100%; }
+    #lbl-preview-box .label.pr-tag30x15 .qr { width: 42px; height: 42px; margin: 0; flex: 0 0 auto; }
+    #lbl-preview-box .label.pr-tag30x15 .tagtext { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; }
+    #lbl-preview-box .label.pr-tag30x15 .lname { font-size: 6px; line-height: 1.1; margin: 0 0 1px 0; overflow: hidden;
+        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+    #lbl-preview-box .label.pr-tag30x15 .lcode { font-size: 6px; line-height: 1.1; margin: 0; }
+    #lbl-preview-box .label.pr-tag30x15 .lprice { font-size: 7px; font-weight: bold; line-height: 1.1; margin: 1px 0 0 0; }
     #lbl-preview-box .lcat { font-size: var(--lbl-fs, 9px); text-transform: uppercase; letter-spacing: .5px; color: #78716c; margin-bottom: 2px; }
     #lbl-preview-box .lname { font-size: var(--lbl-fs, 9px); line-height: 1.25; margin-bottom: 2px; font-weight: 600; }
     #lbl-preview-box .ldesc { font-size: var(--lbl-fs, 9px); color: #57534e; line-height: 1.2; margin-bottom: 2px; }
@@ -287,17 +289,28 @@
         lab.className = 'label ' + (printer === 'a4' ? currentPreset() : 'pr-' + printer);
         lab.style.setProperty('--lbl-ff', LBL_FONTS[el('lbl-font').value] || LBL_FONTS.arial);
         lab.style.setProperty('--lbl-fs', (parseInt(el('lbl-fontsize').value, 10) || 9) + 'px');
-        // Order: name · SKU (above QR) · QR · barcode number (below QR) · price.
         var html = '';
-        if (el('d-category').checked) html += '<div class="lcat">Category</div>';
-        if (el('d-name').checked) html += '<div class="lname">' + esc(name) + '</div>';
-        if (el('d-description').checked) html += '<div class="ldesc">Sample description</div>';
-        if (el('d-barcode').checked) html += '<svg class="bc"></svg>';
-        if (el('d-sku').checked) html += '<div class="lsku">' + esc(sku) + '</div>';
-        if (el('d-qr').checked) html += '<img class="qr" alt="QR" src="' + __invBase + '/Products/Qr?text=' + encodeURIComponent(code) + '" />';
-        if (el('d-barcodenum').checked) html += '<div class="lcode">' + code + '</div>';
-        if (el('d-price').checked) html += '<div class="lprice">₦100.58</div>';
-        if (el('d-customtext-on').checked && el('d-customtext').value) html += '<div class="lcustom">' + esc(el('d-customtext').value) + '</div>';
+        if (printer === 'tag30x15') {
+            // Horizontal tag preview — mirrors the print output (QR left, text right).
+            var qr = el('d-qr').checked ? '<img class="qr" alt="QR" src="' + __invBase + '/Products/Qr?text=' + encodeURIComponent(code) + '" />' : '';
+            var txt = '';
+            if (el('d-name').checked) txt += '<div class="lname">' + esc(name) + '</div>';
+            if (el('d-barcodenum').checked) txt += '<div class="lcode">' + code + '</div>';
+            if (el('d-price').checked) txt += '<div class="lprice">₦100.58</div>';
+            if (el('d-customtext-on').checked && el('d-customtext').value) txt += '<div class="lcustom">' + esc(el('d-customtext').value) + '</div>';
+            html = '<div class="tagrow">' + qr + '<div class="tagtext">' + txt + '</div></div>';
+        } else {
+            // Order: name · SKU (above QR) · QR · barcode number (below QR) · price.
+            if (el('d-category').checked) html += '<div class="lcat">Category</div>';
+            if (el('d-name').checked) html += '<div class="lname">' + esc(name) + '</div>';
+            if (el('d-description').checked) html += '<div class="ldesc">Sample description</div>';
+            if (el('d-barcode').checked) html += '<svg class="bc"></svg>';
+            if (el('d-sku').checked) html += '<div class="lsku">' + esc(sku) + '</div>';
+            if (el('d-qr').checked) html += '<img class="qr" alt="QR" src="' + __invBase + '/Products/Qr?text=' + encodeURIComponent(code) + '" />';
+            if (el('d-barcodenum').checked) html += '<div class="lcode">' + code + '</div>';
+            if (el('d-price').checked) html += '<div class="lprice">₦100.58</div>';
+            if (el('d-customtext-on').checked && el('d-customtext').value) html += '<div class="lcustom">' + esc(el('d-customtext').value) + '</div>';
+        }
         lab.innerHTML = html || '<span style="color:#a3a3a3;font-size:12px;">Nothing selected to print</span>';
         box.innerHTML = ''; box.appendChild(lab);
         if (el('d-barcode').checked && window.JsBarcode) {
