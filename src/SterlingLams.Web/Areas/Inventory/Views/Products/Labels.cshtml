@@ -85,13 +85,15 @@
             /* 3×1.5cm tag laid out HORIZONTALLY — QR on the left, text on the right — so the full
                product name has room (up to 3 lines) and the barcode number + price never clip it. */
             .pr-tag30x15 .label { width: 30mm; height: 15mm; border-radius: 0; padding: 0.8mm; overflow: hidden; }
-            .pr-tag30x15 .tagrow { display: flex; align-items: center; gap: 1mm; height: 100%; }
-            .pr-tag30x15 .qr { width: 11mm; height: 11mm; flex: 0 0 auto; }
-            .pr-tag30x15 .tagtext { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; }
-            .pr-tag30x15 .lname { font-size: 6px; line-height: 1.1; margin: 0 0 0.3mm 0; overflow: hidden;
-                display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
-            .pr-tag30x15 .lcode { font-size: 6px; line-height: 1.1; margin: 0; }
-            .pr-tag30x15 .lprice { font-size: 7px; font-weight: bold; line-height: 1.1; margin: 0.2mm 0 0 0; }
+            .pr-tag30x15 .tagrow { display: flex; align-items: stretch; gap: 1mm; height: 100%; }
+            .pr-tag30x15 .qr { width: 11mm; height: 11mm; flex: 0 0 auto; align-self: center; }
+            /* The base font is auto-shrunk by fitTag() so a long name wraps to as many lines as it needs
+               and still fits with the number + price; the children scale in em off this base. */
+            .pr-tag30x15 .tagtext { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden;
+                font-size: 6px; line-height: 1.1; }
+            .pr-tag30x15 .lname { font-size: 1em; margin: 0 0 0.3mm 0; overflow-wrap: anywhere; }
+            .pr-tag30x15 .lcode { font-size: 1em; margin: 0; }
+            .pr-tag30x15 .lprice { font-size: 1.15em; font-weight: bold; margin: 0.2mm 0 0 0; }
             @@media print { .pr-tag30x15 .label { border: 0; page-break-after: always; } }
         </style>
     }
@@ -166,10 +168,23 @@
                     el.innerHTML = html;
                     sheet.appendChild(el);
                     if (F.showBarcode) { try { JsBarcode(el.querySelector('.bc'), p.code, { format: 'CODE39', width: 1.0, height: 38, displayValue: false, margin: 2 }); } catch (e) { } }
+                    if (F.printer === 'tag30x15') fitTag(el);
                     el.querySelector('.lpick').addEventListener('change', e => el.classList.toggle('unchecked', !e.target.checked));
                 }
             });
             document.getElementById('info').textContent = (products.length * copies) + ' label(s)';
+        }
+        // Shrink a tag's text just enough that the whole (possibly long, multi-line) name plus the
+        // number and price fit inside the 15mm tag — short names stay at full size.
+        function fitTag(el) {
+            const txt = el.querySelector('.tagtext'); if (!txt) return;
+            let size = 6;
+            txt.style.fontSize = size + 'px';
+            let guard = 0;
+            while (txt.scrollHeight > txt.clientHeight + 0.5 && size > 3.5 && guard++ < 40) {
+                size -= 0.25;
+                txt.style.fontSize = size + 'px';
+            }
         }
         function selectAll(state) {
             document.querySelectorAll('.lpick').forEach(c => { c.checked = state; c.dispatchEvent(new Event('change')); });
