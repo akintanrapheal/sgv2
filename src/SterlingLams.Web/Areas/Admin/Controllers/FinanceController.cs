@@ -543,6 +543,264 @@ public class FinanceController : AdminBaseController
         return RedirectToAction(nameof(Refunds), new { from, to, storeId });
     }
 
+    // ── Transactions ledger ────────────────────────────────────────────────────
+    // One row per money movement across ALL stores — payments, refunds, expenses and till cash
+    // in/out — with filter, search, sort, pagination, CSV export and inline actions. Amount is
+    // signed: money IN is positive, money OUT (refunds, expenses, cash-out) is negative.
+    public record TxnRow(DateTime When, string Type, string Store, int? StoreId, string Channel,
+        string Reference, string Party, string Method, decimal Amount, bool Settled, string Status,
+        string ActionKind, int? ActionId, string Detail);
+
+    public class TxnVm
+    {
+        public DateTime From { get; set; }
+        public DateTime To { get; set; }
+        public int? StoreId { get; set; }
+        public string Channel { get; set; } = "";
+        public string Type { get; set; } = "";
+        public string Q { get; set; } = "";
+        public string Sort { get; set; } = "date";
+        public string Dir { get; set; } = "desc";
+        public int Page { get; set; } = 1;
+        public int PageSize { get; set; } = 50;
+        public int Total { get; set; }
+        public int TotalPages { get; set; }
+        public List<Store> Stores { get; set; } = new();
+        public List<(string Label, string From, string To)> Presets { get; set; } = new();
+        public List<TxnRow> Rows { get; set; } = new();
+        public decimal SumIn { get; set; }
+        public decimal SumOut { get; set; }
+        public int PendingRefunds { get; set; }
+        public decimal Net => SumIn - SumOut;
+        public bool CanManage { get; set; }
+        public string[] ExpenseCategories { get; set; } = { "Logistics", "Rent", "Salaries", "Utilities", "Supplies", "Marketing", "Bank charges", "Other" };
+    }
+
+    private async Task<Dictionary<string, string>> UserNamesAsync(IEnumerable<string?> ids)
+    {
+        var list = ids.Where(i => !string.IsNullOrEmpty(i)).Select(i => i!).Distinct().ToList();
+        if (list.Count == 0) return new();
+        return (await _db.Users.Where(u => list.Contains(u.Id))
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.UserName }).ToListAsync())
+            .ToDictionary(u => u.Id, u =>
+            {
+                var n = $"{u.FirstName} {u.LastName}".Trim();
+                return string.IsNullOrWhiteSpace(n) ? (u.UserName ?? "—") : n;
+            });
+    }
+
+    // Builds every transaction row inside the window, honouring the store/channel/type filters.
+    private async Task<List<TxnRow>> BuildTxnRowsAsync(DateTime f, DateTime t, int? storeId, string channel, string type)
+    {
+        var stores = (await _db.Stores.Select(s => new { s.Id, s.Name }).ToListAsync())
+            .ToDictionary(s => s.Id, s => s.Name);
+        string StoreLabel(int? id) => id.HasValue && stores.TryGetValue(id.Value, out var n) ? n : "—";
+        var rows = new List<TxnRow>();
+
+        // 1) Sales / payments (money IN) — one row per payment, dated when it was taken.
+        if (type is "" or "Sale")
+        {
+            var payQ = _db.OrderPayments.Where(p => p.CreatedAt >= f && p.CreatedAt < t);
+            if (storeId.HasValue) payQ = payQ.Where(p => p.Order.PickupStoreId == storeId || p.Order.FulfillingStoreId == storeId);
+            if (channel == "Online") payQ = payQ.Where(p => p.Order.Channel == OrderChannel.Online);
+            else if (channel == "Pos") payQ = payQ.Where(p => p.Order.Channel == OrderChannel.Pos);
+            var pays = await payQ.Select(p => new
+            {
+                p.CreatedAt, p.Method, p.Amount, p.OrderId, p.Order.OrderNumber, p.Order.Channel,
+                Sid = p.Order.PickupStoreId ?? p.Order.FulfillingStoreId,
+                Cust = p.Order.Customer != null ? (p.Order.Customer.FirstName + " " + p.Order.Customer.LastName) : null
+            }).ToListAsync();
+            foreach (var p in pays)
+                rows.Add(new TxnRow(p.CreatedAt, "Sale", StoreLabel(p.Sid), p.Sid, p.Channel.ToString(),
+                    p.OrderNumber, string.IsNullOrWhiteSpace(p.Cust) ? "Walk-in" : p.Cust!.Trim(),
+                    p.Method, p.Amount, true, "", "order", p.OrderId, ""));
+        }
+
+        // 2) Refunds — approved (money OUT, settled) + pending (actionable, not yet settled).
+        if (type is "" or "Refund")
+        {
+            var refQ = _db.Refunds.Where(r => (r.Status == RefundStatus.Approved || r.Status == RefundStatus.PendingApproval)
+                && r.CreatedAt >= f && r.CreatedAt < t);
+            if (storeId.HasValue) refQ = refQ.Where(r => r.OriginalOrder.PickupStoreId == storeId || r.OriginalOrder.FulfillingStoreId == storeId);
+            if (channel == "Online") refQ = refQ.Where(r => r.OriginalOrder.Channel == OrderChannel.Online);
+            else if (channel == "Pos") refQ = refQ.Where(r => r.OriginalOrder.Channel == OrderChannel.Pos);
+            var refs = await refQ.Select(r => new
+            {
+                r.Id, r.CreatedAt, r.RefundMethod, r.Amount, r.RefundNumber, r.Status, r.Reason, r.OriginalOrderId,
+                Order = r.OriginalOrder.OrderNumber, r.OriginalOrder.Channel,
+                Sid = r.OriginalOrder.PickupStoreId ?? r.OriginalOrder.FulfillingStoreId
+            }).ToListAsync();
+            foreach (var r in refs)
+            {
+                var pending = r.Status == RefundStatus.PendingApproval;
+                rows.Add(new TxnRow(r.CreatedAt, "Refund", StoreLabel(r.Sid), r.Sid, r.Channel.ToString(),
+                    r.RefundNumber, string.IsNullOrWhiteSpace(r.Reason) ? "—" : r.Reason!.Trim(),
+                    r.RefundMethod, -r.Amount, !pending, pending ? "Pending" : "Approved",
+                    pending ? "refund-pending" : "order", pending ? r.Id : r.OriginalOrderId, "Order " + r.Order));
+            }
+        }
+
+        // 3) Expenses (money OUT) — no channel, so hidden when a channel filter is set.
+        if ((type is "" or "Expense") && channel == "")
+        {
+            var expQ = _db.Expenses.Where(e => e.OccurredOn >= f && e.OccurredOn < t);
+            if (storeId.HasValue) expQ = expQ.Where(e => e.StoreId == storeId);
+            var exps = await expQ.Select(e => new { e.Id, e.OccurredOn, e.Category, e.Amount, e.StoreId, e.Note, e.CreatedByUserId }).ToListAsync();
+            var names = await UserNamesAsync(exps.Select(e => e.CreatedByUserId));
+            foreach (var e in exps)
+                rows.Add(new TxnRow(e.OccurredOn, "Expense", StoreLabel(e.StoreId), e.StoreId, "",
+                    e.Category, names.GetValueOrDefault(e.CreatedByUserId ?? "", "—"), "—",
+                    -e.Amount, true, "", "expense", e.Id, e.Note ?? ""));
+        }
+
+        // 4) Till cash in/out (Amount already signed) — no channel.
+        if ((type is "" or "Cash") && channel == "")
+        {
+            var cmQ = _db.CashMovements.Where(m => m.CreatedAt >= f && m.CreatedAt < t);
+            if (storeId.HasValue) cmQ = cmQ.Where(m => m.TillSession.Register.StoreId == storeId);
+            var cms = await cmQ.Select(m => new { m.Id, m.CreatedAt, m.Amount, m.Reason, m.UserId,
+                Sid = (int?)m.TillSession.Register.StoreId }).ToListAsync();
+            var names = await UserNamesAsync(cms.Select(m => m.UserId));
+            foreach (var m in cms)
+                rows.Add(new TxnRow(m.CreatedAt, "Cash", StoreLabel(m.Sid), m.Sid, "",
+                    m.Amount >= 0 ? "Cash in" : "Cash out", names.GetValueOrDefault(m.UserId, "—"),
+                    "Cash", m.Amount, true, "", "", null, m.Reason ?? ""));
+        }
+        return rows;
+    }
+
+    private static IEnumerable<TxnRow> ApplyTxnFilterSort(List<TxnRow> rows, string q, string sort, string dir)
+    {
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var ql = q.Trim().ToLowerInvariant();
+            rows = rows.Where(r =>
+                   (r.Reference ?? "").ToLowerInvariant().Contains(ql)
+                || (r.Party ?? "").ToLowerInvariant().Contains(ql)
+                || (r.Method ?? "").ToLowerInvariant().Contains(ql)
+                || (r.Detail ?? "").ToLowerInvariant().Contains(ql)
+                || (r.Store ?? "").ToLowerInvariant().Contains(ql)).ToList();
+        }
+        bool asc = dir == "asc";
+        IOrderedEnumerable<TxnRow> o = sort switch
+        {
+            "amount" => asc ? rows.OrderBy(r => r.Amount) : rows.OrderByDescending(r => r.Amount),
+            "type" => asc ? rows.OrderBy(r => r.Type) : rows.OrderByDescending(r => r.Type),
+            "store" => asc ? rows.OrderBy(r => r.Store) : rows.OrderByDescending(r => r.Store),
+            _ => asc ? rows.OrderBy(r => r.When) : rows.OrderByDescending(r => r.When)
+        };
+        return o.ThenByDescending(r => r.When);
+    }
+
+    public async Task<IActionResult> Transactions(string? from, string? to, int? storeId, string? channel,
+        string? type, string? q, string? sort, string? dir, int page = 1, string? format = null)
+    {
+        ViewData["Title"] = "Finance — Transactions";
+        var (f, t, fLocal, tLocal) = Range(from, to);
+        channel = channel is "Online" or "Pos" ? channel : "";
+        type = new[] { "Sale", "Refund", "Expense", "Cash" }.Contains(type) ? type! : "";
+        q = (q ?? "").Trim();
+        sort = new[] { "date", "amount", "type", "store" }.Contains(sort) ? sort! : "date";
+        dir = dir == "asc" ? "asc" : "desc";
+
+        var all = await BuildTxnRowsAsync(f, t, storeId, channel, type);
+        var filtered = ApplyTxnFilterSort(all, q, sort, dir).ToList();
+
+        // Totals over the whole filtered set (settled movements only).
+        var sumIn = filtered.Where(r => r.Settled && r.Amount > 0).Sum(r => r.Amount);
+        var sumOut = filtered.Where(r => r.Settled && r.Amount < 0).Sum(r => -r.Amount);
+
+        if (format == "csv")
+        {
+            var sb = new StringBuilder();
+            Services.Csv.AppendRow(sb, "Date (WAT)", "Type", "Status", "Store", "Channel", "Reference", "Party", "Method", "Amount", "Detail");
+            foreach (var r in filtered)
+                Services.Csv.AppendRow(sb, Services.ReportCalendar.ToLocal(r.When).ToString("yyyy-MM-dd HH:mm"),
+                    r.Type, string.IsNullOrEmpty(r.Status) ? "" : r.Status, r.Store, r.Channel, r.Reference,
+                    r.Party, r.Method, r.Amount.ToString("0.##"), r.Detail);
+            return File(Services.Csv.ToBytes(sb), "text/csv", $"transactions_{fLocal:yyyyMMdd}-{tLocal:yyyyMMdd}.csv");
+        }
+
+        const int pageSize = 50;
+        var total = filtered.Count;
+        var totalPages = Math.Max(1, (int)Math.Ceiling(total / (double)pageSize));
+        page = Math.Min(Math.Max(1, page), totalPages);
+        var pageRows = filtered.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        var perms = HttpContext.RequestServices.GetRequiredService<SterlingLams.Web.Services.IPermissionService>();
+        return View(new TxnVm
+        {
+            From = fLocal, To = tLocal, StoreId = storeId, Channel = channel, Type = type, Q = q,
+            Sort = sort, Dir = dir, Page = page, PageSize = pageSize, Total = total, TotalPages = totalPages,
+            Stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync(),
+            Presets = BuildPresets(), Rows = pageRows,
+            SumIn = sumIn, SumOut = sumOut,
+            PendingRefunds = filtered.Count(r => r.ActionKind == "refund-pending"),
+            CanManage = await perms.CanManageAsync(User, "Finance")
+        });
+    }
+
+    // Inline actions from the Transactions ledger — redirect back to it keeping the current filters.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> TxnApproveRefund(int id, string? note, string? from, string? to,
+        int? storeId, string? channel, string? type, string? q, string? sort, string? dir, int page = 1)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        var res = await _approvals.ApproveAsync(id, userId, note);
+        TempData[res.Success ? "Success" : "Error"] = res.Message;
+        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, q, sort, dir, page });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> TxnRejectRefund(int id, string? note, string? from, string? to,
+        int? storeId, string? channel, string? type, string? q, string? sort, string? dir, int page = 1)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        var res = await _approvals.RejectAsync(id, userId, note);
+        TempData[res.Success ? "Success" : "Error"] = res.Message;
+        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, q, sort, dir, page });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> TxnAddExpense(string category, decimal amount, DateTime? occurredOn,
+        string? note, int? expenseStoreId, string? from, string? to, int? storeId, string? channel,
+        string? type, string? q, string? sort, string? dir, int page = 1)
+    {
+        if (amount > 0)
+        {
+            _db.Expenses.Add(new Expense
+            {
+                Category = string.IsNullOrWhiteSpace(category) ? "Other" : category.Trim(),
+                Amount = amount,
+                OccurredOn = DateTime.SpecifyKind((occurredOn ?? DateTime.UtcNow).Date, DateTimeKind.Utc),
+                Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
+                StoreId = expenseStoreId,
+                CreatedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier),
+                CreatedAt = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync();
+            await LogAsync("Create", "Expense", null, $"Recorded {category} expense ₦{amount:N0}");
+            TempData["Success"] = "Expense recorded.";
+        }
+        else TempData["Error"] = "Enter an amount greater than zero.";
+        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, q, sort, dir, page });
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> TxnDeleteExpense(int id, string? from, string? to, int? storeId,
+        string? channel, string? type, string? q, string? sort, string? dir, int page = 1)
+    {
+        var e = await _db.Expenses.FindAsync(id);
+        if (e != null)
+        {
+            _db.Expenses.Remove(e);
+            await _db.SaveChangesAsync();
+            await LogAsync("Delete", "Expense", id.ToString(), $"Deleted expense ₦{e.Amount:N0}");
+            TempData["Success"] = "Expense deleted.";
+        }
+        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, q, sort, dir, page });
+    }
+
     // ── Discount & giveaway leakage ────────────────────────────────────────────
     public class LeakageVm
     {
