@@ -257,6 +257,10 @@
                             {
                                 <a asp-area="Admin" asp-controller="Orders" asp-action="Detail" asp-route-id="@r.ActionId" class="text-xs text-blue-600 hover:underline">Open</a>
                             }
+                            else if (r.ActionKind == "refund" && r.ActionId != null)
+                            {
+                                <a asp-action="RefundDetail" asp-route-id="@r.ActionId" class="text-xs text-blue-600 hover:underline">Open</a>
+                            }
                             else if (r.ActionKind == "refund-pending" && Model.CanManage)
                             {
                                 <div class="flex items-center justify-end gap-1.5">
