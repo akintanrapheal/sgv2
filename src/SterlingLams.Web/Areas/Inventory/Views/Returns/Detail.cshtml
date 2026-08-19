@@ -1,0 +1,124 @@
+@model SterlingLams.Web.Areas.Inventory.Controllers.ReturnDetailVm
+@{
+    ViewData["Title"] = $"Return {Model.Number}";
+    var reasons = ViewBag.Reasons as string[] ?? System.Array.Empty<string>();
+    string Money(decimal v) => "₦" + v.ToString("N0");
+}
+
+<div class="mb-4">
+    <a asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← Back to returns</a>
+</div>
+
+@if (TempData["Error"] != null)
+{ <div class="mb-4 max-w-3xl rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-sm px-4 py-2.5">@TempData["Error"]</div> }
+
+<div class="flex items-start justify-between gap-4 flex-wrap mb-6 max-w-3xl">
+    <div>
+        <div class="flex items-center gap-2 flex-wrap">
+            <h1 class="text-xl font-semibold text-neutral-900">Return @Model.Number</h1>
+            <span class="text-[11px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">@Model.Channel</span>
+            <span class="text-[11px] px-1.5 py-0.5 rounded @(Model.AnyPending ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700")">@(Model.AnyPending ? "Awaiting your decision" : "Resolved")</span>
+        </div>
+        <p class="text-sm text-neutral-500 mt-1">
+            Order <a asp-controller="Sales" asp-action="Detail" asp-route-id="@Model.OrderId" class="text-blue-600 hover:underline">@Model.Order</a>
+            · returns to <span class="text-neutral-700">@Model.StoreName.Replace("Sterlin Glams ", "")</span>
+        </p>
+    </div>
+    <div class="text-right">
+        <div class="text-[11px] text-neutral-400 uppercase tracking-wide">Refund paid</div>
+        <div class="text-lg font-semibold text-neutral-900">@Money(Model.RefundAmount)</div>
+        <div class="text-xs text-neutral-500">@Model.RefundMethod</div>
+    </div>
+</div>
+
+<div class="grid lg:grid-cols-3 gap-4 max-w-5xl">
+    <!-- Decision (left, wide) -->
+    <div class="lg:col-span-2 space-y-4">
+        <form asp-action="Resolve" method="post" class="bg-white border border-neutral-200 rounded-md overflow-hidden">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" value="@Model.Id" />
+            <div class="px-4 py-3 border-b border-neutral-100 text-sm font-semibold text-neutral-700">Returned items — your decision</div>
+            <div class="divide-y divide-neutral-100">
+                @foreach (var it in Model.Items)
+                {
+                    <div class="flex items-center gap-3 px-4 py-3">
+                        <div class="w-14 h-14 rounded border border-neutral-200 bg-neutral-50 overflow-hidden flex-shrink-0">
+                            @if (!string.IsNullOrEmpty(it.Image))
+                            { <img src="@Img.Cld(it.Image, 112, 112)" alt="" class="w-full h-full object-cover" /> }
+                            else
+                            { <div class="w-full h-full flex items-center justify-center text-neutral-300 text-[10px]">no image</div> }
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm text-neutral-800">@it.Name@(it.Variant != null ? $" – {it.Variant}" : "")</p>
+                            <p class="text-xs text-neutral-500">@it.Qty × @Money(it.UnitPrice)</p>
+                        </div>
+                        @if (it.Pending)
+                        {
+                            <div class="flex items-center gap-3 text-sm flex-wrap justify-end">
+                                <label class="flex items-center gap-1.5">
+                                    <span class="text-neutral-500 text-xs">Put back</span>
+                                    <input type="number" name="restockQty[@it.ItemId]" value="@it.Qty" min="0" max="@it.Qty"
+                                           class="w-16 border border-neutral-300 rounded px-2 py-1 text-sm text-center" />
+                                    <span class="text-neutral-400 text-xs">of @it.Qty</span>
+                                </label>
+                                <label class="flex items-center gap-1.5">
+                                    <span class="text-neutral-500 text-xs">If not, reason</span>
+                                    <select name="reason[@it.ItemId]" class="border border-neutral-300 rounded px-2 py-1 text-sm bg-white">
+                                        @foreach (var rz in reasons) { <option value="@rz">@rz</option> }
+                                    </select>
+                                </label>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="flex items-center gap-2 text-xs">
+                                @if (it.Restocked > 0) { <span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">@it.Restocked restocked</span> }
+                                @if (it.WrittenOff > 0) { <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700">@it.WrittenOff written off@(string.IsNullOrWhiteSpace(it.Note) ? "" : $" · {it.Note}")</span> }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+            @if (Model.AnyPending)
+            {
+                <div class="flex items-center justify-between gap-3 px-4 py-3 border-t border-neutral-100 bg-neutral-50">
+                    <p class="text-[11px] text-neutral-400">Leave "Put back" at the full amount to restock everything; lower it to write off the difference (add back = Restock, reject = write off with the reason).</p>
+                    <button type="submit" class="rounded-md bg-neutral-900 text-white text-sm px-5 py-2 hover:bg-neutral-700 transition-colors whitespace-nowrap">Apply decision</button>
+                </div>
+            }
+        </form>
+
+        <div class="bg-white border border-neutral-200 rounded-md p-4">
+            <div class="text-sm font-semibold text-neutral-700 mb-3">Original order</div>
+            <dl class="grid grid-cols-2 gap-y-2 text-sm">
+                <dt class="text-neutral-500">Order number</dt>
+                <dd class="text-right"><a asp-controller="Sales" asp-action="Detail" asp-route-id="@Model.OrderId" class="text-blue-600 hover:underline">@Model.Order</a></dd>
+                <dt class="text-neutral-500">Order total</dt><dd class="text-right text-neutral-800">@Money(Model.OrderTotal)</dd>
+                <dt class="text-neutral-500">Order date</dt><dd class="text-right text-neutral-800">@Model.OrderDate.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</dd>
+            </dl>
+        </div>
+    </div>
+
+    <!-- Why finance approved + customer (right) -->
+    <div class="space-y-4">
+        <div class="bg-white border border-neutral-200 rounded-md p-4">
+            <div class="text-sm font-semibold text-neutral-700 mb-3">Why Finance approved</div>
+            <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
+                <dt class="text-neutral-500">Reason</dt><dd class="text-neutral-800">@Model.RefundReason</dd>
+                <dt class="text-neutral-500">Raised by</dt><dd class="text-neutral-800">@Model.RequestedBy</dd>
+                <dt class="text-neutral-500">Approved by</dt><dd class="text-neutral-800">@Model.ApprovedBy</dd>
+                @if (Model.ApprovedAt.HasValue)
+                { <dt class="text-neutral-500">Approved</dt><dd class="text-neutral-800">@Model.ApprovedAt.Value.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</dd> }
+                @if (!string.IsNullOrWhiteSpace(Model.FinanceNote))
+                { <dt class="text-neutral-500">Note</dt><dd class="text-neutral-800">@Model.FinanceNote</dd> }
+            </dl>
+        </div>
+
+        <div class="bg-white border border-neutral-200 rounded-md p-4">
+            <div class="text-sm font-semibold text-neutral-700 mb-3">Customer</div>
+            <p class="text-sm text-neutral-800">@Model.CustomerName</p>
+            @if (!string.IsNullOrEmpty(Model.CustomerPhone)) { <p class="text-xs text-neutral-500 mt-0.5">@Model.CustomerPhone</p> }
+            @if (!string.IsNullOrEmpty(Model.CustomerEmail)) { <p class="text-xs text-neutral-500">@Model.CustomerEmail</p> }
+        </div>
+    </div>
+</div>
