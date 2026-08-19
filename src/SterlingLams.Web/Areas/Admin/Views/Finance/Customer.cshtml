@@ -51,22 +51,24 @@
                 <th class="px-4 py-2 text-left font-medium">Date</th>
                 <th class="px-4 py-2 text-left font-medium">Channel</th>
                 <th class="px-4 py-2 text-left font-medium">Status</th>
+                <th class="px-4 py-2 text-right font-medium">Points earned</th>
                 <th class="px-4 py-2 text-right font-medium">Total</th>
                 <th class="px-4 py-2 w-16"></th>
             </tr></thead>
             <tbody class="divide-y divide-neutral-100">
-                @if (!Model.Orders.Any()) { <tr><td colspan="6" class="px-4 py-8 text-center text-neutral-400">No orders yet.</td></tr> }
+                @if (!Model.Orders.Any()) { <tr><td colspan="7" class="px-4 py-8 text-center text-neutral-400">No orders yet.</td></tr> }
                 @foreach (var o in Model.Orders)
                 {
                     <tr class="hover:bg-neutral-50">
                         <td class="px-4 py-2.5"><a asp-area="Admin" asp-controller="Orders" asp-action="Detail" asp-route-id="@o.Id" class="text-blue-600 hover:underline font-mono text-xs">@o.Number</a></td>
                         <td class="px-4 py-2.5 text-neutral-500">@o.When.ToLocalTime().ToString("dd MMM yy HH:mm")</td>
-                        <td class="px-4 py-2.5 text-neutral-600">@o.Channel</td>
+                        <td class="px-4 py-2.5"><span class="text-[11px] px-1.5 py-0.5 rounded @(o.Channel == "Online" ? "bg-sky-50 text-sky-700" : "bg-violet-50 text-violet-700")">@(o.Channel == "Pos" ? "In-store" : o.Channel)</span></td>
                         <td class="px-4 py-2.5">
                             @if (o.Refunded) { <span class="text-[11px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-700">Refunded</span> }
                             else if (o.Paid) { <span class="text-[11px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">Paid</span> }
                             else { <span class="text-[11px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500">Unpaid</span> }
                         </td>
+                        <td class="px-4 py-2.5 text-right @(o.PointsEarned > 0 ? "text-emerald-600 font-medium" : "text-neutral-300")">@(o.PointsEarned > 0 ? "+" + o.PointsEarned.ToString("N0") : "—")</td>
                         <td class="px-4 py-2.5 text-right text-neutral-800">@Money(o.Total)</td>
                         <td class="px-4 py-2.5 text-right"><a asp-area="Admin" asp-controller="Orders" asp-action="Detail" asp-route-id="@o.Id" class="text-xs text-blue-600 hover:underline">Open</a></td>
                     </tr>

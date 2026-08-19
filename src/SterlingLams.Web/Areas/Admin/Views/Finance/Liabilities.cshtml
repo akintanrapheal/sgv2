@@ -1,33 +1,73 @@
 @model SterlingLams.Web.Areas.Admin.Controllers.FinanceController.LiabilitiesVm
 @{
-    ViewData["Title"] = "Finance — Liabilities";
+    ViewData["Title"] = "Finance — Customer Points";
     string Money(decimal v) => "₦" + v.ToString("N0");
 }
 
 <partial name="_FinanceTabs" model="@("Liabilities")" />
 
 <div class="flex items-center justify-between mb-5">
-    <p class="text-xs text-neutral-400">Money owed to customers — unredeemed gift cards and outstanding loyalty points (a balance-sheet liability). Live snapshot.</p>
+    <p class="text-xs text-neutral-400">Loyalty points customers are holding (and any unredeemed gift cards) — what they're worth and who holds them. Live snapshot.</p>
 </div>
 
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
-        <p class="text-xs text-neutral-400">Total liability</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.Total)</p>
+        <p class="text-xs text-neutral-400">Points outstanding</p><p class="text-xl font-light text-neutral-900 mt-1">@Model.LoyaltyPoints.ToString("N0") <span class="text-sm text-neutral-400">pts</span></p>
+        <p class="mt-1 text-[11px] text-neutral-400">worth @Money(Model.LoyaltyValue)</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Customers with points</p><p class="text-xl font-light text-neutral-900 mt-1">@Model.TotalCustomers.ToString("N0")</p>
     </div>
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Gift cards outstanding</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.GiftCardOutstanding)</p>
         <p class="mt-1 text-[11px] text-neutral-400">@Model.GiftCardCount active card(s)</p>
     </div>
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
-        <p class="text-xs text-neutral-400">Loyalty liability</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.LoyaltyValue)</p>
-        <p class="mt-1 text-[11px] text-neutral-400">@Model.LoyaltyPoints.ToString("N0") pts · @Model.LoyaltyAccounts account(s)</p>
-    </div>
-    <div class="bg-white border border-neutral-100 rounded-sm p-4">
-        <p class="text-xs text-neutral-400">Gift cards redeemed</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.GiftCardRedeemed)</p>
-        <p class="mt-1 text-[11px] text-neutral-400">of @Money(Model.GiftCardIssued) issued</p>
+        <p class="text-xs text-neutral-400">Total value</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.Total)</p>
+        <p class="mt-1 text-[11px] text-neutral-400">points + gift cards</p>
     </div>
 </div>
 
+<!-- Customers holding points -->
+<div class="bg-white border border-neutral-100 rounded-sm overflow-hidden mb-6">
+    <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Customers with points</div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+            <thead><tr class="text-xs text-neutral-400">
+                <th class="px-4 py-2 text-left font-medium">Customer</th>
+                <th class="px-4 py-2 text-left font-medium">Email</th>
+                <th class="px-4 py-2 text-right font-medium">Points</th>
+                <th class="px-4 py-2 text-right font-medium">Worth</th>
+                <th class="px-4 py-2 w-16"></th>
+            </tr></thead>
+            <tbody class="divide-y divide-neutral-100">
+                @if (!Model.Customers.Any()) { <tr><td colspan="5" class="px-4 py-8 text-center text-neutral-400">No customers holding points.</td></tr> }
+                @foreach (var c in Model.Customers)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5"><a asp-action="Customer" asp-route-id="@c.Id" class="text-blue-600 hover:underline">@c.Name</a></td>
+                        <td class="px-4 py-2.5 text-neutral-500">@(string.IsNullOrWhiteSpace(c.Email) ? "—" : c.Email)</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-800">@c.Points.ToString("N0")</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-500">@Money(c.Points * Model.PointValue)</td>
+                        <td class="px-4 py-2.5 text-right"><a asp-action="Customer" asp-route-id="@c.Id" class="text-xs text-blue-600 hover:underline">View</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (Model.TotalPages > 1)
+    {
+        <div class="flex items-center justify-between px-4 py-3 border-t border-neutral-100 text-xs text-neutral-500">
+            <span>Page @Model.Page of @Model.TotalPages · @Model.TotalCustomers.ToString("N0") customer(s)</span>
+            <div class="flex gap-2">
+                @if (Model.Page > 1) { <a class="px-3 py-1.5 border border-neutral-200 rounded hover:border-neutral-400" asp-action="Liabilities" asp-route-page="@(Model.Page - 1)">← Prev</a> }
+                @if (Model.Page < Model.TotalPages) { <a class="px-3 py-1.5 border border-neutral-200 rounded hover:border-neutral-400" asp-action="Liabilities" asp-route-page="@(Model.Page + 1)">Next →</a> }
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Gift cards -->
 <div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
     <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Gift cards with a balance</div>
     <div class="overflow-x-auto">
