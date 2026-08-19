@@ -1087,7 +1087,7 @@ public class FinanceController : AdminBaseController
     }
 
     // ── Customer finance (new vs repeat, top spenders) ─────────────────────────
-    public record CustomerRow(string Name, string Email, int Orders, decimal Revenue, DateTime Last);
+    public record CustomerRow(string Id, string Name, string Email, int Orders, decimal Revenue, DateTime Last, int Points);
 
     public class CustomersVm
     {
@@ -1120,12 +1120,16 @@ public class FinanceController : AdminBaseController
         var users = (await _db.Users.Where(u => uids.Contains(u.Id))
                 .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email }).ToListAsync())
             .ToDictionary(u => u.Id, u => (Name: $"{u.FirstName} {u.LastName}".Trim(), Email: u.Email ?? ""));
+        var pts = (await _db.LoyaltyAccounts.Where(a => uids.Contains(a.UserId))
+                .Select(a => new { a.UserId, a.PointsBalance }).ToListAsync())
+            .ToDictionary(a => a.UserId, a => a.PointsBalance);
 
-        var top = inRange.OrderByDescending(x => x.Rev).Take(25)
+        var top = inRange.OrderByDescending(x => x.Rev).Take(50)
             .Select(x =>
             {
                 var u = users.GetValueOrDefault(x.Uid, (Name: "", Email: ""));
-                return new CustomerRow(string.IsNullOrWhiteSpace(u.Name) ? "Guest / unknown" : u.Name, u.Email, x.Cnt, x.Rev, x.Last);
+                return new CustomerRow(x.Uid, string.IsNullOrWhiteSpace(u.Name) ? "Guest / unknown" : u.Name,
+                    u.Email, x.Cnt, x.Rev, x.Last, pts.GetValueOrDefault(x.Uid, 0));
             }).ToList();
 
         return View(new CustomersVm
@@ -1136,6 +1140,64 @@ public class FinanceController : AdminBaseController
             NewCustomers = inRange.Count(x => !priorIds.Contains(x.Uid)),
             RepeatCustomers = inRange.Count(x => priorIds.Contains(x.Uid)),
             Top = top
+        });
+    }
+
+    // ── One customer's full picture: lifetime spend, points and orders ──────────
+    public record CustomerOrderRow(int Id, string Number, DateTime When, string Channel, decimal Total, bool Paid, bool Refunded);
+    public class CustomerDetailVm
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string? Email { get; set; }
+        public string? Phone { get; set; }
+        public DateTime? JoinedAt { get; set; }
+        public decimal TotalSpent { get; set; }   // paid orders, all channels
+        public decimal Refunded { get; set; }      // approved refunds
+        public decimal NetSpent => TotalSpent - Refunded;
+        public int PaidOrders { get; set; }
+        public int OrderCount { get; set; }
+        public decimal AvgOrder => PaidOrders > 0 ? TotalSpent / PaidOrders : 0;
+        public int Points { get; set; }
+        public decimal PointValue { get; set; }
+        public decimal PointsWorth => Points * PointValue;
+        public DateTime? LastOrder { get; set; }
+        public List<CustomerOrderRow> Orders { get; set; } = new();
+    }
+
+    public async Task<IActionResult> Customer(string id)
+    {
+        var u = await _db.Users.Where(x => x.Id == id)
+            .Select(x => new { x.Id, x.FirstName, x.LastName, x.Email, x.PhoneNumber, x.CreatedAt })
+            .FirstOrDefaultAsync();
+        if (u == null) return NotFound();
+        ViewData["Title"] = $"Customer — {u.FirstName} {u.LastName}".Trim();
+
+        // Their orders as a BUYER — online orders they placed (UserId), plus any POS/online sale attached
+        // to them as the customer (CustomerUserId). Excludes POS orders where they were the cashier.
+        var orders = await _db.Orders.Where(o => (o.Channel == OrderChannel.Online && o.UserId == id) || o.CustomerUserId == id)
+            .OrderByDescending(o => o.CreatedAt)
+            .Select(o => new { o.Id, o.OrderNumber, o.CreatedAt, o.PaidAt, o.Channel, o.Total, o.IsPaid })
+            .ToListAsync();
+        var orderIds = orders.Select(o => o.Id).ToHashSet();
+        var refundedOrderIds = (await _db.Refunds
+                .Where(r => r.Status == RefundStatus.Approved && orderIds.Contains(r.OriginalOrderId))
+                .Select(r => r.OriginalOrderId).Distinct().ToListAsync()).ToHashSet();
+        var refunded = await _db.Refunds
+            .Where(r => r.Status == RefundStatus.Approved && orderIds.Contains(r.OriginalOrderId))
+            .SumAsync(r => (decimal?)r.Amount) ?? 0;
+
+        var paid = orders.Where(o => o.IsPaid).ToList();
+        return View(new CustomerDetailVm
+        {
+            Id = u.Id, Name = $"{u.FirstName} {u.LastName}".Trim(), Email = u.Email, Phone = u.PhoneNumber,
+            JoinedAt = u.CreatedAt,
+            TotalSpent = paid.Sum(o => o.Total), Refunded = refunded,
+            PaidOrders = paid.Count, OrderCount = orders.Count,
+            Points = await _loyalty.GetBalanceAsync(id), PointValue = await _loyalty.PointValueAsync(),
+            LastOrder = paid.Count > 0 ? paid.Max(o => o.PaidAt ?? o.CreatedAt) : (DateTime?)null,
+            Orders = orders.Select(o => new CustomerOrderRow(o.Id, o.OrderNumber, o.PaidAt ?? o.CreatedAt,
+                o.Channel.ToString(), o.Total, o.IsPaid, refundedOrderIds.Contains(o.Id))).ToList()
         });
     }
 
