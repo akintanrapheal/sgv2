@@ -997,6 +997,7 @@ public class FinanceController : AdminBaseController
 
     // ── Outstanding liabilities (money we owe customers) ───────────────────────
     public record GiftCardRow(string Code, decimal Initial, decimal Balance, DateTime? Expires, string? Recipient);
+    public record CustPointRow(string Id, string Name, string Email, int Points);
 
     public class LiabilitiesVm
     {
@@ -1010,11 +1011,16 @@ public class FinanceController : AdminBaseController
         public decimal Total => GiftCardOutstanding + LoyaltyValue;
         public decimal GiftCardRedeemed => GiftCardIssued - GiftCardOutstanding;
         public List<GiftCardRow> TopCards { get; set; } = new();
+        // Customers holding points (paginated), most points first.
+        public List<CustPointRow> Customers { get; set; } = new();
+        public int Page { get; set; } = 1;
+        public int TotalPages { get; set; }
+        public int TotalCustomers { get; set; }
     }
 
-    public async Task<IActionResult> Liabilities()
+    public async Task<IActionResult> Liabilities(int page = 1)
     {
-        ViewData["Title"] = "Finance — Liabilities";
+        ViewData["Title"] = "Finance — Customer Points";
         var now = DateTime.UtcNow;
 
         // Live gift cards still carrying a balance = money we owe.
@@ -1030,10 +1036,27 @@ public class FinanceController : AdminBaseController
         var accounts = await _db.Set<LoyaltyAccount>().CountAsync(a => a.PointsBalance > 0);
         var pointValue = await _loyalty.PointValueAsync();
 
+        // Customers holding points — paginated, most points first, each clickable to their detail.
+        const int pageSize = 25;
+        var custQ = _db.Set<LoyaltyAccount>().Where(a => a.PointsBalance > 0);
+        var totalCust = await custQ.CountAsync();
+        var totalPages = Math.Max(1, (int)Math.Ceiling(totalCust / (double)pageSize));
+        page = Math.Min(Math.Max(1, page), totalPages);
+        var custRaw = await custQ.OrderByDescending(a => a.PointsBalance)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(a => new { a.UserId, a.PointsBalance, First = a.User.FirstName, Last = a.User.LastName, a.User.Email })
+            .ToListAsync();
+        var customers = custRaw.Select(a =>
+        {
+            var nm = $"{a.First} {a.Last}".Trim();
+            return new CustPointRow(a.UserId, string.IsNullOrWhiteSpace(nm) ? "—" : nm, a.Email ?? "", a.PointsBalance);
+        }).ToList();
+
         return View(new LiabilitiesVm
         {
             GiftCardOutstanding = gcOutstanding, GiftCardIssued = gcIssued, GiftCardCount = gcCount,
-            LoyaltyPoints = points, PointValue = pointValue, LoyaltyAccounts = accounts, TopCards = topCards
+            LoyaltyPoints = points, PointValue = pointValue, LoyaltyAccounts = accounts, TopCards = topCards,
+            Customers = customers, Page = page, TotalPages = totalPages, TotalCustomers = totalCust
         });
     }
 
@@ -1144,7 +1167,7 @@ public class FinanceController : AdminBaseController
     }
 
     // ── One customer's full picture: lifetime spend, points and orders ──────────
-    public record CustomerOrderRow(int Id, string Number, DateTime When, string Channel, decimal Total, bool Paid, bool Refunded);
+    public record CustomerOrderRow(int Id, string Number, DateTime When, string Channel, decimal Total, bool Paid, bool Refunded, int PointsEarned);
     public class CustomerDetailVm
     {
         public string Id { get; set; } = "";
@@ -1187,6 +1210,13 @@ public class FinanceController : AdminBaseController
             .Where(r => r.Status == RefundStatus.Approved && orderIds.Contains(r.OriginalOrderId))
             .SumAsync(r => (decimal?)r.Amount) ?? 0;
 
+        // Points EARNED on each order (positive ledger entries carrying that order id).
+        var earnedByOrder = (await _db.Set<PointsLedgerEntry>()
+                .Where(e => e.OrderId != null && orderIds.Contains(e.OrderId!.Value) && e.Points > 0)
+                .GroupBy(e => e.OrderId!.Value)
+                .Select(g => new { Oid = g.Key, Pts = g.Sum(x => x.Points) }).ToListAsync())
+            .ToDictionary(x => x.Oid, x => x.Pts);
+
         var paid = orders.Where(o => o.IsPaid).ToList();
         return View(new CustomerDetailVm
         {
@@ -1197,7 +1227,8 @@ public class FinanceController : AdminBaseController
             Points = await _loyalty.GetBalanceAsync(id), PointValue = await _loyalty.PointValueAsync(),
             LastOrder = paid.Count > 0 ? paid.Max(o => o.PaidAt ?? o.CreatedAt) : (DateTime?)null,
             Orders = orders.Select(o => new CustomerOrderRow(o.Id, o.OrderNumber, o.PaidAt ?? o.CreatedAt,
-                o.Channel.ToString(), o.Total, o.IsPaid, refundedOrderIds.Contains(o.Id))).ToList()
+                o.Channel.ToString(), o.Total, o.IsPaid, refundedOrderIds.Contains(o.Id),
+                earnedByOrder.GetValueOrDefault(o.Id, 0))).ToList()
         });
     }
 
