@@ -58,18 +58,29 @@
                 <th class="px-4 py-2 text-left font-medium">Email</th>
                 <th class="px-4 py-2 text-right font-medium">Orders</th>
                 <th class="px-4 py-2 text-right font-medium">Revenue</th>
+                <th class="px-4 py-2 text-right font-medium">Points</th>
                 <th class="px-4 py-2 text-left font-medium">Last order</th>
+                <th class="px-4 py-2 w-16"></th>
             </tr></thead>
             <tbody class="divide-y divide-neutral-100">
-                @if (!Model.Top.Any()) { <tr><td colspan="5" class="px-4 py-8 text-center text-neutral-400">No online customers in range.</td></tr> }
+                @if (!Model.Top.Any()) { <tr><td colspan="7" class="px-4 py-8 text-center text-neutral-400">No online customers in range.</td></tr> }
                 @foreach (var c in Model.Top)
                 {
                     <tr class="hover:bg-neutral-50">
-                        <td class="px-4 py-2.5 text-neutral-700">@c.Name</td>
+                        <td class="px-4 py-2.5">
+                            @if (!string.IsNullOrEmpty(c.Id))
+                            { <a asp-action="Customer" asp-route-id="@c.Id" class="text-blue-600 hover:underline">@c.Name</a> }
+                            else { <span class="text-neutral-700">@c.Name</span> }
+                        </td>
                         <td class="px-4 py-2.5 text-neutral-500">@(string.IsNullOrWhiteSpace(c.Email) ? "—" : c.Email)</td>
                         <td class="px-4 py-2.5 text-right text-neutral-500">@c.Orders</td>
                         <td class="px-4 py-2.5 text-right text-neutral-800">@Money(c.Revenue)</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-600">@c.Points.ToString("N0")</td>
                         <td class="px-4 py-2.5 text-neutral-500">@c.Last.ToLocalTime().ToString("dd MMM yy")</td>
+                        <td class="px-4 py-2.5 text-right">
+                            @if (!string.IsNullOrEmpty(c.Id))
+                            { <a asp-action="Customer" asp-route-id="@c.Id" class="text-xs text-blue-600 hover:underline">View</a> }
+                        </td>
                     </tr>
                 }
             </tbody>

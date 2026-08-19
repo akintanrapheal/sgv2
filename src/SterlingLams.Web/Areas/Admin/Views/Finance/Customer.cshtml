@@ -1,0 +1,77 @@
+@model SterlingLams.Web.Areas.Admin.Controllers.FinanceController.CustomerDetailVm
+@{
+    ViewData["Title"] = $"Customer — {Model.Name}";
+    string Money(decimal v) => "₦" + v.ToString("N0");
+}
+
+<div class="mb-4">
+    <a asp-action="Customers" class="text-xs text-neutral-400 hover:text-neutral-700">← Back to Customers</a>
+</div>
+
+<div class="flex items-start justify-between gap-4 flex-wrap mb-6">
+    <div>
+        <h1 class="text-xl font-semibold text-neutral-900">@(string.IsNullOrWhiteSpace(Model.Name) ? "Customer" : Model.Name)</h1>
+        <p class="text-sm text-neutral-500 mt-1">
+            @(string.IsNullOrEmpty(Model.Email) ? "" : Model.Email)@(!string.IsNullOrEmpty(Model.Email) && !string.IsNullOrEmpty(Model.Phone) ? " · " : "")@(Model.Phone)
+            @if (Model.JoinedAt != null) { <span class="text-neutral-400"> · joined @Model.JoinedAt.Value.ToLocalTime().ToString("dd MMM yyyy")</span> }
+        </p>
+    </div>
+</div>
+
+<!-- Stat cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+    <div class="bg-white border border-neutral-200 rounded-md p-4">
+        <div class="text-[11px] text-neutral-500">Total spent</div>
+        <div class="text-lg font-semibold text-neutral-900">@Money(Model.TotalSpent)</div>
+        @if (Model.Refunded > 0) { <div class="text-[11px] text-rose-500 mt-0.5">−@Money(Model.Refunded) refunded · net @Money(Model.NetSpent)</div> }
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-md p-4">
+        <div class="text-[11px] text-neutral-500">Paid orders</div>
+        <div class="text-lg font-semibold text-neutral-900">@Model.PaidOrders</div>
+        <div class="text-[11px] text-neutral-400 mt-0.5">avg @Money(Model.AvgOrder)@(Model.OrderCount > Model.PaidOrders ? $" · {Model.OrderCount} total" : "")</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-md p-4">
+        <div class="text-[11px] text-neutral-500">Loyalty points</div>
+        <div class="text-lg font-semibold text-emerald-600">@Model.Points.ToString("N0")</div>
+        @if (Model.PointValue > 0) { <div class="text-[11px] text-neutral-400 mt-0.5">worth @Money(Model.PointsWorth)</div> }
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-md p-4">
+        <div class="text-[11px] text-neutral-500">Last order</div>
+        <div class="text-lg font-semibold text-neutral-900">@(Model.LastOrder?.ToLocalTime().ToString("dd MMM yy") ?? "—")</div>
+    </div>
+</div>
+
+<!-- Orders -->
+<div class="bg-white border border-neutral-200 rounded-md overflow-hidden">
+    <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Orders (@Model.OrderCount)</div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+            <thead><tr class="text-xs text-neutral-400">
+                <th class="px-4 py-2 text-left font-medium">Order</th>
+                <th class="px-4 py-2 text-left font-medium">Date</th>
+                <th class="px-4 py-2 text-left font-medium">Channel</th>
+                <th class="px-4 py-2 text-left font-medium">Status</th>
+                <th class="px-4 py-2 text-right font-medium">Total</th>
+                <th class="px-4 py-2 w-16"></th>
+            </tr></thead>
+            <tbody class="divide-y divide-neutral-100">
+                @if (!Model.Orders.Any()) { <tr><td colspan="6" class="px-4 py-8 text-center text-neutral-400">No orders yet.</td></tr> }
+                @foreach (var o in Model.Orders)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5"><a asp-area="Admin" asp-controller="Orders" asp-action="Detail" asp-route-id="@o.Id" class="text-blue-600 hover:underline font-mono text-xs">@o.Number</a></td>
+                        <td class="px-4 py-2.5 text-neutral-500">@o.When.ToLocalTime().ToString("dd MMM yy HH:mm")</td>
+                        <td class="px-4 py-2.5 text-neutral-600">@o.Channel</td>
+                        <td class="px-4 py-2.5">
+                            @if (o.Refunded) { <span class="text-[11px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-700">Refunded</span> }
+                            else if (o.Paid) { <span class="text-[11px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">Paid</span> }
+                            else { <span class="text-[11px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-500">Unpaid</span> }
+                        </td>
+                        <td class="px-4 py-2.5 text-right text-neutral-800">@Money(o.Total)</td>
+                        <td class="px-4 py-2.5 text-right"><a asp-area="Admin" asp-controller="Orders" asp-action="Detail" asp-route-id="@o.Id" class="text-xs text-blue-600 hover:underline">Open</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
