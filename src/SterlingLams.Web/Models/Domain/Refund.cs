@@ -85,4 +85,9 @@ public class RefundItem
     public RestockDecision RestockDecision { get; set; } = RestockDecision.Pending;
     public string? RestockDecidedByUserId { get; set; }
     public DateTime? RestockDecidedAt { get; set; }
+
+    /// <summary>How many of the returned units were put back on the shelf (the rest were written off).</summary>
+    public int RestockedQuantity { get; set; }
+    /// <summary>Why the not-restocked units were kept off the shelf (Damaged / Wrong item sold / …).</summary>
+    public string? RestockNote { get; set; }
 }

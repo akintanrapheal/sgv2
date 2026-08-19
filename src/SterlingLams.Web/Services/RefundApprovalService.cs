@@ -22,10 +22,15 @@ public interface IRefundApprovalService
 
     /// <summary>Refunds whose returned items still need Inventory's restock/write-off decision.</summary>
     Task<int> PendingRestockCountAsync();
-    /// <summary>Inventory resolves each returned unit: Restocked → back on the shelf; WrittenOff →
-    /// brought in then written off as damaged (nets to zero stock, shows in the Shrinkage report).</summary>
-    Task<RefundApprovalResult> ResolveStockAsync(int refundId, IDictionary<int, RestockDecision> decisions, string userId);
+    /// <summary>Inventory resolves each returned line: RestockQty units go back on the shelf, the rest
+    /// are brought in then written off as damaged (nets to zero, shows in the Shrinkage report) with a
+    /// reason. Items not present in the list are left pending.</summary>
+    Task<RefundApprovalResult> ResolveStockAsync(int refundId, IReadOnlyList<RestockLineDecision> decisions, string userId);
 }
+
+/// <summary>One line's restock decision: how many of the returned units to put back, and (for the
+/// remainder) why they're not going back — Damaged, Wrong item sold, etc.</summary>
+public record RestockLineDecision(int ItemId, int RestockQty, string? Reason);
 
 /// <summary>
 /// Applies (or rejects) a refund REQUEST once Finance has decided. Creating a refund only records the
@@ -60,7 +65,7 @@ public class RefundApprovalService : IRefundApprovalService
         _db.Refunds.CountAsync(r => r.Status == RefundStatus.Approved && r.RestockRequested
             && r.Items.Any(i => i.RestockDecision == RestockDecision.Pending));
 
-    public async Task<RefundApprovalResult> ResolveStockAsync(int refundId, IDictionary<int, RestockDecision> decisions, string userId)
+    public async Task<RefundApprovalResult> ResolveStockAsync(int refundId, IReadOnlyList<RestockLineDecision> decisions, string userId)
     {
         var refund = await _db.Refunds.Include(r => r.Items).FirstOrDefaultAsync(r => r.Id == refundId);
         if (refund == null) return Fail("Refund not found.");
@@ -68,6 +73,7 @@ public class RefundApprovalService : IRefundApprovalService
         if (!refund.RestockRequested || refund.RestockStoreId is not int store || store <= 0)
             return Fail("This refund has no items to return to stock.");
 
+        var byItem = decisions.Where(d => d != null).GroupBy(d => d.ItemId).ToDictionary(g => g.Key, g => g.Last());
         var now = DateTime.UtcNow;
         int restocked = 0, wroteOff = 0;
         await using var tx = await _db.Database.BeginTransactionAsync();
@@ -75,24 +81,30 @@ public class RefundApprovalService : IRefundApprovalService
         {
             foreach (var it in refund.Items.Where(i => i.RestockDecision == RestockDecision.Pending))
             {
-                if (!decisions.TryGetValue(it.Id, out var d) || d == RestockDecision.Pending) continue;
+                if (!byItem.TryGetValue(it.Id, out var d)) continue;   // not decided this round → leave pending
+                var restockQty = Math.Clamp(d.RestockQty, 0, it.Quantity);
+                var writeOffQty = it.Quantity - restockQty;
 
-                if (d == RestockDecision.Restocked)
+                if (restockQty > 0)
                 {
-                    await _stock.ApplyAsync(it.ProductId, it.ProductVariantId, store, it.Quantity,
+                    await _stock.ApplyAsync(it.ProductId, it.ProductVariantId, store, restockQty,
                         StockMovementType.Return, refund.RefundNumber, "Refund restock", userId, materializeVariant: true);
-                    restocked += it.Quantity;
+                    restocked += restockQty;
                 }
-                else // WrittenOff — the unit came back damaged: bring it in, then write it off, so stock
-                     // nets to zero and the loss shows in the Shrinkage report as a Damage movement.
+                if (writeOffQty > 0)
                 {
-                    await _stock.ApplyAsync(it.ProductId, it.ProductVariantId, store, it.Quantity,
-                        StockMovementType.Return, refund.RefundNumber, "Damaged return (in)", userId, materializeVariant: true);
-                    await _stock.ApplyAsync(it.ProductId, it.ProductVariantId, store, -it.Quantity,
-                        StockMovementType.Damage, refund.RefundNumber, "Damaged return write-off", userId);
-                    wroteOff += it.Quantity;
+                    // Damaged/wrong-item units come back in then get written off, so stock nets to zero and
+                    // the loss shows in the Shrinkage report as a Damage movement (carrying the reason).
+                    var reason = string.IsNullOrWhiteSpace(d.Reason) ? "Not restocked" : d.Reason!.Trim();
+                    await _stock.ApplyAsync(it.ProductId, it.ProductVariantId, store, writeOffQty,
+                        StockMovementType.Return, refund.RefundNumber, "Return (in)", userId, materializeVariant: true);
+                    await _stock.ApplyAsync(it.ProductId, it.ProductVariantId, store, -writeOffQty,
+                        StockMovementType.Damage, refund.RefundNumber, reason, userId);
+                    wroteOff += writeOffQty;
                 }
-                it.RestockDecision = d;
+                it.RestockedQuantity = restockQty;
+                it.RestockNote = writeOffQty > 0 ? (string.IsNullOrWhiteSpace(d.Reason) ? "Not restocked" : d.Reason!.Trim()) : null;
+                it.RestockDecision = restockQty > 0 ? RestockDecision.Restocked : RestockDecision.WrittenOff;
                 it.RestockDecidedByUserId = userId;
                 it.RestockDecidedAt = now;
             }
