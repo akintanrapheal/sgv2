@@ -26,57 +26,27 @@
 }
 else
 {
-    <div class="space-y-4 max-w-3xl">
+    <div class="space-y-3 max-w-3xl">
         @foreach (var r in Model.Pending)
         {
-            <form asp-area="Inventory" asp-controller="Returns" asp-action="Resolve" method="post"
-                  class="bg-white border border-neutral-200 rounded-md p-4">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="id" value="@r.Id" />
-
-                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-                    <div>
+            <a asp-area="Inventory" asp-controller="Returns" asp-action="Detail" asp-route-id="@r.Id"
+               class="block bg-white border border-neutral-200 rounded-md p-4 hover:border-neutral-400 transition-colors">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div class="min-w-0">
                         <div class="flex items-center gap-2 flex-wrap">
                             <span class="font-mono text-[11px] text-neutral-400">@r.Number</span>
-                            <a asp-area="Inventory" asp-controller="Sales" asp-action="Detail" asp-route-id="@r.OrderId"
-                               class="text-sm font-medium text-blue-600 hover:underline">Order @r.Order</a>
+                            <span class="text-sm font-medium text-neutral-800">Order @r.Order</span>
                             <span class="text-[11px] px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-600">@r.Channel</span>
                         </div>
                         <div class="text-xs text-neutral-500 mt-0.5">
-                            Returns to <span class="text-neutral-700">@r.StoreName</span>
+                            @r.Items.Sum(i => i.Qty) item(s) to Sterlin Glams @r.StoreName.Replace("Sterlin Glams ", "")
                             @if (r.ApprovedAt.HasValue) { <text>· approved @r.ApprovedAt.Value.ToLocalTime().ToString("dd MMM, HH:mm")</text> }
                             · @r.Reason
                         </div>
                     </div>
-                    <button type="submit" class="rounded-md bg-neutral-900 text-white text-sm px-4 py-2 hover:bg-neutral-700 transition-colors">Apply</button>
+                    <span class="text-sm text-blue-600 font-medium whitespace-nowrap">Review &amp; decide →</span>
                 </div>
-
-                <div class="divide-y divide-neutral-100 border-t border-neutral-100">
-                    @foreach (var it in r.Items)
-                    {
-                        <div class="flex flex-wrap items-center justify-between gap-3 py-2.5">
-                            <div class="text-sm text-neutral-800 min-w-0">
-                                @it.Qty× @it.Name@(it.Variant != null ? $" ({it.Variant})" : "")
-                            </div>
-                            <div class="flex items-center gap-4 text-sm flex-wrap">
-                                <label class="flex items-center gap-1.5">
-                                    <span class="text-neutral-500 text-xs">Put back</span>
-                                    <input type="number" name="restockQty[@it.ItemId]" value="@it.Qty" min="0" max="@it.Qty"
-                                           class="w-16 border border-neutral-300 rounded px-2 py-1 text-sm text-center" />
-                                    <span class="text-neutral-400 text-xs">of @it.Qty</span>
-                                </label>
-                                <label class="flex items-center gap-1.5">
-                                    <span class="text-neutral-500 text-xs">If not, reason</span>
-                                    <select name="reason[@it.ItemId]" class="border border-neutral-300 rounded px-2 py-1 text-sm bg-white">
-                                        @foreach (var rz in reasons) { <option value="@rz">@rz</option> }
-                                    </select>
-                                </label>
-                            </div>
-                        </div>
-                    }
-                </div>
-                <p class="text-[11px] text-neutral-400 mt-2">Tip: leave "Put back" at the full amount to restock everything; lower it to write off the difference for the chosen reason.</p>
-            </form>
+            </a>
         }
     </div>
 }
@@ -93,7 +63,7 @@ else
                     <div class="flex items-center justify-between gap-2 flex-wrap mb-2">
                         <div class="flex items-center gap-2 flex-wrap">
                             <span class="font-mono text-[11px] text-neutral-400">@r.Number</span>
-                            <a asp-area="Inventory" asp-controller="Sales" asp-action="Detail" asp-route-id="@r.OrderId"
+                            <a asp-area="Inventory" asp-controller="Returns" asp-action="Detail" asp-route-id="@r.Id"
                                class="text-sm font-medium text-blue-600 hover:underline">Order @r.Order</a>
                         </div>
                         <div class="text-xs text-neutral-400">

@@ -60,7 +60,7 @@ public class ReturnsController : InventoryAreaController
             .Take(50)
             .Select(r => new
             {
-                r.RefundNumber, Order = r.OriginalOrder.OrderNumber, OrderId = r.OriginalOrderId,
+                r.Id, r.RefundNumber, Order = r.OriginalOrder.OrderNumber, OrderId = r.OriginalOrderId,
                 StoreName = _db.Stores.Where(s => s.Id == r.RestockStoreId).Select(s => s.Name).FirstOrDefault() ?? "—",
                 DecidedAt = r.Items.Max(i => i.RestockDecidedAt),
                 DeciderId = r.Items.Where(i => i.RestockDecidedByUserId != null).Select(i => i.RestockDecidedByUserId).FirstOrDefault(),
@@ -75,13 +75,66 @@ public class ReturnsController : InventoryAreaController
             .ToDictionary(u => u.Id, u => { var n = $"{u.FirstName} {u.LastName}".Trim(); return string.IsNullOrWhiteSpace(n) ? (u.UserName ?? "—") : n; });
         var resolved = resolvedRaw.Select(r => new ResolvedReturnVm
         {
-            Number = r.RefundNumber, Order = r.Order, OrderId = r.OrderId, StoreName = r.StoreName,
+            Id = r.Id, Number = r.RefundNumber, Order = r.Order, OrderId = r.OrderId, StoreName = r.StoreName,
             DecidedAt = r.DecidedAt, DecidedBy = r.DeciderId != null ? names.GetValueOrDefault(r.DeciderId, "—") : "—",
             Items = r.Items
         }).ToList();
 
         ViewBag.Reasons = WriteOffReasons;
         return View(new ReturnsPageVm { Pending = pending, Resolved = resolved });
+    }
+
+    // One return in full — the order, WHY Finance approved it, and the per-item restock decision.
+    public async Task<IActionResult> Detail(int id)
+    {
+        var r = await _db.Refunds
+            .Include(x => x.Items)
+            .Include(x => x.OriginalOrder).ThenInclude(o => o.Customer)
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (r == null) return NotFound();
+        if (!r.RestockRequested) { TempData["Error"] = "This refund has no items to return to stock."; return RedirectToAction(nameof(Index)); }
+        ViewData["Title"] = $"Return {r.RefundNumber}";
+        var o = r.OriginalOrder;
+
+        var pids = r.Items.Select(i => i.ProductId).Distinct().ToList();
+        var images = (await _db.ProductImages.Where(im => pids.Contains(im.ProductId))
+                .Select(im => new { im.ProductId, im.Url, im.IsPrimary, im.SortOrder }).ToListAsync())
+            .GroupBy(im => im.ProductId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.IsPrimary).ThenBy(x => x.SortOrder).Select(x => x.Url).FirstOrDefault());
+
+        var ids = new[] { r.CashierUserId, r.ApprovedByUserId }.Where(s => !string.IsNullOrEmpty(s)).Select(s => s!).Distinct().ToList();
+        var names = (await _db.Users.Where(u => ids.Contains(u.Id))
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.UserName }).ToListAsync())
+            .ToDictionary(u => u.Id, u => { var n = $"{u.FirstName} {u.LastName}".Trim(); return string.IsNullOrWhiteSpace(n) ? (u.UserName ?? "—") : n; });
+
+        var cust = o.Customer;
+        var custName = cust != null ? $"{cust.FirstName} {cust.LastName}".Trim() : "";
+
+        ViewBag.Reasons = WriteOffReasons;
+        return View(new ReturnDetailVm
+        {
+            Id = r.Id, Number = r.RefundNumber, Order = o.OrderNumber, OrderId = o.Id,
+            Channel = o.Channel.ToString(),
+            StoreName = await _db.Stores.Where(s => s.Id == r.RestockStoreId).Select(s => s.Name).FirstOrDefaultAsync() ?? "—",
+            ApprovedAt = r.DecisionAt,
+            RefundAmount = r.Amount, RefundMethod = r.RefundMethod,
+            RefundReason = string.IsNullOrWhiteSpace(r.Reason) ? "—" : r.Reason!,
+            FinanceNote = r.DecisionNote,
+            RequestedBy = names.GetValueOrDefault(r.CashierUserId ?? "", "—"),
+            ApprovedBy = string.IsNullOrEmpty(r.ApprovedByUserId) ? "—" : names.GetValueOrDefault(r.ApprovedByUserId!, "—"),
+            CustomerName = string.IsNullOrWhiteSpace(custName) ? "Walk-in" : custName,
+            CustomerPhone = cust?.PhoneNumber, CustomerEmail = cust?.Email,
+            OrderTotal = o.Total, OrderDate = o.CreatedAt,
+            AnyPending = r.Items.Any(i => i.RestockDecision == RestockDecision.Pending),
+            Items = r.Items.OrderBy(i => i.ProductName).Select(i => new ReturnDetailItem
+            {
+                ItemId = i.Id, Name = i.ProductName, Variant = i.VariantName, Qty = i.Quantity,
+                Image = images.GetValueOrDefault(i.ProductId),
+                Pending = i.RestockDecision == RestockDecision.Pending,
+                Restocked = i.RestockedQuantity, WrittenOff = i.Quantity - i.RestockedQuantity,
+                Note = i.RestockNote, UnitPrice = i.UnitPrice
+            }).ToList()
+        });
     }
 
     // restockQty[<itemId>] = how many to put back; reason[<itemId>] = why the rest are not restocked.
@@ -129,6 +182,7 @@ public class PendingReturnItem
 
 public class ResolvedReturnVm
 {
+    public int Id { get; set; }
     public string Number { get; set; } = "";
     public string Order { get; set; } = "";
     public int OrderId { get; set; }
@@ -146,4 +200,42 @@ public class ResolvedItem
     public int Restocked { get; set; }
     public int WrittenOff => Qty - Restocked;
     public string? Reason { get; set; }
+}
+
+public class ReturnDetailVm
+{
+    public int Id { get; set; }
+    public string Number { get; set; } = "";
+    public string Order { get; set; } = "";
+    public int OrderId { get; set; }
+    public string Channel { get; set; } = "";
+    public string StoreName { get; set; } = "";
+    public DateTime? ApprovedAt { get; set; }
+    public decimal RefundAmount { get; set; }
+    public string RefundMethod { get; set; } = "";
+    public string RefundReason { get; set; } = "";
+    public string? FinanceNote { get; set; }
+    public string RequestedBy { get; set; } = "—";
+    public string ApprovedBy { get; set; } = "—";
+    public string CustomerName { get; set; } = "Walk-in";
+    public string? CustomerPhone { get; set; }
+    public string? CustomerEmail { get; set; }
+    public decimal OrderTotal { get; set; }
+    public DateTime OrderDate { get; set; }
+    public bool AnyPending { get; set; }
+    public List<ReturnDetailItem> Items { get; set; } = new();
+}
+
+public class ReturnDetailItem
+{
+    public int ItemId { get; set; }
+    public string Name { get; set; } = "";
+    public string? Variant { get; set; }
+    public int Qty { get; set; }
+    public decimal UnitPrice { get; set; }
+    public string? Image { get; set; }
+    public bool Pending { get; set; }
+    public int Restocked { get; set; }
+    public int WrittenOff { get; set; }
+    public string? Note { get; set; }
 }
