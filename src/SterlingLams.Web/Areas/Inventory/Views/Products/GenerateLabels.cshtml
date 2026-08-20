@@ -117,9 +117,9 @@
             <div>
                 <h3 class="text-sm font-medium text-neutral-800 mb-2">Printer / label size</h3>
                 <select id="lbl-printer" class="w-full border border-neutral-200 rounded-md px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-blue-400">
+                    <option value="tag30x15" selected>Tag — 3×1.5cm (30×15mm)</option>
                     <option value="a4">A4 label sheet — many per page (Avery-style)</option>
                     <option value="thermal">Barcode / thermal printer — label roll (50×30mm)</option>
-                    <option value="tag30x15">Tag — 3×1.5cm (30×15mm)</option>
                     <option value="butterfly">Butterfly labels — jewellery tags (56×13mm)</option>
                 </select>
                 <p class="text-[11px] text-neutral-400 mt-1">Sets the page size when you print. A4 tiles many labels on a sheet; thermal &amp; butterfly print one label per page for a roll printer.</p>
@@ -267,7 +267,7 @@
         params.set('qr', el('d-qr').checked);
         if (el('d-customtext-on').checked && el('d-customtext').value) params.set('customText', el('d-customtext').value);
         var preset = document.querySelector('input[name="preset"]:checked'); params.set('preset', preset ? preset.value : 'barcode');
-        params.set('printer', el('lbl-printer').value || 'a4');
+        params.set('printer', el('lbl-printer').value || 'tag30x15');
         params.set('font', el('lbl-font').value || 'arial');
         params.set('fontSize', el('lbl-fontsize').value || '9');
         return __invBase + '/Products/Labels?' + params.toString();
@@ -289,7 +289,7 @@
         var name = fp ? fp.name : 'Product Name';
         var code = '12345678';   // sample — each real product prints its own barcode/SKU
         var sku = '6012298';     // sample SKU number (no "SKU:" prefix on the label)
-        var printer = el('lbl-printer').value || 'a4';
+        var printer = el('lbl-printer').value || 'tag30x15';
         var lab = document.createElement('div');
         // A4 uses the preset's label width; thermal/butterfly show the physical label size instead.
         lab.className = 'label ' + (printer === 'a4' ? currentPreset() : 'pr-' + printer);
