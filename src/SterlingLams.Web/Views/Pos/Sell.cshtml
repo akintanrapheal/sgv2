@@ -117,6 +117,16 @@
                 <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 Transfer History
             </button>
+            <a asp-controller="Pos" asp-action="LabelSheet" asp-route-all="false" target="_blank" rel="noopener"
+               class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 7h.01M7 3h5a2 2 0 011.414.586l7 7a2 2 0 010 2.828l-5 5a2 2 0 01-2.828 0l-7-7A2 2 0 013 10V5a2 2 0 012-2z"/></svg>
+                Print labels — stock here
+            </a>
+            <a asp-controller="Pos" asp-action="LabelSheet" asp-route-all="true" target="_blank" rel="noopener"
+               class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 7h.01M7 3h5a2 2 0 011.414.586l7 7a2 2 0 010 2.828l-5 5a2 2 0 01-2.828 0l-7-7A2 2 0 013 10V5a2 2 0 012-2z"/></svg>
+                Print labels — all products
+            </a>
         </nav>
         <div class="border-t border-neutral-100 p-2 flex-shrink-0">
             <form asp-controller="Pos" asp-action="Logout" method="post">

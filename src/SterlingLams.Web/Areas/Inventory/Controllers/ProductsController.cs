@@ -466,7 +466,7 @@ public class ProductsController : InventoryAreaController
 
     public async Task<IActionResult> Labels(string? ids, int? categoryId, int? storeId, int qty = 1,
         bool name = true, bool price = true, bool barcode = true, bool category = false,
-        bool description = false, string? customText = null, string preset = "barcode", string printer = "a4",
+        bool description = false, string? customText = null, string preset = "barcode", string printer = "tag30x15",
         bool qr = false, bool sku = false, bool barcodeNumber = false, string font = "arial", int fontSize = 9)
     {
         if (qty < 1) qty = 1;
