@@ -212,47 +212,114 @@ public class PosController : Controller
     // ── Simple label printing from the POS (3×1.5cm tag, no font settings) ──────────
     public record PosLabel(string Name, string? Sku, string Code, decimal Price, string Qr);
 
-    // Bulk labels for the till: every variant of every product either in stock at THIS branch
-    // (all=false) or the whole catalogue (all=true). Fixed to the 3×1.5cm tag with name + SKU + QR +
-    // barcode number + price. The QR is embedded as a data URI so a sheet of thousands renders with
-    // ZERO per-label network requests (the earlier version fetched one image per label and stalled).
+    // The label picker: scan/search items, preview, then print — plus "all stock" / "all products".
     [Authorize, HttpGet]
-    public async Task<IActionResult> LabelSheet(bool all = false)
+    public async Task<IActionResult> Labels()
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return RedirectToAction(nameof(Index));
+        ViewData["Register"] = register;
+        return View();   // Views/Pos/Labels.cshtml
+    }
+
+    // QR PNG for the on-screen picker preview (a single image; the print sheet embeds its QRs instead).
+    [Authorize, HttpGet]
+    public IActionResult Qr(string? text)
+    {
+        text = (text ?? "").Trim();
+        if (text.Length == 0 || text.Length > 512) return NotFound();
+        using var gen = new QRCoder.QRCodeGenerator();
+        using var data = gen.CreateQrCode(text, QRCoder.QRCodeGenerator.ECCLevel.M);
+        return File(new QRCoder.PngByteQRCode(data).GetGraphic(8), "image/png");
+    }
+
+    // Scan/type a code in the picker → the exact variant (or the product) to add.
+    [Authorize, HttpGet]
+    public async Task<IActionResult> LabelLookup(string? code)
+    {
+        code = (code ?? "").Trim();
+        if (code.Length == 0) return Json(new { found = false });
+        var v = await _db.ProductVariants.Include(x => x.Product)
+            .FirstOrDefaultAsync(x => x.IsActive && x.Product.IsActive && (x.Barcode == code || x.Sku == code));
+        if (v != null)
+            return Json(new { found = true, key = $"{v.ProductId}.{v.Id}", name = $"{v.Product.Name} – {v.Name}",
+                sku = v.Sku ?? v.Product.Sku, code = v.Barcode ?? v.Sku ?? "", price = v.Price ?? v.Product.Price });
+        var p = await _db.Products.FirstOrDefaultAsync(x => x.IsActive && (x.Barcode == code || x.Sku == code));
+        if (p == null) return Json(new { found = false });
+        return Json(new { found = true, key = p.Id.ToString(), name = p.Name, sku = p.Sku, code = p.Barcode ?? p.Sku ?? "", price = p.Price });
+    }
+
+    // The print sheet: either the picked items (ids = "pid[:qty]" / "pid.vid[:qty]", comma-separated), or
+    // every variant in stock at THIS branch (all=false) / the whole catalogue (all=true). 3×1.5cm tag,
+    // name + SKU + number + price; QR embedded as a data URI so thousands render with no per-label fetch.
+    [Authorize, HttpGet]
+    public async Task<IActionResult> LabelSheet(bool all = false, string? ids = null)
     {
         var register = await BoundRegisterAsync();
         if (register == null) return RedirectToAction(nameof(Index));
         var storeId = register.StoreId;
 
-        var q = _db.Products.Where(p => p.IsActive);
-        if (!all) q = q.Where(p => p.StoreInventories.Any(si => si.StoreId == storeId && si.QuantityOnHand > 0));
-        var products = await q.Include(p => p.Variants).OrderBy(p => p.Name).ToListAsync();
-
         using var qrGen = new QRCoder.QRCodeGenerator();
         string Qr(string text)
         {
-            using var data = qrGen.CreateQrCode(text, QRCoder.QRCodeGenerator.ECCLevel.M);
+            using var data = qrGen.CreateQrCode(text.Length == 0 ? " " : text, QRCoder.QRCodeGenerator.ECCLevel.M);
             return "data:image/png;base64," + Convert.ToBase64String(new QRCoder.PngByteQRCode(data).GetGraphic(6));
         }
+        string VarCode(Product p, ProductVariant v) =>
+              !string.IsNullOrWhiteSpace(v.Barcode) ? v.Barcode!
+            : !string.IsNullOrWhiteSpace(v.Sku) ? v.Sku!
+            : !string.IsNullOrWhiteSpace(p.Barcode) ? p.Barcode!
+            : !string.IsNullOrWhiteSpace(p.Sku) ? p.Sku! : $"P{p.Id}V{v.Id}";
 
         var rows = new List<PosLabel>();
-        void Add(string name, decimal price, string code, string? sku) => rows.Add(new PosLabel(name, sku, code, price, Qr(code)));
-        foreach (var p in products)
+        void Add(string name, decimal price, string code, string? sku, int copies)
+        { for (var i = 0; i < copies; i++) rows.Add(new PosLabel(name, sku, code, price, Qr(code))); }
+
+        if (!string.IsNullOrWhiteSpace(ids))
         {
-            var variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).ToList();
-            if (variants.Count > 0)
-                foreach (var v in variants)
+            var qtyById = new Dictionary<int, int>();
+            var variantQty = new Dictionary<int, Dictionary<int, int>>();
+            foreach (var part in ids.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var bits = part.Split(':');
+                var qty = bits.Length > 1 && int.TryParse(bits[1], out var qq) && qq > 0 ? qq : 1;
+                var k = bits[0].Split('.');
+                if (!int.TryParse(k[0], out var pid) || pid <= 0) continue;
+                if (k.Length > 1 && int.TryParse(k[1], out var vid) && vid > 0)
+                { if (!variantQty.TryGetValue(pid, out var m)) variantQty[pid] = m = new(); m[vid] = m.GetValueOrDefault(vid) + qty; }
+                else qtyById[pid] = qtyById.GetValueOrDefault(pid) + qty;
+            }
+            var idList = qtyById.Keys.Union(variantQty.Keys).ToList();
+            var products = await _db.Products.Include(p => p.Variants).Where(p => idList.Contains(p.Id)).OrderBy(p => p.Name).ToListAsync();
+            foreach (var p in products)
+            {
+                if (variantQty.TryGetValue(p.Id, out var vmap))
+                    foreach (var v in p.Variants.Where(v => vmap.ContainsKey(v.Id)).OrderBy(v => v.Name))
+                        Add($"{p.Name} – {v.Name}", v.Price ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, vmap[v.Id]);
+                if (qtyById.TryGetValue(p.Id, out var copies))
                 {
-                    var code = !string.IsNullOrWhiteSpace(v.Barcode) ? v.Barcode!
-                             : !string.IsNullOrWhiteSpace(v.Sku) ? v.Sku!
-                             : !string.IsNullOrWhiteSpace(p.Barcode) ? p.Barcode!
-                             : !string.IsNullOrWhiteSpace(p.Sku) ? p.Sku! : $"P{p.Id}V{v.Id}";
-                    Add($"{p.Name} – {v.Name}", v.Price ?? p.Price, code, v.Sku ?? p.Sku);
+                    var vs = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).ToList();
+                    if (vs.Count > 0) foreach (var v in vs) Add($"{p.Name} – {v.Name}", v.Price ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, copies);
+                    else Add(p.Name, p.Price, p.Barcode ?? p.Sku ?? ("P" + p.Id), p.Sku, copies);
                 }
-            else Add(p.Name, p.Price, p.Barcode ?? p.Sku ?? ("P" + p.Id), p.Sku);
+            }
+            ViewBag.Scope = "selected items";
+        }
+        else
+        {
+            var q = _db.Products.Where(p => p.IsActive);
+            if (!all) q = q.Where(p => p.StoreInventories.Any(si => si.StoreId == storeId && si.QuantityOnHand > 0));
+            var products = await q.Include(p => p.Variants).OrderBy(p => p.Name).ToListAsync();
+            foreach (var p in products)
+            {
+                var vs = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).ToList();
+                if (vs.Count > 0) foreach (var v in vs) Add($"{p.Name} – {v.Name}", v.Price ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, 1);
+                else Add(p.Name, p.Price, p.Barcode ?? p.Sku ?? ("P" + p.Id), p.Sku, 1);
+            }
+            ViewBag.Scope = all ? "all products" : (register.Store?.Name ?? "this branch");
         }
 
         ViewData["Title"] = "Labels";
-        ViewBag.Scope = all ? "all products" : (register.Store?.Name ?? "this branch");
         return View("LabelSheet", rows);
     }
 
