@@ -48,7 +48,13 @@
                 <a asp-controller="Home" asp-action="Index">
                     @if (!string.IsNullOrEmpty(logoUrl))
                     {
-                        <img src="@logoUrl" alt="Sterlin Glams" class="h-12 w-auto" />
+                        @* If the configured logo URL fails to load, hide the broken image and show the
+                           text brand instead — never a broken-image glyph. *@
+                        <img src="@logoUrl" alt="Sterlin Glams" class="h-12 w-auto"
+                             onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block';" />
+                        <span class="font-cormorant text-2xl font-light tracking-[0.3em] uppercase" style="display:none">
+                            Sterlin Glams
+                        </span>
                     }
                     else
                     {
@@ -156,7 +162,9 @@
         {
             <div class="border-t border-neutral-800 mt-12 pt-10 flex justify-center">
                 <a asp-controller="Home" asp-action="Index">
-                    <img src="@logoUrl" alt="Sterlin Glams" class="h-14 w-auto mx-auto" />
+                    @* A broken logo URL hides this whole centred block rather than showing a broken image. *@
+                    <img src="@logoUrl" alt="Sterlin Glams" class="h-14 w-auto mx-auto"
+                         onerror="this.closest('div').style.display='none';" />
                 </a>
             </div>
         }
