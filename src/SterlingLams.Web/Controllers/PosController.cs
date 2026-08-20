@@ -210,21 +210,12 @@ public class PosController : Controller
     }
 
     // ── Simple label printing from the POS (3×1.5cm tag, no font settings) ──────────
-    // QR for the label sheet — encodes the barcode text into a PNG (relative "Qr?text=" in the view
-    // resolves to this under the POS path).
-    [Authorize, HttpGet]
-    public IActionResult Qr(string? text)
-    {
-        text = (text ?? "").Trim();
-        if (text.Length == 0 || text.Length > 512) return NotFound();
-        using var gen = new QRCoder.QRCodeGenerator();
-        using var data = gen.CreateQrCode(text, QRCoder.QRCodeGenerator.ECCLevel.M);
-        return File(new QRCoder.PngByteQRCode(data).GetGraphic(10), "image/png");
-    }
+    public record PosLabel(string Name, string? Sku, string Code, decimal Price, string Qr);
 
     // Bulk labels for the till: every variant of every product either in stock at THIS branch
-    // (all=false) or the whole catalogue (all=true). Fixed to the 3×1.5cm tag with name + price +
-    // QR + barcode number — no options to fiddle with. Reuses the Inventory label print view.
+    // (all=false) or the whole catalogue (all=true). Fixed to the 3×1.5cm tag with name + SKU + QR +
+    // barcode number + price. The QR is embedded as a data URI so a sheet of thousands renders with
+    // ZERO per-label network requests (the earlier version fetched one image per label and stalled).
     [Authorize, HttpGet]
     public async Task<IActionResult> LabelSheet(bool all = false)
     {
@@ -234,32 +225,35 @@ public class PosController : Controller
 
         var q = _db.Products.Where(p => p.IsActive);
         if (!all) q = q.Where(p => p.StoreInventories.Any(si => si.StoreId == storeId && si.QuantityOnHand > 0));
-        var products = await q.Include(p => p.Variants).Include(p => p.Category).OrderBy(p => p.Name).ToListAsync();
+        var products = await q.Include(p => p.Variants).OrderBy(p => p.Name).ToListAsync();
 
-        var rows = new List<SterlingLams.Web.Areas.Inventory.Controllers.LabelRow>();
+        using var qrGen = new QRCoder.QRCodeGenerator();
+        string Qr(string text)
+        {
+            using var data = qrGen.CreateQrCode(text, QRCoder.QRCodeGenerator.ECCLevel.M);
+            return "data:image/png;base64," + Convert.ToBase64String(new QRCoder.PngByteQRCode(data).GetGraphic(6));
+        }
+
+        var rows = new List<PosLabel>();
+        void Add(string name, decimal price, string code, string? sku) => rows.Add(new PosLabel(name, sku, code, price, Qr(code)));
         foreach (var p in products)
         {
-            var catName = p.Category?.Name ?? "";
-            SterlingLams.Web.Areas.Inventory.Controllers.LabelRow VarRow(ProductVariant v) => new()
-            {
-                Name = $"{p.Name} – {v.Name}", Price = v.Price ?? p.Price,
-                Code = !string.IsNullOrWhiteSpace(v.Barcode) ? v.Barcode!
-                     : !string.IsNullOrWhiteSpace(v.Sku) ? v.Sku!
-                     : !string.IsNullOrWhiteSpace(p.Barcode) ? p.Barcode!
-                     : !string.IsNullOrWhiteSpace(p.Sku) ? p.Sku! : $"P{p.Id}V{v.Id}",
-                Sku = v.Sku ?? p.Sku, Category = catName
-            };
             var variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).ToList();
-            if (variants.Count > 0) rows.AddRange(variants.Select(VarRow));
-            else rows.Add(new() { Name = p.Name, Price = p.Price, Code = p.Barcode ?? p.Sku ?? ("P" + p.Id), Sku = p.Sku, Category = catName });
+            if (variants.Count > 0)
+                foreach (var v in variants)
+                {
+                    var code = !string.IsNullOrWhiteSpace(v.Barcode) ? v.Barcode!
+                             : !string.IsNullOrWhiteSpace(v.Sku) ? v.Sku!
+                             : !string.IsNullOrWhiteSpace(p.Barcode) ? p.Barcode!
+                             : !string.IsNullOrWhiteSpace(p.Sku) ? p.Sku! : $"P{p.Id}V{v.Id}";
+                    Add($"{p.Name} – {v.Name}", v.Price ?? p.Price, code, v.Sku ?? p.Sku);
+                }
+            else Add(p.Name, p.Price, p.Barcode ?? p.Sku ?? ("P" + p.Id), p.Sku);
         }
 
         ViewData["Title"] = "Labels";
-        ViewBag.ShowName = true; ViewBag.ShowPrice = true; ViewBag.ShowQr = true; ViewBag.ShowBarcodeNumber = true;
-        ViewBag.ShowBarcode = false; ViewBag.ShowCategory = false; ViewBag.ShowDescription = false; ViewBag.ShowSku = false;
-        ViewBag.Preset = "barcode"; ViewBag.Printer = "tag30x15";
-        ViewBag.Font = "Arial, Helvetica, sans-serif"; ViewBag.FontSize = 9;
-        return View("~/Areas/Inventory/Views/Products/Labels.cshtml", rows);
+        ViewBag.Scope = all ? "all products" : (register.Store?.Name ?? "this branch");
+        return View("LabelSheet", rows);
     }
 
     [Authorize, HttpPost, ValidateAntiForgeryToken]
