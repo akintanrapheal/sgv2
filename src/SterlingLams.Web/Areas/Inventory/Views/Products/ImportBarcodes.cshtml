@@ -29,6 +29,7 @@
         Upload a POS product export (<code class="text-neutral-600">Name;Category;Barcode</code>). We match each row to a
         product by its <strong>SKU</strong> (the leading number in the name) and place the barcode on the matching
         <strong>variant</strong> by colour&nbsp;/&nbsp;size — even when the product name differs from your catalogue.
+        When a SKU isn't found, we suggest the closest products <strong>by name</strong> so you can pick the right one.
         You always preview first; nothing is written until you click <strong>Apply</strong>.
         Existing barcodes are overwritten (the file is the source of truth).
     </p>
@@ -61,6 +62,7 @@
 {
     var problems = Model.Rows.Where(r => r.Status != "matched" && r.Status != "product-barcode").ToList();
     var ok = Model.Rows.Where(r => r.Status == "matched" || r.Status == "product-barcode").ToList();
+    var noGuess = Model.NotFoundSkus.Except(Model.Guesses.Select(g => g.Sku)).ToList();
 
     <!-- Summary -->
     <div class="mt-6 rounded-md border @(Model.Committed ? "border-emerald-300 bg-emerald-50" : "border-blue-200 bg-blue-50") px-5 py-4 max-w-5xl">
@@ -83,21 +85,90 @@
             <div><div class="text-xl font-semibold text-amber-600">@Model.Ambiguous</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">ambiguous</div></div>
         </div>
 
-        @if (!Model.Committed && Model.Assigned > 0)
-        {
-            <form asp-action="ApplyBarcodes" method="post" class="mt-4 flex items-center gap-3"
-                  onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Applying…';">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="token" value="@token" />
-                <input type="hidden" name="fileName" value="@fileName" />
+    </div>
+
+    @* Apply form — wraps both the auto-matched barcodes and any name suggestions the user confirms. *@
+    @if (!Model.Committed && (Model.Assigned > 0 || Model.Guesses.Any()))
+    {
+        <form asp-action="ApplyBarcodes" method="post" class="mt-5 max-w-5xl"
+              onsubmit="var b=this.querySelector('button[type=submit]');b.disabled=true;b.textContent='Applying…';">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="token" value="@token" />
+            <input type="hidden" name="fileName" value="@fileName" />
+
+            @if (Model.Guesses.Any())
+            {
+                <div class="rounded-md border border-amber-200 bg-amber-50/60 p-4">
+                    <div class="text-sm font-semibold text-amber-800">Suggested matches — verify each before applying</div>
+                    <p class="text-xs text-amber-700/90 mt-1 max-w-3xl">
+                        These SKUs aren't in the catalogue, so they can't be matched automatically. We've listed the closest
+                        products <strong>by name</strong> (with a match&nbsp;%). Pick the correct product to include its
+                        barcode(s); leave a row on <em>Skip</em> and nothing is written for it. The % is only a hint — check the name.
+                    </p>
+                    <div class="mt-3 overflow-x-auto rounded border border-amber-200 bg-white">
+                        <table class="min-w-full text-sm">
+                            <thead class="bg-amber-50 text-amber-700 text-xs uppercase tracking-wide">
+                                <tr>
+                                    <th class="text-left font-medium px-3 py-2">File SKU</th>
+                                    <th class="text-left font-medium px-3 py-2">File name</th>
+                                    <th class="text-left font-medium px-3 py-2">Assign to product</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-amber-100">
+                                @foreach (var g in Model.Guesses)
+                                {
+                                    <tr>
+                                        <td class="px-3 py-2 font-mono text-neutral-700 align-top">@g.Sku</td>
+                                        <td class="px-3 py-2 text-neutral-600 align-top">
+                                            @g.FileName
+                                            <span class="text-[11px] text-neutral-400">· @g.BarcodeCount barcode@(g.BarcodeCount == 1 ? "" : "s")</span>
+                                        </td>
+                                        <td class="px-3 py-2 align-top">
+                                            <select name="overrides[@g.Sku]" data-count="@g.BarcodeCount"
+                                                    class="js-pick w-full max-w-md rounded border border-neutral-300 px-2 py-1.5 text-sm">
+                                                <option value="">— Skip (don't write) —</option>
+                                                @foreach (var c in g.Candidates)
+                                                {
+                                                    <option value="@c.ProductId">@c.ProductName — @c.ProductSku · @c.Score% match</option>
+                                                }
+                                            </select>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+
+            <div class="mt-4 flex flex-wrap items-center gap-3">
                 <button type="submit"
                         class="rounded-md bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
-                    Apply @Model.Assigned barcodes
+                    Apply <span id="applyCount">@Model.Assigned</span> barcode<span id="applyPlural">@(Model.Assigned == 1 ? "" : "s")</span>
                 </button>
-                <span class="text-xs text-neutral-500">Overwrites existing barcodes on these variants.</span>
-            </form>
+                <span class="text-xs text-neutral-500">
+                    Overwrites existing barcodes. @Model.Assigned auto-matched@(Model.Guesses.Any() ? " + whatever you pick above." : ".")
+                </span>
+            </div>
+        </form>
+
+        @if (Model.Guesses.Any())
+        {
+            <script>
+                (function () {
+                    var base = @Model.Assigned;
+                    var picks = document.querySelectorAll('.js-pick');
+                    var out = document.getElementById('applyCount'), pl = document.getElementById('applyPlural');
+                    function upd() {
+                        var n = base;
+                        picks.forEach(function (s) { if (s.value) n += parseInt(s.getAttribute('data-count') || '0', 10); });
+                        out.textContent = n; pl.textContent = (n === 1 ? '' : 's');
+                    }
+                    picks.forEach(function (s) { s.addEventListener('change', upd); });
+                })();
+            </script>
         }
-    </div>
+    }
 
     @if (Model.Errors.Any())
     {
@@ -107,11 +178,11 @@
         </div>
     }
 
-    @if (Model.NotFoundSkus.Any())
+    @if (noGuess.Any())
     {
         <div class="mt-4 rounded-md border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600 max-w-5xl">
-            <span class="font-medium text-neutral-700">@Model.NotFoundSkus.Count SKUs discarded</span>
-            (not found in the catalogue): <span class="text-neutral-500">@string.Join(", ", Model.NotFoundSkus)</span>
+            <span class="font-medium text-neutral-700">@noGuess.Count SKUs discarded</span>
+            (not in the catalogue, no close name match): <span class="text-neutral-500">@string.Join(", ", noGuess)</span>
         </div>
     }
 
