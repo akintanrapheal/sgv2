@@ -20,8 +20,10 @@
         .toolbar a { color: #fff; opacity: .7; text-decoration: none; }
         .sheet { display: block; padding: 0; }
         /* 30×15mm tag, laid out horizontally: QR left, name/SKU/number/price right. */
-        .label { width: 30mm; height: 15mm; padding: 0.8mm; overflow: hidden; background: #fff;
+        .label { position: relative; width: 30mm; height: 15mm; padding: 0.8mm; overflow: hidden; background: #fff;
                  border: 1px dashed #ccc; }
+        .lpick { position: absolute; top: 1px; right: 1px; z-index: 2; width: 15px; height: 15px; cursor: pointer; }
+        .label.unchecked { opacity: .3; }
         .tagrow { display: flex; align-items: center; gap: 1mm; height: 100%; }
         .qr { width: 11mm; height: 11mm; flex: 0 0 auto; image-rendering: pixelated; image-rendering: crisp-edges; }
         .tagtext { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; }
@@ -34,19 +36,24 @@
             .no-print { display: none !important; }
             body { background: #fff; }
             .label { border: 0; page-break-after: always; }
+            .label.unchecked { display: none !important; }
         }
     </style>
 </head>
 <body>
     <div class="toolbar no-print">
         <button class="btn-print" onclick="window.print()">🖨 Print</button>
-        <span style="opacity:.7">@Model.Count.ToString("N0") label(s) · @scope</span>
+        <button type="button" onclick="pick(true)" style="background:#ffffff22;color:#fff">Select all</button>
+        <button type="button" onclick="pick(false)" style="background:#ffffff22;color:#fff">Select none</button>
+        <span style="opacity:.7"><span id="cnt">@Model.Count.ToString("N0")</span> of @Model.Count.ToString("N0") · @scope</span>
+        <span style="opacity:.5">Untick a tag to skip it when printing</span>
         <a href="javascript:window.close()" style="margin-left:auto">Close</a>
     </div>
     <div class="sheet">
         @foreach (var r in Model)
         {
             <div class="label">
+                <input type="checkbox" class="lpick no-print" checked title="Print this tag" />
                 <div class="tagrow">
                     <img class="qr" alt="" src="@r.Qr" />
                     <div class="tagtext">
@@ -59,5 +66,18 @@
             </div>
         }
     </div>
+    <script>
+        var sheet = document.querySelector('.sheet');
+        var cnt = document.getElementById('cnt');
+        function refresh() {
+            var picks = sheet.querySelectorAll('.lpick');
+            var on = 0;
+            picks.forEach(function (c) { c.closest('.label').classList.toggle('unchecked', !c.checked); if (c.checked) on++; });
+            cnt.textContent = on.toLocaleString('en-US');
+        }
+        function pick(state) { sheet.querySelectorAll('.lpick').forEach(function (c) { c.checked = state; }); refresh(); }
+        sheet.addEventListener('change', function (e) { if (e.target.classList.contains('lpick')) refresh(); });
+        // Don't print unticked tags: nothing to do at print time — the @@media print rule hides them.
+    </script>
 </body>
 </html>
