@@ -10,8 +10,16 @@
 <div class="flex flex-col items-center gap-2">
     @if (!string.IsNullOrWhiteSpace(badgesUrl))
     {
+        @* A broken badges URL reveals the built-in badge strip instead of a broken image. *@
         <img src="@badgesUrl" alt="Accepted and secure payment methods" loading="lazy"
-             class="h-7 w-auto max-w-full" />
+             class="h-7 w-auto max-w-full"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+        <div class="flex-wrap items-center justify-center gap-1.5" style="display:none">
+            <span class="@pill tracking-wide" style="color:#1A1F71">VISA</span>
+            <span class="@pill" style="color:#EB001B">master<span style="color:#F79E1B">card</span></span>
+            <span class="@pill" style="color:#E4032E">verve</span>
+            <span class="@pill" style="color:#0BA4DB">pay<span style="color:#011B33">stack</span></span>
+        </div>
     }
     else
     {
