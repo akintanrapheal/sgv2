@@ -1,0 +1,148 @@
+@{
+    Layout = null;
+    var register = ViewData["Register"] as SterlingLams.Web.Models.Domain.Register;
+    var storeName = register?.Store?.Name ?? "";
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Print Labels — @storeName</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #f5f5f4; color: #1c1917; }
+        .top { background: #ed028b; color: #fff; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; }
+        .top a { color: #fff; text-decoration: none; font-size: 14px; opacity: .9; }
+        .wrap { max-width: 720px; margin: 18px auto; padding: 0 16px; }
+        .card { background: #fff; border: 1px solid #e7e5e4; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+        h2 { font-size: 14px; margin: 0 0 10px; color: #44403c; }
+        input[type=text], input[type=number] { border: 1px solid #d6d3d1; border-radius: 6px; padding: 10px 12px; font-size: 15px; }
+        .scan { width: 100%; }
+        .row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid #f1f1f0; }
+        .row:first-child { border-top: 0; }
+        .row .nm { flex: 1 1 auto; min-width: 0; font-size: 14px; }
+        .row .cd { font-size: 11px; color: #a8a29e; }
+        .qty { width: 64px; text-align: center; }
+        .rm { color: #ef4444; background: none; border: 0; font-size: 18px; cursor: pointer; }
+        .btn { display: inline-block; border: 0; border-radius: 6px; padding: 12px 18px; font-size: 15px; cursor: pointer; text-decoration: none; text-align: center; }
+        .btn-primary { background: #059669; color: #fff; }
+        .btn-primary[disabled] { background: #a7f3d0; cursor: default; }
+        .btn-ghost { background: #fff; border: 1px solid #d6d3d1; color: #44403c; }
+        .muted { color: #a8a29e; font-size: 12px; }
+        /* tag preview */
+        .prev { display: flex; justify-content: center; padding: 12px; background: #fafaf9; border-radius: 6px; }
+        .tag { width: 226px; height: 113px; background: #fff; border: 1px solid #d6d3d1; border-radius: 4px; padding: 6px; overflow: hidden; }
+        .tag .tagrow { display: flex; align-items: center; gap: 8px; height: 100%; }
+        .tag .qr { width: 84px; height: 84px; image-rendering: pixelated; }
+        .tag .tt { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; }
+        .tag .nm2 { font-size: 12px; line-height: 1.15; margin: 0 0 2px; }
+        .tag .sk, .tag .cc { font-size: 12px; color: #57534e; margin: 0; }
+        .tag .pr { font-size: 14px; font-weight: bold; margin: 3px 0 0; }
+    </style>
+</head>
+<body>
+    <div class="top">
+        <strong>🏷 Print Labels @(string.IsNullOrEmpty(storeName) ? "" : "— " + storeName.Replace("Sterlin Glams ", ""))</strong>
+        <a href="@Url.Action("Index", "Pos")">← Back to till</a>
+    </div>
+    <div class="wrap">
+        <div class="card">
+            <h2>Scan or type a barcode / SKU to add an item</h2>
+            <input id="scan" class="scan" type="text" autocomplete="off" placeholder="Scan a barcode…" />
+            <p id="msg" class="muted" style="margin:8px 0 0"></p>
+        </div>
+
+        <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px">
+                <h2 style="margin:0">Items to print (<span id="count">0</span>)</h2>
+                <button type="button" id="clear" class="btn btn-ghost" style="padding:6px 12px;font-size:13px">Clear</button>
+            </div>
+            <div id="rows"></div>
+            <p id="empty" class="muted" style="margin:10px 0 0">Nothing added yet — scan or type a code above.</p>
+            <div class="prev" id="prevbox" style="margin-top:14px;display:none">
+                <div class="tag">
+                    <div class="tagrow">
+                        <img class="qr" id="pv-qr" alt="" />
+                        <div class="tt">
+                            <div class="nm2" id="pv-name"></div>
+                            <div class="sk" id="pv-sku"></div>
+                            <div class="cc" id="pv-code"></div>
+                            <div class="pr" id="pv-price"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <button type="button" id="print" class="btn btn-primary" style="width:100%;margin-top:14px" disabled>🖨 Print selected</button>
+        </div>
+
+        <div class="card">
+            <h2>Or print in bulk</h2>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <a href="@Url.Action("LabelSheet", "Pos", new { all = false })" target="_blank" rel="noopener" class="btn btn-ghost" onclick="return confirm('This prints a tag for EVERY item in stock at this branch — could be a lot of labels. Continue?');">All stock here</a>
+                <a href="@Url.Action("LabelSheet", "Pos", new { all = true })" target="_blank" rel="noopener" class="btn btn-ghost" onclick="return confirm('This prints a tag for EVERY product in the catalogue — could be a lot of labels. Continue?');">All products</a>
+            </div>
+            <p class="muted" style="margin:8px 0 0">Every tag is 3×1.5cm with the QR, name, SKU, number and price.</p>
+        </div>
+    </div>
+
+    <script>
+        var LOOKUP = '@Url.Action("LabelLookup", "Pos")';
+        var SHEET = '@Url.Action("LabelSheet", "Pos")';
+        var QR = '@Url.Action("Qr", "Pos")';
+        var el = function (id) { return document.getElementById(id); };
+        var picks = {};   // key -> { name, code, price, qty }
+        function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]); }); }
+        function money(v) { return '₦' + (Math.round(+v)).toLocaleString('en-US'); }
+
+        function render() {
+            var keys = Object.keys(picks);
+            el('count').textContent = keys.length;
+            el('empty').style.display = keys.length ? 'none' : 'block';
+            el('print').disabled = !keys.length;
+            el('rows').innerHTML = keys.map(function (k) {
+                var p = picks[k];
+                return '<div class="row" data-k="' + esc(k) + '">'
+                    + '<span class="nm">' + esc(p.name) + '<br><span class="cd">' + esc(p.code) + ' · ' + money(p.price) + '</span></span>'
+                    + '<input class="qty" type="number" min="1" value="' + p.qty + '" data-qk="' + esc(k) + '" />'
+                    + '<button type="button" class="rm" data-rk="' + esc(k) + '">✕</button></div>';
+            }).join('');
+            var last = keys[keys.length - 1];
+            if (last) { preview(picks[last]); el('prevbox').style.display = 'flex'; } else { el('prevbox').style.display = 'none'; }
+        }
+        function preview(p) {
+            el('pv-qr').src = QR + '?text=' + encodeURIComponent(p.code || ' ');
+            el('pv-name').textContent = p.name;
+            el('pv-sku').textContent = p.sku || '';
+            el('pv-code').textContent = p.code || '';
+            el('pv-price').textContent = money(p.price);
+        }
+        function addByCode(code) {
+            code = (code || '').trim(); if (!code) return;
+            fetch(LOOKUP + '?code=' + encodeURIComponent(code)).then(function (r) { return r.json(); }).then(function (d) {
+                if (!d.found) { el('msg').textContent = 'No product matches "' + code + '".'; return; }
+                el('msg').textContent = '';
+                if (picks[d.key]) picks[d.key].qty += 1;
+                else picks[d.key] = { name: d.name, sku: d.sku, code: d.code, price: d.price, qty: 1 };
+                render();
+                el('scan').value = ''; el('scan').focus();
+            }).catch(function () { el('msg').textContent = 'Lookup failed — try again.'; });
+        }
+        el('scan').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addByCode(this.value); } });
+        el('rows').addEventListener('input', function (e) {
+            var k = e.target.getAttribute('data-qk'); if (k && picks[k]) { picks[k].qty = Math.max(1, parseInt(e.target.value, 10) || 1); el('print').disabled = false; }
+        });
+        el('rows').addEventListener('click', function (e) {
+            var k = e.target.getAttribute('data-rk'); if (k) { delete picks[k]; render(); }
+        });
+        el('clear').addEventListener('click', function () { picks = {}; render(); });
+        el('print').addEventListener('click', function () {
+            var ids = Object.keys(picks).map(function (k) { return k + ':' + picks[k].qty; }).join(',');
+            if (!ids) return;
+            window.open(SHEET + '?ids=' + encodeURIComponent(ids), '_blank');
+        });
+        el('scan').focus();
+    </script>
+</body>
+</html>
