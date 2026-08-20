@@ -90,6 +90,7 @@
             .pr-tag30x15 .tagtext { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; }
             .pr-tag30x15 .lname { font-size: 6px; line-height: 1.1; margin: 0 0 0.3mm 0; overflow: hidden;
                 display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+            .pr-tag30x15 .lsku { font-size: 6px; line-height: 1.1; margin: 0; letter-spacing: .3px; }
             .pr-tag30x15 .lcode { font-size: 6px; line-height: 1.1; margin: 0; }
             .pr-tag30x15 .lprice { font-size: 7px; font-weight: bold; line-height: 1.1; margin: 0.2mm 0 0 0; }
             @@media print { .pr-tag30x15 .label { border: 0; page-break-after: always; } }
@@ -147,6 +148,7 @@
                         const qr = F.showQr ? `<img class="qr" alt="QR" src="Qr?text=${encodeURIComponent(p.code)}" />` : '';
                         let txt = '';
                         if (F.showName) txt += `<div class="lname">${esc(p.name)}</div>`;
+                        if (F.showSku && p.sku) txt += `<div class="lsku">${esc(p.sku)}</div>`;
                         if (F.showBarcodeNumber && p.code) txt += `<div class="lcode">${esc(p.code)}</div>`;
                         if (F.showPrice) txt += `<div class="lprice">₦${(+p.price).toLocaleString()}</div>`;
                         if (F.customText) txt += `<div class="lcustom">${esc(F.customText)}</div>`;

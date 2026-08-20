@@ -1,0 +1,63 @@
+@model List<SterlingLams.Web.Controllers.PosController.PosLabel>
+@{
+    Layout = null;
+    var scope = ViewBag.Scope as string ?? "this branch";
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Labels — @scope</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #f5f5f4; color: #1c1917; }
+        .toolbar { position: sticky; top: 0; z-index: 5; background: #0a0a0a; color: #fff; padding: 12px 20px;
+                   display: flex; align-items: center; gap: 14px; font-size: 13px; }
+        .toolbar button { padding: 7px 16px; border: 0; border-radius: 3px; cursor: pointer; font-size: 13px; }
+        .btn-print { background: #059669; color: #fff; }
+        .toolbar a { color: #fff; opacity: .7; text-decoration: none; }
+        .sheet { display: block; padding: 0; }
+        /* 30×15mm tag, laid out horizontally: QR left, name/SKU/number/price right. */
+        .label { width: 30mm; height: 15mm; padding: 0.8mm; overflow: hidden; background: #fff;
+                 border: 1px dashed #ccc; }
+        .tagrow { display: flex; align-items: center; gap: 1mm; height: 100%; }
+        .qr { width: 11mm; height: 11mm; flex: 0 0 auto; image-rendering: pixelated; image-rendering: crisp-edges; }
+        .tagtext { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; }
+        .lname { font-size: 6px; line-height: 1.1; margin: 0 0 0.3mm 0; overflow: hidden;
+                 display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+        .lsku, .lcode { font-size: 6px; line-height: 1.1; margin: 0; letter-spacing: .3px; }
+        .lprice { font-size: 7px; font-weight: bold; line-height: 1.1; margin: 0.2mm 0 0 0; }
+        @@page { size: 30mm 15mm; margin: 0; }
+        @@media print {
+            .no-print { display: none !important; }
+            body { background: #fff; }
+            .label { border: 0; page-break-after: always; }
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar no-print">
+        <button class="btn-print" onclick="window.print()">🖨 Print</button>
+        <span style="opacity:.7">@Model.Count.ToString("N0") label(s) · @scope</span>
+        <a href="javascript:window.close()" style="margin-left:auto">Close</a>
+    </div>
+    <div class="sheet">
+        @foreach (var r in Model)
+        {
+            <div class="label">
+                <div class="tagrow">
+                    <img class="qr" alt="" src="@r.Qr" />
+                    <div class="tagtext">
+                        <div class="lname">@r.Name</div>
+                        @if (!string.IsNullOrWhiteSpace(r.Sku)) { <div class="lsku">@r.Sku</div> }
+                        <div class="lcode">@r.Code</div>
+                        <div class="lprice">₦@r.Price.ToString("N0")</div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</body>
+</html>

@@ -30,6 +30,7 @@
     #lbl-preview-box .label.pr-tag30x15 .tagtext { flex: 1 1 auto; min-width: 0; text-align: left; overflow: hidden; }
     #lbl-preview-box .label.pr-tag30x15 .lname { font-size: 6px; line-height: 1.1; margin: 0 0 1px 0; overflow: hidden;
         display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+    #lbl-preview-box .label.pr-tag30x15 .lsku { font-size: 6px; line-height: 1.1; margin: 0; letter-spacing: .3px; }
     #lbl-preview-box .label.pr-tag30x15 .lcode { font-size: 6px; line-height: 1.1; margin: 0; }
     #lbl-preview-box .label.pr-tag30x15 .lprice { font-size: 7px; font-weight: bold; line-height: 1.1; margin: 1px 0 0 0; }
     #lbl-preview-box .lcat { font-size: var(--lbl-fs, 9px); text-transform: uppercase; letter-spacing: .5px; color: #78716c; margin-bottom: 2px; }
@@ -301,6 +302,7 @@
             var qr = el('d-qr').checked ? '<img class="qr" alt="QR" src="' + __invBase + '/Products/Qr?text=' + encodeURIComponent(code) + '" />' : '';
             var txt = '';
             if (el('d-name').checked) txt += '<div class="lname">' + esc(name) + '</div>';
+            if (el('d-sku').checked) txt += '<div class="lsku">' + esc(sku) + '</div>';
             if (el('d-barcodenum').checked) txt += '<div class="lcode">' + code + '</div>';
             if (el('d-price').checked) txt += '<div class="lprice">₦100.58</div>';
             if (el('d-customtext-on').checked && el('d-customtext').value) txt += '<div class="lcustom">' + esc(el('d-customtext').value) + '</div>';
@@ -325,14 +327,37 @@
         var note = el('lbl-preview-note');
         if (note) note.textContent = fp ? ('Preview of "' + fp.name + '" — barcode/QR shown are samples.') : 'Sample — reflects your choices above.';
     }
-    // Font-size steppers.
-    el('fs-minus').addEventListener('click', function () { el('lbl-fontsize').value = Math.max(6, (parseInt(el('lbl-fontsize').value, 10) || 9) - 1); updatePreview(); });
-    el('fs-plus').addEventListener('click', function () { el('lbl-fontsize').value = Math.min(24, (parseInt(el('lbl-fontsize').value, 10) || 9) + 1); updatePreview(); });
+    // ── Remember the last "Details to print" (and printer / font / preset) choice ──
+    var PREFS_KEY = 'sg-label-prefs';
+    var CHECK_IDS = ['d-name', 'd-price', 'd-barcode', 'd-barcodenum', 'd-qr', 'd-sku', 'd-category', 'd-description', 'd-customtext-on'];
+    var VAL_IDS = ['lbl-printer', 'lbl-font', 'lbl-fontsize', 'd-customtext'];
+    function savePrefs() {
+        try {
+            var s = {};
+            CHECK_IDS.forEach(function (id) { var n = el(id); if (n) s[id] = n.checked; });
+            VAL_IDS.forEach(function (id) { var n = el(id); if (n) s[id] = n.value; });
+            var pr = document.querySelector('input[name="preset"]:checked'); if (pr) s.preset = pr.value;
+            localStorage.setItem(PREFS_KEY, JSON.stringify(s));
+        } catch (e) { }
+    }
+    function restorePrefs() {
+        try {
+            var s = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null'); if (!s) return;
+            CHECK_IDS.forEach(function (id) { var n = el(id); if (n && typeof s[id] === 'boolean') n.checked = s[id]; });
+            VAL_IDS.forEach(function (id) { var n = el(id); if (n && s[id] != null && s[id] !== '') n.value = s[id]; });
+            if (s.preset) { var pr = document.querySelector('input[name="preset"][value="' + s.preset + '"]'); if (pr) pr.checked = true; }
+        } catch (e) { }
+    }
+    function onOptChange() { updatePreview(); savePrefs(); }
 
-    // Re-render the preview whenever any option changes.
+    // Font-size steppers.
+    el('fs-minus').addEventListener('click', function () { el('lbl-fontsize').value = Math.max(6, (parseInt(el('lbl-fontsize').value, 10) || 9) - 1); onOptChange(); });
+    el('fs-plus').addEventListener('click', function () { el('lbl-fontsize').value = Math.min(24, (parseInt(el('lbl-fontsize').value, 10) || 9) + 1); onOptChange(); });
+
+    // Re-render the preview + remember the choice whenever any option changes.
     ['d-name', 'd-price', 'd-barcode', 'd-barcodenum', 'd-qr', 'd-sku', 'd-category', 'd-description', 'd-customtext-on', 'd-customtext', 'lbl-printer', 'lbl-font', 'lbl-fontsize']
-        .forEach(function (id) { var n = el(id); if (n) { n.addEventListener('change', updatePreview); n.addEventListener('input', updatePreview); } });
-    document.querySelectorAll('input[name="preset"]').forEach(function (r) { r.addEventListener('change', updatePreview); });
+        .forEach(function (id) { var n = el(id); if (n) { n.addEventListener('change', onOptChange); n.addEventListener('input', onOptChange); } });
+    document.querySelectorAll('input[name="preset"]').forEach(function (r) { r.addEventListener('change', onOptChange); });
     function go() {
         if (!Object.keys(picks).length && !el('lbl-store').value && !el('lbl-category').value) {
             alert('Add at least one product, or choose a location / category.'); return;
@@ -342,6 +367,7 @@
     el('lbl-preview').addEventListener('click', go);
     el('lbl-generate').addEventListener('click', go);
 
+    restorePrefs();    // apply the last-used details/printer/preset
     updatePreview();   // initial render
 })();
 </script>
