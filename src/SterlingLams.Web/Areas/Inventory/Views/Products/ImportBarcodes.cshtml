@@ -140,7 +140,8 @@
                 </div>
             }
 
-            <div class="mt-4 flex flex-wrap items-center gap-3">
+            @* Sticky so it's always reachable, even under a long suggestions list. *@
+            <div class="sticky bottom-0 z-30 mt-4 flex flex-wrap items-center gap-3 rounded-t-md border-t border-neutral-200 bg-white/95 px-3 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur">
                 <button type="submit"
                         class="rounded-md bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-700">
                     Apply <span id="applyCount">@Model.Assigned</span> barcode<span id="applyPlural">@(Model.Assigned == 1 ? "" : "s")</span>
