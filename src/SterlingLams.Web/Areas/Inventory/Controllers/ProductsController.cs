@@ -576,6 +576,24 @@ public class ProductsController : InventoryAreaController
         return View(moves);
     }
 
+    // Autocomplete for the barcode-import "assign to product" picker: search the catalogue by
+    // SKU or name (partial), returning the closest products so the user can pick any of them —
+    // not just the name-based suggestions.
+    [HttpGet]
+    public async Task<IActionResult> ProductSearch(string q)
+    {
+        q = (q ?? "").Trim();
+        if (q.Length < 2) return Json(Array.Empty<object>());
+        var matches = await _db.Products
+            .Where(p => !p.IsArchived && (EF.Functions.ILike(p.Name, $"%{q}%")
+                     || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
+                     || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")))
+            .OrderBy(p => p.Sku!.StartsWith(q) ? 0 : 1).ThenBy(p => p.Name).Take(20)
+            .Select(p => new { id = p.Id, name = p.Name, sku = p.Sku })
+            .ToListAsync();
+        return Json(matches);
+    }
+
     // Look up a product by exact barcode (for scan boxes). Returns id/name or 404.
     [HttpGet]
     public async Task<IActionResult> Lookup(string barcode)

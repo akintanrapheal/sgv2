@@ -124,14 +124,13 @@
                                             <span class="text-[11px] text-neutral-400">· @g.BarcodeCount barcode@(g.BarcodeCount == 1 ? "" : "s")</span>
                                         </td>
                                         <td class="px-3 py-2 align-top">
-                                            <select name="overrides[@g.Sku]" data-count="@g.BarcodeCount"
-                                                    class="js-pick w-full max-w-md rounded border border-neutral-300 px-2 py-1.5 text-sm">
-                                                <option value="">— Skip (don't write) —</option>
-                                                @foreach (var c in g.Candidates)
-                                                {
-                                                    <option value="@c.ProductId">@c.ProductName — @c.ProductSku · @c.Score% match</option>
-                                                }
-                                            </select>
+                                            <div class="js-combo relative max-w-md" data-sku="@g.Sku"
+                                                 data-suggest="@System.Text.Json.JsonSerializer.Serialize(g.Candidates.Select(c => new { id = c.ProductId, name = c.ProductName, sku = c.ProductSku, score = c.Score }))">
+                                                <input type="hidden" name="overrides[@g.Sku]" value="" data-count="@g.BarcodeCount" class="js-pickval" />
+                                                <input type="text" autocomplete="off" placeholder="Type a SKU or name…"
+                                                       class="js-comboinput w-full rounded border border-neutral-300 px-2 py-1.5 text-sm focus:border-blue-500 focus:outline-none" />
+                                                <div class="js-combomenu hidden absolute z-20 mt-1 w-full max-h-64 overflow-auto rounded-md border border-neutral-200 bg-white text-sm shadow-lg"></div>
+                                            </div>
                                         </td>
                                     </tr>
                                 }
@@ -156,15 +155,84 @@
         {
             <script>
                 (function () {
+                    var SEARCH = '@Url.Action("ProductSearch", "Products", new { area = "Inventory" })';
                     var base = @Model.Assigned;
-                    var picks = document.querySelectorAll('.js-pick');
                     var out = document.getElementById('applyCount'), pl = document.getElementById('applyPlural');
-                    function upd() {
+                    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]); }); }
+
+                    function updCount() {
                         var n = base;
-                        picks.forEach(function (s) { if (s.value) n += parseInt(s.getAttribute('data-count') || '0', 10); });
+                        document.querySelectorAll('.js-pickval').forEach(function (h) {
+                            if (h.value) n += parseInt(h.getAttribute('data-count') || '0', 10);
+                        });
                         out.textContent = n; pl.textContent = (n === 1 ? '' : 's');
                     }
-                    picks.forEach(function (s) { s.addEventListener('change', upd); });
+
+                    function itemHtml(p, suffix) {
+                        return '<button type="button" class="js-comboitem block w-full text-left px-3 py-2 hover:bg-blue-50" '
+                            + 'data-id="' + p.id + '" data-label="' + esc(p.name + ' — ' + (p.sku || '')) + '">'
+                            + '<span class="text-neutral-800">' + esc(p.name) + '</span> '
+                            + '<span class="text-neutral-400 font-mono text-[12px]">' + esc(p.sku || '') + '</span>'
+                            + (suffix ? ' <span class="text-[11px] text-amber-600">' + suffix + '</span>' : '')
+                            + '</button>';
+                    }
+                    function showSuggestions(combo) {
+                        var menu = combo.querySelector('.js-combomenu');
+                        var sug = [];
+                        try { sug = JSON.parse(combo.dataset.suggest || '[]'); } catch (e) { }
+                        var html = '<div class="px-3 py-1.5 text-[11px] uppercase tracking-wide text-neutral-400 bg-neutral-50">Suggestions — or type to search</div>';
+                        html += sug.map(function (p) { return itemHtml(p, p.score + '% name match'); }).join('');
+                        if (combo.querySelector('.js-pickval').value)
+                            html = '<button type="button" class="js-comboclear block w-full text-left px-3 py-2 text-rose-600 hover:bg-rose-50">✕ Clear (skip this row)</button>' + html;
+                        menu.innerHTML = html; menu.classList.remove('hidden');
+                    }
+                    function renderResults(combo, list) {
+                        var menu = combo.querySelector('.js-combomenu');
+                        if (!list.length) { menu.innerHTML = '<div class="px-3 py-2 text-neutral-400">No product matches.</div>'; menu.classList.remove('hidden'); return; }
+                        menu.innerHTML = list.map(function (p) { return itemHtml(p, ''); }).join('');
+                        menu.classList.remove('hidden');
+                    }
+                    function choose(combo, id, label) {
+                        combo.querySelector('.js-pickval').value = id;
+                        combo.querySelector('.js-comboinput').value = label;
+                        combo.querySelector('.js-combomenu').classList.add('hidden');
+                        updCount();
+                    }
+                    function clearPick(combo) {
+                        combo.querySelector('.js-pickval').value = '';
+                        combo.querySelector('.js-comboinput').value = '';
+                        combo.querySelector('.js-combomenu').classList.add('hidden');
+                        updCount();
+                    }
+
+                    var timers = new WeakMap();
+                    document.querySelectorAll('.js-combo').forEach(function (combo) {
+                        var input = combo.querySelector('.js-comboinput');
+                        input.addEventListener('focus', function () { if (!input.value.trim()) showSuggestions(combo); });
+                        input.addEventListener('input', function () {
+                            var q = input.value.trim();
+                            // typing invalidates any prior pick until they choose again
+                            combo.querySelector('.js-pickval').value = ''; updCount();
+                            clearTimeout(timers.get(combo));
+                            if (q.length < 2) { showSuggestions(combo); return; }
+                            timers.set(combo, setTimeout(function () {
+                                fetch(SEARCH + '?q=' + encodeURIComponent(q))
+                                    .then(function (r) { return r.json(); })
+                                    .then(function (list) { renderResults(combo, list); })
+                                    .catch(function () { });
+                            }, 200));
+                        });
+                    });
+                    // Delegated clicks for menu items / clear.
+                    document.addEventListener('click', function (e) {
+                        var item = e.target.closest('.js-comboitem');
+                        if (item) { choose(item.closest('.js-combo'), item.dataset.id, item.dataset.label); return; }
+                        var clr = e.target.closest('.js-comboclear');
+                        if (clr) { clearPick(clr.closest('.js-combo')); return; }
+                        // click outside any combo → close open menus
+                        if (!e.target.closest('.js-combo'))
+                            document.querySelectorAll('.js-combomenu').forEach(function (m) { m.classList.add('hidden'); });
+                    });
                 })();
             </script>
         }
