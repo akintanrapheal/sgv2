@@ -267,6 +267,20 @@ public class BarcodeImportService
         var variantAssign = new List<(int VariantId, string Barcode)>();
         var productAssign = new List<(int ProductId, string Barcode)>();
 
+        // Barcodes are globally unique. Some POS exports repeat the same code on several rows
+        // (e.g. every size/colour of a product shares one barcode). Assigning a repeated code to
+        // more than one target would violate IX_ProductVariants_Barcode and roll back the whole
+        // batch, so we claim each code once (first row wins) and flag the rest instead of crashing.
+        var seenBarcodes = new HashSet<string>();
+        bool Claim(string bc, NamedBarcodeRow r)
+        {
+            if (seenBarcodes.Add(bc)) return true;
+            r.Status = "duplicate-barcode";
+            r.Detail = "barcode is repeated in the file — kept on the first row, skipped here";
+            result.DuplicateBarcodes++;
+            return false;
+        }
+
         foreach (var grp in parsed.GroupBy(x => x.Sku))
         {
             var product = await _db.Products
@@ -326,6 +340,7 @@ public class BarcodeImportService
                 if (variants.Count == 0)
                 {
                     // Simple product — the barcode is the product's own.
+                    if (!Claim(row.Barcode, rr)) { result.Rows.Add(rr); continue; }
                     rr.Status = "product-barcode";
                     rr.VariantName = "(no variants)";
                     productAssign.Add((product.Id, row.Barcode));
@@ -349,11 +364,14 @@ public class BarcodeImportService
                 if (candidates.Count == 1)
                 {
                     var v = candidates[0].V;
-                    rr.Status = "matched";
-                    rr.VariantName = v.Name;
-                    used.Add(v.Id);
-                    variantAssign.Add((v.Id, row.Barcode));
-                    result.Assigned++;
+                    if (Claim(row.Barcode, rr))
+                    {
+                        rr.Status = "matched";
+                        rr.VariantName = v.Name;
+                        used.Add(v.Id);
+                        variantAssign.Add((v.Id, row.Barcode));
+                        result.Assigned++;
+                    }
                 }
                 else if (viaOverride)
                 {
@@ -364,12 +382,15 @@ public class BarcodeImportService
                           : variants.FirstOrDefault(x => !used.Contains(x.V.Id)).V;
                     if (v != null)
                     {
-                        rr.Status = "matched";
-                        rr.VariantName = v.Name;
-                        if (candidates.Count != 1) rr.Detail = "placed by your match (colour/size not aligned)";
-                        used.Add(v.Id);
-                        variantAssign.Add((v.Id, row.Barcode));
-                        result.Assigned++;
+                        if (Claim(row.Barcode, rr))
+                        {
+                            rr.Status = "matched";
+                            rr.VariantName = v.Name;
+                            if (candidates.Count != 1) rr.Detail = "placed by your match (colour/size not aligned)";
+                            used.Add(v.Id);
+                            variantAssign.Add((v.Id, row.Barcode));
+                            result.Assigned++;
+                        }
                     }
                     else
                     {
@@ -401,7 +422,8 @@ public class BarcodeImportService
             catch (Exception ex)
             {
                 var inner = ex; while (inner.InnerException != null) inner = inner.InnerException;
-                result.Errors.Add(inner.Message);
+                result.WriteFailed = true;
+                result.Errors.Add("Nothing was saved — the import was rolled back. " + inner.Message);
                 _log.LogError(ex, "Named barcode import write failed");
             }
         }
@@ -502,11 +524,15 @@ public class NamedBarcodeResult
     public int SkusNotFound { get; set; }
     public int NoVariantMatch { get; set; }
     public int Ambiguous { get; set; }
+    public int DuplicateBarcodes { get; set; }
+    public bool WriteFailed { get; set; }
     public List<NamedBarcodeRow> Rows { get; set; } = new();
     public List<string> NotFoundSkus { get; set; } = new();
     public List<NamedBarcodeGuess> Guesses { get; set; } = new();
     public List<string> Errors { get; set; } = new();
+    // Actually persisted: 0 when a committed write rolled back.
+    public int Written => Committed && !WriteFailed ? Assigned : 0;
     public string Summary =>
-        $"{RowsRead} rows · {Assigned} barcodes {(Committed ? "written" : "to write")} · {ProductsMatched} products matched · " +
-        $"{SkusNotFound} SKUs discarded (not in catalogue) · {NoVariantMatch} rows no variant match · {Ambiguous} ambiguous";
+        $"{RowsRead} rows · {(Committed ? Written + " barcodes written" : Assigned + " barcodes to write")} · {ProductsMatched} products matched · " +
+        $"{SkusNotFound} SKUs discarded (not in catalogue) · {NoVariantMatch} rows no variant match · {Ambiguous} ambiguous · {DuplicateBarcodes} duplicate barcodes";
 }

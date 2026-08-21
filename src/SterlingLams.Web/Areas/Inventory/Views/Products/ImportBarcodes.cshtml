@@ -10,6 +10,7 @@
         "product-barcode" => "bg-emerald-50 text-emerald-700 border-emerald-200",
         "ambiguous" => "bg-amber-50 text-amber-700 border-amber-200",
         "no-variant-match" => "bg-amber-50 text-amber-700 border-amber-200",
+        "duplicate-barcode" => "bg-amber-50 text-amber-700 border-amber-200",
         _ => "bg-rose-50 text-rose-700 border-rose-200"
     };
     string Label(string status) => status switch
@@ -18,6 +19,7 @@
         "product-barcode" => "product",
         "no-variant-match" => "no variant",
         "ambiguous" => "ambiguous",
+        "duplicate-barcode" => "duplicate",
         "sku-not-found" => "discarded",
         _ => status
     };
@@ -63,11 +65,17 @@
     var problems = Model.Rows.Where(r => r.Status != "matched" && r.Status != "product-barcode").ToList();
     var ok = Model.Rows.Where(r => r.Status == "matched" || r.Status == "product-barcode").ToList();
     var noGuess = Model.NotFoundSkus.Except(Model.Guesses.Select(g => g.Sku)).ToList();
+    var failed = Model.Committed && Model.WriteFailed;
+    var cardClass = failed ? "border-rose-300 bg-rose-50" : Model.Committed ? "border-emerald-300 bg-emerald-50" : "border-blue-200 bg-blue-50";
 
     <!-- Summary -->
-    <div class="mt-6 rounded-md border @(Model.Committed ? "border-emerald-300 bg-emerald-50" : "border-blue-200 bg-blue-50") px-5 py-4 max-w-5xl">
-        <div class="flex items-center gap-2 text-sm font-semibold @(Model.Committed ? "text-emerald-800" : "text-blue-800")">
-            @if (Model.Committed)
+    <div class="mt-6 rounded-md border @cardClass px-5 py-4 max-w-5xl">
+        <div class="flex items-center gap-2 text-sm font-semibold @(failed ? "text-rose-800" : Model.Committed ? "text-emerald-800" : "text-blue-800")">
+            @if (failed)
+            {
+                <span>✕ Not applied</span> <span class="text-rose-700/80 font-normal">— the import was rolled back, nothing was saved. See the error below.</span>
+            }
+            else if (Model.Committed)
             {
                 <span>✓ Applied</span> <span class="text-emerald-700/70 font-normal">— barcodes written to the catalogue.</span>
             }
@@ -76,15 +84,15 @@
                 <span>Preview</span> <span class="text-blue-700/70 font-normal">— nothing has been written yet.</span>
             }
         </div>
-        <div class="mt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center">
+        <div class="mt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 text-center">
             <div><div class="text-xl font-semibold text-neutral-900">@Model.RowsRead</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">rows</div></div>
-            <div><div class="text-xl font-semibold text-emerald-700">@Model.Assigned</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">@(Model.Committed ? "written" : "to write")</div></div>
+            <div><div class="text-xl font-semibold text-emerald-700">@(Model.Committed ? Model.Written : Model.Assigned)</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">@(Model.Committed ? "written" : "to write")</div></div>
             <div><div class="text-xl font-semibold text-neutral-900">@Model.ProductsMatched</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">products</div></div>
             <div><div class="text-xl font-semibold text-rose-600">@Model.SkusNotFound</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">SKUs discarded</div></div>
             <div><div class="text-xl font-semibold text-amber-600">@Model.NoVariantMatch</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">no variant</div></div>
             <div><div class="text-xl font-semibold text-amber-600">@Model.Ambiguous</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">ambiguous</div></div>
+            <div><div class="text-xl font-semibold text-amber-600">@Model.DuplicateBarcodes</div><div class="text-[11px] uppercase tracking-wide text-neutral-500">dup barcode</div></div>
         </div>
-
     </div>
 
     @* Apply form — wraps both the auto-matched barcodes and any name suggestions the user confirms. *@
