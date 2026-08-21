@@ -182,10 +182,56 @@ public class BarcodeImportService
         return last;
     }
 
-    public async Task<NamedBarcodeResult> ImportNamedAsync(IEnumerable<string> rawLines, bool commit, IProgress<string>? progress = null)
+    // Confirm-first name matching. When a file SKU isn't in the catalogue we can't auto-assign (the
+    // names rarely line up), but we CAN suggest the closest products by name so the user picks the
+    // right one. `overrides` (fileSku → chosen ProductId) carries those picks back on Apply; only the
+    // SKUs the user explicitly mapped get written — everything else still discards.
+    // ── Name suggestions (confirm-first) ──────────────────────────────────────────
+    // Words that carry no identity — dropped before comparing names so overlap reflects the
+    // meaningful descriptors (gold, pearl, bangle…), not connectors or pack-size words.
+    private static readonly HashSet<string> NameStop = new(StringComparer.OrdinalIgnoreCase)
+    { "and", "the", "set", "of", "on", "in", "with", "for", "n", "sg", "pcs", "pc", "piece", "pieces", "new", "big", "small" };
+
+    /// <summary>Significant word tokens of a product name: lower-cased, punctuation-split, numbers and
+    /// stop-words dropped, and a leading digit peeled off ("3tone" → "tone") so descriptors line up.</summary>
+    private static HashSet<string> NameTokens(string s)
+    {
+        var set = new HashSet<string>();
+        foreach (var raw in Regex.Split((s ?? "").ToLowerInvariant(), "[^a-z0-9]+"))
+        {
+            if (raw.Length < 2 || Regex.IsMatch(raw, @"^[0-9]+$") || NameStop.Contains(raw)) continue;
+            var dm = Regex.Match(raw, @"^[0-9]+([a-z]+)$");
+            var t = dm.Success ? dm.Groups[1].Value : raw;
+            if (t.Length < 2 || NameStop.Contains(t)) continue;
+            set.Add(t);
+        }
+        return set;
+    }
+
+    /// <summary>Jaccard overlap of two token sets as a 0–100 percentage.</summary>
+    private static int NameScore(HashSet<string> a, HashSet<string> b)
+    {
+        if (a.Count == 0 || b.Count == 0) return 0;
+        int inter = a.Count(b.Contains);
+        if (inter == 0) return 0;
+        return (int)Math.Round(100.0 * inter / (a.Count + b.Count - inter));
+    }
+
+    public async Task<NamedBarcodeResult> ImportNamedAsync(IEnumerable<string> rawLines, bool commit,
+        IProgress<string>? progress = null, IReadOnlyDictionary<string, int>? overrides = null)
     {
         var result = new NamedBarcodeResult { Committed = commit };
         void Log(string m) { progress?.Report(m); _log.LogInformation("[barcode-import] {Msg}", m); }
+
+        // Lazily-loaded catalogue snapshot for name suggestions (only built when a SKU misses).
+        List<(int Id, string Name, string Sku, HashSet<string> Tok)>? catForGuess = null;
+        async Task EnsureCatForGuess()
+        {
+            if (catForGuess != null) return;
+            var ps = await _db.Products.Where(p => !p.IsArchived)
+                .Select(p => new { p.Id, p.Name, p.Sku }).ToListAsync();
+            catForGuess = ps.Select(p => (p.Id, p.Name ?? "", p.Sku ?? "", NameTokens(p.Name ?? ""))).ToList();
+        }
 
         // Parse lines → (Sku, NameNoSku, Barcode). Tolerates a header row and the UTF-8 BOM.
         var parsed = new List<(string Sku, string Name, string NameNoSku, string Barcode)>();
@@ -227,12 +273,38 @@ public class BarcodeImportService
                 .Include(p => p.Variants).ThenInclude(v => v.AttributeValues).ThenInclude(av => av.Attribute)
                 .FirstOrDefaultAsync(p => p.Sku == grp.Key);
 
+            // No SKU match, but the user confirmed a product for this SKU (from the suggestions) — use it.
+            bool viaOverride = false;
+            if (product == null && overrides != null && overrides.TryGetValue(grp.Key, out var pid))
+            {
+                product = await _db.Products
+                    .Include(p => p.Variants).ThenInclude(v => v.AttributeValues).ThenInclude(av => av.Attribute)
+                    .FirstOrDefaultAsync(p => p.Id == pid);
+                viaOverride = product != null;
+            }
+
             if (product == null)
             {
                 result.SkusNotFound++;
                 result.NotFoundSkus.Add(grp.Key);
                 foreach (var row in grp)
                     result.Rows.Add(new NamedBarcodeRow { Sku = grp.Key, Name = row.Name, Barcode = row.Barcode, Status = "sku-not-found" });
+
+                // On preview, offer the closest catalogue products by name so the user can pick one.
+                if (!commit)
+                {
+                    await EnsureCatForGuess();
+                    var rep = grp.First();
+                    var ft = NameTokens(rep.NameNoSku);
+                    var cands = catForGuess!
+                        .Select(c => (c.Id, c.Name, c.Sku, S: NameScore(ft, c.Tok)))
+                        .Where(x => x.S > 0)
+                        .OrderByDescending(x => x.S).ThenBy(x => x.Name).Take(6)
+                        .Select(x => new NamedBarcodeGuess.Candidate { ProductId = x.Id, ProductName = x.Name, ProductSku = x.Sku, Score = x.S })
+                        .ToList();
+                    if (cands.Count > 0)
+                        result.Guesses.Add(new NamedBarcodeGuess { Sku = grp.Key, FileName = rep.Name, BarcodeCount = grp.Count(), Candidates = cands });
+                }
                 continue;
             }
             result.ProductsMatched++;
@@ -282,6 +354,29 @@ public class BarcodeImportService
                     used.Add(v.Id);
                     variantAssign.Add((v.Id, row.Barcode));
                     result.Assigned++;
+                }
+                else if (viaOverride)
+                {
+                    // The user confirmed this product, so place the barcode on it regardless of how
+                    // its variants are named — prefer a colour candidate, else the next free variant.
+                    // (Any barcode resolves to its parent product when scanned, so this stays correct.)
+                    var v = candidates.Count > 0 ? candidates[0].V
+                          : variants.FirstOrDefault(x => !used.Contains(x.V.Id)).V;
+                    if (v != null)
+                    {
+                        rr.Status = "matched";
+                        rr.VariantName = v.Name;
+                        if (candidates.Count != 1) rr.Detail = "placed by your match (colour/size not aligned)";
+                        used.Add(v.Id);
+                        variantAssign.Add((v.Id, row.Barcode));
+                        result.Assigned++;
+                    }
+                    else
+                    {
+                        rr.Status = "no-variant-match";
+                        rr.Detail = "your match has no free variant slot for this barcode";
+                        result.NoVariantMatch++;
+                    }
                 }
                 else if (candidates.Count == 0)
                 {
@@ -380,6 +475,24 @@ public class NamedBarcodeRow
     public string? Detail { get; set; }
 }
 
+/// <summary>A file SKU that isn't in the catalogue, with the closest catalogue products by name so
+/// the user can confirm which one (if any) the barcode(s) belong to.</summary>
+public class NamedBarcodeGuess
+{
+    public string Sku { get; set; } = "";
+    public string FileName { get; set; } = "";
+    public int BarcodeCount { get; set; }
+    public List<Candidate> Candidates { get; set; } = new();
+
+    public class Candidate
+    {
+        public int ProductId { get; set; }
+        public string ProductName { get; set; } = "";
+        public string ProductSku { get; set; } = "";
+        public int Score { get; set; }   // 0–100 name overlap
+    }
+}
+
 public class NamedBarcodeResult
 {
     public bool Committed { get; set; }
@@ -391,6 +504,7 @@ public class NamedBarcodeResult
     public int Ambiguous { get; set; }
     public List<NamedBarcodeRow> Rows { get; set; } = new();
     public List<string> NotFoundSkus { get; set; } = new();
+    public List<NamedBarcodeGuess> Guesses { get; set; } = new();
     public List<string> Errors { get; set; } = new();
     public string Summary =>
         $"{RowsRead} rows · {Assigned} barcodes {(Committed ? "written" : "to write")} · {ProductsMatched} products matched · " +

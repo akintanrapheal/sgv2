@@ -995,7 +995,8 @@ public class ProductsController : InventoryAreaController
     // Apply the previously-previewed file (commit=true), then delete the stash.
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ApplyBarcodes(string token, string? fileName = null)
+    public async Task<IActionResult> ApplyBarcodes(string token, string? fileName = null,
+        [FromForm] Dictionary<string, string>? overrides = null)
     {
         ViewData["Title"] = "Import Barcodes";
         var path = BarcodeStashPath(token);
@@ -1005,9 +1006,14 @@ public class ProductsController : InventoryAreaController
             return View("ImportBarcodes", (SterlingLams.Web.Services.NamedBarcodeResult?)null);
         }
 
+        // User-confirmed name matches: file SKU → chosen ProductId. Blank/unparseable picks are skipped.
+        var picks = overrides?
+            .Where(kv => int.TryParse(kv.Value, out _))
+            .ToDictionary(kv => kv.Key, kv => int.Parse(kv.Value));
+
         var lines = await System.IO.File.ReadAllLinesAsync(path);
         var svc = HttpContext.RequestServices.GetRequiredService<SterlingLams.Web.Services.BarcodeImportService>();
-        var result = await svc.ImportNamedAsync(lines, commit: true);
+        var result = await svc.ImportNamedAsync(lines, commit: true, overrides: picks);
         try { System.IO.File.Delete(path); } catch { /* best effort */ }
 
         if (result.Assigned > 0)
