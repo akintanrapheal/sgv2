@@ -204,10 +204,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
         // ─── Label reprint queue ────────────────────────────────────────────
         builder.Entity<LabelReprintEntry>(e =>
         {
-            // At most one Pending row per product (the price-change hook upserts into it).
-            e.HasIndex(q => q.ProductId).IsUnique().HasFilter("\"Status\" = 0");
+            // At most one Pending row per (product, store) — the price-change hook upserts into it.
+            e.HasIndex(q => new { q.ProductId, q.StoreId }).IsUnique().HasFilter("\"Status\" = 0");
             e.HasIndex(q => q.Status);
+            e.HasIndex(q => q.StoreId);   // per-branch POS count filters on this
             e.HasOne(q => q.Product).WithMany().HasForeignKey(q => q.ProductId)
+             .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(q => q.Store).WithMany().HasForeignKey(q => q.StoreId)
              .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -589,63 +592,72 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
 
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
-        var changedProductIds = _flaggingReprints ? null : DetectTagPriceChanges();
+        var reasons = _flaggingReprints ? null : DetectTagPriceChanges();
         var result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
 
-        if (changedProductIds is { Count: > 0 })
+        if (reasons is { Count: > 0 })
         {
             _flaggingReprints = true;
-            try { await FlagReprintsAsync(changedProductIds, cancellationToken); }
+            try { await FlagReprintsAsync(reasons, cancellationToken); }
             catch { /* the reprint queue is a convenience — never let it break a real save */ }
             finally { _flaggingReprints = false; }
         }
         return result;
     }
 
-    private HashSet<int> DetectTagPriceChanges()
+    /// <summary>Products whose tag price changed in this save → a short reason describing the change
+    /// (base price wins over sale price, which wins over a variant-price change).</summary>
+    private Dictionary<int, string> DetectTagPriceChanges()
     {
-        var ids = new HashSet<int>();
+        var reasons = new Dictionary<int, string>();
+        static string N(object? v) => "₦" + (v is decimal d ? d.ToString("N0") : "0");
+
         foreach (var e in ChangeTracker.Entries<Product>())
         {
             if (e.State != EntityState.Modified) continue;
-            if (Changed(e, nameof(Product.Price)) || Changed(e, nameof(Product.SalePrice)))
-                ids.Add(e.Entity.Id);
+            var price = e.Property(nameof(Product.Price));
+            var sale = e.Property(nameof(Product.SalePrice));
+            if (price.IsModified && !Equals(price.OriginalValue, price.CurrentValue))
+                reasons[e.Entity.Id] = $"Price {N(price.OriginalValue)} → {N(price.CurrentValue)}";
+            else if (sale.IsModified && !Equals(sale.OriginalValue, sale.CurrentValue))
+                reasons[e.Entity.Id] = sale.CurrentValue is decimal
+                    ? $"Now on sale: {N(sale.CurrentValue)}" : "Sale ended";
         }
         foreach (var e in ChangeTracker.Entries<ProductVariant>())
         {
             if (e.State != EntityState.Modified) continue;
-            if (Changed(e, nameof(ProductVariant.Price)))
-                ids.Add(e.Entity.ProductId);
+            var price = e.Property(nameof(ProductVariant.Price));
+            if (price.IsModified && !Equals(price.OriginalValue, price.CurrentValue)
+                && !reasons.ContainsKey(e.Entity.ProductId))
+                reasons[e.Entity.ProductId] = "Variant price changed";
         }
-        return ids;
-
-        static bool Changed(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry e, string prop)
-        {
-            var p = e.Property(prop);
-            return p.IsModified && !Equals(p.OriginalValue, p.CurrentValue);
-        }
+        return reasons;
     }
 
-    private async Task FlagReprintsAsync(HashSet<int> productIds, CancellationToken ct)
+    private async Task FlagReprintsAsync(Dictionary<int, string> reasons, CancellationToken ct)
     {
-        // Only queue items that have stock on hand somewhere — there must be a physical tag to replace.
-        var withStock = await StoreInventories
+        var productIds = reasons.Keys.ToList();
+        // Flag PER BRANCH: every store that holds stock of the item has its own printed tag to replace.
+        var stocked = await StoreInventories
             .Where(si => productIds.Contains(si.ProductId) && si.QuantityOnHand > 0)
-            .Select(si => si.ProductId).Distinct().ToListAsync(ct);
-        if (withStock.Count == 0) return;
+            .Select(si => new { si.ProductId, si.StoreId })
+            .Distinct().ToListAsync(ct);
+        if (stocked.Count == 0) return;
 
         var existing = await LabelReprintQueue
-            .Where(q => q.Status == ReprintStatus.Pending && withStock.Contains(q.ProductId))
-            .ToDictionaryAsync(q => q.ProductId, ct);
+            .Where(q => q.Status == ReprintStatus.Pending && productIds.Contains(q.ProductId))
+            .ToListAsync(ct);
 
         var now = DateTime.UtcNow;
-        foreach (var pid in withStock)
+        foreach (var s in stocked)
         {
-            if (existing.TryGetValue(pid, out var row)) row.UpdatedAt = now;   // refresh existing pending flag
+            var reason = reasons.TryGetValue(s.ProductId, out var r) ? r : "Price changed";
+            var row = existing.FirstOrDefault(q => q.ProductId == s.ProductId && q.StoreId == s.StoreId);
+            if (row != null) { row.Reason = reason; row.UpdatedAt = now; }
             else LabelReprintQueue.Add(new LabelReprintEntry
             {
-                ProductId = pid, Status = ReprintStatus.Pending,
-                Reason = "Price changed", CreatedAt = now, UpdatedAt = now
+                ProductId = s.ProductId, StoreId = s.StoreId, Status = ReprintStatus.Pending,
+                Reason = reason, CreatedAt = now, UpdatedAt = now
             });
         }
         await base.SaveChangesAsync(true, ct);

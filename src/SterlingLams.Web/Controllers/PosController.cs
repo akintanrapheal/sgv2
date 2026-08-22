@@ -206,6 +206,9 @@ public class PosController : Controller
             : null;
         ViewData["CashierName"] = string.IsNullOrWhiteSpace(cashier) ? User.Identity?.Name : cashier;
         ViewData["Session"] = session;
+        // Reprint notification for THIS branch (price changed on an in-stock item).
+        ViewData["ReprintCount"] = await _db.LabelReprintQueue
+            .CountAsync(q => q.Status == ReprintStatus.Pending && q.StoreId == register.StoreId);
         return View("Sell", register);
     }
 
@@ -219,9 +222,9 @@ public class PosController : Controller
         var register = await BoundRegisterAsync();
         if (register == null) return RedirectToAction(nameof(Index));
         ViewData["Register"] = register;
-        // Items flagged for a reprint because their price changed (shared queue with the back office).
+        // Items flagged for a reprint at THIS branch because their price changed.
         var pend = await _db.LabelReprintQueue
-            .Where(q => q.Status == ReprintStatus.Pending)
+            .Where(q => q.Status == ReprintStatus.Pending && q.StoreId == register.StoreId)
             .Select(q => q.ProductId).Distinct().ToListAsync();
         ViewData["ReprintCount"] = pend.Count;
         ViewData["ReprintIds"] = string.Join(",", pend);
@@ -239,7 +242,8 @@ public class PosController : Controller
         var pids = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
             .Select(s => int.TryParse(s.Split('.')[0], out var n) ? n : 0).Where(n => n > 0).ToHashSet();
         var rows = await _db.LabelReprintQueue
-            .Where(q => q.Status == ReprintStatus.Pending && (pids.Count == 0 || pids.Contains(q.ProductId)))
+            .Where(q => q.Status == ReprintStatus.Pending && q.StoreId == register.StoreId
+                     && (pids.Count == 0 || pids.Contains(q.ProductId)))
             .ToListAsync();
         var now = DateTime.UtcNow; var who = User?.Identity?.Name;
         foreach (var r in rows) { r.Status = ReprintStatus.Printed; r.ResolvedAt = now; r.ResolvedBy = who; }
