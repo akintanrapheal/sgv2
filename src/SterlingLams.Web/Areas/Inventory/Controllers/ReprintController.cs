@@ -68,8 +68,17 @@ public class ReprintController : InventoryAreaController
             TempData["Error"] = "Select at least one item to print.";
             return RedirectToAction(nameof(Index));
         }
-        // Reuse the standard label generator (defaults to the 3×1.5cm tag).
-        return RedirectToAction("Labels", "Products", new { area = "Inventory", ids = string.Join(",", productIds) });
+        // Reuse the standard label generator with the shop's standard tag preset: 3×1.5cm tag with
+        // Name, Price, Barcode number and QR code (Labels defaults qr=false, so pass it explicitly).
+        return RedirectToAction("Labels", "Products", new
+        {
+            area = "Inventory",
+            ids = string.Join(",", productIds),
+            printer = "tag30x15",
+            name = true, price = true, barcodeNumber = true, qr = true,
+            barcode = false, sku = false, category = false, description = false,
+            font = "arial", fontSize = 9
+        });
     }
 
     [HttpPost]
