@@ -219,7 +219,32 @@ public class PosController : Controller
         var register = await BoundRegisterAsync();
         if (register == null) return RedirectToAction(nameof(Index));
         ViewData["Register"] = register;
+        // Items flagged for a reprint because their price changed (shared queue with the back office).
+        var pend = await _db.LabelReprintQueue
+            .Where(q => q.Status == ReprintStatus.Pending)
+            .Select(q => q.ProductId).Distinct().ToListAsync();
+        ViewData["ReprintCount"] = pend.Count;
+        ViewData["ReprintIds"] = string.Join(",", pend);
         return View();   // Views/Pos/Labels.cshtml
+    }
+
+    // Print the reprint-queue tags from the till: mark the flagged items printed (clears them from the
+    // shared queue) then the page opens the label sheet for those products in a new tab.
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReprintDone(string? ids)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return RedirectToAction(nameof(Index));
+
+        var pids = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => int.TryParse(s.Split('.')[0], out var n) ? n : 0).Where(n => n > 0).ToHashSet();
+        var rows = await _db.LabelReprintQueue
+            .Where(q => q.Status == ReprintStatus.Pending && (pids.Count == 0 || pids.Contains(q.ProductId)))
+            .ToListAsync();
+        var now = DateTime.UtcNow; var who = User?.Identity?.Name;
+        foreach (var r in rows) { r.Status = ReprintStatus.Printed; r.ResolvedAt = now; r.ResolvedBy = who; }
+        if (rows.Count > 0) await _db.SaveChangesAsync();
+        return RedirectToAction(nameof(Labels));
     }
 
     // QR PNG for the on-screen picker preview (a single image; the print sheet embeds its QRs instead).

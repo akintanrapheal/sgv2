@@ -77,6 +77,8 @@ public abstract class InventoryAreaController : Controller
         ViewData["PendingReturnsCount"] = await db.Refunds.CountAsync(
             r => r.Status == RefundStatus.Approved && r.RestockRequested
                 && r.Items.Any(i => i.RestockDecision == RestockDecision.Pending));
+        // Items whose price changed and whose tag needs reprinting.
+        ViewData["PendingReprintsCount"] = await db.LabelReprintQueue.CountAsync(q => q.Status == ReprintStatus.Pending);
 
         await next();
     }
