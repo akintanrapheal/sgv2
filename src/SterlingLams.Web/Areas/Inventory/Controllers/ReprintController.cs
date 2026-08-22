@@ -22,6 +22,8 @@ public class ReprintController : InventoryAreaController
         public int ProductId { get; set; }
         public string Name { get; set; } = "";
         public string? Sku { get; set; }
+        public string Store { get; set; } = "";
+        public int StoreId { get; set; }
         public decimal Price { get; set; }
         public decimal? SalePrice { get; set; }
         public int Stock { get; set; }
@@ -35,16 +37,19 @@ public class ReprintController : InventoryAreaController
         ViewData["Title"] = "Reprint labels";
         var rows = await _db.LabelReprintQueue
             .Where(q => q.Status == ReprintStatus.Pending)
-            .OrderByDescending(q => q.UpdatedAt)
+            .OrderBy(q => q.Store.Name).ThenByDescending(q => q.UpdatedAt)
             .Select(q => new ReprintRow
             {
                 Id = q.Id,
                 ProductId = q.ProductId,
                 Name = q.Product.Name,
                 Sku = q.Product.Sku,
+                Store = q.Store.Name,
+                StoreId = q.StoreId,
                 Price = q.Product.Price,
                 SalePrice = q.Product.SalePrice,
-                Stock = q.Product.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0,
+                // Stock at THIS branch (the tag that needs replacing lives here).
+                Stock = q.Product.StoreInventories.Where(si => si.StoreId == q.StoreId).Sum(si => (int?)si.QuantityOnHand) ?? 0,
                 Reason = q.Reason,
                 UpdatedAt = q.UpdatedAt
             })

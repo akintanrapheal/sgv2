@@ -3,6 +3,7 @@
     ViewData["Title"] = "POS";
     var session = ViewData["Session"] as SterlingLams.Web.Models.Domain.TillSession;
     var cashierName = ViewData["CashierName"]?.ToString() ?? User.Identity?.Name ?? "";
+    var reprintCount = ViewData["ReprintCount"] as int? ?? 0;
 }
 
 @Html.AntiForgeryToken()
@@ -26,6 +27,16 @@
             <p class="text-[10px] text-neutral-400 leading-none mt-0.5">@Model.Name</p>
         </div>
         <div class="flex items-center gap-4">
+            @if (reprintCount > 0)
+            {
+                <a asp-controller="Pos" asp-action="Labels"
+                   class="flex items-center gap-1.5 rounded-full bg-amber-500/20 border border-amber-400/40 text-amber-200 px-2.5 py-1 text-xs hover:bg-amber-500/30 transition-colors"
+                   title="Items need a new price label at this branch">
+                    <span>🏷</span>
+                    <span class="font-medium">@reprintCount</span>
+                    <span class="hidden sm:inline">reprint@(reprintCount == 1 ? "" : "s")</span>
+                </a>
+            }
             <div class="text-right">
                 <p class="text-xs text-neutral-300 tabular-nums" id="till-clock"></p>
                 <p class="text-[10px] text-neutral-500" id="till-date-top"></p>
@@ -120,7 +131,11 @@
             <a asp-controller="Pos" asp-action="Labels"
                class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
                 <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 7h.01M7 3h5a2 2 0 011.414.586l7 7a2 2 0 010 2.828l-5 5a2 2 0 01-2.828 0l-7-7A2 2 0 013 10V5a2 2 0 012-2z"/></svg>
-                Print Labels
+                <span class="flex-1">Print Labels</span>
+                @if (reprintCount > 0)
+                {
+                    <span class="text-[10px] font-medium bg-amber-500 text-white rounded-full px-1.5 py-0.5 leading-none">@reprintCount</span>
+                }
             </a>
         </nav>
         <div class="border-t border-neutral-100 p-2 flex-shrink-0">

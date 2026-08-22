@@ -9,9 +9,10 @@ public enum ReprintStatus
 
 /// <summary>
 /// A product whose printed price tag is now out of date because its price changed on the backend.
-/// One Pending row per product (deduped); it leaves the queue when its label is printed from the
-/// queue or a staff member dismisses it. Only products that have stock on hand are ever queued —
-/// there has to be a physical tag to replace.
+/// Tracked <b>per branch</b>: one Pending row per (product, store) that holds stock, because each
+/// branch has its own printed tag and reprints (and clears) independently. It leaves the queue when
+/// its label is printed from the queue or a staff member dismisses it. Only branches with stock on
+/// hand are queued — there has to be a physical tag to replace.
 /// </summary>
 public class LabelReprintEntry
 {
@@ -19,6 +20,10 @@ public class LabelReprintEntry
 
     public int ProductId { get; set; }
     public Product Product { get; set; } = null!;
+
+    /// <summary>The branch whose tag needs reprinting (it had stock of this product when the price changed).</summary>
+    public int StoreId { get; set; }
+    public Store Store { get; set; } = null!;
 
     public ReprintStatus Status { get; set; } = ReprintStatus.Pending;
 
