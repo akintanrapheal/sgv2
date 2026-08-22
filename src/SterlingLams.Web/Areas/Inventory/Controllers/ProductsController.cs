@@ -277,6 +277,84 @@ public class ProductsController : InventoryAreaController
         return RedirectToAction(nameof(Edit), new { id = productId });
     }
 
+    // ── Backfill SKUs from product name ─────────────────────────────────────────────
+    // Many products are named "5012287 (2Layers Pearl Heart Necklace)" — the leading number is the
+    // SKU. This reads that number and fills it onto the product AND its variants. Always preview
+    // first; nothing is written until Apply. The leading run must be 4+ digits so words like
+    // "2Pc"/"2Layers"/"18K" (which start with 1–2 digits) never match by accident.
+    private static readonly System.Text.RegularExpressions.Regex SkuFromName =
+        new(@"^\s*(\d{4,})", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    public class SkuBackfillRow
+    {
+        public string Name { get; set; } = "";
+        public string Extracted { get; set; } = "";
+        public string? CurrentSku { get; set; }
+        public int Variants { get; set; }
+    }
+    public class SkuBackfillPreview
+    {
+        public int Matched;            // products whose name has a leading SKU
+        public int ProductFill;        // product SKU currently blank → will fill
+        public int ProductChange;      // product SKU set but differs → would change (overwrite only)
+        public int VariantFill;
+        public int VariantChange;
+        public int NoLeadingSku;       // products skipped (no leading number)
+        public List<SkuBackfillRow> Samples { get; } = new();
+        public List<string> Unmatched { get; } = new();
+    }
+
+    private async Task<SkuBackfillPreview> BuildSkuPreviewAsync()
+    {
+        var products = await _db.Products.Include(p => p.Variants).OrderBy(p => p.Name).ToListAsync();
+        var r = new SkuBackfillPreview();
+        foreach (var p in products)
+        {
+            var m = SkuFromName.Match(p.Name ?? "");
+            if (!m.Success) { r.NoLeadingSku++; if (r.Unmatched.Count < 20) r.Unmatched.Add(p.Name); continue; }
+            var sku = m.Groups[1].Value;
+            r.Matched++;
+            if (string.IsNullOrWhiteSpace(p.Sku)) r.ProductFill++;
+            else if (p.Sku != sku) r.ProductChange++;
+            foreach (var v in p.Variants)
+            {
+                if (string.IsNullOrWhiteSpace(v.Sku)) r.VariantFill++;
+                else if (v.Sku != sku) r.VariantChange++;
+            }
+            if (r.Samples.Count < 15)
+                r.Samples.Add(new SkuBackfillRow { Name = p.Name, Extracted = sku, CurrentSku = p.Sku, Variants = p.Variants.Count });
+        }
+        return r;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> BackfillSkus()
+    {
+        ViewData["Title"] = "Fill SKUs from name";
+        return View(await BuildSkuPreviewAsync());
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> BackfillSkusApply(bool overwrite = false)
+    {
+        var products = await _db.Products.Include(p => p.Variants).ToListAsync();
+        int pset = 0, vset = 0;
+        foreach (var p in products)
+        {
+            var m = SkuFromName.Match(p.Name ?? "");
+            if (!m.Success) continue;
+            var sku = m.Groups[1].Value;
+            if ((overwrite || string.IsNullOrWhiteSpace(p.Sku)) && p.Sku != sku) { p.Sku = sku; pset++; }
+            foreach (var v in p.Variants)
+                if ((overwrite || string.IsNullOrWhiteSpace(v.Sku)) && v.Sku != sku) { v.Sku = sku; vset++; }
+        }
+        if (pset + vset > 0) await _db.SaveChangesAsync();
+        await LogAsync("Update", "Product", null, $"Backfilled SKUs from name: {pset} product(s), {vset} variant(s) (overwrite={overwrite})");
+        TempData["Success"] = $"SKU set on {pset} product(s) and {vset} variant(s)"
+            + (overwrite ? " (existing SKUs overwritten)." : " (only blank SKUs filled).");
+        return RedirectToAction(nameof(BackfillSkus));
+    }
+
     public async Task<IActionResult> Create()
     {
         ViewData["Title"] = "New Product";
