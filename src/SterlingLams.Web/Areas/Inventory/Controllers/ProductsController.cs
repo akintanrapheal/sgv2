@@ -195,15 +195,23 @@ public class ProductsController : InventoryAreaController
     // (IX_ProductVariants_Barcode); we validate up front and return a friendly message rather than
     // letting a collision surface as a raw 500 (was an ongoing Sentry DbUpdateException / 23505).
     [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> SaveVariants(int productId, int[] variantId, string[] barcode)
+    public async Task<IActionResult> SaveVariants(int productId, int[] variantId, string[] barcode, string[]? price = null)
     {
         var variants = await _db.ProductVariants.Where(v => v.ProductId == productId).ToListAsync();
 
         // Intended barcode per variant (trimmed; blanks → null).
         var intended = new Dictionary<int, string?>();
+        // Intended price per variant: blank/invalid → null (follow the base price).
+        var intendedPrice = new Dictionary<int, decimal?>();
         for (int i = 0; variantId != null && i < variantId.Length; i++)
+        {
             intended[variantId[i]] = (barcode != null && i < barcode.Length && !string.IsNullOrWhiteSpace(barcode[i]))
                 ? barcode[i].Trim() : null;
+            if (price != null && i < price.Length)
+                intendedPrice[variantId[i]] = decimal.TryParse(price[i],
+                    System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) && d >= 0
+                        ? d : (decimal?)null;
+        }
 
         // 1) Same barcode entered on two variants in this submission.
         var dupInBatch = intended.Values.Where(b => b != null)
@@ -230,8 +238,10 @@ public class ProductsController : InventoryAreaController
         }
 
         foreach (var v in variants)
-            if (intended.TryGetValue(v.Id, out var bc))
-                v.Barcode = bc;
+        {
+            if (intended.TryGetValue(v.Id, out var bc)) v.Barcode = bc;
+            if (intendedPrice.TryGetValue(v.Id, out var pr)) v.Price = pr;   // blank = follow base
+        }
 
         try
         {
@@ -244,8 +254,26 @@ public class ProductsController : InventoryAreaController
             return RedirectToAction(nameof(Edit), new { id = productId });
         }
 
-        await LogAsync("Update", "Product", productId.ToString(), "Updated variant barcodes");
-        TempData["Success"] = "Variant barcodes saved.";
+        await LogAsync("Update", "Product", productId.ToString(), "Updated variants (barcodes/prices)");
+        TempData["Success"] = "Variants saved.";
+        return RedirectToAction(nameof(Edit), new { id = productId });
+    }
+
+    // Clear every variant's price override so they all follow the product's base price.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResetVariantPrices(int productId)
+    {
+        var variants = await _db.ProductVariants.Where(v => v.ProductId == productId).ToListAsync();
+        var cleared = variants.Count(v => v.Price != null);
+        foreach (var v in variants) v.Price = null;   // null = follow base price
+        if (cleared > 0)
+        {
+            await _db.SaveChangesAsync();
+            await LogAsync("Update", "Product", productId.ToString(), $"Reset {cleared} variant price(s) to base");
+        }
+        TempData["Success"] = cleared > 0
+            ? $"{cleared} variant price(s) reset to the base price."
+            : "All variants were already following the base price.";
         return RedirectToAction(nameof(Edit), new { id = productId });
     }
 

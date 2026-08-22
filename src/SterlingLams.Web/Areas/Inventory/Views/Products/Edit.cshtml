@@ -120,7 +120,7 @@
 {
     <div class="max-w-3xl bg-white border border-neutral-100 rounded-sm p-6 mt-6">
         <h2 class="text-sm font-medium text-neutral-800 mb-1">Product Matrix</h2>
-        <p class="text-xs text-neutral-400 mb-4">Each variant of this product. Give each its own barcode (scanning it finds this product), or remove a variant.</p>
+        <p class="text-xs text-neutral-400 mb-4">Each variant of this product. Set its own price (blank = follow the base price) and barcode, or remove a variant.</p>
 
         <form id="save-variants" asp-area="Inventory" asp-controller="Products" asp-action="SaveVariants" method="post">
             @Html.AntiForgeryToken()
@@ -133,7 +133,7 @@
                     <tr class="bg-neutral-50 text-xs text-neutral-400 border-b border-neutral-100">
                         <th class="text-left px-3 py-2 font-medium">Name</th>
                         <th class="text-left px-3 py-2 font-medium">SKU</th>
-                        <th class="text-right px-3 py-2 font-medium">Price</th>
+                        <th class="text-left px-3 py-2 font-medium">Price (₦) <span class="font-normal text-[10px] text-neutral-300">blank = base ₦@Model.Price.ToString("N0")</span></th>
                         <th class="text-left px-3 py-2 font-medium">Barcode</th>
                         <th class="px-2 py-2 w-10"></th>
                     </tr>
@@ -144,7 +144,11 @@
                         <tr>
                             <td class="px-3 py-2 text-neutral-700 text-xs">@v.Name</td>
                             <td class="px-3 py-2 text-neutral-500 text-xs font-mono">@(v.Sku ?? "—")</td>
-                            <td class="px-3 py-2 text-right text-neutral-500 text-xs">@(v.Price.HasValue ? "₦" + v.Price.Value.ToString("N2") : "— (base)")</td>
+                            <td class="px-3 py-2">
+                                <input name="price" type="number" step="0.01" min="0" value="@v.Price" form="save-variants"
+                                       placeholder="@Model.Price.ToString("0.##")" autocomplete="off"
+                                       class="w-28 border border-neutral-200 rounded-sm px-3 py-1.5 text-xs text-right focus:outline-none focus:border-emerald-400" />
+                            </td>
                             <td class="px-3 py-2">
                                 <input type="hidden" name="variantId" value="@v.Id" form="save-variants" />
                                 <input name="barcode" value="@v.Barcode" autocomplete="off" placeholder="Scan / type…" form="save-variants"
@@ -164,6 +168,17 @@
                 </tbody>
             </table>
         </div>
-        <button type="submit" form="save-variants" class="mt-4 px-5 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Save variant barcodes</button>
+        <div class="mt-4 flex flex-wrap items-center gap-3">
+            <button type="submit" form="save-variants" class="px-5 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Save variants</button>
+            <form asp-area="Inventory" asp-controller="Products" asp-action="ResetVariantPrices" method="post" class="inline"
+                  onsubmit="return confirm('Clear every variant price so they all follow the base price of ₦@Model.Price.ToString("N0")?');">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="productId" value="@Model.Id" />
+                <button type="submit" class="px-4 py-2 border border-neutral-300 bg-white text-neutral-700 text-sm rounded-sm hover:bg-neutral-50 transition-colors">
+                    Reset all to base price
+                </button>
+            </form>
+            <span class="text-xs text-neutral-400">Reset clears each variant's own price so they follow ₦@Model.Price.ToString("N0").</span>
+        </div>
     </div>
 }
