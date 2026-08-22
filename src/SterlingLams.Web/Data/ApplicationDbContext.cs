@@ -70,6 +70,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<Referral> Referrals => Set<Referral>();
     public DbSet<BackInStockRequest> BackInStockRequests => Set<BackInStockRequest>();
     public DbSet<AbandonedCart> AbandonedCarts => Set<AbandonedCart>();
+    public DbSet<LabelReprintEntry> LabelReprintQueue => Set<LabelReprintEntry>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -198,6 +199,16 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
             e.HasMany(p => p.Tags)
              .WithMany(t => t.Products)
              .UsingEntity("ProductProductTag");
+        });
+
+        // ─── Label reprint queue ────────────────────────────────────────────
+        builder.Entity<LabelReprintEntry>(e =>
+        {
+            // At most one Pending row per product (the price-change hook upserts into it).
+            e.HasIndex(q => q.ProductId).IsUnique().HasFilter("\"Status\" = 0");
+            e.HasIndex(q => q.Status);
+            e.HasOne(q => q.Product).WithMany().HasForeignKey(q => q.ProductId)
+             .OnDelete(DeleteBehavior.Cascade);
         });
 
         // ─── Category ───────────────────────────────────────────────────────
@@ -564,5 +575,79 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
 
         // ─── Order ───────────────────────────────────────────────────────────
         builder.Entity<Order>().Property(o => o.DiscountAmount).HasPrecision(18, 2);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Label reprint queue trigger. Whenever a price that appears on a printed tag
+    // actually changes — Product.Price/SalePrice or a ProductVariant.Price — flag the
+    // product so staff reprint its label. Detected here, the single point every write
+    // funnels through, so it catches edits from ANY screen (Inventory, Admin, bulk
+    // sale, catalog import, variant edits). Best-effort and re-entrancy-guarded: a
+    // failure while queueing can never block or roll back the real price save.
+    // ─────────────────────────────────────────────────────────────────────────
+    private bool _flaggingReprints;
+
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        var changedProductIds = _flaggingReprints ? null : DetectTagPriceChanges();
+        var result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+
+        if (changedProductIds is { Count: > 0 })
+        {
+            _flaggingReprints = true;
+            try { await FlagReprintsAsync(changedProductIds, cancellationToken); }
+            catch { /* the reprint queue is a convenience — never let it break a real save */ }
+            finally { _flaggingReprints = false; }
+        }
+        return result;
+    }
+
+    private HashSet<int> DetectTagPriceChanges()
+    {
+        var ids = new HashSet<int>();
+        foreach (var e in ChangeTracker.Entries<Product>())
+        {
+            if (e.State != EntityState.Modified) continue;
+            if (Changed(e, nameof(Product.Price)) || Changed(e, nameof(Product.SalePrice)))
+                ids.Add(e.Entity.Id);
+        }
+        foreach (var e in ChangeTracker.Entries<ProductVariant>())
+        {
+            if (e.State != EntityState.Modified) continue;
+            if (Changed(e, nameof(ProductVariant.Price)))
+                ids.Add(e.Entity.ProductId);
+        }
+        return ids;
+
+        static bool Changed(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry e, string prop)
+        {
+            var p = e.Property(prop);
+            return p.IsModified && !Equals(p.OriginalValue, p.CurrentValue);
+        }
+    }
+
+    private async Task FlagReprintsAsync(HashSet<int> productIds, CancellationToken ct)
+    {
+        // Only queue items that have stock on hand somewhere — there must be a physical tag to replace.
+        var withStock = await StoreInventories
+            .Where(si => productIds.Contains(si.ProductId) && si.QuantityOnHand > 0)
+            .Select(si => si.ProductId).Distinct().ToListAsync(ct);
+        if (withStock.Count == 0) return;
+
+        var existing = await LabelReprintQueue
+            .Where(q => q.Status == ReprintStatus.Pending && withStock.Contains(q.ProductId))
+            .ToDictionaryAsync(q => q.ProductId, ct);
+
+        var now = DateTime.UtcNow;
+        foreach (var pid in withStock)
+        {
+            if (existing.TryGetValue(pid, out var row)) row.UpdatedAt = now;   // refresh existing pending flag
+            else LabelReprintQueue.Add(new LabelReprintEntry
+            {
+                ProductId = pid, Status = ReprintStatus.Pending,
+                Reason = "Price changed", CreatedAt = now, UpdatedAt = now
+            });
+        }
+        await base.SaveChangesAsync(true, ct);
     }
 }

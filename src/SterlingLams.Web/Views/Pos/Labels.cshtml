@@ -48,6 +48,25 @@
         <a href="@Url.Action("Index", "Pos")">← Back to till</a>
     </div>
     <div class="wrap">
+        @{
+            var reprintCount = ViewData["ReprintCount"] as int? ?? 0;
+            var reprintIds = ViewData["ReprintIds"] as string ?? "";
+        }
+        @if (reprintCount > 0)
+        {
+            <div class="card" style="border-color:#f59e0b;background:#fffbeb">
+                <h2 style="color:#92400e;margin-bottom:4px">🏷 @reprintCount item@(reprintCount == 1 ? "" : "s") need a new label</h2>
+                <p class="muted" style="margin:0 0 10px">A price changed on these items, so the tag on the shelf is out of date. Print fresh tags to clear them.</p>
+                <form method="post" action="@Url.Action("ReprintDone", "Pos")">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="ids" value="@reprintIds" />
+                    <button type="submit" class="btn btn-primary"
+                            onclick="window.open('@Url.Action("LabelSheet", "Pos", new { ids = reprintIds })','_blank','noopener');">
+                        🖨 Print reprint tags (@reprintCount)
+                    </button>
+                </form>
+            </div>
+        }
         <div class="card">
             <h2>Scan or type a barcode / SKU to add an item</h2>
             <input id="scan" class="scan" type="text" autocomplete="off" placeholder="Scan a barcode…" />

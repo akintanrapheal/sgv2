@@ -1,0 +1,109 @@
+@model List<SterlingLams.Web.Areas.Inventory.Controllers.ReprintController.ReprintRow>
+@{
+    ViewData["Title"] = "Reprint labels";
+}
+
+<div class="mb-5 flex flex-wrap items-start justify-between gap-3">
+    <div>
+        <h1 class="text-2xl font-semibold text-neutral-900">Reprint labels</h1>
+        <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
+            These items had a <strong>price change</strong> while they had stock on hand, so the tag on the shelf
+            now shows the old price. Print a fresh label (which clears the item) or dismiss rows you don't need.
+        </p>
+    </div>
+</div>
+
+@if (TempData["Success"] != null)
+{
+    <div class="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">@TempData["Success"]</div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="mb-4 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">@TempData["Error"]</div>
+}
+
+@if (!Model.Any())
+{
+    <div class="rounded-md border border-neutral-200 bg-white px-6 py-12 text-center">
+        <div class="text-4xl mb-2">🏷️</div>
+        <div class="text-sm font-medium text-neutral-700">Nothing to reprint</div>
+        <p class="text-sm text-neutral-500 mt-1">When an item's price changes, it'll show up here so you can reprint its tag.</p>
+    </div>
+}
+else
+{
+    <form method="post" id="reprintForm">
+        @Html.AntiForgeryToken()
+        <div class="flex flex-wrap items-center gap-3 mb-3">
+            <button type="submit" formaction="@Url.Action("Print")"
+                    class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                🖨 Print selected &amp; clear
+            </button>
+            <button type="submit" formaction="@Url.Action("Dismiss")"
+                    class="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                    onclick="return confirm('Remove the selected items from the queue without printing?');">
+                Dismiss selected
+            </button>
+            <span class="text-xs text-neutral-500"><span id="selCount">0</span> selected of @Model.Count</span>
+        </div>
+
+        <div class="overflow-x-auto rounded-md border border-neutral-200 bg-white">
+            <table class="min-w-full text-sm">
+                <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+                    <tr>
+                        <th class="px-3 py-2 w-8"><input type="checkbox" id="selAll" title="Select all" /></th>
+                        <th class="text-left font-medium px-3 py-2">Item</th>
+                        <th class="text-left font-medium px-3 py-2">SKU</th>
+                        <th class="text-right font-medium px-3 py-2">Current price</th>
+                        <th class="text-right font-medium px-3 py-2">Stock</th>
+                        <th class="text-left font-medium px-3 py-2">Flagged</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-neutral-100">
+                    @foreach (var r in Model)
+                    {
+                        var onSale = r.SalePrice is decimal sp && sp > 0m && sp < r.Price;
+                        <tr>
+                            <td class="px-3 py-2"><input type="checkbox" name="ids" value="@r.Id" class="rowchk" /></td>
+                            <td class="px-3 py-2 text-neutral-800">@r.Name</td>
+                            <td class="px-3 py-2 font-mono text-neutral-500">@(r.Sku ?? "—")</td>
+                            <td class="px-3 py-2 text-right text-neutral-800">
+                                @if (onSale)
+                                {
+                                    <span class="text-neutral-400 line-through mr-1">₦@r.Price.ToString("N0")</span>
+                                    <span class="font-semibold text-rose-600">₦@r.SalePrice!.Value.ToString("N0")</span>
+                                }
+                                else
+                                {
+                                    <span class="font-semibold">₦@r.Price.ToString("N0")</span>
+                                }
+                            </td>
+                            <td class="px-3 py-2 text-right text-neutral-700">@r.Stock</td>
+                            <td class="px-3 py-2 text-neutral-500">@r.UpdatedAt.ToLocalTime().ToString("dd MMM, HH:mm")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </form>
+
+    <script>
+        (function () {
+            var all = document.getElementById('selAll');
+            var boxes = Array.prototype.slice.call(document.querySelectorAll('.rowchk'));
+            var count = document.getElementById('selCount');
+            function refresh() {
+                var n = boxes.filter(function (b) { return b.checked; }).length;
+                count.textContent = n;
+                all.checked = n > 0 && n === boxes.length;
+                all.indeterminate = n > 0 && n < boxes.length;
+            }
+            all.addEventListener('change', function () { boxes.forEach(function (b) { b.checked = all.checked; }); refresh(); });
+            boxes.forEach(function (b) { b.addEventListener('change', refresh); });
+            document.getElementById('reprintForm').addEventListener('submit', function (e) {
+                if (!boxes.some(function (b) { return b.checked; })) { e.preventDefault(); alert('Select at least one item first.'); }
+            });
+            refresh();
+        })();
+    </script>
+}
