@@ -23,11 +23,14 @@
                class="px-2 py-1.5 border border-neutral-200 rounded-sm text-neutral-500 hover:border-neutral-400 @(nextId == null ? "opacity-30 pointer-events-none" : "")" title="Next">›</a>
             <a asp-area="Inventory" asp-controller="Products" asp-action="Labels" asp-route-ids="@Model.Id" target="_blank"
                class="px-3 py-1.5 border border-neutral-200 rounded-sm text-xs text-neutral-700 hover:border-neutral-400">Print Labels</a>
-            <form asp-area="Inventory" asp-controller="Products" asp-action="Duplicate" method="post" class="inline">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="id" value="@Model.Id" />
-                <button type="submit" class="px-3 py-1.5 border border-neutral-200 rounded-sm text-xs text-neutral-700 hover:border-neutral-400">Duplicate Product</button>
-            </form>
+            @if (ViewData["CanManageInventory"] as bool? ?? true)
+            {
+                <form asp-area="Inventory" asp-controller="Products" asp-action="Duplicate" method="post" class="inline">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@Model.Id" />
+                    <button type="submit" class="px-3 py-1.5 border border-neutral-200 rounded-sm text-xs text-neutral-700 hover:border-neutral-400">Duplicate Product</button>
+                </form>
+            }
         </div>
     }
 </div>
@@ -111,8 +114,11 @@
     </label>
 
     <div class="flex items-center gap-3 pt-2">
-        <button type="submit" class="px-5 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Save product</button>
-        <a asp-area="Inventory" asp-controller="Products" asp-action="Index" class="text-sm text-neutral-500 hover:text-neutral-700">Cancel</a>
+        @if (ViewData["CanManageInventory"] as bool? ?? true)
+        {
+            <button type="submit" class="px-5 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Save product</button>
+        }
+        <a asp-area="Inventory" asp-controller="Products" asp-action="Index" class="text-sm text-neutral-500 hover:text-neutral-700">@(ViewData["CanManageInventory"] as bool? ?? true ? "Cancel" : "Back")</a>
     </div>
 </form>
 
@@ -168,17 +174,20 @@
                 </tbody>
             </table>
         </div>
-        <div class="mt-4 flex flex-wrap items-center gap-3">
-            <button type="submit" form="save-variants" class="px-5 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Save variants</button>
-            <form asp-area="Inventory" asp-controller="Products" asp-action="ResetVariantPrices" method="post" class="inline"
-                  onsubmit="return confirm('Clear every variant price so they all follow the base price of ₦@Model.Price.ToString("N0")?');">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="productId" value="@Model.Id" />
-                <button type="submit" class="px-4 py-2 border border-neutral-300 bg-white text-neutral-700 text-sm rounded-sm hover:bg-neutral-50 transition-colors">
-                    Reset all to base price
-                </button>
-            </form>
-            <span class="text-xs text-neutral-400">Reset clears each variant's own price so they follow ₦@Model.Price.ToString("N0").</span>
-        </div>
+        @if (ViewData["CanManageInventory"] as bool? ?? true)
+        {
+            <div class="mt-4 flex flex-wrap items-center gap-3">
+                <button type="submit" form="save-variants" class="px-5 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Save variants</button>
+                <form asp-area="Inventory" asp-controller="Products" asp-action="ResetVariantPrices" method="post" class="inline"
+                      onsubmit="return confirm('Clear every variant price so they all follow the base price of ₦@Model.Price.ToString("N0")?');">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="productId" value="@Model.Id" />
+                    <button type="submit" class="px-4 py-2 border border-neutral-300 bg-white text-neutral-700 text-sm rounded-sm hover:bg-neutral-50 transition-colors">
+                        Reset all to base price
+                    </button>
+                </form>
+                <span class="text-xs text-neutral-400">Reset clears each variant's own price so they follow ₦@Model.Price.ToString("N0").</span>
+            </div>
+        }
     </div>
 }
