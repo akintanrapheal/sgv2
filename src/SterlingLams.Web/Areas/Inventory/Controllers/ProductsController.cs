@@ -277,13 +277,28 @@ public class ProductsController : InventoryAreaController
         return RedirectToAction(nameof(Edit), new { id = productId });
     }
 
-    // ── Backfill SKUs from product name ─────────────────────────────────────────────
-    // Many products are named "5012287 (2Layers Pearl Heart Necklace)" — the leading number is the
-    // SKU. This reads that number and fills it onto the product AND its variants. Always preview
-    // first; nothing is written until Apply. The leading run must be 4+ digits so words like
-    // "2Pc"/"2Layers"/"18K" (which start with 1–2 digits) never match by accident.
-    private static readonly System.Text.RegularExpressions.Regex SkuFromName =
-        new(@"^\s*(\d{4,})", System.Text.RegularExpressions.RegexOptions.Compiled);
+    // ── Backfill SKUs (product code → product + variants) ────────────────────────────
+    // The number shown at the start of each product in the list is the product's SKU (the list
+    // renders "{Sku} ({Name})"). Variants, however, usually have a blank SKU. This copies each
+    // product's code down onto the product (if blank) AND its variants (if blank). The code is
+    // taken from the product's own SKU first, else the digits in its ExternalCode (e.g. "WC-2012522"),
+    // else a leading number in the name — so it works whether the number lives in Sku, code, or name.
+    // Always preview first; nothing is written until Apply.
+    private static readonly System.Text.RegularExpressions.Regex DigitsRun =
+        new(@"(\d{4,})", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    // The code to use as the SKU for a product and its variants, or null if none can be found.
+    private static string? SkuCodeFor(Product p)
+    {
+        if (!string.IsNullOrWhiteSpace(p.Sku)) return p.Sku.Trim();
+        if (!string.IsNullOrWhiteSpace(p.ExternalCode))
+        {
+            var em = DigitsRun.Match(p.ExternalCode);
+            if (em.Success) return em.Groups[1].Value;
+        }
+        var nm = System.Text.RegularExpressions.Regex.Match(p.Name ?? "", @"^\s*(\d{4,})");
+        return nm.Success ? nm.Groups[1].Value : null;
+    }
 
     public class SkuBackfillRow
     {
@@ -294,12 +309,12 @@ public class ProductsController : InventoryAreaController
     }
     public class SkuBackfillPreview
     {
-        public int Matched;            // products whose name has a leading SKU
+        public int Matched;            // products a code could be determined for
         public int ProductFill;        // product SKU currently blank → will fill
-        public int ProductChange;      // product SKU set but differs → would change (overwrite only)
-        public int VariantFill;
+        public int ProductChange;      // product SKU set but differs from code → would change (overwrite only)
+        public int VariantFill;        // variant SKUs currently blank → will fill
         public int VariantChange;
-        public int NoLeadingSku;       // products skipped (no leading number)
+        public int NoLeadingSku;       // products with no code anywhere (skipped)
         public List<SkuBackfillRow> Samples { get; } = new();
         public List<string> Unmatched { get; } = new();
     }
@@ -310,19 +325,18 @@ public class ProductsController : InventoryAreaController
         var r = new SkuBackfillPreview();
         foreach (var p in products)
         {
-            var m = SkuFromName.Match(p.Name ?? "");
-            if (!m.Success) { r.NoLeadingSku++; if (r.Unmatched.Count < 20) r.Unmatched.Add(p.Name); continue; }
-            var sku = m.Groups[1].Value;
+            var code = SkuCodeFor(p);
+            if (code == null) { r.NoLeadingSku++; if (r.Unmatched.Count < 20) r.Unmatched.Add(p.Name); continue; }
             r.Matched++;
             if (string.IsNullOrWhiteSpace(p.Sku)) r.ProductFill++;
-            else if (p.Sku != sku) r.ProductChange++;
+            else if (p.Sku != code) r.ProductChange++;
             foreach (var v in p.Variants)
             {
                 if (string.IsNullOrWhiteSpace(v.Sku)) r.VariantFill++;
-                else if (v.Sku != sku) r.VariantChange++;
+                else if (v.Sku != code) r.VariantChange++;
             }
             if (r.Samples.Count < 15)
-                r.Samples.Add(new SkuBackfillRow { Name = p.Name, Extracted = sku, CurrentSku = p.Sku, Variants = p.Variants.Count });
+                r.Samples.Add(new SkuBackfillRow { Name = p.Name, Extracted = code, CurrentSku = p.Sku, Variants = p.Variants.Count });
         }
         return r;
     }
@@ -330,7 +344,7 @@ public class ProductsController : InventoryAreaController
     [HttpGet]
     public async Task<IActionResult> BackfillSkus()
     {
-        ViewData["Title"] = "Fill SKUs from name";
+        ViewData["Title"] = "Fill SKUs";
         return View(await BuildSkuPreviewAsync());
     }
 
@@ -341,15 +355,14 @@ public class ProductsController : InventoryAreaController
         int pset = 0, vset = 0;
         foreach (var p in products)
         {
-            var m = SkuFromName.Match(p.Name ?? "");
-            if (!m.Success) continue;
-            var sku = m.Groups[1].Value;
-            if ((overwrite || string.IsNullOrWhiteSpace(p.Sku)) && p.Sku != sku) { p.Sku = sku; pset++; }
+            var code = SkuCodeFor(p);
+            if (code == null) continue;
+            if ((overwrite || string.IsNullOrWhiteSpace(p.Sku)) && p.Sku != code) { p.Sku = code; pset++; }
             foreach (var v in p.Variants)
-                if ((overwrite || string.IsNullOrWhiteSpace(v.Sku)) && v.Sku != sku) { v.Sku = sku; vset++; }
+                if ((overwrite || string.IsNullOrWhiteSpace(v.Sku)) && v.Sku != code) { v.Sku = code; vset++; }
         }
         if (pset + vset > 0) await _db.SaveChangesAsync();
-        await LogAsync("Update", "Product", null, $"Backfilled SKUs from name: {pset} product(s), {vset} variant(s) (overwrite={overwrite})");
+        await LogAsync("Update", "Product", null, $"Backfilled SKUs: {pset} product(s), {vset} variant(s) (overwrite={overwrite})");
         TempData["Success"] = $"SKU set on {pset} product(s) and {vset} variant(s)"
             + (overwrite ? " (existing SKUs overwritten)." : " (only blank SKUs filled).");
         return RedirectToAction(nameof(BackfillSkus));
