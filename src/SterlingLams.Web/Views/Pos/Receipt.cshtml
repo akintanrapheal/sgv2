@@ -103,7 +103,7 @@
                 @foreach (var item in Model.Items)
                 {
                     var desc = item.ProductName + (item.VariantName != null ? " " + item.VariantName : "");
-                    var label = string.IsNullOrWhiteSpace(item.ProductSku) ? desc : $"{item.ProductSku} ({desc})";
+                    var label = desc;   // name only (no SKU prefix)
                     <tr>
                         <td>@label</td>
                         <td class="num">@N(item.UnitPrice)</td>

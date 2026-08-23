@@ -780,7 +780,7 @@ public class ProductsController : InventoryAreaController
         return Json(new
         {
             ok = true, id = p.Id, name = p.Name, sku = p.Sku,
-            displayName = string.IsNullOrWhiteSpace(p.Sku) ? p.Name : $"{p.Sku} ({p.Name})",
+            displayName = p.Name,   // name only — matches the list (SKU shown in its own column)
             categoryName = catName,
             priceText = "₦" + p.Price.ToString("N2"),
             buttonColour = p.PosButtonColour ?? "",
