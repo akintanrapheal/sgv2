@@ -42,18 +42,21 @@
         <h1 class="text-2xl font-semibold text-neutral-900">Product List</h1>
         <p class="text-sm text-neutral-500 mt-1">Product List lets you create, edit, and manage products.</p>
     </div>
-    <div class="flex items-center gap-2">
-        <a asp-area="Inventory" asp-controller="Products" asp-action="Create"
-           class="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            Advanced Add
-        </a>
-        <button type="button" id="quick-add-btn"
-                class="inline-flex items-center gap-2 px-4 py-2.5 border border-blue-300 text-blue-700 text-sm font-medium rounded-md hover:bg-blue-50 transition-colors">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-            Quick Add
-        </button>
-    </div>
+    @if (ViewData["CanManageInventory"] as bool? ?? true)
+    {
+        <div class="flex items-center gap-2">
+            <a asp-area="Inventory" asp-controller="Products" asp-action="Create"
+               class="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                Advanced Add
+            </a>
+            <button type="button" id="quick-add-btn"
+                    class="inline-flex items-center gap-2 px-4 py-2.5 border border-blue-300 text-blue-700 text-sm font-medium rounded-md hover:bg-blue-50 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                Quick Add
+            </button>
+        </div>
+    }
 </div>
 
 <div class="bg-white border border-neutral-200 rounded-md">

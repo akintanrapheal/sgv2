@@ -11,13 +11,17 @@ namespace SterlingLams.Web.Areas.Inventory.Controllers;
 
 /// <summary>
 /// Base for the dedicated Inventory System (its own /Inventory area + layout).
-/// Restricted to the Inventory team and full Administrators. This is a self-contained
-/// workspace (stock, transfers, till, stock-take) separate from the website admin.
+/// Access is gated on the "Inventory" section permission: VIEW to read, MANAGE to write.
+/// The legacy "Inventory" role and full administrators keep full (manage) access; any other
+/// role granted "Inventory:view" gets read-only access (look, but can't change anything).
 /// </summary>
 [Area("Inventory")]
-[Authorize(Roles = "Admin,Owner,Developer,Inventory")]
+[Authorize]   // must be signed in; section view/manage is enforced in OnActionExecutionAsync
 public abstract class InventoryAreaController : Controller
 {
+    /// <summary>Write requests (POST/PUT/DELETE/PATCH) require "Inventory:manage"; reads need view.
+    /// A controller with its own finer gate can override this to false.</summary>
+    protected virtual bool EnforceManageOnWrite => true;
     /// <summary>Staff members for "Staff member" pickers — users in any backend role (i.e. NOT just
     /// a Customer), excluding guest shells. Keeps customers out of staff dropdowns project-wide.
     /// Returns anonymous { id, name } objects (consumed as dynamic in views / serialized to JSON).</summary>
@@ -70,6 +74,29 @@ public abstract class InventoryAreaController : Controller
 
     public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
+        // ── Access control (Inventory section: view to read, manage to write) ───────────────
+        var perms = HttpContext.RequestServices.GetRequiredService<IPermissionService>();
+        // Full admins and the legacy Inventory role always have full (manage) access.
+        var canManage = SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User)
+                        || User.IsInRole("Inventory")
+                        || await perms.CanManageAsync(User, "Inventory");
+        var canView = canManage || await perms.CanAccessAsync(User, "Inventory");
+        if (!canView)
+        {
+            context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
+            return;
+        }
+        var method = context.HttpContext.Request.Method;
+        var isWrite = method == "POST" || method == "PUT" || method == "DELETE" || method == "PATCH";
+        if (isWrite && EnforceManageOnWrite && !canManage)
+        {
+            // View-only staff: block every write. 403 works for the AJAX endpoints; the write UI is
+            // also hidden via CanManageInventory so form posts don't normally reach here.
+            context.Result = new StatusCodeResult(403);
+            return;
+        }
+        ViewData["CanManageInventory"] = canManage;
+
         var db = HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
         ViewData["PendingTransfersCount"] = await db.StockTransfers.CountAsync(
             t => t.Status == TransferStatus.PendingApproval || t.Status == TransferStatus.InTransit);
