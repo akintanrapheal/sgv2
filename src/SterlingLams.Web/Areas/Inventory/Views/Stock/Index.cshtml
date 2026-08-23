@@ -21,17 +21,20 @@
         <h1 class="text-2xl font-semibold text-neutral-900">Stock management</h1>
         <p class="text-sm text-neutral-500 mt-1">Stock management lets you track and control the products you buy and sell. To adjust stock values, click the “Adjust Stock” button — then double-click a Stock, On-order, Min or Max cell to edit it.</p>
     </div>
-    <div class="flex items-center gap-2">
-        <button type="button" id="cancel-adjust" class="hidden px-4 py-2.5 border border-neutral-200 text-neutral-600 text-sm rounded-md hover:border-neutral-400">Cancel</button>
-        <select id="adjust-reason" class="hidden border border-neutral-200 rounded-md px-3 py-2.5 text-sm bg-white">
-            @foreach (var r in SterlingLams.Web.Models.Domain.AdjustmentReasons.All) { <option value="@r">@r</option> }
-        </select>
-        <button type="button" id="adjust-stock-btn"
-                class="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            <span id="adjust-label">Adjust Stock</span><span id="adjust-count"></span>
-        </button>
-    </div>
+    @if (ViewData["CanManageInventory"] as bool? ?? true)
+    {
+        <div class="flex items-center gap-2">
+            <button type="button" id="cancel-adjust" class="hidden px-4 py-2.5 border border-neutral-200 text-neutral-600 text-sm rounded-md hover:border-neutral-400">Cancel</button>
+            <select id="adjust-reason" class="hidden border border-neutral-200 rounded-md px-3 py-2.5 text-sm bg-white">
+                @foreach (var r in SterlingLams.Web.Models.Domain.AdjustmentReasons.All) { <option value="@r">@r</option> }
+            </select>
+            <button type="button" id="adjust-stock-btn"
+                    class="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                <span id="adjust-label">Adjust Stock</span><span id="adjust-count"></span>
+            </button>
+        </div>
+    }
 </div>
 
 <div class="bg-white border border-neutral-200 rounded-md">
@@ -277,14 +280,16 @@
     function refreshCount() {
         var n = changedLines().length; countEl.textContent = n ? ' (' + n + ')' : '';
     }
-    if (table) {
+    // Edit-mode wiring only for users who can manage (the Adjust Stock button exists). View-only
+    // users still get the table, kebab, search, columns and pagination — just no editing.
+    if (table && adjustBtn) {
         table.addEventListener('dblclick', function (e) {
             var td = e.target.closest('td.sm-edit'); if (!td) return;
             if (!editing) enterEdit(td); else { var i = td.querySelector('input'); if (i) { i.focus(); i.select(); } }
         });
         table.addEventListener('input', function (e) { if (e.target.classList.contains('sm-input')) refreshCount(); });
     }
-    cancelBtn.addEventListener('click', function () { location.reload(); });
+    cancelBtn?.addEventListener('click', function () { location.reload(); });
 
     function changedLines() {
         if (!editing || !table) return [];
@@ -299,7 +304,7 @@
         });
     }
 
-    adjustBtn.addEventListener('click', function () {
+    adjustBtn?.addEventListener('click', function () {
         if (!editing) { enterEdit(null); return; }
         var lines = changedLines();
         if (!lines.length) { alert('No changes to save.'); return; }
