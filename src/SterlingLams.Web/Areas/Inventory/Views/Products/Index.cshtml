@@ -150,7 +150,7 @@
                 }
                 @foreach (var p in Model)
                 {
-                    var disp = string.IsNullOrWhiteSpace(p.Sku) ? p.Name : $"{p.Sku} ({p.Name})";
+                    var disp = p.Name;   // name only — the SKU has its own column
                     // Single product → one row; variable product → one row per colour/size (EPOS-style).
                     var rows = p.Variants.Any()
                         ? p.Variants.Select(v => new { Name = $"{disp} – {v.Name}", Sku = v.Sku ?? p.Sku, Barcode = v.Barcode, Price = v.Price, Vid = (int?)v.VariantId }).ToList()
