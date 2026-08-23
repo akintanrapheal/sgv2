@@ -20,7 +20,10 @@
 
 <div class="flex items-center justify-between mb-4">
     <h1 class="font-cormorant text-2xl font-light text-neutral-900">Stock adjustments</h1>
-    <a asp-action="Create" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700">+ New adjustment</a>
+    @if (ViewData["CanManageInventory"] as bool? ?? true)
+    {
+        <a asp-action="Create" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700">+ New adjustment</a>
+    }
 </div>
 
 <form method="get" class="flex flex-wrap items-end gap-2 mb-4">

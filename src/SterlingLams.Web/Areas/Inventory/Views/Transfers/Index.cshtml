@@ -15,8 +15,11 @@
         <h1 class="text-lg font-medium text-neutral-800">Stock Transfers</h1>
         <p class="text-xs text-neutral-400">Move stock between branches.</p>
     </div>
-    <a asp-area="Inventory" asp-controller="Transfers" asp-action="Create"
-       class="px-4 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">+ New Transfer Request</a>
+    @if (ViewData["CanManageInventory"] as bool? ?? true)
+    {
+        <a asp-area="Inventory" asp-controller="Transfers" asp-action="Create"
+           class="px-4 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">+ New Transfer Request</a>
+    }
 </div>
 
 <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-6">

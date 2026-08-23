@@ -35,15 +35,18 @@ else
     <form method="post" id="reprintForm">
         @Html.AntiForgeryToken()
         <div class="flex flex-wrap items-center gap-3 mb-3">
-            <button type="submit" formaction="@Url.Action("Print")"
-                    class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
-                🖨 Print selected &amp; clear
-            </button>
-            <button type="submit" formaction="@Url.Action("Dismiss")"
-                    class="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
-                    onclick="return confirm('Remove the selected items from the queue without printing?');">
-                Dismiss selected
-            </button>
+            @if (ViewData["CanManageInventory"] as bool? ?? true)
+            {
+                <button type="submit" formaction="@Url.Action("Print")"
+                        class="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                    🖨 Print selected &amp; clear
+                </button>
+                <button type="submit" formaction="@Url.Action("Dismiss")"
+                        class="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm text-neutral-700 hover:bg-neutral-50"
+                        onclick="return confirm('Remove the selected items from the queue without printing?');">
+                    Dismiss selected
+                </button>
+            }
             <span class="text-xs text-neutral-500"><span id="selCount">0</span> selected of @Model.Count</span>
         </div>
 
