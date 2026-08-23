@@ -79,6 +79,7 @@
                 <thead class="bg-neutral-50 text-neutral-500 text-xs">
                     <tr>
                         <th data-col="name" class="text-left font-semibold px-4 py-3">Name</th>
+                        <th data-col="sku" class="text-left font-semibold px-4 py-3">SKU</th>
                         <th data-col="category" class="text-left font-semibold px-4 py-3">Category</th>
                         <th data-col="price" class="text-right font-semibold px-4 py-3">Sale price</th>
                         <th data-col="stock" class="text-center font-semibold px-3 py-3">Stock</th>
@@ -101,6 +102,7 @@
                                     <span class="text-neutral-800">@row.Name</span>
                                 </div>
                             </td>
+                            <td data-col="sku" class="px-4 py-2.5 text-neutral-500 font-mono text-xs">@(string.IsNullOrWhiteSpace(row.Sku) ? "—" : row.Sku)</td>
                             <td data-col="category" class="px-4 py-2.5 text-neutral-600">@row.Category</td>
                             <td data-col="price" class="px-4 py-2.5 text-right text-neutral-700">@Money(row.Price)</td>
                             @if (row.HasVariants)
@@ -128,8 +130,8 @@
                             <tr class="bg-neutral-50/60 hidden" data-row-pid="@row.ProductId" data-row-vid="@v.VariantId">
                                 <td data-col="name" class="px-4 py-1.5 pl-10">
                                     <p class="text-[11px] text-neutral-600 leading-snug">↳ @v.Name</p>
-                                    @if (!string.IsNullOrEmpty(v.Sku)) { <p class="text-[10px] text-neutral-400 font-mono">@v.Sku</p> }
                                 </td>
+                                <td data-col="sku" class="px-4 py-1.5 text-neutral-400 font-mono text-[10px]">@(string.IsNullOrEmpty(v.Sku) ? "" : v.Sku)</td>
                                 <td data-col="category"></td>
                                 <td data-col="price"></td>
                                 @Html.Raw(EditCell(row.ProductId, v.VariantId, Model.SelectedStoreId, "stock", v.OnHand, true))
@@ -349,8 +351,8 @@
             e.stopPropagation();
             var pid = btn.dataset.pid;
             menu.innerHTML =
-                '<a href=__invBase + "/Stock/Inventory/' + pid + '?storeId=' + selStore + '" class="flex items-center gap-2 px-3 py-2 hover:bg-neutral-50"><svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>Inventory</a>'
-                + '<a href=__invBase + "/Products/Edit/' + pid + '" class="flex items-center gap-2 px-3 py-2 hover:bg-neutral-50"><svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>Advanced Edit</a>';
+                '<a href="' + __invBase + '/Stock/Inventory/' + pid + '?storeId=' + selStore + '" class="flex items-center gap-2 px-3 py-2 hover:bg-neutral-50"><svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>Inventory</a>'
+                + '<a href="' + __invBase + '/Products/Edit/' + pid + '" class="flex items-center gap-2 px-3 py-2 hover:bg-neutral-50"><svg class="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>Advanced Edit</a>';
             var r = btn.getBoundingClientRect();
             menu.style.top = (r.bottom + 4) + 'px'; menu.style.left = Math.max(8, r.right - 176) + 'px';
             menu.classList.remove('hidden');
