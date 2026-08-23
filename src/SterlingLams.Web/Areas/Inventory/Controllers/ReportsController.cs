@@ -244,27 +244,30 @@ public class ReportsController : InventoryAreaController
     public async Task<IActionResult> Sales(DateTime? from = null, DateTime? to = null)
     {
         ViewData["Title"] = "Sales by staff";
-        var (f, t) = NormalizeRange(from, to);
+        var (f, t, fLocal, tLocal) = SalesRange(from, to);
 
-        var orders = _db.Orders.Where(o => o.Channel == OrderChannel.Pos
-            && o.CreatedAt >= f && o.CreatedAt < t.AddDays(1)
-            && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded);
+        var orders = PaidOrders(f, t).Where(o => o.Channel == OrderChannel.Pos);
 
         var agg = await orders.GroupBy(o => o.UserId)
             .Select(g => new { UserId = g.Key, Sales = g.Sum(x => x.Total), Tx = g.Count() })
             .OrderByDescending(x => x.Sales).ToListAsync();
         var ids = agg.Select(a => a.UserId).ToList();
-        var names = await _db.Users.Where(u => ids.Contains(u.Id)).Select(u => new { u.Id, u.Email }).ToListAsync();
+        var names = await _db.Users.Where(u => ids.Contains(u.Id))
+            .Select(u => new { u.Id, Name = ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim(), u.Email }).ToListAsync();
 
-        var rows = agg.Select(a => new SalesByStaffRow
+        var rows = agg.Select(a =>
         {
-            Staff = names.FirstOrDefault(n => n.Id == a.UserId)?.Email ?? "—",
-            Transactions = a.Tx,
-            Sales = a.Sales,
-            Average = a.Tx > 0 ? a.Sales / a.Tx : 0
+            var n = names.FirstOrDefault(x => x.Id == a.UserId);
+            return new SalesByStaffRow
+            {
+                Staff = n == null ? "—" : (!string.IsNullOrWhiteSpace(n.Name) ? n.Name : n.Email ?? "—"),
+                Transactions = a.Tx,
+                Sales = a.Sales,
+                Average = a.Tx > 0 ? a.Sales / a.Tx : 0
+            };
         }).ToList();
 
-        ViewBag.From = f; ViewBag.To = t;
+        ViewBag.From = fLocal; ViewBag.To = tLocal;
         return View(new SalesByStaffVm
         {
             Rows = rows,
@@ -277,29 +280,38 @@ public class ReportsController : InventoryAreaController
     public async Task<IActionResult> Payments(DateTime? from = null, DateTime? to = null)
     {
         ViewData["Title"] = "Payment methods";
-        var (f, t) = NormalizeRange(from, to);
+        var (f, t, fLocal, tLocal) = SalesRange(from, to);
 
-        var orders = _db.Orders.Where(o => o.CreatedAt >= f && o.CreatedAt < t.AddDays(1)
-            && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded);
+        // Attribute each paid order to its payment method. Orders with payment LINES (POS) are split by
+        // line, so mixed tenders land on each method; orders without lines (online Paystack, or legacy
+        // POS) fall back to the order's own provider + total. Nothing is dropped either way.
+        var ords = await PaidOrders(f, t)
+            .Select(o => new { o.Id, o.Channel, Provider = o.PaymentProvider, o.Total }).ToListAsync();
+        var ordIds = ords.Select(o => o.Id).ToList();
+        var lines = await _db.OrderPayments.Where(p => ordIds.Contains(p.OrderId))
+            .Select(p => new { p.OrderId, p.Method, p.Amount }).ToListAsync();
+        var withLines = lines.Select(l => l.OrderId).ToHashSet();
+        var ordCh = ords.ToDictionary(o => o.Id, o => o.Channel);
 
-        var agg = await orders
-            .GroupBy(o => new { Method = o.PaymentProvider ?? "Unspecified", o.Channel })
-            .Select(g => new { g.Key.Method, g.Key.Channel, Amount = g.Sum(x => x.Total), Tx = g.Count() })
-            .ToListAsync();
+        var entries = new List<(string Method, OrderChannel Ch, decimal Amt)>();
+        foreach (var l in lines)
+            entries.Add((string.IsNullOrWhiteSpace(l.Method) ? "Unspecified" : l.Method, ordCh[l.OrderId], l.Amount));
+        foreach (var o in ords.Where(o => !withLines.Contains(o.Id)))
+            entries.Add((string.IsNullOrWhiteSpace(o.Provider) ? "Unspecified" : o.Provider!, o.Channel, o.Total));
 
-        var rows = agg
-            .GroupBy(a => a.Method)
+        var rows = entries
+            .GroupBy(e => e.Method)
             .Select(g => new PaymentMethodRow
             {
                 Method = g.Key,
-                Transactions = g.Sum(x => x.Tx),
-                Amount = g.Sum(x => x.Amount),
-                Pos = g.Where(x => x.Channel == OrderChannel.Pos).Sum(x => x.Amount),
-                Online = g.Where(x => x.Channel == OrderChannel.Online).Sum(x => x.Amount)
+                Transactions = g.Count(),
+                Amount = g.Sum(x => x.Amt),
+                Pos = g.Where(x => x.Ch == OrderChannel.Pos).Sum(x => x.Amt),
+                Online = g.Where(x => x.Ch == OrderChannel.Online).Sum(x => x.Amt)
             })
             .OrderByDescending(r => r.Amount).ToList();
 
-        ViewBag.From = f; ViewBag.To = t;
+        ViewBag.From = fLocal; ViewBag.To = tLocal;
         return View(new PaymentMethodVm
         {
             Rows = rows,
@@ -312,19 +324,21 @@ public class ReportsController : InventoryAreaController
     public async Task<IActionResult> Summary(DateTime? from = null, DateTime? to = null)
     {
         ViewData["Title"] = "Sales summary";
-        var (f, t) = NormalizeRange(from, to);
-        var orders = SoldOrders(f, t);
+        var (f, t, fLocal, tLocal) = SalesRange(from, to);
+        var orders = PaidOrders(f, t);
 
         var count = await orders.CountAsync();
         var revenue = await orders.SumAsync(o => (decimal?)o.Total) ?? 0;
         var units = await _db.OrderItems.Where(oi => orders.Any(o => o.Id == oi.OrderId))
             .SumAsync(oi => (int?)oi.Quantity) ?? 0;
-        var daily = (await orders.GroupBy(o => o.CreatedAt.Date)
-                .Select(g => new { Day = g.Key, Orders = g.Count(), Revenue = g.Sum(x => x.Total) })
-                .OrderByDescending(x => x.Day).Take(60).ToListAsync())
-            .Select(x => new DailySalesRow { Day = x.Day, Orders = x.Orders, Revenue = x.Revenue }).ToList();
+        // Daily breakdown grouped by the LAGOS day a sale was paid (done in memory — the timezone
+        // conversion can't translate to SQL), newest first.
+        var daily = (await orders.Select(o => new { When = o.PaidAt ?? o.CreatedAt, o.Total }).ToListAsync())
+            .GroupBy(o => Services.ReportCalendar.LocalDay(o.When))
+            .Select(g => new DailySalesRow { Day = g.Key, Orders = g.Count(), Revenue = g.Sum(x => x.Total) })
+            .OrderByDescending(x => x.Day).Take(60).ToList();
 
-        ViewBag.From = f; ViewBag.To = t;
+        ViewBag.From = fLocal; ViewBag.To = tLocal;
         return View(new SalesSummaryVm
         {
             Orders = count, Revenue = revenue, Units = units,
@@ -336,8 +350,8 @@ public class ReportsController : InventoryAreaController
     public async Task<IActionResult> SalesByItem(DateTime? from = null, DateTime? to = null)
     {
         ViewData["Title"] = "Sales by item";
-        var (f, t) = NormalizeRange(from, to);
-        var orders = SoldOrders(f, t);
+        var (f, t, fLocal, tLocal) = SalesRange(from, to);
+        var orders = PaidOrders(f, t);
         var rows = await _db.OrderItems.Where(oi => orders.Any(o => o.Id == oi.OrderId))
             .GroupBy(oi => oi.ProductName)
             .Select(g => new NameValueRow
@@ -347,7 +361,7 @@ public class ReportsController : InventoryAreaController
                 Revenue = g.Sum(x => (x.Quantity * x.UnitPrice) - x.DiscountAmount)
             })
             .OrderByDescending(x => x.Revenue).Take(200).ToListAsync();
-        ViewBag.From = f; ViewBag.To = t; ViewBag.Heading = "Product"; ViewBag.Title = "Sales by item"; ViewBag.Active = "SalesByItem";
+        ViewBag.From = fLocal; ViewBag.To = tLocal; ViewBag.Heading = "Product"; ViewBag.Title = "Sales by item"; ViewBag.Active = "SalesByItem";
         return View("SalesBreakdown", rows);
     }
 
@@ -355,8 +369,8 @@ public class ReportsController : InventoryAreaController
     public async Task<IActionResult> SalesByCategory(DateTime? from = null, DateTime? to = null)
     {
         ViewData["Title"] = "Sales by category";
-        var (f, t) = NormalizeRange(from, to);
-        var orders = SoldOrders(f, t);
+        var (f, t, fLocal, tLocal) = SalesRange(from, to);
+        var orders = PaidOrders(f, t);
         var rows = await _db.OrderItems.Where(oi => orders.Any(o => o.Id == oi.OrderId))
             .GroupBy(oi => oi.Product.Category != null ? oi.Product.Category.Name : "Uncategorised")
             .Select(g => new NameValueRow
@@ -366,7 +380,7 @@ public class ReportsController : InventoryAreaController
                 Revenue = g.Sum(x => (x.Quantity * x.UnitPrice) - x.DiscountAmount)
             })
             .OrderByDescending(x => x.Revenue).ToListAsync();
-        ViewBag.From = f; ViewBag.To = t; ViewBag.Heading = "Category"; ViewBag.Title = "Sales by category"; ViewBag.Active = "SalesByCategory";
+        ViewBag.From = fLocal; ViewBag.To = tLocal; ViewBag.Heading = "Category"; ViewBag.Title = "Sales by category"; ViewBag.Active = "SalesByCategory";
         return View("SalesBreakdown", rows);
     }
 
@@ -374,8 +388,8 @@ public class ReportsController : InventoryAreaController
     public async Task<IActionResult> SalesByCustomer(DateTime? from = null, DateTime? to = null)
     {
         ViewData["Title"] = "Sales by customer";
-        var (f, t) = NormalizeRange(from, to);
-        var raw = await SoldOrders(f, t)
+        var (f, t, fLocal, tLocal) = SalesRange(from, to);
+        var raw = await PaidOrders(f, t)
             .Select(o => new
             {
                 Key = o.CustomerUserId != null ? o.CustomerUserId : (o.Channel == OrderChannel.Online ? o.UserId : null),
@@ -386,15 +400,21 @@ public class ReportsController : InventoryAreaController
             .Select(g => new { g.Key, Orders = g.Count(), Spend = g.Sum(x => x.Total) })
             .OrderByDescending(x => x.Spend).Take(200).ToList();
         var ids = grouped.Where(g => g.Key != null).Select(g => g.Key!).ToList();
-        var names = await _db.Users.Where(u => ids.Contains(u.Id)).Select(u => new { u.Id, u.Email }).ToListAsync();
+        var names = await _db.Users.Where(u => ids.Contains(u.Id))
+            .Select(u => new { u.Id, Name = ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim(), u.Email }).ToListAsync();
 
-        var rows = grouped.Select(g => new NameValueRow
+        var rows = grouped.Select(g =>
         {
-            Name = g.Key == null ? "Walk-in / guest" : (names.FirstOrDefault(n => n.Id == g.Key)?.Email ?? "—"),
-            Units = g.Orders,
-            Revenue = g.Spend
+            var n = g.Key == null ? null : names.FirstOrDefault(x => x.Id == g.Key);
+            return new NameValueRow
+            {
+                Name = g.Key == null ? "Walk-in / guest"
+                     : (n == null ? "—" : (!string.IsNullOrWhiteSpace(n.Name) ? n.Name : n.Email ?? "—")),
+                Units = g.Orders,
+                Revenue = g.Spend
+            };
         }).ToList();
-        ViewBag.From = f; ViewBag.To = t; ViewBag.Heading = "Customer"; ViewBag.UnitsLabel = "Orders"; ViewBag.Title = "Sales by customer"; ViewBag.Active = "SalesByCustomer";
+        ViewBag.From = fLocal; ViewBag.To = tLocal; ViewBag.Heading = "Customer"; ViewBag.UnitsLabel = "Orders"; ViewBag.Title = "Sales by customer"; ViewBag.Active = "SalesByCustomer";
         return View("SalesBreakdown", rows);
     }
 
@@ -402,13 +422,13 @@ public class ReportsController : InventoryAreaController
     public async Task<IActionResult> Discounts(DateTime? from = null, DateTime? to = null)
     {
         ViewData["Title"] = "Discounts";
-        var (f, t) = NormalizeRange(from, to);
-        var rows = await SoldOrders(f, t)
+        var (f, t, fLocal, tLocal) = SalesRange(from, to);
+        var rows = await PaidOrders(f, t)
             .Where(o => o.DiscountAmount > 0 && o.DiscountCode != null)
             .GroupBy(o => o.DiscountCode!)
             .Select(g => new NameValueRow { Name = g.Key, Units = g.Count(), Revenue = g.Sum(x => x.DiscountAmount) })
             .OrderByDescending(x => x.Revenue).ToListAsync();
-        ViewBag.From = f; ViewBag.To = t;
+        ViewBag.From = fLocal; ViewBag.To = tLocal;
         ViewBag.Heading = "Discount code"; ViewBag.UnitsLabel = "Orders"; ViewBag.RevenueLabel = "Discount given";
         ViewBag.Title = "Discounts"; ViewBag.Active = "Discounts";
         return View("SalesBreakdown", rows);
@@ -496,12 +516,17 @@ public class ReportsController : InventoryAreaController
         return CsvFile(sb, "dead_stock");
     }
 
-    // Orders that count as sales in a window: not cancelled or refunded.
-    private IQueryable<Order> SoldOrders(DateTime f, DateTime t) =>
-        _db.Orders.Where(o => o.CreatedAt >= f && o.CreatedAt < t.AddDays(1)
-            && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded);
+    // Orders that count as sales — actually PAID, dated by when paid — matching the Finance dashboard
+    // exactly (o.IsPaid, o.PaidAt ?? o.CreatedAt). fUtc/tUtc are the half-open Lagos-day window.
+    private IQueryable<Order> PaidOrders(DateTime fUtc, DateTime tUtc) =>
+        _db.Orders.Where(o => o.IsPaid && (o.PaidAt ?? o.CreatedAt) >= fUtc && (o.PaidAt ?? o.CreatedAt) < tUtc);
 
-    // Default the report window to the last 30 days when no range is supplied.
+    // Lagos-calendar date range → the half-open UTC window to query + the local dates to show.
+    // Same calendar the Finance dashboard uses, so both dashboards agree.
+    private static (DateTime fUtc, DateTime tUtc, DateTime fLocal, DateTime tLocal) SalesRange(DateTime? from, DateTime? to) =>
+        Services.ReportCalendar.Range(from?.ToString("yyyy-MM-dd"), to?.ToString("yyyy-MM-dd"));
+
+    // Default the report window to the last 30 days when no range is supplied. (Stock-movement reports.)
     private static (DateTime from, DateTime to) NormalizeRange(DateTime? from, DateTime? to)
     {
         // Query-string dates bind with Kind=Unspecified; force UTC so Npgsql accepts them
