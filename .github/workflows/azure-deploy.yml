@@ -24,7 +24,7 @@ env:
   # repository variable named AZURE_WEBAPP_NAME (value = your App Service name). No code edit needed.
   AZURE_WEBAPP_NAME: ${{ vars.AZURE_WEBAPP_NAME }}
   PROJECT: src/SterlingLams.Web/SterlingLams.Web.csproj
-  DOTNET_VERSION: '9.0.x'
+  DOTNET_VERSION: '10.0.x'
   NODE_VERSION: '20'
 
 jobs:
@@ -59,7 +59,7 @@ jobs:
       # Build a self-contained migration bundle and run it against the prod DB BEFORE deploying.
       - name: Apply EF Core migrations
         run: |
-          dotnet tool install --global dotnet-ef --version 9.*
+          dotnet tool install --global dotnet-ef --version 10.*
           export PATH="$PATH:$HOME/.dotnet/tools"
           dotnet ef migrations bundle \
             --project ${{ env.PROJECT }} \

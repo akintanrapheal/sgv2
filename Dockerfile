@@ -10,7 +10,7 @@ COPY src/SterlingLams.Web/Areas ./src/SterlingLams.Web/Areas
 RUN npm run build:css
 
 # ── Stage 2: .NET Build ─────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS dotnet-builder
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS dotnet-builder
 WORKDIR /src
 
 # Restore NuGet packages (cached layer).
@@ -29,7 +29,7 @@ RUN dotnet publish src/SterlingLams.Web/SterlingLams.Web.csproj \
     /p:BuildTailwind=false
 
 # ── Stage 3: Runtime ────────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
 # Timezone: the store is Nigeria (West Africa Time, UTC+1, no DST). The base image
