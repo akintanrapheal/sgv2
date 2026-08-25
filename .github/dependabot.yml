@@ -12,11 +12,26 @@ updates:
       day: "monday"
     open-pull-requests-limit: 5
     # Roll the many Microsoft/System servicing bumps into a single PR to cut noise.
+    # Restricted to minor/patch so a framework MAJOR jump (e.g. .NET 9 -> 10) never
+    # slips into the servicing group. The app targets net9.0; pulling 10.0.x runtime
+    # packages onto it splits the dependency graph (NU1605/NU1608) and mismatches the
+    # EF tools against the EF 9 runtime. Bumping to a new .NET is a deliberate
+    # TargetFramework change + full test pass, not an auto-merge.
     groups:
       dotnet-runtime:
         patterns:
           - "Microsoft.*"
           - "System.*"
+        update-types:
+          - "minor"
+          - "patch"
+    # Don't auto-propose major framework bumps at all (grouped or standalone). Remove or
+    # loosen these entries when you deliberately move the project to a new .NET version.
+    ignore:
+      - dependency-name: "Microsoft.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "System.*"
+        update-types: ["version-update:semver-major"]
 
   # The GitHub Actions used by the CI / CodeQL workflows
   - package-ecosystem: "github-actions"
