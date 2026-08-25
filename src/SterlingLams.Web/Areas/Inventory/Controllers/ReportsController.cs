@@ -543,7 +543,7 @@ public class ReportsController : InventoryAreaController
         var siq = _db.StoreInventories.Where(si => si.Product.IsActive);
         if (categoryId.HasValue) siq = siq.Where(si => si.Product.CategoryId == categoryId.Value);
 
-        var raw = (await siq
+        var raw = (await Infrastructure.DbRead.RetryAsync(() => siq
                 .GroupBy(si => si.StoreId)
                 .Select(g => new
                 {
@@ -551,7 +551,7 @@ public class ReportsController : InventoryAreaController
                     Units = g.Sum(si => si.QuantityOnHand),
                     Value = g.Sum(si => si.QuantityOnHand * si.Product.Price)
                 })
-                .ToListAsync())
+                .ToListAsync()))
             .ToDictionary(x => x.StoreId);
 
         return stores.Select(s => new BranchValue
@@ -584,7 +584,8 @@ public class ReportsController : InventoryAreaController
             .Where(x => x.Units > 0)
             .OrderByDescending(x => x.Value);
 
-        return take.HasValue ? await q.Take(take.Value).ToListAsync() : await q.ToListAsync();
+        return await Infrastructure.DbRead.RetryAsync(() =>
+            take.HasValue ? q.Take(take.Value).ToListAsync() : q.ToListAsync());
     }
 
     // ── Stock Levels: per-product stock across branches (units & sale value; no cost/tax) ──────
@@ -655,18 +656,18 @@ public class ReportsController : InventoryAreaController
         // while the Min/Max live on the pool row. Precompute per-(product,store) totals in ONE grouped
         // query, then join the pool rows in memory. (Doing it as a correlated aggregate per row — once
         // in WHERE, twice in SELECT — was scanning StoreInventories thousands of times and hanging.)
-        var totals = (await _db.StoreInventories
+        var totals = (await Infrastructure.DbRead.RetryAsync(() => _db.StoreInventories
                 .Where(x => x.Product.IsActive && x.Store.IsActive)
                 .GroupBy(x => new { x.ProductId, x.StoreId })
                 .Select(g => new { g.Key.ProductId, g.Key.StoreId, OnHand = g.Sum(x => x.QuantityOnHand), OnOrder = g.Sum(x => x.OnOrder) })
-                .ToListAsync())
+                .ToListAsync()))
             .ToDictionary(x => (x.ProductId, x.StoreId), x => (x.OnHand, x.OnOrder));
 
         var poolQ = _db.StoreInventories
             .Where(si => si.Product.IsActive && si.ProductVariantId == null && si.Store.IsActive
                       && (si.MinStock ?? si.Product.LowStockThreshold) > 0);
         if (storeId.HasValue) poolQ = poolQ.Where(si => si.StoreId == storeId.Value);
-        var pools = await poolQ.Select(si => new
+        var pools = await Infrastructure.DbRead.RetryAsync(() => poolQ.Select(si => new
         {
             si.ProductId, si.StoreId,
             Product = si.Product.Name, Barcode = si.Product.Barcode,
@@ -674,7 +675,7 @@ public class ReportsController : InventoryAreaController
             Location = si.Store.Name,
             Min = si.MinStock ?? si.Product.LowStockThreshold,
             Max = si.MaxStock
-        }).ToListAsync();
+        }).ToListAsync());
 
         var rowsAll = pools.Select(p =>
         {
@@ -718,18 +719,18 @@ public class ReportsController : InventoryAreaController
         // Warnings, Min/Max live on the pool row but on-hand/on-order are the product's whole holding
         // (pool + every variant). Precompute per-(product,store) totals in ONE grouped query and join
         // the pool rows in memory, instead of a correlated aggregate per row (which was hanging).
-        var totals = (await _db.StoreInventories
+        var totals = (await Infrastructure.DbRead.RetryAsync(() => _db.StoreInventories
                 .Where(x => x.Product.IsActive && x.Store.IsActive)
                 .GroupBy(x => new { x.ProductId, x.StoreId })
                 .Select(g => new { g.Key.ProductId, g.Key.StoreId, OnHand = g.Sum(x => x.QuantityOnHand), OnOrder = g.Sum(x => x.OnOrder) })
-                .ToListAsync())
+                .ToListAsync()))
             .ToDictionary(x => (x.ProductId, x.StoreId), x => (x.OnHand, x.OnOrder));
 
         var poolQ = _db.StoreInventories
             .Where(si => si.Product.IsActive && si.ProductVariantId == null && si.Store.IsActive
                       && (si.MinStock ?? si.Product.LowStockThreshold) > 0);
         if (storeId.HasValue) poolQ = poolQ.Where(si => si.StoreId == storeId.Value);
-        var pools = await poolQ.Select(si => new
+        var pools = await Infrastructure.DbRead.RetryAsync(() => poolQ.Select(si => new
         {
             si.ProductId, si.StoreId,
             Product = si.Product.Name, Barcode = si.Product.Barcode,
@@ -737,7 +738,7 @@ public class ReportsController : InventoryAreaController
             Location = si.Store.Name,
             Min = si.MinStock ?? si.Product.LowStockThreshold,
             si.MaxStock
-        }).ToListAsync();
+        }).ToListAsync());
 
         var rows = pools.Select(p =>
         {

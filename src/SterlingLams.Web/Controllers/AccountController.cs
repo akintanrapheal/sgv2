@@ -364,8 +364,13 @@ public class AccountController : Controller
     [Authorize]
     public async Task<IActionResult> Logout()
     {
+        // Staff (anyone with a backend role) return to the staff sign-in page, not the public
+        // storefront; only customers land on the storefront home.
+        var user = await _userManager.GetUserAsync(User);
+        var isStaff = user != null
+            && (await _userManager.GetRolesAsync(user)).Any(r => !string.Equals(r, "Customer", StringComparison.OrdinalIgnoreCase));
         await _signInManager.SignOutAsync();
-        return RedirectToAction("Index", "Home");
+        return isStaff ? RedirectToAction(nameof(Login)) : RedirectToAction("Index", "Home");
     }
 
     // ─── Profile ─────────────────────────────────────────────────────────────

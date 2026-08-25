@@ -73,8 +73,13 @@ public class GiftCardsController : AdminBaseController
             TempData["Error"] = "Enter a gift card amount greater than zero.";
             return RedirectToAction(nameof(Index));
         }
+        // The date input binds with Kind=Unspecified; Npgsql only accepts UTC for timestamptz. Treat
+        // the chosen day as expiring at its end (valid through that date), in UTC.
+        var expiresUtc = expiresAt.HasValue
+            ? DateTime.SpecifyKind(expiresAt.Value.Date.AddDays(1), DateTimeKind.Utc)
+            : (DateTime?)null;
         var byUser = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        var card = await _giftCards.IssueAsync(amount, recipientName, recipientEmail, note, expiresAt, byUser);
+        var card = await _giftCards.IssueAsync(amount, recipientName, recipientEmail, note, expiresUtc, byUser);
         await LogAsync("Create", "GiftCard", card.Id.ToString(), $"Issued gift card {card.Code} for ₦{amount:N0}");
         TempData["Message"] = $"Gift card {card.Code} issued for ₦{amount:N0}.";
         TempData["NewCardCode"] = card.Code;
