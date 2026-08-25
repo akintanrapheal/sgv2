@@ -80,8 +80,15 @@
     };
 
     var curFeature = Context.Request.Query["feature"].ToString();
+    // Actions explicitly claimed by a specific (ByAction) nav item, e.g. Products/GenerateLabels. A
+    // controller-level item ("All items" = Products/Index) is the fallback for that controller and must
+    // NOT also light up on a claimed action — otherwise two items highlight at once.
+    var claimedActions = nav.SelectMany(g => g.Items).Where(i => i.ByAction && !i.Soon)
+        .Select(i => i.Ctrl + "/" + i.Action).ToHashSet();
     bool ItemActive((string Label, string Ctrl, string Action, string Icon, bool ByAction, bool Soon, bool Badge) it)
-        => it.Soon ? (cc == "Soon" && it.Label == curFeature) : (cc == it.Ctrl && (!it.ByAction || ca == it.Action));
+        => it.Soon ? (cc == "Soon" && it.Label == curFeature)
+         : it.ByAction ? (cc == it.Ctrl && ca == it.Action)
+         : (cc == it.Ctrl && !claimedActions.Contains(cc + "/" + ca));
 }
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth">

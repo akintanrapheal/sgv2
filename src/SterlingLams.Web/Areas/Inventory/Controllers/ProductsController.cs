@@ -1069,7 +1069,11 @@ public class ProductsController : InventoryAreaController
         var rows = await _db.Products
             .Where(p => p.IsActive && (EF.Functions.ILike(p.Name, $"%{q}%")
                      || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
-                     || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")))
+                     || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
+                     // Barcodes/SKUs usually live on the VARIANTS (barcode import), so match those too —
+                     // otherwise typing a variant barcode found nothing while its SKU worked.
+                     || p.Variants.Any(v => EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")
+                                         || EF.Functions.ILike(v.Sku ?? "", $"%{q}%"))))
             .OrderBy(p => p.Name).Take(15)
             .Select(p => new { id = p.Id, name = p.Name, sku = p.Sku })
             .ToListAsync();
