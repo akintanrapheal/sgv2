@@ -362,15 +362,33 @@ public class AccountController : Controller
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Authorize]
-    public async Task<IActionResult> Logout()
+    public async Task<IActionResult> Logout(string? returnUrl = null)
     {
-        // Staff (anyone with a backend role) return to the staff sign-in page, not the public
-        // storefront; only customers land on the storefront home.
+        // Staff (anyone with a backend role) return to the STAFF sign-in (dark back-office layout),
+        // not the public storefront. The staff layout only shows when the Login page has a staff
+        // returnUrl, so carry one — where they signed out from, else their role's home area. Customers
+        // just go to the storefront home.
         var user = await _userManager.GetUserAsync(User);
-        var isStaff = user != null
-            && (await _userManager.GetRolesAsync(user)).Any(r => !string.Equals(r, "Customer", StringComparison.OrdinalIgnoreCase));
+        var roles = user != null ? await _userManager.GetRolesAsync(user) : new List<string>();
+        var isStaff = roles.Any(r => !string.Equals(r, "Customer", StringComparison.OrdinalIgnoreCase));
         await _signInManager.SignOutAsync();
-        return isStaff ? RedirectToAction(nameof(Login)) : RedirectToAction("Index", "Home");
+        if (!isStaff) return RedirectToAction("Index", "Home");
+
+        var ru = returnUrl;
+        if (string.IsNullOrEmpty(ru))
+        {
+            var referer = Request.Headers["Referer"].ToString();
+            if (Uri.TryCreate(referer, UriKind.Absolute, out var u)
+                && string.Equals(u.Host, Request.Host.Host, StringComparison.OrdinalIgnoreCase))
+                ru = u.PathAndQuery;
+        }
+        // Must be a local staff path or the Login page falls back to the storefront layout.
+        if (string.IsNullOrEmpty(ru) || !Url.IsLocalUrl(ru)
+            || !SterlingLams.Web.Infrastructure.StaffPaths.IsStaffPath(ru))
+            ru = "/" + (roles.Contains("Inventory") ? SterlingLams.Web.Infrastructure.StaffPaths.Inventory
+                      : roles.Contains("Social Media") ? SterlingLams.Web.Infrastructure.StaffPaths.Marketing
+                      : SterlingLams.Web.Infrastructure.StaffPaths.Admin);
+        return RedirectToAction(nameof(Login), new { returnUrl = ru });
     }
 
     // ─── Profile ─────────────────────────────────────────────────────────────
