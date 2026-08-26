@@ -67,7 +67,13 @@
                 <span class="text-neutral-400">(@Model.ReviewCount)</span>
             </p>
         }
-        @if (Model.IsOnSale)
+        @if (Model.HasPriceRange)
+        {
+            @* Variable product whose variants span more than one price: show the ₦min – ₦max range
+               (effective, sale-aware). Picking an option on the product page resolves the exact price. *@
+            <p class="text-sm @(Model.IsOnSale ? "text-brand-600 font-medium" : "text-neutral-700")">@Model.FormattedPriceRange</p>
+        }
+        else if (Model.IsOnSale)
         {
             <p class="text-sm"><span class="text-neutral-400 line-through">@Model.FormattedRegularPrice</span> <span class="text-brand-600 font-medium ml-1">@Model.FormattedPrice</span></p>
         }

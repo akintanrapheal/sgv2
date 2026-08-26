@@ -56,6 +56,9 @@ public class HomeController : Controller
             })
             .ToListAsync();
 
+        // Variable products show a "₦min – ₦max" range on their card (one grouped query).
+        await SterlingLams.Web.Infrastructure.ProductCardPricing.ApplyVariantPriceRangesAsync(featuredCards, _db);
+
         ViewBag.FeaturedProducts = featuredCards;
 
         // Attach approved-review ratings to the featured cards (one grouped query).

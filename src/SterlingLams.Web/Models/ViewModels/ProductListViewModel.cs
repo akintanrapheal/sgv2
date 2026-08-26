@@ -22,6 +22,17 @@ public class ProductCardViewModel
     public decimal EffectivePrice => IsOnSale ? SalePrice!.Value : Price;
     /// <summary>The price to show prominently (sale price when on sale).</summary>
     public string FormattedPrice => $"₦{EffectivePrice:N0}";
+
+    // ── Variable-product price range ─────────────────────────────────────────
+    // Min/Max of the variants' EFFECTIVE (sale-aware) prices, filled in per page by
+    // Infrastructure.ProductCardPricing (one grouped query). Null for simple products or when the
+    // variants all resolve to the same price (they inherit the base) — the card then shows one price.
+    public decimal? MinVariantPrice { get; set; }
+    public decimal? MaxVariantPrice { get; set; }
+    /// <summary>True when this variable product's variants span more than one effective price.</summary>
+    public bool HasPriceRange => MinVariantPrice is decimal lo && MaxVariantPrice is decimal hi && hi > lo;
+    /// <summary>"₦min – ₦max" — shown on the card for a variable product with differing variant prices.</summary>
+    public string FormattedPriceRange => $"₦{(MinVariantPrice ?? EffectivePrice):N0} – ₦{(MaxVariantPrice ?? EffectivePrice):N0}";
     /// <summary>The regular price — render struck-through when <see cref="IsOnSale"/>.</summary>
     public string FormattedRegularPrice => $"₦{Price:N0}";
     /// <summary>Whole-number % off (e.g. 21) when on sale, else 0 — drives the discount badge.</summary>
