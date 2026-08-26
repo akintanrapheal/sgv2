@@ -321,7 +321,10 @@
                     @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Variants.Select(v => new {
                         id = v.Id,
                         name = v.Name,
-                        price = v.Price,
+                        // Resolved, sale-aware figures (variant price/sale or base fallback) for live re-pricing.
+                        price = v.EffectivePrice,
+                        regularPrice = v.RegularPrice,
+                        onSale = v.IsOnSale,
                         // Same 1000px WebP transform as the main image/thumbnails — the raw URL renders soft.
                         imageUrl = string.IsNullOrEmpty(v.ImageUrl) ? null : Img.Cld(v.ImageUrl, 1000),
                         inStock = v.Available > 0,
@@ -869,18 +872,18 @@
         });
     }
 
-    // Re-price using the resolved variant. A variant with its own price wins outright (no sale
-    // strike-through); otherwise fall back to the product's regular/sale price.
+    // Re-price using the resolved variant. Each variant carries its own sale-aware figures
+    // (price = effective, regularPrice, onSale); when no variant is chosen yet, fall back to the
+    // product's regular/sale price.
     function applyVariantPrice() {
         if (!priceEff) return;
-        let variantPrice = null;
-        if (selectedVariantId) {
-            const v = variants.find(x => x.id === selectedVariantId);
-            if (v && v.price != null) variantPrice = v.price;
-        }
-        if (variantPrice != null) {
-            priceEff.textContent = fmtPrice(variantPrice);
-            if (priceReg) priceReg.classList.add('hidden');
+        const v = selectedVariantId ? variants.find(x => x.id === selectedVariantId) : null;
+        if (v) {
+            priceEff.textContent = fmtPrice(v.price);
+            if (priceReg) {
+                if (v.onSale) { priceReg.textContent = fmtPrice(v.regularPrice); priceReg.classList.remove('hidden'); }
+                else priceReg.classList.add('hidden');
+            }
         } else if (PRICE.sale != null) {
             priceEff.textContent = fmtPrice(PRICE.sale);
             if (priceReg) { priceReg.textContent = fmtPrice(PRICE.regular); priceReg.classList.remove('hidden'); }

@@ -97,6 +97,10 @@ public class ProductVariantOptionViewModel
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public decimal? Price { get; set; }   // absolute variant price; null = use the product's (sale-aware) price
+    // Resolved, sale-aware prices for this variant (computed via Domain.VariantPricing against the base product).
+    public decimal RegularPrice { get; set; }    // variant.Price ?? base price
+    public decimal EffectivePrice { get; set; }  // what's charged: sale price when on sale, else regular
+    public bool IsOnSale { get; set; }           // true when a valid variant/base sale price is in effect
     public string? ImageUrl { get; set; }   // optional per-variant image (swaps the main image when selected)
     public int Available { get; set; }   // combined available across active branches (per-variant, with pool fallback)
     public List<StoreStockViewModel> StoreStock { get; set; } = new();   // per-branch availability for this variant
