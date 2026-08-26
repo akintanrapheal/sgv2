@@ -199,9 +199,14 @@
                     <span class="text-neutral-500 hover:text-neutral-900 underline underline-offset-2">@Model.AverageRating.ToString("0.0") (@Model.ReviewCount)</span>
                 </a>
             }
+            @{
+                // Variable products with differing variant prices open on a range (₦min – ₦max); the JS
+                // collapses it to the exact price (with sale strike-through) once an option is chosen.
+                var showStrike = Model.IsOnSale && !Model.HasPriceRange;
+            }
             <p class="mb-2 flex items-baseline gap-3 flex-wrap" id="price-block">
-                <span id="price-regular" class="text-2xl font-light text-neutral-400 line-through @(Model.IsOnSale ? "" : "hidden")">@Model.FormattedRegularPrice</span>
-                <span id="price-effective" class="text-2xl font-light @(Model.IsOnSale ? "text-brand-600" : "text-neutral-800")">@Model.FormattedPrice</span>
+                <span id="price-regular" class="text-2xl font-light text-neutral-400 line-through @(showStrike ? "" : "hidden")">@Model.FormattedRegularPrice</span>
+                <span id="price-effective" class="text-2xl font-light @(showStrike ? "text-brand-600" : "text-neutral-800")">@(Model.HasPriceRange ? Model.FormattedPriceRange : Model.FormattedPrice)</span>
             </p>
             @{
                 // "Only N left" urgency: for a simple (no-variant) product we know the exact total
@@ -735,7 +740,7 @@
     <div id="sticky-buy" class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-neutral-200 px-4 py-3 flex items-center gap-3" style="box-shadow:0 -2px 12px rgba(0,0,0,0.06);">
         <div class="min-w-0">
             <div class="text-[10px] uppercase tracking-wide text-neutral-400 leading-none truncate">@Model.CategoryName</div>
-            <div id="sticky-price" class="text-base font-semibold text-neutral-900 leading-tight">@Model.FormattedPrice</div>
+            <div id="sticky-price" class="text-base font-semibold text-neutral-900 leading-tight">@(Model.HasPriceRange ? Model.FormattedPriceRange : Model.FormattedPrice)</div>
         </div>
         <button id="sticky-add" type="button"
                 class="flex-1 bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 rounded-sm hover:bg-brand-600 active:bg-brand-700 transition-colors">
@@ -845,7 +850,10 @@
     // Base price + sale (for live price update when a priced variant is chosen).
     const PRICE = {
         regular: @Model.Price.ToString(System.Globalization.CultureInfo.InvariantCulture),
-        sale: @(Model.IsOnSale ? Model.SalePrice!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "null")
+        sale: @(Model.IsOnSale ? Model.SalePrice!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "null"),
+        // For a variable product whose variants span more than one price: the default "₦min – ₦max"
+        // range, shown until an option is chosen. null for simple / single-price products.
+        range: @(Model.HasPriceRange ? "{min:" + Model.MinVariantPrice.ToString(System.Globalization.CultureInfo.InvariantCulture) + ",max:" + Model.MaxVariantPrice.ToString(System.Globalization.CultureInfo.InvariantCulture) + "}" : "null")
     };
     const priceEff = document.getElementById('price-effective');
     const priceReg = document.getElementById('price-regular');
@@ -873,23 +881,29 @@
     }
 
     // Re-price using the resolved variant. Each variant carries its own sale-aware figures
-    // (price = effective, regularPrice, onSale); when no variant is chosen yet, fall back to the
-    // product's regular/sale price.
+    // (price = effective, regularPrice, onSale). With no option chosen yet, a variable product shows
+    // its "₦min – ₦max" range; otherwise it falls back to the product's own regular/sale price.
     function applyVariantPrice() {
         if (!priceEff) return;
         const v = selectedVariantId ? variants.find(x => x.id === selectedVariantId) : null;
+        let effText, regularText = null, onSale = false;
         if (v) {
-            priceEff.textContent = fmtPrice(v.price);
-            if (priceReg) {
-                if (v.onSale) { priceReg.textContent = fmtPrice(v.regularPrice); priceReg.classList.remove('hidden'); }
-                else priceReg.classList.add('hidden');
-            }
+            effText = fmtPrice(v.price);
+            onSale = !!v.onSale;
+            if (onSale) regularText = fmtPrice(v.regularPrice);
+        } else if (PRICE.range) {
+            effText = fmtPrice(PRICE.range.min) + ' – ' + fmtPrice(PRICE.range.max);   // en dash
         } else if (PRICE.sale != null) {
-            priceEff.textContent = fmtPrice(PRICE.sale);
-            if (priceReg) { priceReg.textContent = fmtPrice(PRICE.regular); priceReg.classList.remove('hidden'); }
+            effText = fmtPrice(PRICE.sale); onSale = true; regularText = fmtPrice(PRICE.regular);
         } else {
-            priceEff.textContent = fmtPrice(PRICE.regular);
-            if (priceReg) priceReg.classList.add('hidden');
+            effText = fmtPrice(PRICE.regular);
+        }
+        priceEff.textContent = effText;
+        priceEff.classList.toggle('text-brand-600', onSale);
+        priceEff.classList.toggle('text-neutral-800', !onSale);
+        if (priceReg) {
+            if (regularText != null) { priceReg.textContent = regularText; priceReg.classList.remove('hidden'); }
+            else priceReg.classList.add('hidden');
         }
     }
 
