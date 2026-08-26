@@ -42,6 +42,19 @@ public class ProductDetailViewModel
     public string? Carat { get; set; }
     public string? Weight { get; set; }
 
+    // ── Variable-product price range ─────────────────────────────────────────
+    // Drives the "₦min – ₦max" shown before an option is picked. Built from the variants' effective
+    // (sale-aware) prices: in-stock variants when any are in stock, otherwise every listed variant.
+    private IEnumerable<ProductVariantOptionViewModel> RangeVariants
+        => Variants.Any(v => v.Available > 0) ? Variants.Where(v => v.Available > 0) : Variants;
+    /// <summary>True for a variable product whose (range) variants span more than one effective price.</summary>
+    public bool HasPriceRange => Variants.Count > 0
+        && RangeVariants.Select(v => v.EffectivePrice).Distinct().Count() > 1;
+    public decimal MinVariantPrice => RangeVariants.Select(v => v.EffectivePrice).DefaultIfEmpty(EffectivePrice).Min();
+    public decimal MaxVariantPrice => RangeVariants.Select(v => v.EffectivePrice).DefaultIfEmpty(EffectivePrice).Max();
+    /// <summary>"₦min – ₦max" — the default price for a variable product with differing variant prices.</summary>
+    public string FormattedPriceRange => $"₦{MinVariantPrice:N0} – ₦{MaxVariantPrice:N0}";
+
     public string CategoryName { get; set; } = string.Empty;
     public string CategorySlug { get; set; } = string.Empty;
 
