@@ -104,6 +104,9 @@ public class ProductsController : Controller
             })
             .ToListAsync();
 
+        // Variable products show a "₦min – ₦max" range on their card (one grouped query).
+        await SterlingLams.Web.Infrastructure.ProductCardPricing.ApplyVariantPriceRangesAsync(products, _db);
+
         // Card ratings — one grouped query over the page's products (not a per-card subquery).
         var cardIds = products.Select(c => c.Id).ToList();
         if (cardIds.Count > 0)

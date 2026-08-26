@@ -151,6 +151,9 @@ public class MerchandisingService : IMerchandisingService
             })
             .ToListAsync();
 
+        // Variable products show a "₦min – ₦max" range on their card (one grouped query).
+        await SterlingLams.Web.Infrastructure.ProductCardPricing.ApplyVariantPriceRangesAsync(products, _db);
+
         // Attach approved-review ratings in one grouped query (shared across all merchandising rows).
         var ratings = await _db.ProductReviews
             .Where(r => ids.Contains(r.ProductId) && r.IsApproved)
