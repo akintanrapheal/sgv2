@@ -532,6 +532,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
         builder.Entity<ProductVariant>(e =>
         {
             e.Property(v => v.Price).HasPrecision(18, 2);
+            e.Property(v => v.SalePrice).HasPrecision(18, 2);
             // Unique among real (non-blank) codes; Sku indexed for fast scan/lookup. Both columns
             // participate in the barcode-scan ScanLookup query.
             e.HasIndex(v => v.Barcode).IsUnique().HasFilter("\"Barcode\" IS NOT NULL AND \"Barcode\" <> ''");

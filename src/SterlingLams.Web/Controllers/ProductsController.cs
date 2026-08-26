@@ -289,6 +289,9 @@ public class ProductsController : Controller
                 Id = v.Id,
                 Name = v.Name,
                 Price = v.Price,
+                RegularPrice = VariantPricing.RegularPrice(product, v),
+                EffectivePrice = VariantPricing.EffectivePrice(product, v),
+                IsOnSale = VariantPricing.IsOnSale(product, v),
                 ImageUrl = v.ImageUrl,
                 Available = VariantAvailable(v.Id),
                 StoreStock = VariantStoreStock(v.Id),
@@ -425,7 +428,10 @@ public class ProductsController : Controller
             {
                 id = v.Id,
                 imageUrl = v.ImageUrl,
-                price = v.Price,
+                // Resolved, sale-aware prices (variant or base fallback) so the client shows the right figure.
+                price = VariantPricing.EffectivePrice(product, v),
+                regularPrice = VariantPricing.RegularPrice(product, v),
+                onSale = VariantPricing.IsOnSale(product, v),
                 inStock = VariantAvailable(v.Id) > 0,
                 attributes = v.AttributeValues.ToDictionary(av => av.Attribute.Name, av => av.Value)
             })

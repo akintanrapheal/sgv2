@@ -199,6 +199,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     Sku             = v.Sku,
                     ImageUrl        = v.ImageUrl,
                     Price           = v.Price,
+                    SalePrice       = v.SalePrice,
                     StockQuantity   = v.StockQuantity,
                     IsActive        = v.IsActive,
                     AttributeLabels = v.AttributeValues
@@ -341,6 +342,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             {
                 var sku   = form[$"sku_{variant.Id}"].FirstOrDefault()?.Trim();
                 var price = form[$"price_{variant.Id}"].FirstOrDefault();
+                var sale  = form[$"saleprice_{variant.Id}"].FirstOrDefault();
                 var img   = form[$"img_{variant.Id}"].FirstOrDefault()?.Trim();
                 // The form sends hidden=false + optional checkbox=true; last value wins
                 var activeVals = form[$"active_{variant.Id}"];
@@ -352,6 +354,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 variant.Price           = decimal.TryParse(price,
                     System.Globalization.NumberStyles.Any,
                     System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+                // Blank = this variant isn't independently on sale; otherwise the exact sale price typed.
+                variant.SalePrice       = decimal.TryParse(sale,
+                    System.Globalization.NumberStyles.Any,
+                    System.Globalization.CultureInfo.InvariantCulture, out var sd) ? sd : null;
                 variant.IsActive        = active;
                 saved++;
             }
