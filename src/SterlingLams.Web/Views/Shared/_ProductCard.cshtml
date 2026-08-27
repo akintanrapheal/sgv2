@@ -70,7 +70,7 @@
         {
             @* Variable product whose variants span more than one price: show the ₦min – ₦max range
                (effective, sale-aware). Picking an option on the product page resolves the exact price. *@
-            <p class="text-sm @(Model.IsOnSale ? "text-brand-600 font-medium" : "text-neutral-700")">@Model.FormattedPriceRange</p>
+            <p class="text-sm text-brand-600 font-medium">@Model.FormattedPriceRange</p>
         }
         else if (Model.IsOnSale)
         {
@@ -78,7 +78,7 @@
         }
         else
         {
-            <p class="text-sm text-neutral-700">@Model.FormattedPrice</p>
+            <p class="text-sm text-brand-600 font-medium">@Model.FormattedPrice</p>
         }
     </a>
 
