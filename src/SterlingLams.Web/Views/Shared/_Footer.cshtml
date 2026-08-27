@@ -8,7 +8,6 @@
 @inject IMemoryCache Cache
 @{
     var instagram  = await SettingsService.GetAsync("general.instagram_url");
-    var whatsapp   = await SettingsService.GetAsync("general.whatsapp_number");
     var facebook   = await SettingsService.GetAsync("general.facebook_url");
     var tiktok     = await SettingsService.GetAsync("general.tiktok_url");
     var tagline    = await SettingsService.GetAsync("general.tagline", "Timeless luxury jewellery crafted with the finest materials.");
@@ -94,16 +93,8 @@
                             </svg>
                         </a>
                     }
-                    @if (!string.IsNullOrEmpty(whatsapp))
-                    {
-                        <a href="https://wa.me/@(whatsapp.Replace("+","").Replace(" ",""))" target="_blank" rel="noopener" aria-label="WhatsApp"
-                           class="text-neutral-400 hover:text-brand-500 transition-colors">
-                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
-                                <path d="M12 0C5.373 0 0 5.373 0 12c0 2.124.554 4.118 1.525 5.848L.057 23.57a.5.5 0 00.607.606l5.764-1.448A11.944 11.944 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.9a9.9 9.9 0 01-5.045-1.374l-.362-.215-3.738.938.977-3.65-.236-.374A9.9 9.9 0 112.1 12 9.9 9.9 0 0112 21.9z"/>
-                            </svg>
-                        </a>
-                    }
+                    @* WhatsApp is reachable via the floating button on every page, so it's not repeated
+                       here as a footer social icon. *@
                 </div>
             </div>
 
@@ -158,18 +149,7 @@
             </div>
         </div>
 
-        @if (!string.IsNullOrEmpty(logoUrl))
-        {
-            <div class="border-t border-neutral-800 mt-12 pt-10 flex justify-center">
-                <a asp-controller="Home" asp-action="Index">
-                    @* A broken logo URL hides this whole centred block rather than showing a broken image. *@
-                    <img src="@logoUrl" alt="Sterlin Glams" class="h-14 w-auto mx-auto"
-                         onerror="this.closest('div').style.display='none';" />
-                </a>
-            </div>
-        }
-
-        <div class="@(string.IsNullOrEmpty(logoUrl) ? "border-t border-neutral-800 " : "")mt-8 pt-8 flex justify-center">
+        <div class="border-t border-neutral-800 mt-12 pt-10 flex justify-center">
             <partial name="_PaymentBadges" />
         </div>
 
