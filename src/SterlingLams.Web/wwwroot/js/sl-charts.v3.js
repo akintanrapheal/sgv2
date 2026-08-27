@@ -93,11 +93,17 @@
             s += '<line x1="' + x0 + '" y1="' + gy.toFixed(1) + '" x2="' + x1 + '" y2="' + gy.toFixed(1) + '" stroke="' + GRID + '" stroke-width="1"/>';
             s += '<text x="' + (x0 - 6) + '" y="' + (gy + 3).toFixed(1) + '" text-anchor="end" font-size="10" fill="' + TXT + '">' + fmt(val, isMoney) + '</text>';
         }
-        var n = labels.length, step = Math.max(1, Math.ceil(n / 8));
-        for (var j = 0; j < n; j++) {
-            if (j % step !== 0 && j !== n - 1) continue;
+        // Evenly spaced x-axis labels that always include both endpoints (no doubled-up last label
+        // colliding with the previous tick). The first/last are anchored to their edges so they don't
+        // overflow the viewBox and get clipped; the rest are centred on their point.
+        var n = labels.length, count = Math.min(n, 8), seen = {};
+        for (var t = 0; t < count; t++) {
+            var j = count <= 1 ? 0 : Math.round(t * (n - 1) / (count - 1));
+            if (seen[j]) continue;
+            seen[j] = 1;
             var lx = n === 1 ? (x0 + x1) / 2 : x0 + (x1 - x0) * (j / (n - 1));
-            s += '<text x="' + lx.toFixed(1) + '" y="' + (y1 + 16) + '" text-anchor="middle" font-size="10" fill="' + TXT + '">' + esc(labels[j]) + '</text>';
+            var anchor = n === 1 ? 'middle' : (j === 0 ? 'start' : (j === n - 1 ? 'end' : 'middle'));
+            s += '<text x="' + lx.toFixed(1) + '" y="' + (y1 + 16) + '" text-anchor="' + anchor + '" font-size="10" fill="' + TXT + '">' + esc(labels[j]) + '</text>';
         }
         s += draw({ x0: x0, x1: x1, y0: y0, y1: y1, top: top, n: n });
         return s + '</svg>';
