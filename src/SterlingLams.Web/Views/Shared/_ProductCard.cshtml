@@ -50,8 +50,7 @@
     </a>
 
     <!-- Info -->
-    <a asp-controller="Products" asp-action="Detail" asp-route-slug="@Model.Slug" class="block flex-grow">
-        <p class="text-[10px] tracking-[0.2em] uppercase text-neutral-400 mb-1">@Model.CategoryName</p>
+    <a asp-controller="Products" asp-action="Detail" asp-route-slug="@Model.Slug" class="block flex-grow text-center">
         <h3 class="text-sm font-light text-neutral-800 group-hover:text-neutral-900 transition-colors leading-snug mb-1">
             @Model.Name
         </h3>
@@ -75,7 +74,7 @@
         }
         else if (Model.IsOnSale)
         {
-            <p class="text-sm"><span class="text-neutral-400 line-through">@Model.FormattedRegularPrice</span> <span class="text-brand-600 font-medium ml-1">@Model.FormattedPrice</span></p>
+            <p class="text-sm"><span class="text-neutral-900 line-through">@Model.FormattedRegularPrice</span> <span class="text-brand-600 font-medium ml-1">@Model.FormattedPrice</span></p>
         }
         else
         {
