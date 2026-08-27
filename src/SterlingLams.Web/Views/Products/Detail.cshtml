@@ -205,8 +205,8 @@
                 var showStrike = Model.IsOnSale && !Model.HasPriceRange;
             }
             <p class="mb-2 flex items-baseline gap-3 flex-wrap" id="price-block">
-                <span id="price-regular" class="text-2xl font-light text-neutral-400 line-through @(showStrike ? "" : "hidden")">@Model.FormattedRegularPrice</span>
-                <span id="price-effective" class="text-2xl font-light @(showStrike ? "text-brand-600" : "text-neutral-800")">@(Model.HasPriceRange ? Model.FormattedPriceRange : Model.FormattedPrice)</span>
+                <span id="price-regular" class="text-2xl font-light text-neutral-900 line-through @(showStrike ? "" : "hidden")">@Model.FormattedRegularPrice</span>
+                <span id="price-effective" class="text-2xl font-light text-brand-600">@(Model.HasPriceRange ? Model.FormattedPriceRange : Model.FormattedPrice)</span>
             </p>
             @{
                 // "Only N left" urgency: for a simple (no-variant) product we know the exact total
@@ -684,11 +684,11 @@
                         <h3 class="text-sm font-light text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
                         @if (p.IsOnSale)
                         {
-                            <p class="text-xs mt-1"><span class="text-neutral-400 line-through">@p.FormattedRegularPrice</span> <span class="text-brand-600 ml-1">@p.FormattedPrice</span></p>
+                            <p class="text-xs mt-1"><span class="text-neutral-900 line-through">@p.FormattedRegularPrice</span> <span class="text-brand-600 ml-1">@p.FormattedPrice</span></p>
                         }
                         else
                         {
-                            <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
+                            <p class="text-xs text-brand-600 mt-1">@p.FormattedPrice</p>
                         }
                     </a>
                 }
@@ -716,11 +716,11 @@
                         <h3 class="text-sm font-light text-neutral-700 group-hover:text-neutral-900 transition-colors">@p.Name</h3>
                         @if (p.IsOnSale)
                         {
-                            <p class="text-xs mt-1"><span class="text-neutral-400 line-through">@p.FormattedRegularPrice</span> <span class="text-brand-600 ml-1">@p.FormattedPrice</span></p>
+                            <p class="text-xs mt-1"><span class="text-neutral-900 line-through">@p.FormattedRegularPrice</span> <span class="text-brand-600 ml-1">@p.FormattedPrice</span></p>
                         }
                         else
                         {
-                            <p class="text-xs text-neutral-400 mt-1">@p.FormattedPrice</p>
+                            <p class="text-xs text-brand-600 mt-1">@p.FormattedPrice</p>
                         }
                     </a>
                 }
@@ -740,7 +740,7 @@
     <div id="sticky-buy" class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-neutral-200 px-4 py-3 flex items-center gap-3" style="box-shadow:0 -2px 12px rgba(0,0,0,0.06);">
         <div class="min-w-0">
             <div class="text-[10px] uppercase tracking-wide text-neutral-400 leading-none truncate">@Model.CategoryName</div>
-            <div id="sticky-price" class="text-base font-semibold text-neutral-900 leading-tight">@(Model.HasPriceRange ? Model.FormattedPriceRange : Model.FormattedPrice)</div>
+            <div id="sticky-price" class="text-base font-semibold text-brand-600 leading-tight">@(Model.HasPriceRange ? Model.FormattedPriceRange : Model.FormattedPrice)</div>
         </div>
         <button id="sticky-add" type="button"
                 class="flex-1 bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3 rounded-sm hover:bg-brand-600 active:bg-brand-700 transition-colors">
@@ -899,8 +899,7 @@
             effText = fmtPrice(PRICE.regular);
         }
         priceEff.textContent = effText;
-        priceEff.classList.toggle('text-brand-600', onSale);
-        priceEff.classList.toggle('text-neutral-800', !onSale);
+        // The effective price is always brand/pink (set in the markup); only the struck original toggles.
         if (priceReg) {
             if (regularText != null) { priceReg.textContent = regularText; priceReg.classList.remove('hidden'); }
             else priceReg.classList.add('hidden');
