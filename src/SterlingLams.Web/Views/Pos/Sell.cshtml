@@ -1,6 +1,6 @@
 @model SterlingLams.Web.Models.Domain.Register
 @{
-    ViewData["Title"] = "POS";
+    ViewData["Title"] = "Sell";
     var session = ViewData["Session"] as SterlingLams.Web.Models.Domain.TillSession;
     var cashierName = ViewData["CashierName"]?.ToString() ?? User.Identity?.Name ?? "";
     var reprintCount = ViewData["ReprintCount"] as int? ?? 0;
