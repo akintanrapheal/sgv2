@@ -127,7 +127,7 @@ public class MerchandisingService : IMerchandisingService
     private async Task<Dictionary<int, ProductCardViewModel>> LoadCardsAsync(IReadOnlyList<int> ids)
     {
         if (ids.Count == 0) return new();
-        var products = await _db.Products
+        var products = await SterlingLams.Web.Infrastructure.DbRead.RetryAsync(() => _db.Products
             .Where(p => ids.Contains(p.Id) && p.IsActive)
             .Select(p => new ProductCardViewModel
             {
@@ -149,17 +149,17 @@ public class MerchandisingService : IMerchandisingService
                 HasVariants = p.Variants.Any(v => v.IsActive),
                 CategoryName = p.Category.Name,
             })
-            .ToListAsync();
+            .ToListAsync());
 
         // Variable products show a "₦min – ₦max" range on their card (one grouped query).
         await SterlingLams.Web.Infrastructure.ProductCardPricing.ApplyVariantPriceRangesAsync(products, _db);
 
         // Attach approved-review ratings in one grouped query (shared across all merchandising rows).
-        var ratings = await _db.ProductReviews
+        var ratings = await SterlingLams.Web.Infrastructure.DbRead.RetryAsync(() => _db.ProductReviews
             .Where(r => ids.Contains(r.ProductId) && r.IsApproved)
             .GroupBy(r => r.ProductId)
             .Select(g => new { ProductId = g.Key, Count = g.Count(), Avg = g.Average(x => (double)x.Rating) })
-            .ToListAsync();
+            .ToListAsync());
         foreach (var c in products)
         {
             var rr = ratings.FirstOrDefault(x => x.ProductId == c.Id);

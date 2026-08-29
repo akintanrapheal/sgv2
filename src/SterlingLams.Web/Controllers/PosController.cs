@@ -110,8 +110,8 @@ public class PosController : Controller
     private async Task<Register?> BoundRegisterAsync()
     {
         if (int.TryParse(Request.Cookies[RegisterCookie], out var id))
-            return await _db.Registers.Include(r => r.Store)
-                .FirstOrDefaultAsync(r => r.Id == id && r.IsActive);
+            return await Infrastructure.DbRead.RetryAsync(() => _db.Registers.Include(r => r.Store)
+                .FirstOrDefaultAsync(r => r.Id == id && r.IsActive));
         return null;
     }
 
@@ -143,7 +143,8 @@ public class PosController : Controller
     }
 
     private Task<TillSession?> OpenSessionAsync(int registerId) =>
-        _db.TillSessions.FirstOrDefaultAsync(s => s.RegisterId == registerId && s.ClosedAt == null);
+        Infrastructure.DbRead.RetryAsync(() =>
+            _db.TillSessions.FirstOrDefaultAsync(s => s.RegisterId == registerId && s.ClosedAt == null));
 
     /// <summary>PWA manifest served dynamically so start_url/scope/id track the (possibly secret) POS prefix.</summary>
     [AllowAnonymous, HttpGet]
@@ -178,8 +179,8 @@ public class PosController : Controller
         var register = await BoundRegisterAsync();
         if (register == null)
         {
-            var registers = await _db.Registers.Where(r => r.IsActive)
-                .Include(r => r.Store).OrderBy(r => r.Name).ToListAsync();
+            var registers = await Infrastructure.DbRead.RetryAsync(() => _db.Registers.Where(r => r.IsActive)
+                .Include(r => r.Store).OrderBy(r => r.Name).ToListAsync());
             return View("PickRegister", registers);
         }
 
@@ -187,10 +188,10 @@ public class PosController : Controller
 
         if (!(User.Identity?.IsAuthenticated ?? false))
         {
-            var cashiers = await _db.Users.Where(u => u.PinHash != null)
+            var cashiers = await Infrastructure.DbRead.RetryAsync(() => _db.Users.Where(u => u.PinHash != null)
                 .OrderBy(u => u.FirstName)
                 .Select(u => new TillCashier { Id = u.Id, Name = (u.FirstName + " " + u.LastName).Trim() })
-                .ToListAsync();
+                .ToListAsync());
             return View("Login", cashiers);
         }
 
@@ -200,15 +201,15 @@ public class PosController : Controller
         // Pass display name so Sell view shows first name rather than email
         var uid = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var cashier = uid != null
-            ? await _db.Users.Where(u => u.Id == uid)
+            ? await Infrastructure.DbRead.RetryAsync(() => _db.Users.Where(u => u.Id == uid)
                 .Select(u => (u.FirstName + " " + u.LastName).Trim())
-                .FirstOrDefaultAsync()
+                .FirstOrDefaultAsync())
             : null;
         ViewData["CashierName"] = string.IsNullOrWhiteSpace(cashier) ? User.Identity?.Name : cashier;
         ViewData["Session"] = session;
         // Reprint notification for THIS branch (price changed on an in-stock item).
-        ViewData["ReprintCount"] = await _db.LabelReprintQueue
-            .CountAsync(q => q.Status == ReprintStatus.Pending && q.StoreId == register.StoreId);
+        ViewData["ReprintCount"] = await Infrastructure.DbRead.RetryAsync(() => _db.LabelReprintQueue
+            .CountAsync(q => q.Status == ReprintStatus.Pending && q.StoreId == register.StoreId));
         return View("Sell", register);
     }
 

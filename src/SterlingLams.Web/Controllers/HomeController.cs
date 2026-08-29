@@ -32,7 +32,7 @@ public class HomeController : Controller
         // Project straight to the card VM — EF turns the image/stock/variant lookups into small
         // correlated subqueries in ONE query, instead of Include'ing three collections at once
         // (which the DB expands into a cartesian product of images × inventories × variants).
-        var featuredCards = await _db.Products
+        var featuredCards = await Infrastructure.DbRead.RetryAsync(() => _db.Products
             .Where(p => p.IsActive && p.IsFeatured)
             .OrderByDescending(p => p.CreatedAt)
             .Take(24)
@@ -54,7 +54,7 @@ public class HomeController : Controller
                 TotalStock = p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0,
                 HasVariants = p.Variants.Any(v => v.IsActive)
             })
-            .ToListAsync();
+            .ToListAsync());
 
         // Variable products show a "₦min – ₦max" range on their card (one grouped query).
         await SterlingLams.Web.Infrastructure.ProductCardPricing.ApplyVariantPriceRangesAsync(featuredCards, _db);
@@ -65,11 +65,11 @@ public class HomeController : Controller
         var featuredIds = featuredCards.Select(c => c.Id).ToList();
         if (featuredIds.Count > 0)
         {
-            var fr = await _db.ProductReviews
+            var fr = await Infrastructure.DbRead.RetryAsync(() => _db.ProductReviews
                 .Where(r => featuredIds.Contains(r.ProductId) && r.IsApproved)
                 .GroupBy(r => r.ProductId)
                 .Select(g => new { ProductId = g.Key, Count = g.Count(), Avg = g.Average(x => (double)x.Rating) })
-                .ToListAsync();
+                .ToListAsync());
             foreach (var c in featuredCards)
             {
                 var rr = fr.FirstOrDefault(x => x.ProductId == c.Id);
@@ -79,11 +79,11 @@ public class HomeController : Controller
 
         // "Shop by Category" — active top-level categories. Prefer those with an
         // image (admin-curated); fall back to the first few so the section is never empty.
-        var topCategories = await _db.Categories
+        var topCategories = await Infrastructure.DbRead.RetryAsync(() => _db.Categories
             .Where(c => c.IsActive && c.ParentId == null)
             .OrderBy(c => c.SortOrder)
             .ThenBy(c => c.Name)
-            .ToListAsync();
+            .ToListAsync());
 
         var withImages = topCategories.Where(c => !string.IsNullOrWhiteSpace(c.ImageUrl)).ToList();
         ViewBag.ShopCategories = withImages.Count > 0 ? withImages : topCategories.Take(5).ToList();
