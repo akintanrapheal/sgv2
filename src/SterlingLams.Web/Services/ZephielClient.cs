@@ -89,9 +89,14 @@ public class ZephielClient : IZephielClient
             if (!keys.TryGetValue(storeId.ToString(), out var storeKey) || string.IsNullOrWhiteSpace(storeKey))
                 return;   // this store isn't provisioned on Zephiel yet — skip silently
 
-            var body = JsonSerializer.Serialize(new { endpoint, method, status });
-            using var req = new HttpRequestMessage(HttpMethod.Post, $"{await BaseUrlAsync()}/api/v1/multistore/track");
-            req.Headers.Add("x-api-key", storeKey);
+            // Hit Zephiel's real metered gateway — it authenticates the per-store key, records a
+            // usage_event attributed to that store, and returns the listing's sample response.
+            var slug = await Get("zephiel.api_slug", "Zephiel:ApiSlug");
+            if (slug.Length == 0) slug = "multistore";
+            var path = endpoint.StartsWith('/') ? endpoint : "/" + endpoint;
+            var body = JsonSerializer.Serialize(new { method, status });
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{await BaseUrlAsync()}/api/v1/{slug}{path}");
+            req.Headers.Add("x-zephiel-key", storeKey);
             req.Content = new StringContent(body, Encoding.UTF8, "application/json");
 
             using var resp = await _http.SendAsync(req, ct);   // best-effort; the response is intentionally ignored

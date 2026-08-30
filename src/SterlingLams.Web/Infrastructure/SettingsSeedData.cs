@@ -335,6 +335,7 @@ public static class SettingsSeedData
         // unconfigured, nothing leaves SG and nothing breaks. No billing.
         new() { Key = "zephiel.enabled",     Group = "Zephiel", Label = "Enable Zephiel API",      Type = "boolean", Value = "false", Description = "Master switch. When off, no usage pings are sent to Zephiel (SG is unaffected either way).", SortOrder = 0 },
         new() { Key = "zephiel.base_url",    Group = "Zephiel", Label = "Zephiel Base URL",        Type = "text",    Value = "https://zephiel-api.vercel.app", Description = "Zephiel API base URL. Leave as the default unless self-hosting.", SortOrder = 1 },
+        new() { Key = "zephiel.api_slug",    Group = "Zephiel", Label = "Zephiel API slug",        Type = "text",    Value = "multistore", Description = "The Zephiel Multistore API listing slug that SG's calls are metered against.", SortOrder = 4 },
         new() { Key = "zephiel.account_key", Group = "Zephiel", Label = "Zephiel Account Key",     Type = "secret",  Value = "", Description = "SG's master account key on Zephiel, used to auto-provision a per-store API key. Stored encrypted.", SortOrder = 2 },
         new() { Key = "zephiel.store_keys",  Group = "Zephiel", Label = "Per-store keys (JSON)",   Type = "secret",  Value = "{}", Description = "Auto-managed map of SG store id → Zephiel per-store API key. Filled automatically when a store is provisioned; you normally never edit this.", SortOrder = 3 },
     };
