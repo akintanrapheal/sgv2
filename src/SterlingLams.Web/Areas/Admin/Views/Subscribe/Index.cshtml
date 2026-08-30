@@ -176,7 +176,7 @@
     @* ── Contact ────────────────────────────────────────────────────────── *@
     <p class="text-xs text-neutral-500 mt-6">
         For more information about the connector or your subscription, contact
-        <a href="mailto:apiship@protonmail.com" class="text-brand-500 underline">apiship@protonmail.com</a>.
+        <a href="mailto:info@zephiel.com" class="text-brand-500 underline">info@zephiel.com</a>.
     </p>
 
     @* ── Configuration (Admin / Developer only — hidden from Owner) ──────── *@
@@ -185,6 +185,48 @@
         bool noticeEnabled = ViewBag.NoticeEnabled ?? true;
         string noticeMessage = ViewBag.NoticeMessage ?? "";
         string noticeDate = DateTime.TryParse(trialEnds, out var _ndt) ? _ndt.ToString("yyyy-MM-dd") : trialEnds;
+        bool zephEnabled = ViewBag.ZephEnabled ?? false;
+        bool zephKeySet = ViewBag.ZephAccountKeySet ?? false;
+        string zephBaseUrl = ViewBag.ZephBaseUrl ?? "https://zephiel-api.vercel.app";
+        string zephApiSlug = ViewBag.ZephApiSlug ?? "multistore";
+
+        <!-- Zephiel connector -->
+        <details class="mt-6 bg-white border border-neutral-200 rounded-sm" open>
+            <summary class="cursor-pointer list-none px-5 py-4 flex items-center justify-between">
+                <span class="text-sm font-semibold text-neutral-800">Zephiel connector</span>
+                <span class="text-xs @(zephEnabled ? "text-emerald-600" : "text-neutral-400")">@(zephEnabled ? "Connected" : "Off")</span>
+            </summary>
+            <form asp-action="SaveZephiel" method="post" class="px-5 pb-4 border-t border-neutral-100 pt-4 space-y-4">
+                @Html.AntiForgeryToken()
+                <label class="flex items-center gap-2 text-sm text-neutral-700">
+                    <input type="checkbox" name="enabled" value="true" @(zephEnabled ? "checked" : "") class="accent-pink-600" />
+                    Enable the Zephiel connector (send per-store calls to Zephiel API)
+                </label>
+                <div>
+                    <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Zephiel account key</label>
+                    <input type="password" name="accountKey" autocomplete="off" placeholder="@(zephKeySet ? "•••••••••• (leave blank to keep)" : "zk_live_…")"
+                           class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white w-full font-mono" />
+                    <p class="text-[11px] text-neutral-400 mt-1">Your account-wide key from Zephiel. Stored encrypted; used to provision each store's key.</p>
+                </div>
+                <div class="grid sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Zephiel base URL</label>
+                        <input type="text" name="baseUrl" value="@zephBaseUrl" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white w-full font-mono" />
+                    </div>
+                    <div>
+                        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">API slug</label>
+                        <input type="text" name="apiSlug" value="@zephApiSlug" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white w-full font-mono" />
+                    </div>
+                </div>
+                <button type="submit" class="px-4 py-2 text-sm bg-neutral-900 text-white rounded-sm hover:bg-neutral-700">Save connector settings</button>
+            </form>
+            <form asp-action="SyncKeys" method="post" class="px-5 pb-5"
+                  onsubmit="return confirm('Provision a matching Zephiel key for every store that doesn\'t have one yet?');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="px-4 py-2 text-sm border border-neutral-300 text-neutral-700 rounded-sm hover:border-neutral-500">Sync store keys with Zephiel</button>
+                <span class="text-[11px] text-neutral-400 ml-2">Makes the API keys above match Zephiel.</span>
+            </form>
+        </details>
 
         <!-- Payment settings -->
         <details class="mt-6 bg-white border border-neutral-200 rounded-sm">
