@@ -329,5 +329,13 @@ public static class SettingsSeedData
         new() { Key = "whatsapp.template.ready_for_pickup", Group = "WhatsApp", Label = "Template SID: Ready for pickup", Type = "text", Value = "", Description = "Twilio Content SID (HX…) of the approved 'ready for pickup' template.", SortOrder = 22 },
         new() { Key = "whatsapp.template.shipped",          Group = "WhatsApp", Label = "Template SID: Shipped",          Type = "text", Value = "", Description = "Twilio Content SID (HX…) of the approved 'shipped' template.", SortOrder = 23 },
         new() { Key = "whatsapp.template.delivered",        Group = "WhatsApp", Label = "Template SID: Delivered",        Type = "text", Value = "", Description = "Twilio Content SID (HX…) of the approved 'delivered' template.", SortOrder = 24 },
+
+        // ─── Zephiel API integration ─────────────────────────────────────────
+        // Reports SG's per-store usage to the Zephiel API dashboard. Fire-and-forget: when off or
+        // unconfigured, nothing leaves SG and nothing breaks. No billing.
+        new() { Key = "zephiel.enabled",     Group = "Zephiel", Label = "Enable Zephiel API",      Type = "boolean", Value = "false", Description = "Master switch. When off, no usage pings are sent to Zephiel (SG is unaffected either way).", SortOrder = 0 },
+        new() { Key = "zephiel.base_url",    Group = "Zephiel", Label = "Zephiel Base URL",        Type = "text",    Value = "https://zephiel-api.vercel.app", Description = "Zephiel API base URL. Leave as the default unless self-hosting.", SortOrder = 1 },
+        new() { Key = "zephiel.account_key", Group = "Zephiel", Label = "Zephiel Account Key",     Type = "secret",  Value = "", Description = "SG's master account key on Zephiel, used to auto-provision a per-store API key. Stored encrypted.", SortOrder = 2 },
+        new() { Key = "zephiel.store_keys",  Group = "Zephiel", Label = "Per-store keys (JSON)",   Type = "secret",  Value = "{}", Description = "Auto-managed map of SG store id → Zephiel per-store API key. Filled automatically when a store is provisioned; you normally never edit this.", SortOrder = 3 },
     };
 }
