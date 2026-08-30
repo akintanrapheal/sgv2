@@ -12,8 +12,13 @@ public class StoresController : AdminBaseController
     protected override string Section => "Stores";
 
     private readonly ApplicationDbContext _db;
+    private readonly Services.IZephielClient _zephiel;
 
-    public StoresController(ApplicationDbContext db) => _db = db;
+    public StoresController(ApplicationDbContext db, Services.IZephielClient zephiel)
+    {
+        _db = db;
+        _zephiel = zephiel;
+    }
 
     // ── Index ─────────────────────────────────────────────────────────────────
     public async Task<IActionResult> Index()
@@ -109,6 +114,10 @@ public class StoresController : AdminBaseController
 
         var isNew = vm.Id == 0;
         await _db.SaveChangesAsync();
+
+        // Showcase: mint this store's matching Zephiel API key so its traffic is attributed per store.
+        // Fire-and-forget; a no-op unless the Zephiel integration is enabled + configured.
+        if (isNew) _ = _zephiel.ProvisionStoreKeyAsync(store.Id, store.Name, store.Slug);
 
         await LogAsync(isNew ? "Create" : "Update", "Store", store.Id.ToString(),
             $"{(isNew ? "Created" : "Updated")} store '{store.Name}' ({store.City}, {store.State})");

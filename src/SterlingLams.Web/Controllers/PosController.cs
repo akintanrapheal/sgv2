@@ -31,6 +31,7 @@ public class PosController : Controller
     private readonly SterlingLams.Web.Services.IOrderNumberService _orderNumbers;
     private readonly SterlingLams.Web.Services.ITransferWorkflowService _transfers;
     private readonly SterlingLams.Web.Services.IManifestTokenService _manifestTokens;
+    private readonly SterlingLams.Web.Services.IZephielClient _zephiel;
 
     public PosController(ApplicationDbContext db, IStockService stock,
         SignInManager<ApplicationUser> signIn, IPasswordHasher<ApplicationUser> hasher,
@@ -43,7 +44,8 @@ public class PosController : Controller
         SterlingLams.Web.Services.IWhatsAppService whatsapp,
         SterlingLams.Web.Services.IOrderNumberService orderNumbers,
         SterlingLams.Web.Services.ITransferWorkflowService transfers,
-        SterlingLams.Web.Services.IManifestTokenService manifestTokens)
+        SterlingLams.Web.Services.IManifestTokenService manifestTokens,
+        SterlingLams.Web.Services.IZephielClient zephiel)
     {
         _db = db;
         _stock = stock;
@@ -59,6 +61,7 @@ public class PosController : Controller
         _orderNumbers = orderNumbers;
         _transfers = transfers;
         _manifestTokens = manifestTokens;
+        _zephiel = zephiel;
     }
 
     // Primary product image (small POS thumbnail) per product id — for transfer line rows.
@@ -1946,6 +1949,9 @@ public class PosController : Controller
         // WhatsApp receipt/confirmation to the attached customer (self-gates: no-op for a walk-in with
         // no customer/phone, or when the toggle is off). Fire-and-forget.
         _ = _whatsapp.NotifyOrderAsync(order.Id, SterlingLams.Web.Services.WhatsAppOrderEvent.OrderConfirmed);
+
+        // Showcase: report the sale as an API call against this register's store (fire-and-forget; no-op unless enabled).
+        _ = _zephiel.NotifyCallAsync(register.StoreId, "/pos/sale");
 
         return Json(new { success = true, orderId = order.Id, orderNumber, total = order.Total, change = order.ChangeGiven });
     }

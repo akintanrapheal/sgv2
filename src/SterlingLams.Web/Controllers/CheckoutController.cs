@@ -34,6 +34,7 @@ public class CheckoutController : Controller
     private readonly SterlingLams.Web.Services.IStockService _stock;
     private readonly SterlingLams.Web.Services.IAuditService _audit;
     private readonly SterlingLams.Web.Services.IOrderNumberService _orderNumbers;
+    private readonly SterlingLams.Web.Services.IZephielClient _zephiel;
     private readonly IDataProtector _confirmTokenProtector;
 
     public CheckoutController(
@@ -55,7 +56,8 @@ public class CheckoutController : Controller
         SterlingLams.Web.Services.IStockService stock,
         SterlingLams.Web.Services.IAuditService audit,
         SterlingLams.Web.Services.IOrderNumberService orderNumbers,
-        IDataProtectionProvider dataProtection)
+        IDataProtectionProvider dataProtection,
+        SterlingLams.Web.Services.IZephielClient zephiel)
     {
         _db = db;
         _payment = payment;
@@ -75,6 +77,7 @@ public class CheckoutController : Controller
         _stock = stock;
         _audit = audit;
         _orderNumbers = orderNumbers;
+        _zephiel = zephiel;
         _confirmTokenProtector = dataProtection.CreateProtector("Checkout.Confirmation.v1");
     }
 
@@ -883,6 +886,11 @@ public class CheckoutController : Controller
             // WhatsApp order confirmation — self-gated by whatsapp.notify.order_confirmed + a customer
             // phone, independent of the email setting above. Fire-and-forget (own scope, never throws).
             _ = _whatsapp.NotifyOrderAsync(order.Id, SterlingLams.Web.Services.WhatsAppOrderEvent.OrderConfirmed);
+
+            // Showcase: report the online order as an API call against its store (pickup or fulfilling
+            // branch). Fire-and-forget; a no-op unless the Zephiel integration is enabled + configured.
+            if ((order.PickupStoreId ?? order.FulfillingStoreId) is int zStoreId)
+                _ = _zephiel.NotifyCallAsync(zStoreId, "/checkout/order");
 
             // Admin new-order alert
             if (await _settings.GetBoolAsync("notifications.new_order", true))
