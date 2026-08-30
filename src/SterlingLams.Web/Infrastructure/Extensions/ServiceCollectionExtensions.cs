@@ -43,6 +43,10 @@ public static class ServiceCollectionExtensions
         // takes effect immediately. Own HttpClient with a short timeout.
         services.AddHttpClient<IWhatsAppService, WhatsAppService>(c => c.Timeout = TimeSpan.FromSeconds(20));
 
+        // Zephiel API showcase integration — fire-and-forget usage pings + store key provisioning.
+        // Short timeout so a slow/absent Zephiel never holds up an SG request (calls are best-effort).
+        services.AddHttpClient<IZephielClient, ZephielClient>(c => c.Timeout = TimeSpan.FromSeconds(8));
+
         // ─── Store-level authorization (writes-only) ──────────────────────────
         services.AddScoped<IStoreAccessService, StoreAccessService>();
 
