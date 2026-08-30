@@ -22,14 +22,24 @@ public class SubscribeController : AdminBaseController
     private readonly ISettingsService _settings;
     private readonly ISettingsSecretProtector _secrets;
     private readonly ISubscriptionPaymentService _pay;
+    private readonly IZephielClient _zephiel;
 
     public SubscribeController(ApplicationDbContext db, ISettingsService settings,
-        ISettingsSecretProtector secrets, ISubscriptionPaymentService pay)
+        ISettingsSecretProtector secrets, ISubscriptionPaymentService pay, IZephielClient zephiel)
     {
         _db = db;
         _settings = settings;
         _secrets = secrets;
         _pay = pay;
+        _zephiel = zephiel;
+    }
+
+    /// <summary>Parses the zephiel.store_keys JSON blob (store id → per-store Zephiel key).</summary>
+    private static Dictionary<string, string> ParseStoreKeys(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new();
+        try { return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? new(); }
+        catch { return new(); }
     }
 
     // Billing/subscription is restricted to the configured OWNER ACCOUNT ONLY (Admin:OwnerEmails —
@@ -88,7 +98,18 @@ public class SubscribeController : AdminBaseController
         ViewBag.CanManage = AdminSections.IsOwner(User); // only the owner account reaches this page, and may configure
         ViewBag.PaystackSecretSet = !string.IsNullOrWhiteSpace(await _settings.GetAsync("subscription.paystack_secret"));
         ViewBag.RateOverride = await _settings.GetAsync("subscription.usd_to_ngn", "");
-        ViewBag.Keys = stores.ToDictionary(s => s.Id, s => FakeKey(s.Id, s.Name));
+        // Show the REAL Zephiel per-store keys so they match Zephiel exactly; fall back to a stable
+        // placeholder for any store not provisioned on Zephiel yet.
+        var zephielKeys = ParseStoreKeys(await _settings.GetAsync("zephiel.store_keys", ""));
+        ViewBag.Keys = stores.ToDictionary(s => s.Id,
+            s => zephielKeys.TryGetValue(s.Id.ToString(), out var zk) && !string.IsNullOrWhiteSpace(zk)
+                ? zk : FakeKey(s.Id, s.Name));
+
+        // Zephiel connector configuration, surfaced on this page.
+        ViewBag.ZephEnabled = await _settings.GetBoolAsync("zephiel.enabled", false);
+        ViewBag.ZephBaseUrl = await _settings.GetAsync("zephiel.base_url", "https://zephiel-api.vercel.app");
+        ViewBag.ZephApiSlug = await _settings.GetAsync("zephiel.api_slug", "multistore");
+        ViewBag.ZephAccountKeySet = !string.IsNullOrWhiteSpace(await _settings.GetAsync("zephiel.account_key", ""));
 
         ViewBag.Subscribed = await _settings.GetBoolAsync("subscription.active", false);
         ViewBag.Plan = await _settings.GetAsync("subscription.plan", "monthly");
@@ -227,6 +248,49 @@ public class SubscribeController : AdminBaseController
         });
         await LogAsync("Update", "Subscription", null, "Cancelled API connector subscription", performedBy: "API System");
         TempData["Success"] = "Subscription cancelled — your stores are back on the trial connector.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // Save the Zephiel connector settings (surfaced here instead of the generic Settings page).
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveZephiel(bool enabled, string? baseUrl, string? apiSlug, string? accountKey)
+    {
+        if (RequireManager() is IActionResult deny) return deny;
+        var updates = new Dictionary<string, string>
+        {
+            ["zephiel.enabled"]  = enabled ? "true" : "false",
+            ["zephiel.base_url"] = string.IsNullOrWhiteSpace(baseUrl) ? "https://zephiel-api.vercel.app" : baseUrl.Trim().TrimEnd('/'),
+            ["zephiel.api_slug"] = string.IsNullOrWhiteSpace(apiSlug) ? "multistore" : apiSlug.Trim(),
+        };
+        // Account key is a secret — encrypt it; blank means keep the existing value.
+        if (!string.IsNullOrWhiteSpace(accountKey))
+            updates["zephiel.account_key"] = _secrets.Protect(accountKey.Trim());
+
+        await _settings.SaveManyAsync(updates);
+        await LogAsync("Update", "Subscription", null, "Updated Zephiel connector settings", performedBy: "API System");
+        TempData["Success"] = "Zephiel connector settings saved.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // Provision (or refresh) a matching Zephiel API key for every store, so the keys shown here match
+    // Zephiel exactly. Idempotent — stores already keyed keep their key.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SyncKeys()
+    {
+        if (RequireManager() is IActionResult deny) return deny;
+        if (!await _zephiel.IsConfiguredAsync())
+        {
+            TempData["Error"] = "Turn the Zephiel connector on and set the account key first, then sync.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
+        int provisioned = 0;
+        foreach (var s in stores)
+            if (await _zephiel.ProvisionStoreKeyAsync(s.Id, s.Name, s.Slug) != null) provisioned++;
+
+        await LogAsync("Update", "Store", "*", $"Synced {provisioned}/{stores.Count} store key(s) to Zephiel", performedBy: "API System");
+        TempData["Success"] = $"Zephiel keys are in place for {provisioned} of {stores.Count} store(s).";
         return RedirectToAction(nameof(Index));
     }
 }
