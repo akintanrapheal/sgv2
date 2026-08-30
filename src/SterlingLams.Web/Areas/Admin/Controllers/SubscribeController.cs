@@ -107,7 +107,7 @@ public class SubscribeController : AdminBaseController
 
         // Zephiel connector configuration, surfaced on this page.
         ViewBag.ZephEnabled = await _settings.GetBoolAsync("zephiel.enabled", false);
-        ViewBag.ZephBaseUrl = await _settings.GetAsync("zephiel.base_url", "https://zephiel-api.vercel.app");
+        ViewBag.ZephBaseUrl = await _settings.GetAsync("zephiel.base_url", "https://www.zephiel.com");
         ViewBag.ZephApiSlug = await _settings.GetAsync("zephiel.api_slug", "multistore");
         ViewBag.ZephAccountKeySet = !string.IsNullOrWhiteSpace(await _settings.GetAsync("zephiel.account_key", ""));
 
@@ -259,7 +259,7 @@ public class SubscribeController : AdminBaseController
         var updates = new Dictionary<string, string>
         {
             ["zephiel.enabled"]  = enabled ? "true" : "false",
-            ["zephiel.base_url"] = string.IsNullOrWhiteSpace(baseUrl) ? "https://zephiel-api.vercel.app" : baseUrl.Trim().TrimEnd('/'),
+            ["zephiel.base_url"] = string.IsNullOrWhiteSpace(baseUrl) ? "https://www.zephiel.com" : baseUrl.Trim().TrimEnd('/'),
             ["zephiel.api_slug"] = string.IsNullOrWhiteSpace(apiSlug) ? "multistore" : apiSlug.Trim(),
         };
         // Account key is a secret — encrypt it; blank means keep the existing value.
