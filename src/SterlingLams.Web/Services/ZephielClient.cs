@@ -114,6 +114,12 @@ public class ZephielClient : IZephielClient
         {
             if (!await IsConfiguredAsync()) return null;
 
+            // Idempotent: if this store already has a key, keep it (don't mint duplicates). Lets the
+            // create-hook and the "Sync stores" backfill run safely any number of times.
+            var have = await StoreKeysAsync();
+            if (have.TryGetValue(storeId.ToString(), out var existing) && !string.IsNullOrWhiteSpace(existing))
+                return existing;
+
             var accountKey = await Get("zephiel.account_key", "Zephiel:AccountKey");
             var body = JsonSerializer.Serialize(new { storeId, name = storeName, domain = domain ?? "" });
             using var req = new HttpRequestMessage(HttpMethod.Post, $"{await BaseUrlAsync()}/api/integrations/provision-store");
