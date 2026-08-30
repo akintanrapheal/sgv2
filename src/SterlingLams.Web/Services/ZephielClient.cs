@@ -33,7 +33,7 @@ public interface IZephielClient
 
 public class ZephielClient : IZephielClient
 {
-    private const string DefaultBaseUrl = "https://zephiel-api.vercel.app";
+    private const string DefaultBaseUrl = "https://www.zephiel.com";
 
     private readonly HttpClient _http;
     private readonly ISettingsService _settings;

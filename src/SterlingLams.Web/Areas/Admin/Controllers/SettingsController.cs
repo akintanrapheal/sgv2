@@ -50,7 +50,7 @@ public class SettingsController : AdminBaseController
         var all = (await _settings.GetAllAsync())
             .Where(s => s.Group != "POS / Pos" && s.Group != "Emails"
                      && s.Group != "Payments" && s.Group != "SMTP" && s.Group != "Billing"
-                     && s.Group != "WhatsApp").ToList();
+                     && s.Group != "WhatsApp" && s.Group != "Zephiel").ToList();
         // Granular: a role may be granted only specific settings groups. null = all groups.
         var allowedGroups = await _perms.GetAllowedSettingsGroupsAsync(User);
         if (allowedGroups != null)
