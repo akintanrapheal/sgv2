@@ -146,28 +146,6 @@ public class StoresController : AdminBaseController
         return RedirectToAction(nameof(Index));
     }
 
-    // ── Sync stores to Zephiel (one-click backfill) ───────────────────────────
-    // Provisions a matching Zephiel per-store API key for every store that doesn't have one yet.
-    // Idempotent (stores already keyed are skipped) and fire-and-forget-safe (never throws).
-    [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> SyncZephiel()
-    {
-        if (!await _zephiel.IsConfiguredAsync())
-        {
-            TempData["Error"] = "Enable and configure Zephiel first (Admin → Settings → Zephiel: set the account key and switch it on).";
-            return RedirectToAction(nameof(Index));
-        }
-
-        var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
-        int provisioned = 0;
-        foreach (var s in stores)
-            if (await _zephiel.ProvisionStoreKeyAsync(s.Id, s.Name, s.Slug) != null) provisioned++;
-
-        await LogAsync("Update", "Store", "*", $"Synced {provisioned}/{stores.Count} store(s) to Zephiel");
-        TempData["Success"] = $"Zephiel keys are in place for {provisioned} of {stores.Count} store(s).";
-        return RedirectToAction(nameof(Index));
-    }
-
     // ── Delete ────────────────────────────────────────────────────────────────
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete(int id)

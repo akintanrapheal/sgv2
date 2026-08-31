@@ -8,20 +8,10 @@
     <p class="text-xs text-neutral-400">
         @Model.Count() store@(Model.Count() == 1 ? "" : "s") · @Model.Count(s => s.IsActive) active
     </p>
-    <div class="flex items-center gap-2">
-        <form asp-area="Admin" asp-controller="Stores" asp-action="SyncZephiel" method="post"
-              onsubmit="return confirm('Provision a Zephiel API key for every store that doesn\'t have one yet?');">
-            @Html.AntiForgeryToken()
-            <button type="submit"
-                    class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:border-neutral-500 transition-colors">
-                Sync to Zephiel
-            </button>
-        </form>
-        <a asp-area="Admin" asp-controller="Stores" asp-action="Create"
-           class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
-            + New Store
-        </a>
-    </div>
+    <a asp-area="Admin" asp-controller="Stores" asp-action="Create"
+       class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
+        + New Store
+    </a>
 </div>
 
 @if (!Model.Any())
