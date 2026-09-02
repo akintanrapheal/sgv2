@@ -45,7 +45,11 @@ public static class ServiceCollectionExtensions
 
         // Zephiel API showcase integration — fire-and-forget usage pings + store key provisioning.
         // Short timeout so a slow/absent Zephiel never holds up an SG request (calls are best-effort).
-        services.AddHttpClient<IZephielClient, ZephielClient>(c => c.Timeout = TimeSpan.FromSeconds(8));
+        // 30s (not 8s): provisioning is a WRITE to a serverless backend (Vercel + Postgres) whose cold
+        // start can exceed 8s — an 8s cap silently failed some stores during a bulk reconnect. The
+        // per-order/POS pings are fire-and-forget (never awaited on the request path), so a longer cap
+        // can't slow checkout; it only gives the awaited provision/usage calls room to finish.
+        services.AddHttpClient<IZephielClient, ZephielClient>(c => c.Timeout = TimeSpan.FromSeconds(30));
 
         // ─── Store-level authorization (writes-only) ──────────────────────────
         services.AddScoped<IStoreAccessService, StoreAccessService>();
