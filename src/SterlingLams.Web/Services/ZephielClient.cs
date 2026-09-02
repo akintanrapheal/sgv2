@@ -168,7 +168,7 @@ public class ZephielClient : IZephielClient
                     if (resp.IsSuccessStatusCode) { payload = await resp.Content.ReadAsStringAsync(ct); break; }
                     if (attempt >= 2 || (int)resp.StatusCode < 500)
                     {
-                        _log.LogWarning("Zephiel provision-store failed for '{Store}': {Status}", storeName, (int)resp.StatusCode);
+                        _log.LogWarning("Zephiel provision-store failed for store {StoreId}: {Status}", storeId, (int)resp.StatusCode);
                         return null;
                     }
                 }
@@ -190,7 +190,7 @@ public class ZephielClient : IZephielClient
         }
         catch (Exception ex)
         {
-            _log.LogWarning(ex, "Zephiel provision-store threw for '{Store}'", storeName);
+            _log.LogWarning(ex, "Zephiel provision-store threw for store {StoreId}", storeId);
             return null;
         }
     }
