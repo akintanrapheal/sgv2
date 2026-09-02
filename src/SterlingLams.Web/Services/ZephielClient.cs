@@ -151,18 +151,32 @@ public class ZephielClient : IZephielClient
 
             var accountKey = await Get("zephiel.account_key", "Zephiel:AccountKey");
             var body = JsonSerializer.Serialize(new { storeId, name = storeName, domain = domain ?? "" });
-            using var req = new HttpRequestMessage(HttpMethod.Post, $"{await BaseUrlAsync()}/api/integrations/provision-store");
-            req.Headers.Add("x-account-key", accountKey);
-            req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+            var url = $"{await BaseUrlAsync()}/api/integrations/provision-store";
 
-            using var resp = await _http.SendAsync(req, ct);
-            if (!resp.IsSuccessStatusCode)
+            // Provisioning is an awaited write to a serverless backend; a cold start can be slow or blip.
+            // Try up to twice (a fresh request each time). Don't retry a 4xx — that's deterministic (bad
+            // account key / no subscription); only retry a transient exception or a 5xx.
+            string? payload = null;
+            for (var attempt = 1; attempt <= 2 && payload == null; attempt++)
             {
-                _log.LogWarning("Zephiel provision-store failed for '{Store}': {Status}", storeName, (int)resp.StatusCode);
-                return null;
+                try
+                {
+                    using var req = new HttpRequestMessage(HttpMethod.Post, url);
+                    req.Headers.Add("x-account-key", accountKey);
+                    req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+                    using var resp = await _http.SendAsync(req, ct);
+                    if (resp.IsSuccessStatusCode) { payload = await resp.Content.ReadAsStringAsync(ct); break; }
+                    if (attempt >= 2 || (int)resp.StatusCode < 500)
+                    {
+                        _log.LogWarning("Zephiel provision-store failed for '{Store}': {Status}", storeName, (int)resp.StatusCode);
+                        return null;
+                    }
+                }
+                catch (Exception) when (attempt < 2) { /* transient — fall through and retry once */ }
+                await Task.Delay(1000, ct);
             }
+            if (payload == null) return null;
 
-            var payload = await resp.Content.ReadAsStringAsync(ct);
             using var doc = JsonDocument.Parse(payload);
             if (!doc.RootElement.TryGetProperty("apiKey", out var k)) return null;
             var apiKey = k.GetString();
