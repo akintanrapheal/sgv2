@@ -129,6 +129,36 @@
         </table>
     </div>
 
+    @* ── Live API usage (from Zephiel) ──────────────────────────────────── *@
+    <div class="bg-white border border-neutral-200 rounded-sm p-5 mb-6" id="zeph-usage-card">
+        <div class="flex items-center justify-between mb-1">
+            <h2 class="text-sm font-semibold text-neutral-800">Live API usage</h2>
+            <span class="text-[11px] text-neutral-400" id="zeph-usage-updated">updates every 30s</span>
+        </div>
+        <p class="text-xs text-neutral-500 mb-4">Multistore API calls across your stores over the last 30 days — live from Zephiel.</p>
+
+        <div id="zeph-usage-empty" class="text-sm text-neutral-400 py-8 text-center">Loading usage…</div>
+
+        <div id="zeph-usage-body" class="hidden">
+            @* Quota meter *@
+            <div class="mb-5">
+                <div class="flex items-center justify-between text-xs text-neutral-500 mb-1">
+                    <span>Monthly quota used</span>
+                    <span id="zeph-quota-text" class="font-medium text-neutral-700">—</span>
+                </div>
+                <div class="h-2 bg-neutral-100 rounded-full overflow-hidden">
+                    <div id="zeph-quota-bar" class="h-2 bg-brand-500 rounded-full transition-all duration-500" style="width:0%"></div>
+                </div>
+            </div>
+            @* Calls per day (line) *@
+            <div class="text-[11px] text-neutral-400 uppercase tracking-widest mb-1">Calls per day</div>
+            <div id="zeph-line-wrap" class="mb-5"></div>
+            @* Calls by store (bars) *@
+            <div class="text-[11px] text-neutral-400 uppercase tracking-widest mb-1">Calls by store</div>
+            <div id="zeph-bars-wrap"></div>
+        </div>
+    </div>
+
     @* ── Plan + Paystack checkout ───────────────────────────────────────── *@
     @if (stores.Any() && !activeNow)
     {
@@ -225,6 +255,12 @@
                 @Html.AntiForgeryToken()
                 <button type="submit" class="px-4 py-2 text-sm border border-neutral-300 text-neutral-700 rounded-sm hover:border-neutral-500">Sync store keys with Zephiel</button>
                 <span class="text-[11px] text-neutral-400 ml-2">Makes the API keys above match Zephiel.</span>
+            </form>
+            <form asp-action="ReconnectStores" method="post" class="px-5 pb-5 -mt-3"
+                  onsubmit="return confirm('Rebuild ALL store keys under your current Zephiel subscription? This overwrites the existing keys — use if the usage chart shows nothing because your subscription changed.');">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="px-4 py-2 text-sm border border-amber-300 text-amber-700 rounded-sm hover:border-amber-500">Reconnect (rebuild keys)</button>
+                <span class="text-[11px] text-neutral-400 ml-2">Re-links every store to the current subscription. Use if usage isn't recording on the chart.</span>
             </form>
         </details>
 
@@ -327,6 +363,60 @@
     document.querySelectorAll('input[name="plan"]').forEach(function (r) {
         r.addEventListener('change', function () { set(r.value); });
     });
+})();
+</script>
+
+@* Live usage chart — polls the Zephiel usage feed every 30s and redraws with the shared SVG charts. *@
+<partial name="_ChartScripts" />
+<script>
+(function () {
+    var USAGE_URL = '@Url.Action("ZephielUsage", "Subscribe", new { area = "Admin" })';
+    var card = document.getElementById('zeph-usage-card');
+    if (!card || typeof SLCharts === 'undefined') return;
+    var body = document.getElementById('zeph-usage-body'),
+        empty = document.getElementById('zeph-usage-empty'),
+        updated = document.getElementById('zeph-usage-updated');
+
+    function render(d) {
+        if (!d || d.ok === false || !d.series) {
+            body.classList.add('hidden');
+            empty.classList.remove('hidden');
+            empty.textContent = 'No usage yet — enable the connector and add your account key below.';
+            return;
+        }
+        empty.classList.add('hidden');
+        body.classList.remove('hidden');
+
+        var used = (d.quota && d.quota.used) || 0, limit = (d.quota && d.quota.limit) || 0;
+        var pct = limit > 0 ? Math.min(100, Math.round(used / limit * 100)) : 0;
+        document.getElementById('zeph-quota-bar').style.width = pct + '%';
+        document.getElementById('zeph-quota-text').textContent =
+            used.toLocaleString() + ' / ' + limit.toLocaleString() + ' calls (' + pct + '%)';
+
+        // Re-create the chart hosts each poll (SLCharts replaces the target element on render).
+        var lineWrap = document.getElementById('zeph-line-wrap');
+        lineWrap.innerHTML = '<div id="zeph-line"></div>';
+        SLCharts.line('zeph-line',
+            d.series.map(function (p) { return p.day.slice(5); }),
+            [{ label: 'Calls', data: d.series.map(function (p) { return p.count; }) }]);
+
+        var barsWrap = document.getElementById('zeph-bars-wrap');
+        barsWrap.innerHTML = '<div id="zeph-bars"></div>';
+        SLCharts.hbar('zeph-bars',
+            (d.perStore || []).map(function (s) { return String(s.store).replace('Sterlin Glams ', ''); }),
+            (d.perStore || []).map(function (s) { return s.count; }), {});
+
+        updated.textContent = 'updated ' + new Date().toLocaleTimeString();
+    }
+
+    function poll() {
+        fetch(USAGE_URL, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(render)
+            .catch(function () { /* transient — keep the last render */ });
+    }
+    poll();
+    setInterval(poll, 30000);
 })();
 </script>
 }

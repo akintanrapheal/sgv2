@@ -25,10 +25,15 @@ public interface IZephielClient
 
     /// <summary>Ensures the store exists on Zephiel and returns its per-store API key, persisting it to
     /// settings so both systems share the same key. Returns null when unconfigured/unavailable. Never throws.</summary>
-    Task<string?> ProvisionStoreKeyAsync(int storeId, string storeName, string? domain = null, CancellationToken ct = default);
+    Task<string?> ProvisionStoreKeyAsync(int storeId, string storeName, string? domain = null, bool force = false, CancellationToken ct = default);
 
     /// <summary>True when the integration is switched on and the account key is present.</summary>
     Task<bool> IsConfiguredAsync();
+
+    /// <summary>Fetches the account's usage summary from Zephiel — a 30-day daily call series, per-store
+    /// totals, and { used, limit } quota — as raw JSON for the live usage chart. Returns null when the
+    /// integration is off/unconfigured or Zephiel is unavailable. Never throws.</summary>
+    Task<string?> GetUsageAsync(CancellationToken ct = default);
 }
 
 public class ZephielClient : IZephielClient
@@ -67,6 +72,25 @@ public class ZephielClient : IZephielClient
     {
         if (!await _settings.GetBoolAsync("zephiel.enabled", false)) return false;
         return (await Get("zephiel.account_key", "Zephiel:AccountKey")).Length > 0;
+    }
+
+    public async Task<string?> GetUsageAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            if (!await IsConfiguredAsync()) return null;
+            var accountKey = await Get("zephiel.account_key", "Zephiel:AccountKey");
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"{await BaseUrlAsync()}/api/integrations/usage");
+            req.Headers.Add("x-account-key", accountKey);
+            using var resp = await _http.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode) return null;
+            return await resp.Content.ReadAsStringAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _log.LogDebug(ex, "Zephiel usage fetch skipped");
+            return null;
+        }
     }
 
     // Per-store keys live in one JSON settings blob so no per-store DB column/migration is needed and
@@ -108,17 +132,22 @@ public class ZephielClient : IZephielClient
         }
     }
 
-    public async Task<string?> ProvisionStoreKeyAsync(int storeId, string storeName, string? domain = null, CancellationToken ct = default)
+    public async Task<string?> ProvisionStoreKeyAsync(int storeId, string storeName, string? domain = null, bool force = false, CancellationToken ct = default)
     {
         try
         {
             if (!await IsConfiguredAsync()) return null;
 
-            // Idempotent: if this store already has a key, keep it (don't mint duplicates). Lets the
-            // create-hook and the "Sync stores" backfill run safely any number of times.
-            var have = await StoreKeysAsync();
-            if (have.TryGetValue(storeId.ToString(), out var existing) && !string.IsNullOrWhiteSpace(existing))
-                return existing;
+            // Idempotent by default: if this store already has a key, keep it (don't mint duplicates) —
+            // lets the create-hook and "Sync stores" backfill run safely any number of times. Pass
+            // force:true to re-provision under the CURRENT active subscription and overwrite the key
+            // (used by "Reconnect stores" when the account's active subscription has changed).
+            if (!force)
+            {
+                var have = await StoreKeysAsync();
+                if (have.TryGetValue(storeId.ToString(), out var existing) && !string.IsNullOrWhiteSpace(existing))
+                    return existing;
+            }
 
             var accountKey = await Get("zephiel.account_key", "Zephiel:AccountKey");
             var body = JsonSerializer.Serialize(new { storeId, name = storeName, domain = domain ?? "" });
