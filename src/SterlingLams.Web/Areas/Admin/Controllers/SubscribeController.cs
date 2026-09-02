@@ -120,6 +120,18 @@ public class SubscribeController : AdminBaseController
         return View();
     }
 
+    /// <summary>Live usage feed for the Subscribe-page chart (polled ~30s by the browser). Proxies
+    /// Zephiel's usage summary (30-day series, per-store, quota); returns { ok:false } when the connector
+    /// is off/unconfigured or Zephiel is unavailable, so the chart degrades quietly. Owner-only via the
+    /// controller filter above.</summary>
+    [HttpGet]
+    public async Task<IActionResult> ZephielUsage()
+    {
+        var json = await _zephiel.GetUsageAsync();
+        if (string.IsNullOrWhiteSpace(json)) return Json(new { ok = false });
+        return Content(json, "application/json");
+    }
+
     // Start a real Paystack payment for the subscription, then redirect the admin to Paystack.
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Pay(string plan)
@@ -291,6 +303,29 @@ public class SubscribeController : AdminBaseController
 
         await LogAsync("Update", "Store", "*", $"Synced {provisioned}/{stores.Count} store key(s) to Zephiel", performedBy: "API System");
         TempData["Success"] = $"Zephiel keys are in place for {provisioned} of {stores.Count} store(s).";
+        return RedirectToAction(nameof(Index));
+    }
+
+    // Force-rebuild every store's key under the CURRENT active Zephiel subscription, overwriting any
+    // existing keys. Use when the account's active subscription changed and the stores need re-linking
+    // so their traffic (and the live usage chart) lands on the right subscription.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ReconnectStores()
+    {
+        if (RequireManager() is IActionResult deny) return deny;
+        if (!await _zephiel.IsConfiguredAsync())
+        {
+            TempData["Error"] = "Turn the Zephiel connector on and set the account key first, then reconnect.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
+        int provisioned = 0;
+        foreach (var s in stores)
+            if (await _zephiel.ProvisionStoreKeyAsync(s.Id, s.Name, s.Slug, force: true) != null) provisioned++;
+
+        await LogAsync("Update", "Store", "*", $"Reconnected {provisioned}/{stores.Count} store(s) to Zephiel with fresh keys", performedBy: "API System");
+        TempData["Success"] = $"Reconnected {provisioned} of {stores.Count} store(s) to Zephiel with fresh keys under the current subscription.";
         return RedirectToAction(nameof(Index));
     }
 }
