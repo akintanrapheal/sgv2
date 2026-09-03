@@ -79,8 +79,8 @@ public abstract class InventoryAreaController : Controller
         // Full admins and the legacy Inventory role always have full (manage) access.
         var canManage = SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User)
                         || User.IsInRole("Inventory")
-                        || await perms.CanManageAsync(User, "Inventory");
-        var canView = canManage || await perms.CanAccessAsync(User, "Inventory");
+                        || await Infrastructure.DbRead.RetryAsync(() => perms.CanManageAsync(User, "Inventory"));
+        var canView = canManage || await Infrastructure.DbRead.RetryAsync(() => perms.CanAccessAsync(User, "Inventory"));
         if (!canView)
         {
             context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
@@ -97,15 +97,17 @@ public abstract class InventoryAreaController : Controller
         }
         ViewData["CanManageInventory"] = canManage;
 
+        // Nav-badge counts — wrapped in the transient read-retry so a brief Render-DB connection blip
+        // on this every-request filter degrades to a retry instead of 500-ing the whole Inventory area.
         var db = HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
-        ViewData["PendingTransfersCount"] = await db.StockTransfers.CountAsync(
-            t => t.Status == TransferStatus.PendingApproval || t.Status == TransferStatus.InTransit);
+        ViewData["PendingTransfersCount"] = await Infrastructure.DbRead.RetryAsync(() => db.StockTransfers.CountAsync(
+            t => t.Status == TransferStatus.PendingApproval || t.Status == TransferStatus.InTransit));
         // Approved refunds whose returned items still need a restock / write-off decision (Step 2).
-        ViewData["PendingReturnsCount"] = await db.Refunds.CountAsync(
+        ViewData["PendingReturnsCount"] = await Infrastructure.DbRead.RetryAsync(() => db.Refunds.CountAsync(
             r => r.Status == RefundStatus.Approved && r.RestockRequested
-                && r.Items.Any(i => i.RestockDecision == RestockDecision.Pending));
+                && r.Items.Any(i => i.RestockDecision == RestockDecision.Pending)));
         // Items whose price changed and whose tag needs reprinting.
-        ViewData["PendingReprintsCount"] = await db.LabelReprintQueue.CountAsync(q => q.Status == ReprintStatus.Pending);
+        ViewData["PendingReprintsCount"] = await Infrastructure.DbRead.RetryAsync(() => db.LabelReprintQueue.CountAsync(q => q.Status == ReprintStatus.Pending));
 
         await next();
     }
