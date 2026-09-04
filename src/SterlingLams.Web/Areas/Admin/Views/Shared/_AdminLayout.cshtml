@@ -29,7 +29,8 @@
 
         <!-- Logo -->
         <div class="px-6 py-6 border-b border-neutral-800">
-            <span class="font-cormorant text-xl font-light tracking-[0.2em] uppercase">Sterlin Glams</span>
+            @{ ViewData["BrandImgClass"] = "h-9 w-auto"; ViewData["BrandTextClass"] = "font-cormorant text-xl font-light tracking-[0.2em] uppercase text-white"; }
+            <partial name="_StaffBrand" />
             <p class="text-[10px] text-neutral-500 tracking-widest uppercase mt-0.5">Admin Console</p>
         </div>
 
