@@ -32,8 +32,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         {
             var perms = HttpContext.RequestServices.GetRequiredService<IPermissionService>();
 
-            // Expose allowed sections to the shared layout (sidebar)
-            var allowed = await perms.GetAllowedSectionsAsync(User);
+            // Expose allowed sections to the shared layout (sidebar). Wrapped in the transient
+            // read-retry: this filter runs on every admin request, so a brief Render-DB connection
+            // blip here would otherwise 500 the whole back office instead of retrying.
+            var allowed = await Infrastructure.DbRead.RetryAsync(() => perms.GetAllowedSectionsAsync(User));
             ViewData["AllowedSections"] = allowed;
             // "Full admin" in the admin area now means the SUPER ADMIN (owner): only they see every
             // section + the owner-only screens. Every other role — Admin included — is shown only what
@@ -72,8 +74,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 var method = context.HttpContext.Request.Method;
                 var isWrite = method == "POST" || method == "PUT" || method == "DELETE" || method == "PATCH";
                 var ok = isWrite && EnforceManageOnWrite
-                    ? await perms.CanManageAsync(User, section)   // write needs manage
-                    : await perms.CanAccessAsync(User, section);  // read needs view
+                    ? await Infrastructure.DbRead.RetryAsync(() => perms.CanManageAsync(User, section))   // write needs manage
+                    : await Infrastructure.DbRead.RetryAsync(() => perms.CanAccessAsync(User, section));  // read needs view
                 if (!ok)
                 {
                     context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
