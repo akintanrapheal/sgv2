@@ -1,0 +1,26 @@
+@inject SterlingLams.Web.Services.ISettingsService Settings
+@*
+    Shared staff/back-office brand mark: the configured logo image, falling back to the site logo,
+    then to the "Sterlin Glams" wordmark — so it never shows a broken image. Used by the staff
+    sign-in page and the Admin / Inventory / Marketing sidebars.
+    Callers set ViewData["BrandImgClass"] (img sizing) and ViewData["BrandTextClass"] (wordmark
+    styling) to match each layout; sensible defaults are used otherwise.
+*@
+@{
+    var brandLogo = await Settings.GetAsync("general.backend_logo_url", "");
+    if (string.IsNullOrWhiteSpace(brandLogo)) brandLogo = await Settings.GetAsync("general.logo_url", "");
+    var brandImgClass = ViewData["BrandImgClass"] as string ?? "h-9 w-auto";
+    var brandTextClass = ViewData["BrandTextClass"] as string
+        ?? "font-cormorant text-xl font-light tracking-[0.2em] uppercase text-white";
+}
+@if (!string.IsNullOrWhiteSpace(brandLogo))
+{
+    @* A broken/unset logo URL hides the image and reveals the text wordmark instead of a broken glyph. *@
+    <img src="@SterlingLams.Web.Infrastructure.Img.Cld(brandLogo, 480)" alt="Sterlin Glams" class="@brandImgClass"
+         onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />
+    <span class="@brandTextClass" style="display:none">Sterlin Glams</span>
+}
+else
+{
+    <span class="@brandTextClass">Sterlin Glams</span>
+}
