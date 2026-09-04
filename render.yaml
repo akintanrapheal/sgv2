@@ -1,14 +1,16 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  Render Blueprint — Sterlin Glams platform. Developed by Dev Rapheal.
-#  PRE-LAUNCH cost-saver: web on Starter (always-on, no spin-down, 512 MB), DB on Basic-256mb.
-#  Both are PAID (no free-tier spin-down / retention risk). BEFORE LAUNCH, bump both back up —
-#  web to Pro (more RAM for load) and DB to Pro-4gb (daily backups + point-in-time recovery).
+#  PRE-LAUNCH: web on Starter (always-on, no spin-down, 512 MB), DB on Basic-1gb (0.5 CPU / 1 GB).
+#  DB bumped 256mb -> 1gb 2026-09: the 256 MB tier's low connection ceiling caused intermittent
+#  "connection refused" transient failures under load. Both are PAID (no free-tier spin-down /
+#  retention risk). BEFORE LAUNCH, bump both again — web to Pro (more RAM for load) and DB to a
+#  Pro tier (for daily backups + point-in-time recovery).
 #  These plan values MUST match the Render dashboard or a blueprint sync will change them.
 #  Wired together automatically. Deploy: Render Dashboard -> New -> Blueprint -> pick this repo.
 # ─────────────────────────────────────────────────────────────────────────────
 databases:
   - name: sterlinglams-db
-    plan: basic-256mb
+    plan: basic-1gb
     databaseName: sterlinglams
     user: sterlinglams
     region: oregon
