@@ -1,7 +1,7 @@
 @model SterlingLams.Web.Controllers.PosController.ZreportVm
 @{
     bool interim = ViewBag.Interim ?? false;
-    ViewData["Title"] = interim ? "X-Report" : "Z-Report";
+    ViewData["Title"] = interim ? "X-Report" : "End of Day Report";
     var s = Model.Session;
     var counted = s.CountedCash ?? 0;
     var variance = counted - Model.ExpectedCash;
@@ -11,7 +11,9 @@
     <div class="w-full max-w-md">
         <div id="zreport" class="bg-white rounded-xl border border-neutral-200 p-6">
             <div class="text-center mb-5">
-                <h1 class="font-cormorant text-2xl font-light text-neutral-900">@(interim ? "X-Report" : "Z-Report")</h1>
+                @{ ViewData["BrandImgClass"] = "h-16 w-auto mx-auto mb-3"; ViewData["BrandTextClass"] = "block font-cormorant text-xl font-light tracking-[0.2em] uppercase text-neutral-900 mb-2"; }
+                <partial name="_StaffBrand" />
+                <h1 class="font-cormorant text-2xl font-light text-neutral-900">@(interim ? "X-Report" : "End of Day Report")</h1>
                 <p class="text-xs text-neutral-400">@s.Register?.Name · @s.Register?.Store?.Name</p>
                 @if (interim)
                 {
