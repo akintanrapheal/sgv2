@@ -504,6 +504,17 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 
     try
     {
+        // The DB can be briefly unreachable at boot — a plan resize / restart / transient blip makes
+        // Render's Postgres refuse connections for a minute or two. Wait for it (with backoff) instead
+        // of crash-looping the whole app on the very first query; ~90s covers a routine restart. A
+        // longer outage still falls through to the fail-fast below (and Render restarts the instance).
+        for (var attempt = 1; attempt <= 15; attempt++)
+        {
+            if (await db.Database.CanConnectAsync()) break;
+            logger.LogWarning("Database not reachable yet (attempt {Attempt}/15) — waiting 6s before retrying…", attempt);
+            await Task.Delay(TimeSpan.FromSeconds(6));
+        }
+
         // In Production: expect migrations to have been run before deploy.
         // In Development: use EnsureCreated so the app works without `dotnet ef` installed.
         if (app.Environment.IsDevelopment())
