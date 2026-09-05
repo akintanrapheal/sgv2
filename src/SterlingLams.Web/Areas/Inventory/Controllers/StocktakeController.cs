@@ -325,7 +325,7 @@ public class StocktakeController : InventoryAreaController
     // Stock Takes history — date range + location filter + barcode/ref search.
     public async Task<IActionResult> History(DateTime? from, DateTime? to, int? storeId, string? q, int page = 1, string? format = null)
     {
-        ViewData["Title"] = "Stock Takes";
+        ViewData["Title"] = "Stock Take History";
         ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
 
         // Lagos days, like every other dated screen — see Services/ReportCalendar.

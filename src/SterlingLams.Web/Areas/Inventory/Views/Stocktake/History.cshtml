@@ -1,6 +1,6 @@
 @model List<SterlingLams.Web.Models.Domain.StockTake>
 @{
-    ViewData["Title"] = "Stock Takes";
+    ViewData["Title"] = "Stock Take History";
     var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
     DateTime from = ViewBag.From; DateTime to = ViewBag.To;
     int? storeId = ViewBag.StoreId; string q = ViewBag.Q ?? "";
@@ -15,7 +15,7 @@
 }
 
 <div class="flex items-start justify-between gap-3 mb-5 flex-wrap">
-    <h1 class="text-2xl font-semibold text-neutral-900">Stock Takes</h1>
+    <h1 class="text-2xl font-semibold text-neutral-900">Stock Take History</h1>
     <div class="flex items-center gap-2">
         <a asp-area="Inventory" asp-controller="Stocktake" asp-action="History" asp-all-route-data="@(new Dictionary<string,string>(rd(1)){ ["format"]="csv" })"
            class="px-4 py-2 border border-neutral-200 text-neutral-700 text-xs rounded-md hover:border-neutral-400">Export CSV</a>
