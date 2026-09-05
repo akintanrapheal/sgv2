@@ -162,4 +162,8 @@ public class ResetPasswordViewModel
     [Compare("NewPassword", ErrorMessage = "Passwords do not match")]
     [Display(Name = "Confirm new password")]
     public string ConfirmPassword { get; set; } = string.Empty;
+
+    // True when the reset was initiated from a staff sign-in — keeps the whole recovery flow in the
+    // back-office layout (dark, logo) instead of dropping to the storefront chrome.
+    public bool Staff { get; set; }
 }

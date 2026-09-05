@@ -719,13 +719,18 @@ public class AccountController : Controller
     // ─── Forgot Password ─────────────────────────────────────────────────────
 
     [HttpGet]
-    public IActionResult ForgotPassword() => View();
+    public IActionResult ForgotPassword(string? returnUrl = null)
+    {
+        ViewData["ReturnUrl"] = returnUrl;
+        return View();
+    }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("auth")]
-    public async Task<IActionResult> ForgotPassword(string email)
+    public async Task<IActionResult> ForgotPassword(string email, string? returnUrl = null)
     {
+        ViewData["ReturnUrl"] = returnUrl;
         if (string.IsNullOrWhiteSpace(email))
         {
             ModelState.AddModelError("", "Please enter your email address.");
@@ -737,9 +742,12 @@ public class AccountController : Controller
         // Always show the confirmation view — don't reveal whether email exists
         if (user != null)
         {
+            // Staff accounts get a reset page in the back-office layout (not the storefront chrome).
+            var isStaff = (await _userManager.GetRolesAsync(user))
+                .Intersect(new[] { "Admin", "Operations", "Sales", "Inventory", "Social Media" }).Any();
             var token = await _userManager.GeneratePasswordResetTokenAsync(user);
             var resetLink = Url.Action(nameof(ResetPassword), "Account",
-                new { token, email = user.Email }, protocol: Request.Scheme)!;
+                new { token, email = user.Email, staff = isStaff ? "true" : null }, protocol: Request.Scheme)!;
             _logger.LogInformation("Password reset requested for {Email}.", SterlingLams.Web.Infrastructure.LogRedact.Email(email));
 
             var subject = await _settings.GetAsync("email.password_reset.subject", "Reset your password");
@@ -755,41 +763,47 @@ public class AccountController : Controller
         }
 
         TempData["ForgotPasswordSent"] = true;
-        return RedirectToAction(nameof(ForgotPasswordConfirmation));
+        return RedirectToAction(nameof(ForgotPasswordConfirmation), new { returnUrl });
     }
 
     [HttpGet]
-    public IActionResult ForgotPasswordConfirmation() => View();
+    public IActionResult ForgotPasswordConfirmation(string? returnUrl = null)
+    {
+        ViewData["ReturnUrl"] = returnUrl;
+        return View();
+    }
 
     // ─── Reset Password ──────────────────────────────────────────────────────
 
     [HttpGet]
-    public IActionResult ResetPassword(string? token, string? email)
+    public IActionResult ResetPassword(string? token, string? email, bool staff = false)
     {
         if (token == null || email == null)
             return RedirectToAction(nameof(Login));
 
-        return View(new ResetPasswordViewModel { Token = token, Email = email });
+        ViewData["Staff"] = staff;
+        return View(new ResetPasswordViewModel { Token = token, Email = email, Staff = staff });
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ResetPassword(ResetPasswordViewModel model)
     {
+        ViewData["Staff"] = model.Staff;
         if (!ModelState.IsValid) return View(model);
 
         var user = await _userManager.FindByEmailAsync(model.Email);
         if (user == null)
         {
             // Don't reveal user existence — show success anyway
-            return RedirectToAction(nameof(ResetPasswordConfirmation));
+            return RedirectToAction(nameof(ResetPasswordConfirmation), new { staff = model.Staff });
         }
 
         var result = await _userManager.ResetPasswordAsync(user, model.Token, model.NewPassword);
         if (result.Succeeded)
         {
             _logger.LogInformation("Password reset succeeded for {Email}", SterlingLams.Web.Infrastructure.LogRedact.Email(model.Email));
-            return RedirectToAction(nameof(ResetPasswordConfirmation));
+            return RedirectToAction(nameof(ResetPasswordConfirmation), new { staff = model.Staff });
         }
 
         foreach (var error in result.Errors)
@@ -799,7 +813,11 @@ public class AccountController : Controller
     }
 
     [HttpGet]
-    public IActionResult ResetPasswordConfirmation() => View();
+    public IActionResult ResetPasswordConfirmation(bool staff = false)
+    {
+        ViewData["Staff"] = staff;
+        return View();
+    }
 
     // ─── Access Denied ───────────────────────────────────────────────────────
 

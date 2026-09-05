@@ -168,9 +168,9 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.ExpireTimeSpan = TimeSpan.FromDays(30);
     options.SlidingExpiration = true;
 
-    // Staff/admin get a much shorter, non-persistent session than shoppers — a stolen or
-    // shared back-office cookie shouldn't stay valid for a month. Customers keep the 30-day
-    // sliding convenience above.
+    // Staff/admin sessions are capped well below the shoppers' 30-day window so a stolen or shared
+    // back-office cookie can't stay valid for a month: 8 hours by default, or up to 14 days when the
+    // staff member ticks "Remember me" on sign-in. Customers keep the 30-day sliding convenience above.
 
     options.Events ??= new Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationEvents();
     options.Events.OnSigningIn = ctx =>
@@ -178,8 +178,17 @@ builder.Services.ConfigureApplicationCookie(options =>
         string[] staffRoles = { "Admin", "Operations", "Sales", "Inventory", "Social Media" };
         if (ctx.Principal is not null && Array.Exists(staffRoles, r => ctx.Principal!.IsInRole(r)))
         {
-            ctx.Properties.IsPersistent = false;
-            ctx.Properties.ExpiresUtc = DateTimeOffset.UtcNow.AddHours(8);
+            if (ctx.Properties.IsPersistent)
+            {
+                // "Remember me" ticked: stay signed in, but cap the persistent cookie at 14 days.
+                ctx.Properties.ExpiresUtc = DateTimeOffset.UtcNow.AddDays(14);
+            }
+            else
+            {
+                // Not remembered: short, non-persistent back-office session.
+                ctx.Properties.IsPersistent = false;
+                ctx.Properties.ExpiresUtc = DateTimeOffset.UtcNow.AddHours(8);
+            }
         }
         return Task.CompletedTask;
     };
