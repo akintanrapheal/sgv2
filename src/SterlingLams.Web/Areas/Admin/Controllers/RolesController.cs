@@ -171,7 +171,7 @@ public class RolesController : AdminBaseController
                 return RedirectToAction(nameof(Edit), new { id = vm.OriginalName });
             }
 
-            var role = await _roleManager.FindByNameAsync(vm.OriginalName);
+            var role = await _roleManager.FindByNameAsync(vm.OriginalName ?? string.Empty);
             if (role == null)
             {
                 TempData["Error"] = $"The role '{vm.OriginalName}' no longer exists.";
