@@ -32,6 +32,26 @@ public static class AuditChanges
         return lines.Count == 0 ? null : string.Join("\n", lines);
     }
 
+    /// <summary>Builds the same "Field: old → new" snapshot automatically from an EF change-tracker
+    /// entry (must be called BEFORE SaveChanges, while the entry is still Modified). Skips unchanged
+    /// and <paramref name="ignore"/>d properties (e.g. timestamps / concurrency tokens). Returns null
+    /// when nothing meaningful changed.</summary>
+    public static string? FromEntry(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry, params string[] ignore)
+    {
+        if (entry.State != Microsoft.EntityFrameworkCore.EntityState.Modified) return null;
+        var skip = new HashSet<string>(ignore, StringComparer.OrdinalIgnoreCase);
+        var lines = new List<string>();
+        foreach (var p in entry.Properties)
+        {
+            if (!p.IsModified || skip.Contains(p.Metadata.Name)) continue;
+            var o = Fmt(p.OriginalValue);
+            var n = Fmt(p.CurrentValue);
+            if (!string.Equals(o, n, StringComparison.Ordinal))
+                lines.Add($"{p.Metadata.Name}: {(string.IsNullOrEmpty(o) ? "—" : o)} → {(string.IsNullOrEmpty(n) ? "—" : n)}");
+        }
+        return lines.Count == 0 ? null : string.Join("\n", lines);
+    }
+
     private static string Fmt(object? v) => v switch
     {
         null => "",

@@ -170,9 +170,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     code.Products.Add(new DiscountProduct { ProductId = pid });
 
             var isNew = vm.Id == 0;
+            var changes = isNew ? null : SterlingLams.Web.Services.AuditChanges.FromEntry(_db.Entry(code), "Id");
             await _db.SaveChangesAsync();
             await LogAsync(isNew ? "Create" : "Update", "Discount", code.Id.ToString(),
-                $"{(isNew ? "Created" : "Updated")} discount '{code.Code}' ({code.Type}, {code.Scope})");
+                $"{(isNew ? "Created" : "Updated")} discount '{code.Code}' ({code.Type}, {code.Scope})", changes);
 
             TempData["Success"] = $"Discount '{code.Code}' saved.";
             return RedirectToAction(nameof(Index));
