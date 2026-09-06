@@ -27,11 +27,20 @@
 </div>
 
 <div class="max-w-2xl">
-    <form asp-area="Admin" asp-controller="Stores" asp-action="Save" method="post" class="space-y-5">
+    @* novalidate: the site has no client-side (jQuery) validation — see _ValidationScriptsPartial —
+       so we let the form POST and validate server-side via ModelState, which re-renders with the
+       messages below. Native HTML5 `required` used to block the POST with an off-screen bubble
+       (silent "nothing happens") inside this scrollable panel. *@
+    <form asp-area="Admin" asp-controller="Stores" asp-action="Save" method="post" class="space-y-5" novalidate>
         @Html.AntiForgeryToken()
         <input type="hidden" asp-for="Id" />
 
         <div class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
+
+            @if (!ViewContext.ViewData.ModelState.IsValid)
+            {
+                <div asp-validation-summary="All" class="text-sm text-red-600 bg-red-50 border border-red-100 rounded-sm px-4 py-3"></div>
+            }
 
             <!-- Name + Slug -->
             <div class="grid grid-cols-2 gap-4">
