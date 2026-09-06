@@ -39,11 +39,13 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
 ENV TZ=Africa/Lagos
 
-# Non-root user for security
-RUN adduser --disabled-password --gecos "" appuser && chown -R appuser /app
-USER appuser
+# Non-root user for security. The .NET runtime images already ship a pre-created
+# non-root user 'app' (UID 1654); the net10 (Ubuntu) image dropped 'adduser', so we
+# reuse that built-in user instead of creating one.
+RUN chown -R app:app /app
+USER app
 
-COPY --from=dotnet-builder --chown=appuser /app/publish .
+COPY --from=dotnet-builder --chown=app:app /app/publish .
 
 # EF Core migrations are run before deploy via:
 #   dotnet ef database update --project src/SterlingLams.Web
