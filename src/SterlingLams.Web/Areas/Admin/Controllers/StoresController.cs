@@ -113,6 +113,8 @@ public class StoresController : AdminBaseController
         store.IsActive         = vm.IsActive;
 
         var isNew = vm.Id == 0;
+        // Capture the before→after field diff BEFORE saving (while the entry is still Modified).
+        var changes = isNew ? null : Services.AuditChanges.FromEntry(_db.Entry(store), "Id", "Slug");
         await _db.SaveChangesAsync();
 
         if (isNew)
@@ -145,7 +147,7 @@ public class StoresController : AdminBaseController
         }
 
         await LogAsync(isNew ? "Create" : "Update", "Store", store.Id.ToString(),
-            $"{(isNew ? "Created" : "Updated")} store '{store.Name}' ({store.City}, {store.State})");
+            $"{(isNew ? "Created" : "Updated")} store '{store.Name}' ({store.City}, {store.State})", changes);
 
         TempData["Success"] = isNew
             ? $"Store '{store.Name}' created successfully."

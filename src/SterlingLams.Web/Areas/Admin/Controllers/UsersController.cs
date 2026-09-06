@@ -337,6 +337,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 return RedirectToAction(nameof(Index));
             }
 
+            // Snapshot before any mutation, for the audit before→after diff.
+            var oldFirst = user.FirstName; var oldLast = user.LastName; var oldEmail = user.Email;
+
             email = (email ?? "").Trim();
             if (string.IsNullOrWhiteSpace(email))
             {
@@ -383,7 +386,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 }
             }
 
-            await LogAsync("Update", "User", user.Id, $"Edited details for {user.Email}");
+            var changes = SterlingLams.Web.Services.AuditChanges.Build(
+                ("First name", oldFirst, user.FirstName),
+                ("Last name", oldLast, user.LastName),
+                ("Email", oldEmail, user.Email),
+                ("Password", "", string.IsNullOrWhiteSpace(newPassword) ? "" : "changed"));
+            await LogAsync("Update", "User", user.Id, $"Edited details for {user.Email}", changes);
             TempData["Success"] = $"{user.Email} updated.";
             return RedirectToAction(nameof(Index));
         }
