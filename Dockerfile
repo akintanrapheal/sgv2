@@ -36,7 +36,7 @@ WORKDIR /app
 # runs in UTC, so DateTime.ToLocalTime() would render times 1 hour behind. Install the
 # IANA zone database (tzdata) and set TZ so the process-wide local zone is WAT — this
 # makes every ToLocalTime() display the correct local clock. (Storage stays UTC.)
-RUN apt-get update && apt-get install -y --no-install-recommends tzdata && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends tzdata libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/*
 ENV TZ=Africa/Lagos
 
 # Non-root user for security. The .NET runtime images already ship a pre-created
