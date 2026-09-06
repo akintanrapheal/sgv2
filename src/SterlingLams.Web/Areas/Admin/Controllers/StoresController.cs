@@ -115,9 +115,20 @@ public class StoresController : AdminBaseController
         var isNew = vm.Id == 0;
         await _db.SaveChangesAsync();
 
-        // Showcase: mint this store's matching Zephiel API key so its traffic is attributed per store.
-        // Fire-and-forget; a no-op unless the Zephiel integration is enabled + configured.
-        if (isNew) _ = _zephiel.ProvisionStoreKeyAsync(store.Id, store.Name, store.Slug);
+        if (isNew)
+        {
+            // Every branch needs at least one till to trade in the POS. Give a new store a default
+            // register so it's sellable end-to-end the moment it's created — otherwise the POS has
+            // nothing to open a session against. Rename or deactivate it in POS settings if the
+            // branch is online-only.
+            var regName = string.IsNullOrWhiteSpace(store.City) ? $"{store.Name} Pos" : $"{store.City} Pos";
+            _db.Registers.Add(new Register { Name = regName, StoreId = store.Id, IsActive = true });
+            await _db.SaveChangesAsync();
+
+            // Showcase: mint this store's matching Zephiel API key so its traffic is attributed per
+            // store. Fire-and-forget; a no-op unless the Zephiel integration is enabled + configured.
+            _ = _zephiel.ProvisionStoreKeyAsync(store.Id, store.Name, store.Slug);
+        }
 
         await LogAsync(isNew ? "Create" : "Update", "Store", store.Id.ToString(),
             $"{(isNew ? "Created" : "Updated")} store '{store.Name}' ({store.City}, {store.State})");

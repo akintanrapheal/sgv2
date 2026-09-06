@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using SterlingLams.Web.Models.Domain;
 
 namespace SterlingLams.Web.Areas.Admin.ViewModels
@@ -647,16 +648,42 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
     public class AdminStoreEditViewModel
     {
         public int Id { get; set; }
+
+        [Required(ErrorMessage = "Store name is required.")]
+        [StringLength(120)]
         public string Name { get; set; } = "";
+
+        [StringLength(120)]
         public string Slug { get; set; } = "";
+
+        [Required(ErrorMessage = "Street address is required.")]
+        [StringLength(250)]
         public string Address { get; set; } = "";
+
+        [Required(ErrorMessage = "City is required.")]
+        [StringLength(100)]
         public string City { get; set; } = "";
+
+        [Required(ErrorMessage = "State is required.")]
+        [StringLength(100)]
         public string State { get; set; } = "";
+
+        [StringLength(40)]
         public string? Phone { get; set; }
+
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+        [StringLength(150)]
         public string? Email { get; set; }
+
+        [StringLength(250)]
         public string? OpeningHours { get; set; }
+
+        [Range(-90, 90, ErrorMessage = "Latitude must be between -90 and 90.")]
         public double? Latitude { get; set; }
+
+        [Range(-180, 180, ErrorMessage = "Longitude must be between -180 and 180.")]
         public double? Longitude { get; set; }
+
         public bool IsActive { get; set; } = true;
     }
 
