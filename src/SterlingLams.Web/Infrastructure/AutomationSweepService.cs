@@ -95,6 +95,7 @@ public class AutomationSweepService : BackgroundService
                     .GroupBy(o => new { o.UserId, o.User!.Email, o.User.FullName })
                     .Select(g => new { g.Key.Email, g.Key.FullName, g.Key.UserId, Last = g.Max(o => o.CreatedAt) })
                     .Where(x => x.Last <= lapsedBefore && x.Last >= floor)
+                    .OrderBy(x => x.Last)   // most-lapsed first; also gives Take a stable order
                     .Take(EnrolCap).ToListAsync(ct);
                 candidates.AddRange(rows.Select(r => (Email: r.Email!, Name: (string?)r.FullName, UserId: (string?)r.UserId, EventAt: now)));
                 break;

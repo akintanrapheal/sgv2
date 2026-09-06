@@ -39,7 +39,7 @@ public class ReferralRewardService : BackgroundService
         var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
         if (!await settings.GetBoolAsync("referral.enabled", true)) return;
 
-        var pending = await db.Referrals.Where(r => r.Status == ReferralStatus.Pending).Take(100).ToListAsync(ct);
+        var pending = await db.Referrals.Where(r => r.Status == ReferralStatus.Pending).OrderBy(r => r.Id).Take(100).ToListAsync(ct);
         if (pending.Count == 0) return;
 
         var referrerPoints = await settings.GetIntAsync("referral.referrer_points", 100);
