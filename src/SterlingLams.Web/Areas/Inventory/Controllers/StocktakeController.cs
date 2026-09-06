@@ -254,12 +254,13 @@ public class StocktakeController : InventoryAreaController
         StockTake take;
         if (req.DraftId.HasValue)
         {
-            take = await _db.StockTakes.FirstOrDefaultAsync(t => t.Id == req.DraftId.Value && t.Status == "Draft");
-            if (take == null) return Json(new { success = false, message = "Draft not found — it may already be completed." });
-            if (!await _access.CanWriteAsync(User, take.StoreId)) return Json(new { success = false, message = "No access to that draft." });
-            take.Reference = $"ST{seq:D5}"; take.StoreId = store.Id; take.StaffUserId = staffId;
-            take.StaffName = staffName; take.Status = "Completed"; take.Note = req.Note;
-            take.CreatedAt = DateTime.UtcNow; take.UpdatedAt = null; take.DraftJson = null;
+            var draft = await _db.StockTakes.FirstOrDefaultAsync(t => t.Id == req.DraftId.Value && t.Status == "Draft");
+            if (draft == null) return Json(new { success = false, message = "Draft not found — it may already be completed." });
+            if (!await _access.CanWriteAsync(User, draft.StoreId)) return Json(new { success = false, message = "No access to that draft." });
+            draft.Reference = $"ST{seq:D5}"; draft.StoreId = store.Id; draft.StaffUserId = staffId;
+            draft.StaffName = staffName; draft.Status = "Completed"; draft.Note = req.Note;
+            draft.CreatedAt = DateTime.UtcNow; draft.UpdatedAt = null; draft.DraftJson = null;
+            take = draft;
         }
         else
         {
