@@ -252,6 +252,89 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return View(rows);
         }
 
+        // ── One-click cleanup: move stranded product-pool stock onto the option it belongs to ──────
+        // Only the UNAMBIGUOUS case is auto-fixed: a product with exactly ONE active option whose
+        // option count is 0 and whose pool holds >0 — the units clearly belong on that single option
+        // (one destination, no existing count to duplicate). Everything else is deliberately left for
+        // manual review: multiple options (can't know the split), or options already carrying counts
+        // (can't tell duplicate from additional). Every change routes through the stock ledger
+        // (StockMovementType.Adjustment) so it's fully traceable and reversible.
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> PoolStockCleanup()
+        {
+            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            var poolRows = await _db.StoreInventories
+                .Where(si => si.ProductVariantId == null
+                          && si.QuantityOnHand != 0
+                          && _db.ProductVariants.Any(v => v.ProductId == si.ProductId && v.IsActive))
+                .Select(si => new { si.ProductId, si.StoreId })
+                .ToListAsync();
+
+            int moved = 0, movedUnits = 0, cleared = 0, clearedUnits = 0, manual = 0;
+            var reference = $"POOLFIX-{DateTime.UtcNow:yyyyMMddHHmmss}";
+
+            await using var tx = await _db.Database.BeginTransactionAsync();
+            foreach (var r in poolRows)
+            {
+                var poolNow = await _stock.GetStockAsync(r.ProductId, null, r.StoreId, fallback: false);
+                if (poolNow == 0) continue;
+
+                var held = await _db.StoreInventories
+                    .Where(x => x.ProductId == r.ProductId && x.StoreId == r.StoreId && x.ProductVariantId != null)
+                    .SumAsync(x => (int?)x.QuantityOnHand) ?? 0;
+
+                // (1) Options already carry a count (or the pool is a negative glitch) → the pool is a
+                // stale legacy duplicate; the real, sellable stock is on the options. Clear the pool so
+                // reports stop double-counting. Nothing sellable changes.
+                if (held != 0 || poolNow < 0)
+                {
+                    await _stock.ApplyAsync(r.ProductId, null, r.StoreId, -poolNow, StockMovementType.Adjustment,
+                        reference, $"Pool cleanup: cleared stale product pool ({poolNow}); real stock is on the options", userId);
+                    cleared++; clearedUnits += poolNow;
+                    continue;
+                }
+
+                // (2) Options are empty and there is exactly ONE option → the pool units unambiguously
+                // belong on it. Move them there and zero the pool.
+                var variants = await _db.ProductVariants
+                    .Where(v => v.ProductId == r.ProductId && v.IsActive)
+                    .Select(v => new { v.Id, v.Name }).ToListAsync();
+                if (variants.Count == 1)
+                {
+                    var v = variants[0];
+                    await _stock.ApplyAsync(r.ProductId, v.Id, r.StoreId, poolNow, StockMovementType.Adjustment,
+                        reference, $"Pool cleanup: moved {poolNow} from product pool to option '{v.Name}'", userId, materializeVariant: true);
+                    await _stock.ApplyAsync(r.ProductId, null, r.StoreId, -poolNow, StockMovementType.Adjustment,
+                        reference, $"Pool cleanup: cleared product pool ({poolNow} → option '{v.Name}')", userId);
+                    moved++; movedUnits += poolNow;
+                    continue;
+                }
+
+                // (3) Empty options + MULTIPLE options → real units, but the split across options is
+                // unknowable → leave for manual assignment.
+                manual++;
+            }
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+
+            var did = moved + cleared;
+            if (did > 0)
+                await LogAsync("Update", "Inventory", null,
+                    $"Pool-stock cleanup: moved {movedUnits} unit(s) onto a single option ({moved} row(s)); "
+                    + $"cleared {clearedUnits} stale pool unit(s) already counted on options ({cleared} row(s)); "
+                    + $"{manual} multi-option row(s) left for manual assignment");
+
+            var parts = new List<string>();
+            if (moved > 0)   parts.Add($"moved {movedUnits} unit(s) onto their option ({moved} row(s))");
+            if (cleared > 0) parts.Add($"cleared {clearedUnits} stale pool unit(s) already held on options ({cleared} row(s))");
+            if (manual > 0)  parts.Add($"{manual} multi-option row(s) still need manual assignment (the split across options can't be guessed)");
+            TempData["Success"] = did > 0
+                ? "Pool cleanup — " + string.Join("; ", parts) + "."
+                : $"No rows could be auto-fixed — all {manual} have empty multi-option stock that needs manual assignment.";
+            return RedirectToAction(nameof(PoolStock));
+        }
+
         // ── Set stock for a product across all stores (saves absolute quantities) ─
         [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> SetProductStock(int productId, IFormCollection form)

@@ -14,8 +14,21 @@
             options. It was written by screens that predated per-option stock.
         </p>
     </div>
-    <a asp-area="Admin" asp-controller="Inventory" asp-action="Index"
-       class="text-sm text-neutral-600 hover:text-neutral-900">← Back to Inventory</a>
+    <div class="flex items-center gap-4">
+        @if (Model.Any())
+        {
+            <form asp-area="Admin" asp-controller="Inventory" asp-action="PoolStockCleanup" method="post"
+                  onsubmit="return confirm('Clean up stranded pool stock?\n\n• Options already hold the count → the pool is cleared (stale legacy duplicate; nothing sellable changes).\n• Exactly ONE option, currently empty → the pool units are moved onto that option.\n• MULTIPLE empty options → left untouched for you to assign manually (the split can\'t be guessed).\n\nEvery change is written to the stock ledger and can be traced or reversed.');">
+                @Html.AntiForgeryToken()
+                <button type="submit" data-no-loading="1"
+                        class="text-sm px-4 py-2 bg-neutral-900 text-white rounded-sm hover:bg-neutral-700">
+                    Auto-fix pool stock
+                </button>
+            </form>
+        }
+        <a asp-area="Admin" asp-controller="Inventory" asp-action="Index"
+           class="text-sm text-neutral-600 hover:text-neutral-900">← Back to Inventory</a>
+    </div>
 </div>
 
 @if (!Model.Any())
