@@ -123,6 +123,20 @@ public class StoresController : AdminBaseController
             // branch is online-only.
             var regName = string.IsNullOrWhiteSpace(store.City) ? $"{store.Name} Pos" : $"{store.City} Pos";
             _db.Registers.Add(new Register { Name = regName, StoreId = store.Id, IsActive = true });
+
+            // Seed a (zero-quantity) inventory row for every active product so the new branch is a
+            // first-class stock location from day one — it shows in Stock Management, reports and each
+            // product's "Availability by branch" (as out-of-stock) immediately, instead of only after
+            // it happens to be stocked. Product-level pool rows (no variant); Stock Management fills
+            // the real counts. One bulk insert.
+            var productIds = await _db.Products.Where(p => p.IsActive).Select(p => p.Id).ToListAsync();
+            _db.StoreInventories.AddRange(productIds.Select(pid => new StoreInventory
+            {
+                ProductId = pid,
+                StoreId = store.Id,
+                QuantityOnHand = 0,
+                UpdatedAt = DateTime.UtcNow,
+            }));
             await _db.SaveChangesAsync();
 
             // Showcase: mint this store's matching Zephiel API key so its traffic is attributed per
