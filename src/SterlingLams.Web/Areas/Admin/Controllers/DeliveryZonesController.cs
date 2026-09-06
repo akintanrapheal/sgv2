@@ -47,6 +47,11 @@ public class DeliveryZonesController : AdminBaseController
             return RedirectToAction("AccessDenied", "Account", new { area = "" });
 
         var zones = await _zones.GetZonesAsync();
+        // Pre-fill the Oyo (Ibadan) section with sensible defaults the first time — the branch opened
+        // after the original Lagos/Abuja config was saved, so a stored config has no Oyo zones yet.
+        // Not persisted until the admin reviews and clicks Save.
+        if (!zones.Any(z => string.Equals(z.State, "Oyo", StringComparison.OrdinalIgnoreCase)))
+            zones = zones.Concat(DeliveryZoneService.DefaultZones().Where(z => z.State == "Oyo")).ToList();
         return View(zones);
     }
 
@@ -61,7 +66,9 @@ public class DeliveryZonesController : AdminBaseController
             .Where(z => !string.IsNullOrWhiteSpace(z.Name))
             .Select(z => new DeliveryZoneDef
             {
-                State        = string.Equals(z.State, "Abuja", StringComparison.OrdinalIgnoreCase) ? "Abuja" : "Lagos",
+                State        = string.Equals(z.State, "Abuja", StringComparison.OrdinalIgnoreCase) ? "Abuja"
+                             : string.Equals(z.State, "Oyo",   StringComparison.OrdinalIgnoreCase) ? "Oyo"
+                             : "Lagos",
                 Name         = z.Name.Trim(),
                 StandardFee  = Math.Max(0, z.StandardFee),
                 ExpressFee   = Math.Max(0, z.ExpressFee),
@@ -80,7 +87,7 @@ public class DeliveryZonesController : AdminBaseController
 
         await LogAsync("Update", "Setting", "shipping.delivery_zones",
             $"Updated delivery zones ({clean.Count} zone(s): "
-            + $"{clean.Count(z => z.State == "Lagos")} Lagos, {clean.Count(z => z.State == "Abuja")} Abuja)");
+            + $"{clean.Count(z => z.State == "Lagos")} Lagos, {clean.Count(z => z.State == "Abuja")} Abuja, {clean.Count(z => z.State == "Oyo")} Oyo)");
 
         return Json(new { ok = true, count = clean.Count });
     }
