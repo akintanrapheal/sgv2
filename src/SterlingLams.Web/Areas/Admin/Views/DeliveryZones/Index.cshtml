@@ -11,10 +11,10 @@
     <div>
         <h1 class="text-xl font-semibold text-neutral-900">Delivery Zones</h1>
         <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
-            Group Lagos &amp; Abuja areas into distance bands and set the <strong>Standard</strong> and
-            <strong>Express</strong> price for each. At checkout the customer picks their area and the
+            Group Lagos, Abuja &amp; Oyo (Ibadan) areas into distance bands and set the <strong>Standard</strong>
+            and <strong>Express</strong> price for each. At checkout the customer picks their area and the
             matching zone's price is applied automatically. Areas you don't list fall back to the state's
-            first zone.
+            first zone; states with no zones use the flat National rate.
         </p>
     </div>
     <div class="flex items-center gap-2 shrink-0">
@@ -26,11 +26,11 @@
 <div id="dz-toast" class="hidden fixed top-5 right-5 z-50 px-4 py-3 rounded-md text-sm text-white shadow-lg"></div>
 
 <div class="space-y-8 mt-6">
-    @foreach (var state in new[] { "Lagos", "Abuja" })
+    @foreach (var state in new[] { "Lagos", "Abuja", "Oyo" })
     {
         <section data-state="@state">
             <div class="flex items-center justify-between mb-3">
-                <h2 class="text-sm font-semibold tracking-wide uppercase text-neutral-700">@(state == "Abuja" ? "Abuja (FCT)" : state)</h2>
+                <h2 class="text-sm font-semibold tracking-wide uppercase text-neutral-700">@(state == "Abuja" ? "Abuja (FCT)" : state == "Oyo" ? "Oyo (Ibadan)" : state)</h2>
                 <button type="button" class="dz-add text-sm text-neutral-900 hover:underline" data-state="@state">+ Add zone</button>
             </div>
             <div class="dz-zones space-y-4" data-state="@state"></div>
@@ -81,7 +81,7 @@
     }
 
     function render() {
-        ['Lagos', 'Abuja'].forEach(function (state) {
+        ['Lagos', 'Abuja', 'Oyo'].forEach(function (state) {
             var host = document.querySelector('.dz-zones[data-state="' + state + '"]');
             var list = ZONES.filter(function (z) { return (z.state || 'Lagos') === state; });
             host.innerHTML = list.length ? list.map(zoneCard).join('') : '<p class="text-sm text-neutral-400">No zones yet — add one.</p>';
@@ -116,7 +116,7 @@
     // Read the DOM inputs back into ZONES (keeps unsaved edits across add/remove/render)
     function collect() {
         var next = [];
-        ['Lagos', 'Abuja'].forEach(function (state) {
+        ['Lagos', 'Abuja', 'Oyo'].forEach(function (state) {
             var host = document.querySelector('.dz-zones[data-state="' + state + '"]');
             host.querySelectorAll('.dz-zone').forEach(function (card) {
                 function v(f) { var i = card.querySelector('[data-f="' + f + '"]'); return i ? i.value : ''; }

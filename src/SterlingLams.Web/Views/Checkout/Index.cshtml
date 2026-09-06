@@ -380,6 +380,7 @@ function currentStateValue() {
 function stateKeyFor(state) {
     if (state === 'Lagos' || PRICING.lagosLGAs.some(function (l) { return l === state; })) return 'Lagos';
     if (PRICING.abujaKeywords.some(function (kw) { return state.indexOf(kw) >= 0; })) return 'Abuja';
+    if (state === 'Oyo' || state.indexOf('Ibadan') >= 0) return 'Oyo';
     return 'National';
 }
 function zoneForArea(key, area) {

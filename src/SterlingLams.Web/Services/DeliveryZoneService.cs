@@ -2,7 +2,7 @@ using System.Text.Json;
 
 namespace SterlingLams.Web.Services;
 
-public enum DeliveryZone { Lagos, Abuja, National }
+public enum DeliveryZone { Lagos, Abuja, Oyo, National }
 
 public class DeliveryOption
 {
@@ -49,6 +49,10 @@ public class DeliveryZoneService
             s.Contains("Federal Capital", StringComparison.OrdinalIgnoreCase))
             return DeliveryZone.Abuja;
 
+        if (s.Equals("Oyo", StringComparison.OrdinalIgnoreCase) ||
+            s.Contains("Ibadan", StringComparison.OrdinalIgnoreCase))
+            return DeliveryZone.Oyo;
+
         return DeliveryZone.National;
     }
 
@@ -56,6 +60,7 @@ public class DeliveryZoneService
     {
         DeliveryZone.Lagos => "Lagos",
         DeliveryZone.Abuja => "Abuja",
+        DeliveryZone.Oyo => "Oyo",
         _ => "National"
     };
 
@@ -170,6 +175,11 @@ public class DeliveryZoneService
             Areas = new() { "Central Business District", "CBD", "Wuse", "Wuse 2", "Maitama", "Asokoro", "Garki", "Garki 2", "Central Area", "Wuye", "Guzape" } },
         new() { State = "Abuja", Name = "Outer / satellite", StandardFee = 3500, ExpressFee = 5500,
             Areas = new() { "Lugbe", "Kubwa", "Nyanya", "Karu", "Mararaba", "Gwagwalada", "Kuje", "Bwari", "Dei-Dei", "Zuba", "Airport Road", "Lokogoma", "Apo", "Gudu", "Durumi", "Idu", "Karmo", "Jahi" } },
+
+        new() { State = "Oyo", Name = "Ibadan metro", StandardFee = 2500, ExpressFee = 4000,
+            Areas = new() { "Bodija", "Dugbe", "Mokola", "Ring Road", "Challenge", "Iwo Road", "Agodi", "Jericho", "Jericho GRA", "University of Ibadan", "UI", "Samonda", "Sango", "Bashorun", "Akobo", "Ojoo", "Apata", "Eleyele", "Oluyole", "Molete", "Gate", "Orita Challenge", "Monatan", "Ojurin", "Agbowo", "Poly Ibadan", "Yemetu", "Beere", "Oke-Ado", "Felele", "New Garage", "Idi-Ape", "Basorun", "Adamasingba" } },
+        new() { State = "Oyo", Name = "Greater Oyo", StandardFee = 4000, ExpressFee = 6000,
+            Areas = new() { "Oyo Town", "Ogbomoso", "Iseyin", "Saki", "Eruwa", "Igboora", "Lalupon", "Moniya", "Akinyele", "Egbeda", "Lanlate" } },
     };
 
     /// <summary>Areas for a state (Lagos/Abuja), flattened from its zones — for the checkout dropdown.</summary>
