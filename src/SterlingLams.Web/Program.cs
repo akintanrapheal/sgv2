@@ -280,6 +280,13 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.SocialPublishe
 builder.Services.AddScoped<SterlingLams.Web.Infrastructure.IFinanceReportService, SterlingLams.Web.Infrastructure.FinanceReportService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.FinanceReportScheduler>();
 
+// Storefront traffic analytics (Admin → Traffic). Singleton buffer + background batch-writer.
+builder.Services.AddSingleton<SterlingLams.Web.Infrastructure.Traffic.TrafficRecorder>();
+builder.Services.AddSingleton<SterlingLams.Web.Infrastructure.Traffic.ITrafficRecorder>(
+    sp => sp.GetRequiredService<SterlingLams.Web.Infrastructure.Traffic.TrafficRecorder>());
+builder.Services.AddHostedService(
+    sp => sp.GetRequiredService<SterlingLams.Web.Infrastructure.Traffic.TrafficRecorder>());
+
 // ─── MVC ────────────────────────────────────────────────────────────────────
 builder.Services.AddControllersWithViews()
     .AddJsonOptions(opts =>
@@ -460,6 +467,9 @@ app.UseSession();
 app.UseMiddleware<SterlingLams.Web.Infrastructure.OrderAttributionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Record storefront page views for the Admin → Traffic dashboard (off the request path).
+app.UseMiddleware<SterlingLams.Web.Infrastructure.Traffic.TrafficMiddleware>();
 
 // Public storefront maintenance page (store.maintenance_mode). After auth so staff are exempt.
 app.UseMiddleware<SterlingLams.Web.Infrastructure.MaintenanceModeMiddleware>();
