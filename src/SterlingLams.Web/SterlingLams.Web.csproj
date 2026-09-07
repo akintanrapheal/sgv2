@@ -44,10 +44,10 @@
 
     <!-- Authentication (cookie auth ships in the ASP.NET Core shared framework — no package needed) -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.11" />
-    <PackageReference Include="Sentry.AspNetCore" Version="6.6.0" />
+    <PackageReference Include="Sentry.AspNetCore" Version="6.10.0" />
 
     <!-- Stripe -->
-    <PackageReference Include="Stripe.net" Version="47.3.0" />
+    <PackageReference Include="Stripe.net" Version="52.4.1" />
 
     <!-- HTTP Client (IHttpClientFactory) + JSON both ship in the .NET 10 shared framework —
          no explicit PackageReference needed (removing them clears NU1510 on net10). -->
