@@ -71,10 +71,19 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<BackInStockRequest> BackInStockRequests => Set<BackInStockRequest>();
     public DbSet<AbandonedCart> AbandonedCarts => Set<AbandonedCart>();
     public DbSet<LabelReprintEntry> LabelReprintQueue => Set<LabelReprintEntry>();
+    public DbSet<TrafficHit> TrafficHits => Set<TrafficHit>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+
+        // ─── Traffic hits (Admin → Traffic analytics) ───────────────────────
+        // All dashboard queries filter/group by CreatedAt; index it (+ VisitorKey for distinct counts).
+        builder.Entity<TrafficHit>(e =>
+        {
+            e.HasIndex(t => t.CreatedAt);
+            e.HasIndex(t => new { t.CreatedAt, t.VisitorKey });
+        });
 
         // ─── Users: enforce unique email ────────────────────────────────────
         // Identity only makes usernames unique, not emails — which let a POS guest shell be

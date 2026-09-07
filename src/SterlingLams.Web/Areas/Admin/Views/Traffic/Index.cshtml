@@ -1,0 +1,115 @@
+@model SterlingLams.Web.Areas.Admin.Controllers.TrafficController.TrafficViewModel
+@{
+    ViewData["Title"] = "Traffic";
+    System.Func<object, string> J = o => System.Text.Json.JsonSerializer.Serialize(o);
+    string Rng(int d) => Model.Days == d
+        ? "px-3 py-1.5 text-sm rounded-md bg-neutral-900 text-white"
+        : "px-3 py-1.5 text-sm rounded-md border border-neutral-200 text-neutral-600 hover:border-neutral-400";
+}
+
+<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div>
+        <h1 class="text-xl font-semibold text-neutral-900">Traffic</h1>
+        <p class="text-sm text-neutral-500 mt-0.5 max-w-2xl">Storefront page views from the site's own request log — customer-facing pages only (staff pages, assets and bots aside). Times in WAT.</p>
+    </div>
+    <div class="flex items-center gap-2">
+        <a asp-action="Index" asp-route-days="7"  class="@Rng(7)">7 days</a>
+        <a asp-action="Index" asp-route-days="30" class="@Rng(30)">30 days</a>
+        <a asp-action="Index" asp-route-days="90" class="@Rng(90)">90 days</a>
+    </div>
+</div>
+
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white border border-neutral-200 rounded-lg p-5">
+        <div class="text-xs uppercase tracking-wide text-neutral-400">Views today</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">@Model.TodayViews.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-lg p-5">
+        <div class="text-xs uppercase tracking-wide text-neutral-400">Visitors today</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">@Model.TodayVisitors.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-lg p-5">
+        <div class="text-xs uppercase tracking-wide text-neutral-400">Views · @Model.Days days</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">@Model.TotalViews.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-lg p-5">
+        <div class="text-xs uppercase tracking-wide text-neutral-400">Visitors · @Model.Days days</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">@Model.TotalVisitors.ToString("N0")</div>
+    </div>
+</div>
+
+@if (Model.TotalViews == 0)
+{
+    <div class="bg-white border border-neutral-200 rounded-lg p-12 text-center">
+        <p class="text-sm text-neutral-700 font-medium">No traffic recorded yet in this range.</p>
+        <p class="text-xs text-neutral-400 mt-1">Views start logging from when this feature goes live — check back after some storefront visits.</p>
+    </div>
+}
+else
+{
+    <div class="bg-white border border-neutral-200 rounded-lg p-5 mb-6">
+        <h2 class="text-sm font-medium text-neutral-700 mb-3">Views &amp; visitors — last @Model.Days days</h2>
+        <canvas id="trafficChart" height="90"></canvas>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div class="bg-white border border-neutral-200 rounded-lg p-5">
+            <h2 class="text-sm font-medium text-neutral-700 mb-3">Top pages</h2>
+            @if (Model.TopPages.Any()) { <canvas id="pagesChart" height="140"></canvas> }
+            else { <p class="text-xs text-neutral-400">No data.</p> }
+        </div>
+        <div class="bg-white border border-neutral-200 rounded-lg p-5">
+            <h2 class="text-sm font-medium text-neutral-700 mb-3">Devices</h2>
+            @if (Model.Devices.Any()) { <canvas id="devicesChart" height="140"></canvas> }
+            else { <p class="text-xs text-neutral-400">No data.</p> }
+        </div>
+    </div>
+
+    <div class="bg-white border border-neutral-200 rounded-lg p-5">
+        <h2 class="text-sm font-medium text-neutral-700 mb-3">Top traffic sources</h2>
+        @if (Model.TopReferrers.Any())
+        {
+            <canvas id="sourcesChart" height="70"></canvas>
+        }
+        else
+        {
+            <p class="text-xs text-neutral-400">No external referrers recorded — visitors are arriving directly or the referrer is hidden.</p>
+        }
+    </div>
+}
+
+@section Scripts {
+    <partial name="_ChartScripts" />
+    <script>
+        @if (Model.TotalViews > 0)
+        {
+            <text>
+            SLCharts.line('trafficChart', @Html.Raw(J(Model.DayLabels)), [
+                { label: 'Views',    data: @Html.Raw(J(Model.DayViews)) },
+                { label: 'Visitors', data: @Html.Raw(J(Model.DayVisitors)) }
+            ]);
+            </text>
+            if (Model.TopPages.Any())
+            {
+                <text>
+                SLCharts.hbar('pagesChart', @Html.Raw(J(Model.TopPages.Select(p => p.Name))),
+                    @Html.Raw(J(Model.TopPages.Select(p => p.Count))), { label: 'Views' });
+                </text>
+            }
+            if (Model.Devices.Any())
+            {
+                <text>
+                SLCharts.doughnut('devicesChart', @Html.Raw(J(Model.Devices.Select(d => d.Name))),
+                    @Html.Raw(J(Model.Devices.Select(d => d.Count))));
+                </text>
+            }
+            if (Model.TopReferrers.Any())
+            {
+                <text>
+                SLCharts.hbar('sourcesChart', @Html.Raw(J(Model.TopReferrers.Select(r => r.Name))),
+                    @Html.Raw(J(Model.TopReferrers.Select(r => r.Count))), { label: 'Views' });
+                </text>
+            }
+        }
+    </script>
+}
