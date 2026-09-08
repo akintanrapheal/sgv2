@@ -104,6 +104,70 @@ else
     </div>
 }
 
+@{ var cfOk = Model.Cf?.Configured == true && Model.Cf.Stats != null; }
+<div class="bg-white border border-neutral-200 rounded-lg p-5 mt-6">
+    <div class="flex items-start justify-between gap-3 mb-3">
+        <div>
+            <h2 class="text-sm font-medium text-neutral-700">Cloudflare — edge &amp; security</h2>
+            <p class="text-[11px] text-neutral-400">What Cloudflare sees at the edge, before requests reach the app: total requests, threats blocked, and where visitors are.</p>
+        </div>
+        @if (cfOk)
+        {
+            <form asp-action="DisconnectCloudflare" method="post" onsubmit="return confirm('Disconnect Cloudflare analytics?');">
+                @Html.AntiForgeryToken()
+                <button type="submit" data-no-loading="1" class="text-xs text-neutral-400 hover:text-rose-600 shrink-0">Disconnect</button>
+            </form>
+        }
+    </div>
+
+    @if (cfOk)
+    {
+        var cf = Model.Cf!.Stats!;
+        <div class="grid grid-cols-3 gap-4 mb-5">
+            <div><div class="text-xs uppercase tracking-wide text-neutral-400">Requests · @Model.Days days</div><div class="text-2xl font-light text-neutral-900 mt-1">@cf.Requests.ToString("N0")</div></div>
+            <div><div class="text-xs uppercase tracking-wide text-neutral-400">Threats blocked</div><div class="text-2xl font-light text-rose-600 mt-1">@cf.Threats.ToString("N0")</div></div>
+            <div><div class="text-xs uppercase tracking-wide text-neutral-400">Unique visitors</div><div class="text-2xl font-light text-neutral-900 mt-1">@cf.Visitors.ToString("N0")</div></div>
+        </div>
+        <canvas id="cfChart" height="80"></canvas>
+        @if (cf.TopCountries.Any())
+        {
+            <h3 class="text-xs uppercase tracking-wide text-neutral-400 mt-6 mb-2">Top countries</h3>
+            <canvas id="cfCountries" height="130"></canvas>
+        }
+    }
+    else
+    {
+        @if (Model.Cf?.Configured == true && !string.IsNullOrEmpty(Model.Cf.Error))
+        {
+            <div class="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-4 py-3 mb-4">@Model.Cf.Error</div>
+        }
+        <details class="mb-4 text-xs text-neutral-500">
+            <summary class="cursor-pointer text-brand-500 select-none">How to connect (one-time setup)</summary>
+            <ol class="list-decimal ml-5 mt-2 space-y-1 leading-relaxed">
+                <li>Add <strong>sterlinglams.com</strong> to a free Cloudflare account and switch your domain's nameservers to the two Cloudflare gives you. Keep the site's DNS record <strong>Proxied</strong> (orange cloud) so traffic flows through Cloudflare.</li>
+                <li>On the domain's <strong>Overview</strong> page, copy its <strong>Zone ID</strong>.</li>
+                <li>Create an <strong>API Token</strong> (Cloudflare profile → API Tokens → Create Custom Token) with permission <strong>Zone · Analytics · Read</strong> for this zone, and copy it.</li>
+                <li>Paste both below and Save. This panel then fills in.</li>
+            </ol>
+        </details>
+        <form asp-action="SaveCloudflare" method="post" class="grid gap-3 max-w-xl">
+            @Html.AntiForgeryToken()
+            <div>
+                <label class="block text-xs text-neutral-500 mb-1">API Token</label>
+                <input name="apiToken" type="password" autocomplete="off"
+                       placeholder="@(Model.CfTokenSet ? "•••••••••• (leave blank to keep)" : "Cloudflare API token")"
+                       class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm" />
+            </div>
+            <div>
+                <label class="block text-xs text-neutral-500 mb-1">Zone ID</label>
+                <input name="zoneId" value="@Model.CfZoneId"
+                       class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm font-mono" />
+            </div>
+            <div><button type="submit" class="px-5 py-2 bg-neutral-900 text-white text-sm rounded-md hover:bg-neutral-700">Save &amp; connect</button></div>
+        </form>
+    }
+</div>
+
 @section Scripts {
     <partial name="_ChartScripts" />
     <script>
@@ -134,6 +198,23 @@ else
                 <text>
                 SLCharts.hbar('sourcesChart', @Html.Raw(J(Model.TopReferrers.Select(r => r.Name))),
                     @Html.Raw(J(Model.TopReferrers.Select(r => r.Count))), { label: 'Views' });
+                </text>
+            }
+        }
+        @if (Model.Cf?.Configured == true && Model.Cf.Stats != null)
+        {
+            var cf = Model.Cf.Stats;
+            <text>
+            SLCharts.area('cfChart', @Html.Raw(J(cf.DayLabels)), [
+                { label: 'Requests', data: @Html.Raw(J(cf.DayRequests)) },
+                { label: 'Threats',  data: @Html.Raw(J(cf.DayThreats)), color: '#e11d48' }
+            ]);
+            </text>
+            if (cf.TopCountries.Any())
+            {
+                <text>
+                SLCharts.hbar('cfCountries', @Html.Raw(J(cf.TopCountries.Select(c => c.Country))),
+                    @Html.Raw(J(cf.TopCountries.Select(c => c.Requests))), { label: 'Requests' });
                 </text>
             }
         }

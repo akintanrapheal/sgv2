@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Data;
+using SterlingLams.Web.Services;
 
 namespace SterlingLams.Web.Areas.Admin.Controllers;
 
@@ -11,7 +12,18 @@ public class TrafficController : AdminBaseController
     protected override string? Section => null;
 
     private readonly ApplicationDbContext _db;
-    public TrafficController(ApplicationDbContext db) => _db = db;
+    private readonly ICloudflareAnalytics _cf;
+    private readonly ISettingsService _settings;
+    private readonly ISettingsSecretProtector _secrets;
+
+    public TrafficController(ApplicationDbContext db, ICloudflareAnalytics cf,
+        ISettingsService settings, ISettingsSecretProtector secrets)
+    {
+        _db = db;
+        _cf = cf;
+        _settings = settings;
+        _secrets = secrets;
+    }
 
     public async Task<IActionResult> Index(int days = 30, string bots = "all")
     {
@@ -64,7 +76,42 @@ public class TrafficController : AdminBaseController
                 .OrderByDescending(x => x.C).ToListAsync())
             .Select(x => new NameCount(x.Key, x.C)).ToList();
 
+        // Cloudflare edge/security analytics (requests, threats blocked, countries) — best effort.
+        vm.Cf = await _cf.GetAsync(days);
+        vm.CfZoneId  = await _settings.GetAsync("cloudflare.zone_id", "");
+        vm.CfTokenSet = (await _settings.GetAsync("cloudflare.api_token", "")).Length > 0;
+
         return View(vm);
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveCloudflare(string? apiToken, string? zoneId)
+    {
+        var updates = new Dictionary<string, string>
+        {
+            ["cloudflare.zone_id"] = (zoneId ?? "").Trim(),
+        };
+        // Only overwrite the token when a new one is entered (blank = keep the existing one).
+        if (!string.IsNullOrWhiteSpace(apiToken))
+            updates["cloudflare.api_token"] = _secrets.Protect(apiToken.Trim());
+
+        await _settings.SaveManyAsync(updates);
+        await LogAsync("Update", "Setting", null, "Updated Cloudflare analytics connection");
+        TempData["Success"] = "Cloudflare connection saved.";
+        return RedirectToAction(nameof(Index));
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> DisconnectCloudflare()
+    {
+        await _settings.SaveManyAsync(new Dictionary<string, string>
+        {
+            ["cloudflare.api_token"] = "",
+            ["cloudflare.zone_id"] = "",
+        });
+        await LogAsync("Update", "Setting", null, "Disconnected Cloudflare analytics");
+        TempData["Success"] = "Cloudflare disconnected.";
+        return RedirectToAction(nameof(Index));
     }
 
     public record NameCount(string Name, int Count);
@@ -85,5 +132,8 @@ public class TrafficController : AdminBaseController
         public List<NameCount> TopPages { get; set; } = new();
         public List<NameCount> TopReferrers { get; set; } = new();
         public List<NameCount> Devices { get; set; } = new();
+        public CloudflareResult? Cf { get; set; }
+        public string CfZoneId { get; set; } = "";
+        public bool CfTokenSet { get; set; }
     }
 }

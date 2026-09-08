@@ -294,6 +294,10 @@ public static class SettingsSeedData
         new() { Key = "payment.stripe.publishable_key",      Group = "Payments", Label = "Stripe Publishable Key",    Type = "text",   Value = "", Description = "pk_live_…",                                          SortOrder = 3 },
         new() { Key = "payment.stripe.secret_key",           Group = "Payments", Label = "Stripe Secret Key",         Type = "secret", Value = "", Description = "sk_live_…",                                          SortOrder = 4 },
         new() { Key = "payment.stripe.webhook_secret",       Group = "Payments", Label = "Stripe Webhook Secret",     Type = "secret", Value = "", Description = "whsec_… From the Stripe dashboard webhook.",       SortOrder = 5 },
+        // Cloudflare edge/security analytics (Admin → Traffic). Configured on the Traffic page.
+        new() { Key = "cloudflare.api_token",                 Group = "Integrations", Label = "Cloudflare API Token",  Type = "secret", Value = "", Description = "Scoped token with Zone Analytics: Read.",         SortOrder = 20 },
+        new() { Key = "cloudflare.zone_id",                   Group = "Integrations", Label = "Cloudflare Zone ID",    Type = "text",   Value = "", Description = "From the domain's Cloudflare Overview page.",      SortOrder = 21 },
+
         new() { Key = "payment.flutterwave.public_key",      Group = "Payments", Label = "Flutterwave Public Key",    Type = "text",   Value = "", Description = "FLWPUBK-…",                                          SortOrder = 6 },
         new() { Key = "payment.flutterwave.secret_key",      Group = "Payments", Label = "Flutterwave Secret Key",    Type = "secret", Value = "", Description = "FLWSECK-… Also used to verify webhooks (secret hash).", SortOrder = 7 },
         new() { Key = "payment.flutterwave.encryption_key",  Group = "Payments", Label = "Flutterwave Encryption Key", Type = "secret", Value = "", Description = "Flutterwave encryption key.",                       SortOrder = 8 },
