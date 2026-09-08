@@ -589,7 +589,7 @@ try
     var attrUserManager   = attrScope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
     var attrRoleManager   = attrScope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
     await SterlingLams.Web.Infrastructure.RoleSeedData.SeedAsync(attrRoleManager, attrDb, attrLogger);
-    await SterlingLams.Web.Infrastructure.AttributeSeedData.SeedAdminUserAsync(attrUserManager, attrRoleManager, attrLogger);
+    await SterlingLams.Web.Infrastructure.AttributeSeedData.SeedAdminUserAsync(attrUserManager, attrRoleManager, attrLogger, app.Configuration, app.Environment.IsDevelopment());
     await SterlingLams.Web.Infrastructure.AttributeSeedData.SeedAsync(attrDb, attrLogger);
     await SterlingLams.Web.Infrastructure.SettingsSeedData.SeedAsync(attrDb, attrLogger);
 }
