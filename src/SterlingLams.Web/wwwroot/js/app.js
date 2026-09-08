@@ -68,29 +68,54 @@
         if (e.key === 'Escape' && !overlay.classList.contains('hidden')) closeSearch();
     });
 
-    // Live suggestions with debounce
+    // Live suggestions with debounce \u2014 image + name + SKU + price (range when variants differ)
     var debounceTimer;
+    var lastQuery = '';
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    function naira(n) { return '\u20a6' + Number(n).toLocaleString('en-NG'); }
+    function priceHtml(item) {
+        if (item.hasRange) {
+            return '<span class="text-brand-600 font-medium">' + naira(item.price) + ' \u2013 ' + naira(item.maxPrice) + '</span>';
+        }
+        return '<span class="text-brand-600 font-medium">' + naira(item.price) + '</span>';
+    }
     if (input) {
         input.addEventListener('input', function () {
             clearTimeout(debounceTimer);
             var q = input.value.trim();
+            lastQuery = q;
             if (q.length < 2) { suggestions.innerHTML = ''; return; }
             debounceTimer = setTimeout(function () {
                 fetch('/api/search?q=' + encodeURIComponent(q))
                     .then(function (r) { return r.ok ? r.json() : []; })
                     .then(function (items) {
+                        // Ignore a response that arrived after the box was cleared or changed.
+                        if (input.value.trim() !== q) return;
                         if (!items || items.length === 0) {
-                            suggestions.innerHTML = '<span>No results found.</span>';
+                            suggestions.innerHTML = '<div class="py-4 text-neutral-400">No products match \u201c' + esc(q) + '\u201d.</div>';
                             return;
                         }
-                        suggestions.innerHTML = items.map(function (item) {
-                            return '<a href="/products/' + item.slug + '" class="block py-1.5 hover:text-neutral-900 transition-colors border-b border-neutral-50 last:border-0">'
-                                + item.name
-                                + ' <span class="text-neutral-400">\u2014 \u20a6' + Number(item.price).toLocaleString() + '</span></a>';
+                        var rows = items.map(function (item) {
+                            return '<a href="/products/' + encodeURIComponent(item.slug) + '" '
+                                + 'class="flex items-center gap-3 py-2.5 border-b border-neutral-100 last:border-0 hover:bg-neutral-50 -mx-2 px-2 transition-colors">'
+                                + '<img src="' + esc(item.image) + '" alt="" width="48" height="48" loading="lazy" '
+                                + 'class="w-12 h-12 object-cover bg-neutral-100 flex-shrink-0" />'
+                                + '<span class="min-w-0 flex-1">'
+                                + '<span class="block text-neutral-900 truncate">' + esc(item.name) + '</span>'
+                                + (item.sku ? '<span class="block text-xs text-neutral-400">SKU: ' + esc(item.sku) + '</span>' : '')
+                                + '<span class="block text-sm mt-0.5">' + priceHtml(item) + '</span>'
+                                + '</span></a>';
                         }).join('');
+                        var viewAll = '<a href="/Products?search=' + encodeURIComponent(q) + '" '
+                            + 'class="block text-center py-3 mt-1 text-xs tracking-[0.2em] uppercase text-neutral-500 hover:text-neutral-900 bg-neutral-50 transition-colors">View all results</a>';
+                        suggestions.innerHTML = rows + viewAll;
                     })
                     .catch(function () {});
-            }, 250);
+            }, 200);
         });
     }
 

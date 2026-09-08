@@ -364,21 +364,62 @@ public class ProductsController : Controller
             return Json(Array.Empty<object>());
 
         var term = q.Trim();
-        var results = await _db.Products
+        // Rank exact SKU/barcode hits first (scanning a code should surface that product at the top),
+        // then name matches. Pull the fields the preview needs: thumbnail, SKU, base + variant prices.
+        var rows = await _db.Products
             .Where(p => p.IsActive && (
                 EF.Functions.ILike(p.Name, $"%{term}%") ||
                 EF.Functions.ILike(p.ShortDescription ?? "", $"%{term}%") ||
                 EF.Functions.ILike(p.Sku ?? "", $"%{term}%") ||
-                p.Variants.Any(v => EF.Functions.ILike(v.Sku ?? "", $"%{term}%"))))
-            .OrderBy(p => p.Name)
-            .Take(6)
+                p.Barcode == term ||
+                p.Variants.Any(v => EF.Functions.ILike(v.Sku ?? "", $"%{term}%") || v.Barcode == term)))
             .Select(p => new
             {
                 p.Name,
                 p.Slug,
-                p.Price
+                p.Sku,
+                p.Price,
+                p.SalePrice,
+                p.SaleStartsAt,
+                p.SaleEndsAt,
+                ImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder)
+                    .Select(i => i.Url).FirstOrDefault(),
+                ExactCode = (p.Sku == term || p.Barcode == term
+                    || p.Variants.Any(v => v.Sku == term || v.Barcode == term)),
+                Variants = p.Variants.Where(v => v.IsActive)
+                    .Select(v => new { v.Price, v.SalePrice }).ToList()
             })
+            .OrderByDescending(p => p.ExactCode)
+            .ThenBy(p => p.Name)
+            .Take(6)
             .ToListAsync();
+
+        var results = rows.Select(r =>
+        {
+            // Sale-aware price range over ALL active variants (matches the product card + detail page,
+            // see Infrastructure.ProductCardPricing). A simple product falls back to its own effective price.
+            var product = new Product
+            {
+                Price = r.Price, SalePrice = r.SalePrice,
+                SaleStartsAt = r.SaleStartsAt, SaleEndsAt = r.SaleEndsAt,
+            };
+            var effective = r.Variants
+                .Select(v => VariantPricing.EffectivePrice(product, new ProductVariant { Price = v.Price, SalePrice = v.SalePrice }))
+                .ToList();
+            decimal min = effective.Count > 0 ? effective.Min() : VariantPricing.EffectivePrice(product, null);
+            decimal max = effective.Count > 0 ? effective.Max() : min;
+
+            return new
+            {
+                r.Name,
+                r.Slug,
+                sku = r.Sku,
+                image = Infrastructure.Img.Cld(r.ImageUrl, 96, 96) ?? "/images/placeholder.jpg",
+                price = min,
+                maxPrice = max,
+                hasRange = max > min,
+            };
+        });
 
         return Json(results);
     }
