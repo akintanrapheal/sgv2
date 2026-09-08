@@ -144,6 +144,68 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return View(vm);
         }
 
+        // GET /Admin/Products/Suggest?q=  — live preview under the product search box (image, SKU,
+        // price/range). Matches by name, SKU or barcode; exact code hits rank first so scanning jumps
+        // straight to the product. Each result links to its Edit page.
+        [HttpGet]
+        public async Task<IActionResult> Suggest(string q)
+        {
+            if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2)
+                return Json(Array.Empty<object>());
+
+            var term = q.Trim();
+            var rows = await _db.Products
+                .Where(p => EF.Functions.ILike(p.Name, $"%{term}%")
+                         || EF.Functions.ILike(p.Sku ?? "", $"%{term}%")
+                         || p.Barcode == term
+                         || p.Variants.Any(v => EF.Functions.ILike(v.Sku ?? "", $"%{term}%") || v.Barcode == term))
+                .Select(p => new
+                {
+                    p.Id, p.Name, p.Sku, p.IsActive,
+                    p.Price, p.SalePrice, p.SaleStartsAt, p.SaleEndsAt,
+                    ImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder)
+                        .Select(i => i.Url).FirstOrDefault(),
+                    ExactCode = (p.Sku == term || p.Barcode == term
+                        || p.Variants.Any(v => v.Sku == term || v.Barcode == term)),
+                    Variants = p.Variants.Where(v => v.IsActive)
+                        .Select(v => new { v.Price, v.SalePrice }).ToList()
+                })
+                .OrderByDescending(p => p.ExactCode)
+                .ThenBy(p => p.Name)
+                .Take(8)
+                .ToListAsync();
+
+            var results = rows.Select(r =>
+            {
+                // Sale-aware range over ALL active variants (matches the storefront card/detail).
+                var product = new Product
+                {
+                    Price = r.Price, SalePrice = r.SalePrice,
+                    SaleStartsAt = r.SaleStartsAt, SaleEndsAt = r.SaleEndsAt,
+                };
+                var effective = r.Variants
+                    .Select(v => VariantPricing.EffectivePrice(product, new ProductVariant { Price = v.Price, SalePrice = v.SalePrice }))
+                    .ToList();
+                decimal min = effective.Count > 0 ? effective.Min() : VariantPricing.EffectivePrice(product, null);
+                decimal max = effective.Count > 0 ? effective.Max() : min;
+
+                return new
+                {
+                    id = r.Id,
+                    name = r.Name,
+                    sku = r.Sku,
+                    active = r.IsActive,
+                    image = SterlingLams.Web.Infrastructure.Img.Cld(r.ImageUrl, 96, 96) ?? "/images/placeholder.jpg",
+                    price = min,
+                    maxPrice = max,
+                    hasRange = max > min,
+                    editUrl = Url.Action(nameof(Edit), "Products", new { area = "Admin", id = r.Id }),
+                };
+            });
+
+            return Json(results);
+        }
+
         public async Task<IActionResult> Create()
         {
             ViewData["Title"] = "New Product";
