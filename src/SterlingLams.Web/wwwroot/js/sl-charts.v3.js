@@ -140,6 +140,59 @@
             return {};
         },
 
+        // Smooth "wave" area chart: Catmull-Rom spline + a soft vertical gradient under the first
+        // series. Same tooltips/points as line(). series: [{label, data, color?, money?}].
+        area: function (id, labels, series) {
+            series = series || [];
+            var isMoney = series.some(function (s) { return s.money; });
+            var max = 0;
+            series.forEach(function (se) { (se.data || []).forEach(function (v) { if (v > max) max = v; }); });
+
+            function spline(P) {
+                if (!P.length) return '';
+                if (P.length < 3) return 'M' + P.map(function (p) { return p.x + ',' + p.y; }).join(' L');
+                var d = 'M' + P[0].x.toFixed(1) + ',' + P[0].y.toFixed(1);
+                for (var i = 0; i < P.length - 1; i++) {
+                    var p0 = P[i - 1] || P[i], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2] || p2;
+                    var c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
+                    var c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
+                    d += ' C' + c1x.toFixed(1) + ',' + c1y.toFixed(1) + ' ' + c2x.toFixed(1) + ',' + c2y.toFixed(1)
+                       + ' ' + p2.x.toFixed(1) + ',' + p2.y.toFixed(1);
+                }
+                return d;
+            }
+
+            var svg = cartesian(labels, max, isMoney, function (p) {
+                var out = '';
+                series.forEach(function (se, si) {
+                    var col = se.color || palette[si % palette.length], data = se.data || [], n = data.length;
+                    var X = function (i) { return n === 1 ? (p.x0 + p.x1) / 2 : p.x0 + (p.x1 - p.x0) * (i / (n - 1)); };
+                    var Y = function (v) { return p.y1 - (p.y1 - p.y0) * (v / p.top); };
+                    var P = data.map(function (v, i) { return { x: X(i), y: Y(v) }; });
+                    var path = spline(P);
+
+                    if (n > 1 && si === 0) {
+                        var gid = 'slc-ag-' + id + '-' + si;
+                        out += '<defs><linearGradient id="' + gid + '" gradientUnits="userSpaceOnUse" x1="0" y1="'
+                             + p.y0 + '" x2="0" y2="' + p.y1 + '">'
+                             + '<stop offset="0" stop-color="' + col + '" stop-opacity="0.32"/>'
+                             + '<stop offset="1" stop-color="' + col + '" stop-opacity="0"/></linearGradient></defs>';
+                        out += '<path d="' + path + ' L' + P[n - 1].x.toFixed(1) + ',' + p.y1
+                             + ' L' + P[0].x.toFixed(1) + ',' + p.y1 + ' Z" fill="url(#' + gid + ')"/>';
+                    }
+                    out += '<path d="' + path + '" fill="none" stroke="' + col + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>';
+                    data.forEach(function (v, i) {
+                        var cx = X(i).toFixed(1), cy = Y(v).toFixed(1);
+                        out += '<circle class="slc-hit" cx="' + cx + '" cy="' + cy + '" r="14" ' + tipAttr(labels[i], v, isMoney) + '/>';
+                        out += '<circle class="slc-pt" cx="' + cx + '" cy="' + cy + '" r="2.5" fill="' + col + '" pointer-events="none"/>';
+                    });
+                });
+                return out;
+            });
+            mount(id, svg);
+            return {};
+        },
+
         bar: function (id, labels, data, opts) {
             opts = opts || {}; data = data || [];
             var isMoney = !!opts.money, max = Math.max.apply(null, data.concat([0]));

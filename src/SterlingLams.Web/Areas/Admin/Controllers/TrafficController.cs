@@ -13,21 +13,27 @@ public class TrafficController : AdminBaseController
     private readonly ApplicationDbContext _db;
     public TrafficController(ApplicationDbContext db) => _db = db;
 
-    public async Task<IActionResult> Index(int days = 30)
+    public async Task<IActionResult> Index(int days = 30, string bots = "all")
     {
         days = days is 7 or 30 or 90 ? days : 30;
+        var humanOnly = bots == "human";
         ViewData["Title"] = "Traffic";
 
         var start = DateTime.UtcNow.Date.AddDays(-(days - 1));   // start of the earliest day in range (UTC)
-        var q = _db.TrafficHits.AsNoTracking().Where(t => t.CreatedAt >= start);
+        var qAll = _db.TrafficHits.AsNoTracking().Where(t => t.CreatedAt >= start);
+        // Everything below respects the Humans-only toggle; the human/bot split is always from the full set.
+        var q = humanOnly ? qAll.Where(t => t.Device != "Bot") : qAll;
 
-        var vm = new TrafficViewModel { Days = days };
+        var vm = new TrafficViewModel { Days = days, HumanOnly = humanOnly };
+        vm.HumanViews    = await qAll.CountAsync(t => t.Device != "Bot");
+        vm.BotViews      = await qAll.CountAsync(t => t.Device == "Bot");
         vm.TotalViews    = await q.CountAsync();
         vm.TotalVisitors = await q.Select(t => t.VisitorKey).Distinct().CountAsync();
 
         // "Today" in West Africa Time (UTC+1): WAT-midnight is 23:00 UTC the day before.
         var todayStartUtc = DateTime.UtcNow.AddHours(1).Date.AddHours(-1);
         var today = _db.TrafficHits.AsNoTracking().Where(t => t.CreatedAt >= todayStartUtc);
+        if (humanOnly) today = today.Where(t => t.Device != "Bot");
         vm.TodayViews    = await today.CountAsync();
         vm.TodayVisitors = await today.Select(t => t.VisitorKey).Distinct().CountAsync();
 
@@ -66,6 +72,9 @@ public class TrafficController : AdminBaseController
     public class TrafficViewModel
     {
         public int Days { get; set; } = 30;
+        public bool HumanOnly { get; set; }
+        public int HumanViews { get; set; }
+        public int BotViews { get; set; }
         public int TotalViews { get; set; }
         public int TotalVisitors { get; set; }
         public int TodayViews { get; set; }
