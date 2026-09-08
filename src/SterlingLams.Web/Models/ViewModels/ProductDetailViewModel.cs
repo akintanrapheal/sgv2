@@ -43,10 +43,11 @@ public class ProductDetailViewModel
     public string? Weight { get; set; }
 
     // ── Variable-product price range ─────────────────────────────────────────
-    // Drives the "₦min – ₦max" shown before an option is picked. Built from the variants' effective
-    // (sale-aware) prices: in-stock variants when any are in stock, otherwise every listed variant.
-    private IEnumerable<ProductVariantOptionViewModel> RangeVariants
-        => Variants.Any(v => v.Available > 0) ? Variants.Where(v => v.Available > 0) : Variants;
+    // Drives the "₦min – ₦max" shown before an option is picked. Built from the effective (sale-aware)
+    // prices of ALL listed variants — stock-independent, so a multi-priced product always shows its full
+    // range even when some options are sold out (the sold-out option is disabled once picked). This keeps
+    // the range identical to the product card (see Infrastructure.ProductCardPricing).
+    private IEnumerable<ProductVariantOptionViewModel> RangeVariants => Variants;
     /// <summary>True for a variable product whose (range) variants span more than one effective price.</summary>
     public bool HasPriceRange => Variants.Count > 0
         && RangeVariants.Select(v => v.EffectivePrice).Distinct().Count() > 1;
