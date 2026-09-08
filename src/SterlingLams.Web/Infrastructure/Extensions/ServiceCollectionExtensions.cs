@@ -50,6 +50,7 @@ public static class ServiceCollectionExtensions
         // per-order/POS pings are fire-and-forget (never awaited on the request path), so a longer cap
         // can't slow checkout; it only gives the awaited provision/usage calls room to finish.
         services.AddHttpClient<IZephielClient, ZephielClient>(c => c.Timeout = TimeSpan.FromSeconds(30));
+        services.AddHttpClient<ICloudflareAnalytics, CloudflareAnalyticsService>(c => c.Timeout = TimeSpan.FromSeconds(15));
 
         // ─── Store-level authorization (writes-only) ──────────────────────────
         services.AddScoped<IStoreAccessService, StoreAccessService>();
