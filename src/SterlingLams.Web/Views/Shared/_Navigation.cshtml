@@ -110,13 +110,18 @@
             else
             {
                 <div class="relative group">
-                    <button type="button" class="flex items-center gap-1 text-xs tracking-widest uppercase text-neutral-600 group-hover:text-brand-500 transition-colors">
+                    @* The group label is itself a link to the combined listing (ExpandSlug rolls the
+                       group parent slug up to every sub-category), while hover still opens the panel. *@
+                    <a asp-controller="Products" asp-action="Index" asp-route-category="@m.Label.ToLowerInvariant()"
+                       class="flex items-center gap-1 text-xs tracking-widest uppercase text-neutral-600 group-hover:text-brand-500 transition-colors">
                         @m.Label
                         <svg class="w-3 h-3 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                    </button>
+                    </a>
                     <!-- pt-3 forms a hover bridge so the panel stays open between button and list -->
                     <div class="absolute left-1/2 -translate-x-1/2 top-full pt-3 hidden group-hover:block z-50">
                         <div class="bg-neutral-900 min-w-[230px] py-2 shadow-xl">
+                            <a asp-controller="Products" asp-action="Index" asp-route-category="@m.Label.ToLowerInvariant()"
+                               class="block px-5 py-2.5 text-sm text-brand-400 hover:bg-neutral-800 hover:text-brand-300 transition-colors whitespace-nowrap">All @m.Label</a>
                             @foreach (var (label, slug) in m.Items)
                             {
                                 <a asp-controller="Products" asp-action="Index" asp-route-category="@slug"
@@ -145,6 +150,7 @@
                         <svg class="w-4 h-4 text-neutral-400 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 9l-7 7-7-7"/></svg>
                     </summary>
                     <div class="pb-3 pl-3 flex flex-col">
+                        <a asp-controller="Products" asp-action="Index" asp-route-category="@m.Label.ToLowerInvariant()" class="py-2 text-sm text-brand-500">All @m.Label</a>
                         @foreach (var (label, slug) in m.Items)
                         {
                             <a asp-controller="Products" asp-action="Index" asp-route-category="@slug" class="py-2 text-sm text-neutral-500">@label</a>
