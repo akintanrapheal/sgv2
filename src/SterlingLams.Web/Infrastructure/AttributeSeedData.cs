@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.Domain;
 
@@ -10,12 +11,28 @@ public static class AttributeSeedData
     public static async Task SeedAdminUserAsync(
         UserManager<ApplicationUser> userManager,
         RoleManager<IdentityRole> roleManager,
-        ILogger logger)
+        ILogger logger,
+        IConfiguration config,
+        bool isDevelopment)
     {
-        const string email    = "rapheal@sterlinglamslogistics.com";
-        const string password = "Admin@sterlinglams1";
+        const string email = "rapheal@sterlinglamslogistics.com";
 
         if (await userManager.FindByEmailAsync(email) != null) return;
+
+        // The bootstrap password must NOT be hard-coded in source (this repo is public). Read it from
+        // configuration (env var Admin__SeedPassword). In Development, fall back to a throwaway local
+        // password so setup still works; in Production, skip seeding when none is provided rather than
+        // create a publicly-known default account.
+        var password = config["Admin:SeedPassword"];
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            if (!isDevelopment)
+            {
+                logger.LogWarning("Admin seed skipped: set the Admin__SeedPassword environment variable to bootstrap the owner account, then change it after first login.");
+                return;
+            }
+            password = "DevAdmin!2345";   // Development only — never used in Production.
+        }
 
         var user = new ApplicationUser
         {
