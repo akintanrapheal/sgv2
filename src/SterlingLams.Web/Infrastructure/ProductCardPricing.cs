@@ -8,8 +8,10 @@ namespace SterlingLams.Web.Infrastructure;
 /// <summary>
 /// Fills the min–max variant price range on a page of product cards in ONE grouped query (no per-card
 /// N+1) — the same shape as how card ratings are attached. Reuses <see cref="VariantPricing"/> so a
-/// card's range matches the product detail page exactly: effective (sale-aware) prices of in-stock
-/// variants, falling back to all active variants when none are in stock.
+/// card's range matches the product detail page exactly: the effective (sale-aware) prices of ALL active
+/// variants. The range is deliberately stock-independent so a multi-priced product keeps showing its
+/// full "₦min – ₦max" even when some tiers are temporarily sold out (the storefront still flags the
+/// product "Sold Out" only when nothing is in stock, and the detail page disables the picked-out option).
 ///
 /// Only variable products are queried. A product whose variants all inherit the base price resolves to
 /// min == max, so <see cref="ProductCardViewModel.HasPriceRange"/> stays false and the card shows a
@@ -29,9 +31,7 @@ public static class ProductCardPricing
             {
                 v.ProductId,
                 v.Price,
-                v.SalePrice,
-                InStock = v.Product.StoreInventories.Any(si =>
-                    si.ProductVariantId == v.Id && si.QuantityOnHand - si.QuantityReserved > 0)
+                v.SalePrice
             })
             .ToListAsync();
 
@@ -50,8 +50,8 @@ public static class ProductCardPricing
                 SaleStartsAt = card.SaleStartsAt,
                 SaleEndsAt = card.SaleEndsAt,
             };
-            var pool = variants.Any(r => r.InStock) ? variants.Where(r => r.InStock) : variants;
-            var effective = pool
+            // Range over ALL active variants (stock-independent) — see the class summary.
+            var effective = variants
                 .Select(r => VariantPricing.EffectivePrice(product, new ProductVariant { Price = r.Price, SalePrice = r.SalePrice }))
                 .ToList();
             if (effective.Count == 0) continue;
