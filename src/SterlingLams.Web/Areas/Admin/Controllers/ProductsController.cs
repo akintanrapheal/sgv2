@@ -854,41 +854,41 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> AddImage(int id, IFormFile? imageFile, string? imageUrl, string? altText, bool isPrimary)
+        public async Task<IActionResult> AddImage(int id, List<IFormFile>? imageFiles, IFormFile? imageFile,
+            string? imageUrl, string? altText, bool isPrimary)
         {
             var product = await _db.Products.FindAsync(id);
             if (product == null) return NotFound();
 
-            // Resolve image URL: file upload takes priority over URL text field
-            string resolvedUrl;
-            if (imageFile != null && imageFile.Length > 0)
-            {
-                // Same type/size rules as the shared uploader — this path had none.
-                var invalid = ImageUploadRules.Validate(imageFile);
-                if (invalid != null)
-                {
-                    TempData["Error"] = invalid;
-                    return RedirectToAction(nameof(Edit), new { id });
-                }
+            // Gather every uploaded file: the new multi-select ("imageFiles") plus the legacy single field.
+            var files = new List<IFormFile>();
+            if (imageFiles != null) files.AddRange(imageFiles.Where(f => f is { Length: > 0 }));
+            if (imageFile is { Length: > 0 }) files.Add(imageFile);
 
-                var saved = await SaveProductImageAsync(imageFile);
-                if (saved == null)
-                {
-                    TempData["Error"] = "Image upload failed. Please try again.";
-                    return RedirectToAction(nameof(Edit), new { id });
-                }
-                resolvedUrl = saved;
-            }
-            else if (!string.IsNullOrWhiteSpace(imageUrl))
+            // Upload each; skip (don't abort the whole batch on) an invalid or failed one.
+            var urls = new List<string>();
+            var skipped = 0;
+            foreach (var f in files)
             {
-                resolvedUrl = imageUrl.Trim();
+                if (ImageUploadRules.Validate(f) != null) { skipped++; continue; }
+                var saved = await SaveProductImageAsync(f);
+                if (saved == null) { skipped++; continue; }
+                urls.Add(saved);
             }
-            else
+
+            // URL fallback only when no files were chosen.
+            if (files.Count == 0 && !string.IsNullOrWhiteSpace(imageUrl))
+                urls.Add(imageUrl.Trim());
+
+            if (urls.Count == 0)
             {
-                TempData["Error"] = "Please upload a file or provide an image URL.";
+                TempData["Error"] = skipped > 0
+                    ? $"No images added — {skipped} file(s) were an unsupported type or too large."
+                    : "Please choose one or more images, or provide an image URL.";
                 return RedirectToAction(nameof(Edit), new { id });
             }
 
+            // "Set as primary" applies to the FIRST image of the batch only (one primary per product).
             if (isPrimary)
             {
                 var existing = await _db.ProductImages
@@ -901,18 +901,24 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .Where(i => i.ProductId == id)
                 .MaxAsync(i => (int?)i.SortOrder) ?? 0;
 
-            _db.ProductImages.Add(new ProductImage
+            for (var idx = 0; idx < urls.Count; idx++)
             {
-                ProductId = id,
-                Url = resolvedUrl,
-                AltText = altText?.Trim(),
-                IsPrimary = isPrimary,
-                SortOrder = maxSort + 1
-            });
+                _db.ProductImages.Add(new ProductImage
+                {
+                    ProductId = id,
+                    Url = urls[idx],
+                    AltText = altText?.Trim(),
+                    IsPrimary = isPrimary && idx == 0,
+                    SortOrder = maxSort + 1 + idx
+                });
+            }
 
             await _db.SaveChangesAsync();
-            await LogAsync("Update", "Product", id.ToString(), $"Added image to '{product.Name}'");
-            TempData["Success"] = "Image added.";
+            await LogAsync("Update", "Product", id.ToString(), $"Added {urls.Count} image(s) to '{product.Name}'");
+
+            var msg = urls.Count == 1 ? "Image added." : $"{urls.Count} images added.";
+            if (skipped > 0) msg += $" {skipped} file(s) skipped (unsupported type or too large).";
+            TempData["Success"] = msg;
             return RedirectToAction(nameof(Edit), new { id });
         }
 
