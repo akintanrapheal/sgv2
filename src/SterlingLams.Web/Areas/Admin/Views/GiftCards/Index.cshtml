@@ -135,14 +135,5 @@ else
         </table>
     </div>
 
-    @if (totalPages > 1)
-    {
-        <div class="flex items-center justify-center gap-1.5 mt-6 text-xs">
-            @for (int p = 1; p <= totalPages; p++)
-            {
-                <a asp-area="Admin" asp-controller="GiftCards" asp-action="Index" asp-route-status="@status" asp-route-q="@q" asp-route-page="@p"
-                   class="px-3 py-1.5 rounded-sm border @(p == page ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")">@p</a>
-            }
-        </div>
-    }
+    <partial name="_Pager" model="(page, totalPages)" />
 }

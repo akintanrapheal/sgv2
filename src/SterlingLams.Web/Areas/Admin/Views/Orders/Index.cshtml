@@ -160,21 +160,7 @@
 </div>
 
 <!-- Pagination -->
-@if (Model.TotalPages > 1)
-{
-    <div class="flex items-center justify-end gap-2 mt-4">
-        @for (int p = 1; p <= Model.TotalPages; p++)
-        {
-            <a asp-area="Admin" asp-controller="Orders" asp-action="Index"
-               asp-route-page="@p" asp-route-status="@Model.StatusFilter" asp-route-q="@Model.SearchQuery"
-               asp-route-channel="@Model.ChannelFilter" asp-route-paid="@Model.PaidFilter"
-               asp-route-from="@Model.DateFrom" asp-route-to="@Model.DateTo"
-               class="px-3 py-1.5 text-xs rounded-sm border transition-colors @(p == Model.CurrentPage ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")">
-                @p
-            </a>
-        }
-    </div>
-}
+<partial name="_Pager" model="(Model.CurrentPage, Model.TotalPages)" />
 
 @section Scripts {
 <script>
