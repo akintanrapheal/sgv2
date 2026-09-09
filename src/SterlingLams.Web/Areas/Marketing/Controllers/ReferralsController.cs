@@ -11,17 +11,21 @@ public class ReferralsController : MarketingAreaController
     private readonly ApplicationDbContext _db;
     public ReferralsController(ApplicationDbContext db) => _db = db;
 
-    public async Task<IActionResult> Index()
+    public async Task<IActionResult> Index(int page = 1)
     {
+        const int pageSize = 40;
         ViewData["Title"] = "Referrals";
         ViewBag.Total = await _db.Referrals.CountAsync();
         ViewBag.Rewarded = await _db.Referrals.CountAsync(r => r.Status == ReferralStatus.Rewarded);
         ViewBag.PointsGiven = await _db.Referrals.Where(r => r.Status == ReferralStatus.Rewarded)
             .SumAsync(r => (int?)(r.ReferrerPoints + r.RefereePoints)) ?? 0;
 
+        if (page < 1) page = 1;
+        ViewBag.Page = page;
+        ViewBag.TotalPages = (int)Math.Ceiling((int)ViewBag.Total / (double)pageSize);
         var rows = await _db.Referrals.AsNoTracking()
             .Include(r => r.Referrer).Include(r => r.Referee)
-            .OrderByDescending(r => r.CreatedAt).Take(200)
+            .OrderByDescending(r => r.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize)
             .Select(r => new ReferralRow
             {
                 Referrer = r.Referrer != null ? (r.Referrer.Email ?? r.Referrer.FullName) : r.ReferrerUserId,

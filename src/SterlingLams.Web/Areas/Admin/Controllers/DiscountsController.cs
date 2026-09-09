@@ -21,11 +21,17 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             _db = db;
         }
 
-        public async Task<IActionResult> Index()
+        public async Task<IActionResult> Index(int page = 1)
         {
+            const int pageSize = 30;
             ViewData["Title"] = "Discount Codes";
+            if (page < 1) page = 1;
+            var total = await _db.DiscountCodes.CountAsync();
+            ViewBag.Page = page;
+            ViewBag.TotalPages = (int)Math.Ceiling(total / (double)pageSize);
             var codes = await _db.DiscountCodes
                 .OrderByDescending(d => d.CreatedAt)
+                .Skip((page - 1) * pageSize).Take(pageSize)
                 .ToListAsync();
             return View(new AdminDiscountListViewModel { DiscountCodes = codes });
         }

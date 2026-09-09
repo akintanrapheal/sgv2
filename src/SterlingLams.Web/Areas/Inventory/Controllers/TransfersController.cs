@@ -35,8 +35,9 @@ public class TransfersController : InventoryAreaController
         return ok ? null : Json(new { success = false, message = "You don't have access to this transfer's branch." });
     }
 
-    public async Task<IActionResult> Index(int? storeId, string status = "all")
+    public async Task<IActionResult> Index(int? storeId, string status = "all", int page = 1)
     {
+        const int pageSize = 40;
         ViewData["Title"] = "Transfers";
         ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
         ViewBag.StoreId = storeId;
@@ -65,7 +66,12 @@ public class TransfersController : InventoryAreaController
             _ => query
         };
 
-        var transfers = await query.OrderByDescending(t => t.CreatedAt).Take(100).ToListAsync();
+        if (page < 1) page = 1;
+        var filteredCount = await query.CountAsync();
+        ViewBag.Page = page;
+        ViewBag.TotalPages = (int)Math.Ceiling(filteredCount / (double)pageSize);
+        var transfers = await query.OrderByDescending(t => t.CreatedAt)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         return View(transfers);
     }
 

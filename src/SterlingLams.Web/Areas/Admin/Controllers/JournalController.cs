@@ -20,15 +20,21 @@ public class JournalController : AdminBaseController
         _gen = gen;
     }
 
-    public async Task<IActionResult> Index(string filter = "all")
+    public async Task<IActionResult> Index(string filter = "all", int page = 1)
     {
+        const int pageSize = 30;
         ViewData["Title"] = "Journal";
         var q = _db.BlogPosts.AsNoTracking().AsQueryable();
         if (filter == "published") q = q.Where(b => b.IsPublished);
         else if (filter == "draft") q = q.Where(b => !b.IsPublished);
 
+        if (page < 1) page = 1;
+        var total = await q.CountAsync();
+        ViewBag.Page = page;
+        ViewBag.TotalPages = (int)Math.Ceiling(total / (double)pageSize);
         var posts = await q
             .OrderByDescending(b => b.PublishedAt ?? b.UpdatedAt)
+            .Skip((page - 1) * pageSize).Take(pageSize)
             .ToListAsync();
 
         ViewBag.Filter = filter;
