@@ -13,7 +13,15 @@
     if (Model.Filters.MinPrice.HasValue) { qsParts.Add("minPrice=" + Model.Filters.MinPrice.Value); }
     if (Model.Filters.MaxPrice.HasValue) { qsParts.Add("maxPrice=" + Model.Filters.MaxPrice.Value); }
     if (Model.Filters.InStockOnly == true) { qsParts.Add("inStockOnly=true"); }
+    if (Model.PageSize != 24) { qsParts.Add("pageSize=" + Model.PageSize); }
     var loadMoreBaseUrl = "/products" + (qsParts.Count > 0 ? "?" + string.Join("&", qsParts) : "");
+    // Build a listing URL for a given page size, preserving all the other active filters/sort.
+    Func<int, string> sizeUrl = size =>
+    {
+        var parts = qsParts.Where(p => !p.StartsWith("pageSize=")).ToList();
+        if (size != 24) { parts.Add("pageSize=" + size); }
+        return "/products" + (parts.Count > 0 ? "?" + string.Join("&", parts) : "");
+    };
     var shownNow = Math.Min(Model.Page * Model.PageSize, Model.TotalCount);
 
     // Grouped "Shop Categories" tree (old-site style), built from the categories that have products.
@@ -68,6 +76,11 @@
         <!-- ─── Sidebar Filters ────────────────────────────────────────────── -->
         <aside class="hidden lg:block w-56 flex-shrink-0">
             <form method="get" id="filter-form">
+                @* Preserve the chosen page size across sort/filter submits (only when not the default). *@
+                @if (Model.PageSize != 24)
+                {
+                    <input type="hidden" name="pageSize" value="@Model.PageSize" />
+                }
                 <!-- Shop Categories (grouped accordion) -->
                 @if (sidebarNodes.Count > 0)
                 {
@@ -202,19 +215,43 @@
             }
 
             <!-- Sort bar -->
-            <div class="flex items-center justify-between mb-8 pb-4 border-b border-neutral-100">
+            <div class="flex items-center justify-between gap-4 mb-8 pb-4 border-b border-neutral-100 flex-wrap">
                 <p class="text-xs text-neutral-400">
                     Showing @((Model.Page - 1) * Model.PageSize + 1)–@Math.Min(Model.Page * Model.PageSize, Model.TotalCount) of @Model.TotalCount
                 </p>
-                <select name="sortBy" form="filter-form" data-autosubmit
-                        class="text-xs border border-neutral-200 px-3 py-2 text-neutral-600 focus:outline-none focus:border-neutral-900 bg-white">
-                    <option value="name" selected="@(Model.Filters.SortBy == "name")">Name (A–Z)</option>
-                    <option value="popularity" selected="@(Model.Filters.SortBy == "popularity")">Popularity</option>
-                    <option value="rating" selected="@(Model.Filters.SortBy == "rating")">Average rating</option>
-                    <option value="newest" selected="@(Model.Filters.SortBy == "newest" || Model.Filters.SortBy == "newness")">Newest</option>
-                    <option value="price_asc" selected="@(Model.Filters.SortBy == "price_asc")">Price: Low to High</option>
-                    <option value="price_desc" selected="@(Model.Filters.SortBy == "price_desc")">Price: High to Low</option>
-                </select>
+                <div class="flex items-center gap-4 flex-wrap">
+                    <!-- Grid density (client-side, remembered per browser) -->
+                    <div id="grid-density" class="hidden sm:flex items-center gap-1" role="group" aria-label="Grid density">
+                        @foreach (var cols in new[] { 2, 3, 4 })
+                        {
+                            <button type="button" class="gd-btn p-1.5 text-neutral-300 hover:text-neutral-700 transition-colors" data-cols="@cols" title="@cols per row" aria-label="@cols per row">
+                                <span class="grid gap-0.5" style="grid-template-columns:repeat(@cols,1fr);width:@(cols * 5)px;">
+                                    @for (var i = 0; i < cols * 2; i++)
+                                    {
+                                        <span class="block w-1 h-1 bg-current rounded-[1px]"></span>
+                                    }
+                                </span>
+                            </button>
+                        }
+                    </div>
+                    <!-- Show N per page -->
+                    <div class="flex items-center gap-2 text-xs text-neutral-400">
+                        <span class="uppercase tracking-wider">Show</span>
+                        @foreach (var s in new[] { 9, 24, 36 })
+                        {
+                            <a href="@sizeUrl(s)" class="@(Model.PageSize == s ? "text-neutral-900 font-semibold" : "text-neutral-400 hover:text-neutral-700") transition-colors">@s</a>
+                        }
+                    </div>
+                    <select name="sortBy" form="filter-form" data-autosubmit
+                            class="text-xs border border-neutral-200 px-3 py-2 text-neutral-600 focus:outline-none focus:border-neutral-900 bg-white">
+                        <option value="name" selected="@(Model.Filters.SortBy == "name")">Name (A–Z)</option>
+                        <option value="popularity" selected="@(Model.Filters.SortBy == "popularity")">Popularity</option>
+                        <option value="rating" selected="@(Model.Filters.SortBy == "rating")">Average rating</option>
+                        <option value="newest" selected="@(Model.Filters.SortBy == "newest" || Model.Filters.SortBy == "newness")">Newest</option>
+                        <option value="price_asc" selected="@(Model.Filters.SortBy == "price_asc")">Price: Low to High</option>
+                        <option value="price_desc" selected="@(Model.Filters.SortBy == "price_desc")">Price: High to Low</option>
+                    </select>
+                </div>
             </div>
 
             @if (!Model.Products.Any())
@@ -272,6 +309,16 @@
     #price-slider input[type=range]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 9999px;
         background: #ed028b; border: 2px solid #fff; box-shadow: 0 0 0 1px #cfcfcf; cursor: pointer; pointer-events: auto; }
     #price-slider input[type=range]::-moz-range-track { background: transparent; }
+
+    /* Grid density (data-cols overrides the Tailwind column classes; real CSS so it survives purge).
+       Phones always stay 2-up regardless of the chosen desktop density. */
+    #product-grid[data-cols="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    @@media (min-width: 640px) {
+        #product-grid[data-cols="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        #product-grid[data-cols="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        #product-grid[data-cols="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    #grid-density .gd-btn.active { color: #1c1917; }
 </style>
 <script nonce="@Context.Items["csp-nonce"]">
 (function () {
@@ -296,5 +343,23 @@
     lo.addEventListener('input', function () { if (parseInt(lo.value, 10) > parseInt(hi.value, 10)) lo.value = hi.value; draw(); });
     hi.addEventListener('input', function () { if (parseInt(hi.value, 10) < parseInt(lo.value, 10)) hi.value = lo.value; draw(); });
     draw();
+})();
+
+// ── Grid density (2 / 3 / 4 per row) — remembered per browser ───────────────
+(function () {
+    var grid = document.getElementById('product-grid');
+    var wrap = document.getElementById('grid-density');
+    if (!grid || !wrap) return;
+    var btns = [].slice.call(wrap.querySelectorAll('.gd-btn'));
+    var KEY = 'sg.gridCols';
+    function apply(cols, save) {
+        grid.setAttribute('data-cols', cols);
+        btns.forEach(function (b) { b.classList.toggle('active', b.dataset.cols === String(cols)); });
+        if (save) { try { localStorage.setItem(KEY, cols); } catch (e) {} }
+    }
+    var stored = null;
+    try { stored = localStorage.getItem(KEY); } catch (e) {}
+    apply(stored || '3', false);   // 3-up default on desktop; phones stay 2-up via CSS
+    btns.forEach(function (b) { b.addEventListener('click', function () { apply(b.dataset.cols, true); }); });
 })();
 </script>

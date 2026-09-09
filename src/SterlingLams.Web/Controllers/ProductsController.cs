@@ -26,8 +26,10 @@ public class ProductsController : Controller
 
     // GET /products
     [Microsoft.AspNetCore.OutputCaching.OutputCache(PolicyName = "Storefront")]
-    public async Task<IActionResult> Index(ProductFilterViewModel filters, int page = 1, int pageSize = 60)
+    public async Task<IActionResult> Index(ProductFilterViewModel filters, int page = 1, int pageSize = 24)
     {
+        // Storefront "Show" toggle offers 9 / 24 / 36 per page — clamp anything else to the 24 default.
+        if (pageSize != 9 && pageSize != 24 && pageSize != 36) pageSize = 24;
         // No Includes: the card only needs a handful of fields + three booleans, so we project
         // straight to ProductCardViewModel in SQL (below). Loading full Images/Variants/Inventory
         // graphs here caused a cartesian JOIN blow-up and over-fetch on the busiest page.
