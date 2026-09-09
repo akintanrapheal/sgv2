@@ -210,21 +210,26 @@ else
     </div>
 
     <!-- Inventory grid -->
-    <div class="bg-white rounded-sm border border-neutral-100 overflow-x-auto">
+    @* The table scrolls inside this bounded box so the header row can stay frozen at the top
+       (sticky) as you scroll through products — you always see which store each column is. *@
+    <div class="bg-white rounded-sm border border-neutral-100 overflow-auto max-h-[75vh]">
         <table class="w-full text-sm min-w-[700px]">
             <thead>
-                <tr class="bg-neutral-50 border-b border-neutral-100">
-                    <th class="w-12 px-3 py-3"></th>
-                    <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Product</th>
-                    <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Category</th>
-                    <th class="text-center px-4 py-3 text-xs text-neutral-400 font-medium">Total</th>
+                @{
+                    const string thBase = "sticky top-0 z-10 bg-neutral-50 px-4 py-3 text-xs text-neutral-400 font-medium border-b border-neutral-100";
+                }
+                <tr>
+                    <th class="sticky top-0 z-10 bg-neutral-50 w-12 px-3 py-3 border-b border-neutral-100"></th>
+                    <th class="@thBase text-left">Product</th>
+                    <th class="@thBase text-left">Category</th>
+                    <th class="@thBase text-center">Total</th>
                     @foreach (var store in Model.Stores)
                     {
-                        <th class="text-center px-3 py-3 text-xs text-neutral-400 font-medium whitespace-nowrap">
+                        <th class="@thBase text-center whitespace-nowrap">
                             @store.Name.Replace("Sterlin Glams ", "")
                         </th>
                     }
-                    <th class="text-center px-4 py-3 text-xs text-neutral-400 font-medium">Save</th>
+                    <th class="@thBase text-center">Save</th>
                 </tr>
             </thead>
             <tbody class="divide-y divide-neutral-50">
