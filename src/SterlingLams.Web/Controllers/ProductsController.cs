@@ -26,8 +26,10 @@ public class ProductsController : Controller
 
     // GET /products
     [Microsoft.AspNetCore.OutputCaching.OutputCache(PolicyName = "Storefront")]
-    public async Task<IActionResult> Index(ProductFilterViewModel filters, int page = 1, int pageSize = 60)
+    public async Task<IActionResult> Index(ProductFilterViewModel filters, int page = 1, int pageSize = 24)
     {
+        // Storefront "Show" toggle offers 9 / 24 / 36 per page — clamp anything else to the 24 default.
+        if (pageSize != 9 && pageSize != 24 && pageSize != 36) pageSize = 24;
         // No Includes: the card only needs a handful of fields + three booleans, so we project
         // straight to ProductCardViewModel in SQL (below). Loading full Images/Variants/Inventory
         // graphs here caused a cartesian JOIN blow-up and over-fetch on the busiest page.
@@ -55,11 +57,22 @@ public class ProductsController : Controller
             query = query.Where(p => catSlugs.Contains(p.Category.Slug));
         }
 
+        // Facet scope: the page's products (category/search) BEFORE the sidebar's own facets
+        // (colour / price / stock) are applied — so the colour counts and the price-slider max stay
+        // stable as the shopper toggles those facets, instead of collapsing to the current selection.
+        var facetScope = query;
+
         if (!string.IsNullOrWhiteSpace(filters.Metal))
             query = query.Where(p => p.Metal == filters.Metal);
 
         if (!string.IsNullOrWhiteSpace(filters.GemstoneType))
             query = query.Where(p => p.GemstoneType == filters.GemstoneType);
+
+        // Colour lives on the variants (attribute "Colour"): a product matches if any active variant
+        // carries the chosen colour value.
+        if (!string.IsNullOrWhiteSpace(filters.Color))
+            query = query.Where(p => p.Variants.Any(v => v.IsActive
+                && v.AttributeValues.Any(av => av.Attribute.Name.ToLower().StartsWith("colo") && av.Value == filters.Color)));
 
         if (filters.MinPrice.HasValue)
             query = query.Where(p => p.Price >= filters.MinPrice.Value);
@@ -76,7 +89,15 @@ public class ProductsController : Controller
         {
             "price_asc" => query.OrderBy(p => p.Price).ThenBy(p => p.Id),
             "price_desc" => query.OrderByDescending(p => p.Price).ThenBy(p => p.Id),
-            "newest" => query.OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id),
+            "newest" or "newness" => query.OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id),
+            "rating" => query
+                .OrderByDescending(p => _db.ProductReviews.Where(r => r.ProductId == p.Id && r.IsApproved)
+                    .Average(r => (double?)r.Rating) ?? 0)
+                .ThenBy(p => p.Id),
+            "popularity" => query
+                .OrderByDescending(p => _db.OrderItems.Where(oi => oi.ProductId == p.Id)
+                    .Sum(oi => (int?)oi.Quantity) ?? 0)
+                .ThenBy(p => p.Id),
             _ => query.OrderBy(p => p.Name).ThenBy(p => p.Id)   // "name" + default
         };
 
@@ -147,6 +168,19 @@ public class ProductsController : Controller
                     && (!hideOos || p.StoreInventories.Any(si => si.QuantityOnHand > 0)))
             })
             .ToListAsync();
+
+        // Colour facet (from the variants' "Colour" attribute) + the price-slider ceiling, both over the
+        // page scope so they stay stable as the shopper toggles colour/price.
+        filters.MaxCatalogPrice = await facetScope.Select(p => (decimal?)p.Price).MaxAsync() ?? 0m;
+        filters.AvailableColors = await (
+            from p in facetScope
+            from v in p.Variants
+            where v.IsActive
+            from av in v.AttributeValues
+            where av.Attribute.Name.ToLower().StartsWith("colo")
+            group p.Id by new { av.Value, av.ColorHex } into g
+            select new ColorFacet { Value = g.Key.Value, Hex = g.Key.ColorHex, Count = g.Distinct().Count() }
+        ).OrderByDescending(f => f.Count).ThenBy(f => f.Value).ToListAsync();
 
         // Page heading: the category being viewed, else the search term, else the default.
         string? pageTitle = null;
