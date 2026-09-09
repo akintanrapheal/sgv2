@@ -1,0 +1,68 @@
+@model (int Page, int TotalPages)
+@{
+    var cur = Model.Page < 1 ? 1 : Model.Page;
+    var total = Model.TotalPages;
+
+    var idleCls = "px-3 py-1.5 text-xs rounded-sm border border-neutral-200 text-neutral-600 hover:border-neutral-400 bg-white transition-colors";
+    var activeCls = "px-3 py-1.5 text-xs rounded-sm border bg-neutral-900 text-white border-neutral-900 transition-colors";
+
+    var links = new List<(int Num, string Url, bool Active, bool GapBefore)>();
+    string firstUrl = "", prevUrl = "", nextUrl = "", lastUrl = "";
+
+    if (total > 1)
+    {
+        var req = ViewContext.HttpContext.Request;
+        string PageUrl(int p)
+        {
+            var parsed = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(req.QueryString.Value ?? "");
+            var items = parsed.Where(kv => !string.Equals(kv.Key, "page", StringComparison.OrdinalIgnoreCase))
+                              .SelectMany(kv => kv.Value.Select(v => new KeyValuePair<string, string?>(kv.Key, v)))
+                              .ToList();
+            items.Add(new KeyValuePair<string, string?>("page", p.ToString()));
+            return Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString(req.Path, items);
+        }
+
+        // Windowed page numbers: 1, a ±2 window around the current page, and the last page, with gaps.
+        var nums = new SortedSet<int>();
+        void Add(int p) { if (p >= 1 && p <= total) { nums.Add(p); } }
+        Add(1);
+        for (var p = cur - 2; p <= cur + 2; p++) { Add(p); }
+        Add(total);
+
+        var listed = nums.ToList();
+        for (var i = 0; i < listed.Count; i++)
+            links.Add((listed[i], PageUrl(listed[i]), listed[i] == cur, i > 0 && listed[i] - listed[i - 1] > 1));
+
+        firstUrl = PageUrl(1);
+        prevUrl = PageUrl(cur - 1);
+        nextUrl = PageUrl(cur + 1);
+        lastUrl = PageUrl(total);
+    }
+}
+@if (total > 1)
+{
+    <nav class="mt-6 flex items-center justify-center flex-wrap gap-1.5 text-xs" aria-label="Pagination">
+        <span class="text-neutral-400 mr-2">Page @cur of @total</span>
+
+        @if (cur > 1)
+        {
+            <a href="@firstUrl" class="@idleCls">« First</a>
+            <a href="@prevUrl" class="@idleCls">‹ Prev</a>
+        }
+
+        @foreach (var l in links)
+        {
+            if (l.GapBefore)
+            {
+                <span class="px-2 text-neutral-400">…</span>
+            }
+            <a href="@l.Url" class="@(l.Active ? activeCls : idleCls)">@l.Num</a>
+        }
+
+        @if (cur < total)
+        {
+            <a href="@nextUrl" class="@idleCls">Next ›</a>
+            <a href="@lastUrl" class="@idleCls">Last »</a>
+        }
+    </nav>
+}

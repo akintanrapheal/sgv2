@@ -46,13 +46,4 @@
     </table>
 </div>
 
-@if (totalPages > 1)
-{
-    <div class="flex items-center justify-center gap-2 mt-4 text-xs">
-        @for (int i = 1; i <= totalPages; i++)
-        {
-            <a asp-action="Saved" asp-route-page="@i"
-               class="px-3 py-1.5 rounded-sm @(i == curPage ? "bg-neutral-900 text-white" : "bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-50")">@i</a>
-        }
-    </div>
-}
+<partial name="_Pager" model="(curPage, totalPages)" />

@@ -78,19 +78,4 @@
     </div>
 </div>
 
-@if (totalPages > 1)
-{
-    <div class="flex items-center justify-center gap-3 mt-5 text-sm">
-        @if (page > 1)
-        {
-            <a asp-action="Index" asp-route-status="@status" asp-route-q="@q" asp-route-page="@(page - 1)"
-               class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">← Prev</a>
-        }
-        <span class="text-neutral-400">Page @(page) of @totalPages</span>
-        @if (page < totalPages)
-        {
-            <a asp-action="Index" asp-route-status="@status" asp-route-q="@q" asp-route-page="@(page + 1)"
-               class="px-3 py-1.5 border border-neutral-200 rounded-sm hover:border-neutral-400">Next →</a>
-        }
-    </div>
-}
+<partial name="_Pager" model="(page, totalPages)" />
