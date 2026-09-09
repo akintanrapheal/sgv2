@@ -84,7 +84,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                                                           || EF.Functions.ILike(v.Barcode ?? "", $"%{q}%")));
 
             if (!string.IsNullOrWhiteSpace(category))
-                query = query.Where(p => p.Category != null && p.Category.Slug == category);
+            {
+                // A menu-group parent ("clutches", "jewelry"…) rolls up all its sub-categories; a leaf
+                // category resolves to just itself — same behaviour as the storefront listing.
+                var catSlugs = SterlingLams.Web.Infrastructure.StoreMenu.ExpandSlug(category);
+                query = query.Where(p => p.Category != null && catSlugs.Contains(p.Category.Slug));
+            }
 
             if (minPrice.HasValue)
                 query = query.Where(p => p.Price >= minPrice.Value);

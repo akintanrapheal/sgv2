@@ -87,9 +87,39 @@
             <select name="category"
                     class="border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-neutral-400 bg-white min-w-[140px]">
                 <option value="">All Categories</option>
-                @foreach (var cat in Model.AvailableCategories)
+                @{
+                    // Group parent (e.g. "All Clutches") + its child categories that exist, then any
+                    // categories not in a menu group. Picking a parent rolls up all its children.
+                    var grouped = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+                    var bySlug = Model.AvailableCategories.ToDictionary(c => c.Slug, System.StringComparer.OrdinalIgnoreCase);
+                }
+                @foreach (var e in SterlingLams.Web.Infrastructure.StoreMenu.Entries.Where(e => e.Items.Count > 0))
                 {
-                    <option value="@cat.Slug" selected="@(Model.CategoryFilter == cat.Slug)">@cat.Name</option>
+                    var parentSlug = e.Label.ToLowerInvariant();
+                    var childSlugs = e.Items.Select(i => i.Slug).Where(s => bySlug.ContainsKey(s)).ToList();
+                    if (childSlugs.Count == 0 && !bySlug.ContainsKey(parentSlug)) { continue; }
+                    grouped.Add(parentSlug);
+                    <optgroup label="@e.Label">
+                        <option value="@parentSlug" selected="@(Model.CategoryFilter == parentSlug)">All @e.Label</option>
+                        @foreach (var (label, slug) in e.Items)
+                        {
+                            if (!bySlug.ContainsKey(slug)) { continue; }
+                            grouped.Add(slug);
+                            <option value="@slug" selected="@(Model.CategoryFilter == slug)">@label</option>
+                        }
+                    </optgroup>
+                }
+                @{
+                    var ungrouped = Model.AvailableCategories.Where(c => !grouped.Contains(c.Slug)).ToList();
+                }
+                @if (ungrouped.Count > 0)
+                {
+                    <optgroup label="Other">
+                        @foreach (var cat in ungrouped)
+                        {
+                            <option value="@cat.Slug" selected="@(Model.CategoryFilter == cat.Slug)">@cat.Name</option>
+                        }
+                    </optgroup>
                 }
             </select>
         </div>
