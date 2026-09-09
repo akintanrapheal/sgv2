@@ -22,11 +22,17 @@ public class CampaignsController : MarketingAreaController
         _attribution = attribution;
     }
 
-    public async Task<IActionResult> Index()
+    public async Task<IActionResult> Index(int page = 1)
     {
+        const int pageSize = 30;
         ViewData["Title"] = "Campaigns";
+        if (page < 1) page = 1;
+        var total = await _db.Campaigns.CountAsync();
+        ViewBag.Page = page;
+        ViewBag.TotalPages = (int)Math.Ceiling(total / (double)pageSize);
         var campaigns = await _db.Campaigns.AsNoTracking()
-            .OrderByDescending(c => c.CreatedAt).ToListAsync();
+            .OrderByDescending(c => c.CreatedAt)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         return View(campaigns);
     }
 
