@@ -70,6 +70,7 @@ public class ProductFilterViewModel
     public string? Category { get; set; }
     public string? Metal { get; set; }
     public string? GemstoneType { get; set; }
+    public string? Color { get; set; }
     public string? Store { get; set; }
     public decimal? MinPrice { get; set; }
     public decimal? MaxPrice { get; set; }
@@ -78,7 +79,19 @@ public class ProductFilterViewModel
 
     public List<string> AvailableMetals { get; set; } = new();
     public List<string> AvailableGemstones { get; set; } = new();
+    public List<ColorFacet> AvailableColors { get; set; } = new();
+    /// <summary>Highest product price in the current page scope — the top end of the price slider.</summary>
+    public decimal MaxCatalogPrice { get; set; }
     public List<CategoryFilterOption> Categories { get; set; } = new();
+}
+
+/// <summary>A selectable colour in the storefront "Filter by colour" facet, with how many products
+/// in the current scope carry it (and an optional swatch hex).</summary>
+public class ColorFacet
+{
+    public string Value { get; set; } = string.Empty;
+    public string? Hex { get; set; }
+    public int Count { get; set; }
 }
 
 public class CategoryFilterOption
