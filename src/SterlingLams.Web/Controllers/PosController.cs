@@ -1351,7 +1351,7 @@ public class PosController : Controller
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
                 variants = p.ProductType == "variable"
                     ? p.Variants.Where(v => v.IsActive)
-                        .Select(v => new { id = v.Id, name = v.Name, price = v.Price }).ToList()
+                        .Select(v => new { id = v.Id, name = v.Name, price = v.Price, imageUrl = v.ImageUrl }).ToList()
                     : null
             })
             .ToListAsync();
@@ -1393,7 +1393,7 @@ public class PosController : Controller
             {
                 p.id, p.name, p.sku, p.barcode, p.categoryId, p.price, image = PosThumb(p.image),
                 stock = ProdAvail(snapInv, p.id),
-                variants = p.variants?.Select(v => new { v.id, v.name, v.price, stock = VarAvail(snapInv, p.id, v.id) })
+                variants = p.variants?.Select(v => new { v.id, v.name, v.price, stock = VarAvail(snapInv, p.id, v.id), image = PosThumb(v.imageUrl) })
             }),
             customers
         });
@@ -1445,7 +1445,7 @@ public class PosController : Controller
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
                 variants = p.ProductType == "variable"
                     ? p.Variants.Where(v => v.IsActive)
-                        .Select(v => new { id = v.Id, name = v.Name, barcode = v.Barcode, price = v.Price }).ToList()
+                        .Select(v => new { id = v.Id, name = v.Name, barcode = v.Barcode, price = v.Price, imageUrl = v.ImageUrl }).ToList()
                     : null
             })
             .ToListAsync();
@@ -1460,7 +1460,7 @@ public class PosController : Controller
             // When a specific variant's barcode was scanned, tell the till which one so it can add that
             // exact variant straight away (no variant-picker prompt).
             scanVariantId = p.variants?.FirstOrDefault(v => v.barcode != null && v.barcode.ToLowerInvariant() == qlc)?.id,
-            variants = p.variants?.Select(v => new { v.id, v.name, v.barcode, v.price, stock = VarAvail(inv, p.id, v.id) })
+            variants = p.variants?.Select(v => new { v.id, v.name, v.barcode, v.price, stock = VarAvail(inv, p.id, v.id), image = PosThumb(v.imageUrl) })
         }));
     }
 
