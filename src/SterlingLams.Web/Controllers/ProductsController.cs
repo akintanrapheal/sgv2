@@ -70,12 +70,14 @@ public class ProductsController : Controller
         if (filters.InStockOnly == true)
             query = query.Where(p => p.StoreInventories.Any(si => si.QuantityOnHand > 0));
 
+        // Default listing order is alphabetical by name (every category page). "New In" passes
+        // sortBy=newest explicitly. A stable secondary key (Id) keeps pagination deterministic.
         query = filters.SortBy switch
         {
-            "price_asc" => query.OrderBy(p => p.Price),
-            "price_desc" => query.OrderByDescending(p => p.Price),
-            "name" => query.OrderBy(p => p.Name),
-            _ => query.OrderByDescending(p => p.CreatedAt)
+            "price_asc" => query.OrderBy(p => p.Price).ThenBy(p => p.Id),
+            "price_desc" => query.OrderByDescending(p => p.Price).ThenBy(p => p.Id),
+            "newest" => query.OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id),
+            _ => query.OrderBy(p => p.Name).ThenBy(p => p.Id)   // "name" + default
         };
 
         var totalCount = await query.CountAsync();

@@ -73,7 +73,7 @@ public class ProductFilterViewModel
     public string? Store { get; set; }
     public decimal? MinPrice { get; set; }
     public decimal? MaxPrice { get; set; }
-    public string? SortBy { get; set; } = "newest";
+    public string? SortBy { get; set; } = "name";   // default listing order: alphabetical by product name
     public bool? InStockOnly { get; set; }
 
     public List<string> AvailableMetals { get; set; } = new();
