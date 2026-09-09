@@ -1,0 +1,112 @@
+@{
+    ViewData["Title"] = "Import Customers";
+}
+
+@Html.AntiForgeryToken()
+
+<div class="max-w-3xl">
+    <h1 class="text-xl font-semibold text-neutral-900">Import Customers</h1>
+    <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
+        Bring customers over from the old WooCommerce site. Upload the Webtoffee
+        <strong>Users/Customers export CSV</strong> (the one that includes the <code>user_pass</code> column).
+        Each customer is created with their <strong>existing password preserved</strong>, so they sign in with
+        the same login as before. Staff/admin rows and accounts that already exist here are skipped.
+        <strong>Preview first</strong> — nothing is written until you click Import.
+    </p>
+
+    <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
+        <label class="block text-xs text-neutral-500 mb-1">Customers CSV</label>
+        <input id="ci-file" type="file" accept=".csv,text/csv"
+               class="block w-full text-sm text-neutral-700 file:mr-3 file:py-2 file:px-4 file:rounded-sm file:border-0 file:bg-neutral-900 file:text-white file:text-xs file:cursor-pointer border border-neutral-200 rounded-sm" />
+        <div class="flex items-center gap-2 mt-4">
+            <button type="button" id="ci-preview" class="px-5 py-2 border border-neutral-300 text-neutral-700 text-sm rounded-md hover:border-neutral-500">Preview</button>
+            <button type="button" id="ci-apply" class="px-6 py-2 bg-neutral-900 text-white text-sm font-medium rounded-md hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed" disabled>Import</button>
+            <span id="ci-status" class="text-sm text-neutral-500"></span>
+        </div>
+    </div>
+
+    <div id="ci-results" class="hidden mt-6"></div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    var fileEl = document.getElementById('ci-file');
+    var previewBtn = document.getElementById('ci-preview');
+    var applyBtn = document.getElementById('ci-apply');
+    var statusEl = document.getElementById('ci-status');
+    var results = document.getElementById('ci-results');
+    var token = document.querySelector('input[name="__RequestVerificationToken"]');
+    var base = (window.__adminBase || '') + '/CustomerImport/';
+    var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+
+    // Re-selecting a file invalidates a previous preview.
+    fileEl.addEventListener('change', function () { applyBtn.disabled = true; results.classList.add('hidden'); statusEl.textContent = ''; });
+
+    function stat(box, label, val, tone) {
+        return '<div class="border border-neutral-200 rounded-md px-3 py-2">'
+            + '<div class="text-xl font-semibold ' + (tone || 'text-neutral-900') + '">' + val + '</div>'
+            + '<div class="text-[11px] uppercase tracking-wide text-neutral-400">' + label + '</div></div>';
+    }
+
+    function render(d) {
+        var grid = '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">'
+            + stat('', d.applied ? 'Imported' : 'Will import', d.wouldCreate, 'text-emerald-600')
+            + stat('', 'Already exist', d.existing)
+            + stat('', 'Staff skipped', d.staff)
+            + stat('', 'With address', d.withAddress)
+            + stat('', 'No email', d.noEmail)
+            + stat('', 'No usable password', d.noHash)
+            + (d.applied ? stat('', 'Failed', d.failed, d.failed ? 'text-red-600' : 'text-neutral-900') : '')
+            + stat('', 'Rows in file', d.totalRows)
+            + '</div>';
+
+        var sample = '';
+        if (d.samples && d.samples.length) {
+            sample = '<h3 class="text-sm font-semibold text-neutral-700 mt-6 mb-2">Sample (' + (d.applied ? 'first imported' : 'first that would import') + ')</h3>'
+                + '<div class="overflow-x-auto"><table class="w-full text-sm border border-neutral-200 rounded-md">'
+                + '<thead><tr class="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500">'
+                + '<th class="px-3 py-2">Email</th><th class="px-3 py-2">Name</th><th class="px-3 py-2">Phone</th><th class="px-3 py-2">Address?</th></tr></thead><tbody>'
+                + d.samples.map(function (s) {
+                    return '<tr class="border-t border-neutral-100"><td class="px-3 py-2">' + esc(s.email) + '</td>'
+                        + '<td class="px-3 py-2">' + esc(s.name) + '</td>'
+                        + '<td class="px-3 py-2">' + esc(s.phone) + '</td>'
+                        + '<td class="px-3 py-2">' + (s.hasAddress ? '✓' : '—') + '</td></tr>';
+                }).join('') + '</tbody></table></div>';
+        }
+        results.innerHTML = grid + sample;
+        results.classList.remove('hidden');
+    }
+
+    function run(url, applying) {
+        if (!fileEl.files || !fileEl.files.length) { statusEl.textContent = 'Choose a CSV file first.'; return; }
+        var fd = new FormData();
+        fd.append('file', fileEl.files[0]);
+        fd.append('__RequestVerificationToken', token ? token.value : '');
+        statusEl.textContent = applying ? 'Importing… (this can take a minute)' : 'Reading…';
+        previewBtn.disabled = true; applyBtn.disabled = true;
+        fetch(url, { method: 'POST', body: fd, headers: { 'RequestVerificationToken': token ? token.value : '' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                previewBtn.disabled = false;
+                if (!d.ok) { statusEl.textContent = d.error || 'Failed.'; return; }
+                render(d);
+                if (applying) {
+                    statusEl.textContent = 'Done — imported ' + d.created + ' customer(s).';
+                    applyBtn.disabled = true;
+                } else {
+                    statusEl.textContent = d.wouldCreate + ' customer(s) ready to import.';
+                    applyBtn.disabled = d.wouldCreate === 0;
+                }
+            })
+            .catch(function () { previewBtn.disabled = false; statusEl.textContent = 'Request failed.'; });
+    }
+
+    previewBtn.addEventListener('click', function () { run(base + 'Preview', false); });
+    applyBtn.addEventListener('click', function () {
+        if (!confirm('Import these customers into the live site? Existing accounts are skipped; this cannot be bulk-undone.')) return;
+        run(base + 'Apply', true);
+    });
+})();
+</script>
+}
