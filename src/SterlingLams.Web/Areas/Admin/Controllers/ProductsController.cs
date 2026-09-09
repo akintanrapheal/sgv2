@@ -183,11 +183,15 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     Price = r.Price, SalePrice = r.SalePrice,
                     SaleStartsAt = r.SaleStartsAt, SaleEndsAt = r.SaleEndsAt,
                 };
-                var effective = r.Variants
-                    .Select(v => VariantPricing.EffectivePrice(product, new ProductVariant { Price = v.Price, SalePrice = v.SalePrice }))
+                var variantVms = r.Variants
+                    .Select(v => new ProductVariant { Price = v.Price, SalePrice = v.SalePrice })
                     .ToList();
-                decimal min = effective.Count > 0 ? effective.Min() : VariantPricing.EffectivePrice(product, null);
-                decimal max = effective.Count > 0 ? effective.Max() : min;
+                var effective = variantVms.Select(v => VariantPricing.EffectivePrice(product, v)).ToList();
+                var regular   = variantVms.Select(v => VariantPricing.RegularPrice(product, v)).ToList();
+                decimal min       = effective.Count > 0 ? effective.Min() : VariantPricing.EffectivePrice(product, null);
+                decimal max       = effective.Count > 0 ? effective.Max() : min;
+                // Regular (pre-sale) price to strike through in the single-price case.
+                decimal regularOne = regular.Count > 0 ? regular.Min() : VariantPricing.RegularPrice(product, null);
 
                 return new
                 {
@@ -196,9 +200,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     sku = r.Sku,
                     active = r.IsActive,
                     image = SterlingLams.Web.Infrastructure.Img.Cld(r.ImageUrl, 96, 96) ?? "/images/placeholder.jpg",
-                    price = min,
-                    maxPrice = max,
+                    price = min,          // effective (sale) price / range low
+                    maxPrice = max,       // range high
+                    regular = regularOne, // pre-sale price for the strike-through
                     hasRange = max > min,
+                    onSale = max == min && min < regularOne,   // single price that is discounted
                     editUrl = Url.Action(nameof(Edit), "Products", new { area = "Admin", id = r.Id }),
                 };
             });
