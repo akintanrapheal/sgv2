@@ -25,21 +25,26 @@
     var priceRoute = SortRoute("price");
     var saleRoute = SortRoute("sale");
     var statusRoute = SortRoute("status");
+    // Owner/full-admin only — hides the bulk-import maintenance tool from regular staff.
+    var isFullAdmin = ViewData["IsFullAdmin"] as bool? == true;
 }
 
 <!-- ── Action buttons (OUTSIDE the filter form — nested forms break HTML) -->
 <div class="flex justify-end gap-2 flex-wrap mb-4">
-    <form asp-area="Admin" asp-controller="Products" asp-action="ImportFromWooCommerce"
-          method="post" enctype="multipart/form-data"
-          onsubmit="this.querySelector('button[type=submit]').disabled=true;this.querySelector('button[type=submit]').textContent='Importing…';">
-        @Html.AntiForgeryToken()
-        <label class="flex items-center gap-2 px-4 py-2 border border-emerald-400 text-emerald-700 text-xs rounded-sm hover:bg-emerald-50 transition-colors cursor-pointer">
-            <span>↑ Import WooCommerce CSV</span>
-            <input type="file" name="csvFile" accept=".csv" class="hidden"
-                   onchange="this.closest('form').querySelector('button[type=submit]').click()" />
-        </label>
-        <button type="submit" class="hidden"></button>
-    </form>
+    @if (isFullAdmin)
+    {
+        <form asp-area="Admin" asp-controller="Products" asp-action="ImportFromWooCommerce"
+              method="post" enctype="multipart/form-data"
+              onsubmit="this.querySelector('button[type=submit]').disabled=true;this.querySelector('button[type=submit]').textContent='Importing…';">
+            @Html.AntiForgeryToken()
+            <label class="flex items-center gap-2 px-4 py-2 border border-emerald-400 text-emerald-700 text-xs rounded-sm hover:bg-emerald-50 transition-colors cursor-pointer">
+                <span>↑ Import WooCommerce CSV</span>
+                <input type="file" name="csvFile" accept=".csv" class="hidden"
+                       onchange="this.closest('form').querySelector('button[type=submit]').click()" />
+            </label>
+            <button type="submit" class="hidden"></button>
+        </form>
+    }
     <a asp-area="Admin" asp-controller="Products" asp-action="Create"
        class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
         + New Product

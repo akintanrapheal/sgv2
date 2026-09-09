@@ -747,6 +747,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         [RequestFormLimits(MultipartBodyLengthLimit = 52428800)] // 50 MB
         public async Task<IActionResult> ImportFromWooCommerce(Microsoft.AspNetCore.Http.IFormFile csvFile)
         {
+            // Bulk product import is an owner-only maintenance tool — never runnable by regular staff,
+            // even if they reach the URL directly (the button is also hidden from them).
+            if (!AdminSections.IsFullAccess(User)) return Forbid();
+
             if (csvFile == null || csvFile.Length == 0)
             {
                 TempData["Error"] = "Please select a CSV file to upload.";
