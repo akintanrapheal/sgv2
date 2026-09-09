@@ -27,6 +27,11 @@
                title="Stock stranded on a product that keeps its stock per option — invisible to the storefront and the till">
                 ⚠ Unsellable pool stock
             </a>
+            <a asp-area="Admin" asp-controller="StockImport" asp-action="Index"
+               class="px-4 py-2 border border-emerald-400 text-emerald-700 text-xs rounded-sm hover:bg-emerald-50 transition-colors"
+               title="Bulk-upload EposNow stock counts per store from a CSV">
+                ↑ Import stock (EposNow)
+            </a>
         }
         <!-- Ensure all products have inventory rows -->
         @if (canEdit)
