@@ -153,6 +153,12 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
 
+// Let customers migrated from the old WooCommerce/WordPress site sign in with their existing password;
+// the WordPress hash is verified once and transparently upgraded to Identity's format on first login.
+// Must be registered AFTER AddIdentity so it overrides the default IPasswordHasher.
+builder.Services.AddScoped<IPasswordHasher<ApplicationUser>,
+    SterlingLams.Web.Infrastructure.Auth.WordPressPasswordHasher>();
+
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.LoginPath = "/Account/Login";
