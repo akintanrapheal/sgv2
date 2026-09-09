@@ -806,3 +806,28 @@ function bindProductCards(root) {
     var cartLink = document.getElementById('cart-link');
     if (cartLink) cartLink.addEventListener('click', function (e) { e.preventDefault(); window.SGCart.open(); });
 })();
+
+// ─── Mobile filter panel (the product-listing sidebar as a slide-in drawer) ──
+(function () {
+    var panel = document.getElementById('filter-panel');
+    var openBtn = document.getElementById('filter-open');
+    var closeBtn = document.getElementById('filter-close');
+    var backdrop = document.getElementById('filter-backdrop');
+    if (!panel || !openBtn) return;
+    function open() {
+        panel.classList.remove('-translate-x-full');
+        panel.classList.add('translate-x-0');
+        if (backdrop) backdrop.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+    }
+    function close() {
+        panel.classList.add('-translate-x-full');
+        panel.classList.remove('translate-x-0');
+        if (backdrop) backdrop.classList.add('hidden');
+        document.body.style.overflow = '';
+    }
+    openBtn.addEventListener('click', open);
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    if (backdrop) backdrop.addEventListener('click', close);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && backdrop && !backdrop.classList.contains('hidden')) close(); });
+})();

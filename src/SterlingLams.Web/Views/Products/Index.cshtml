@@ -73,8 +73,19 @@
 
     <div class="flex gap-8 lg:gap-12">
 
-        <!-- ─── Sidebar Filters ────────────────────────────────────────────── -->
-        <aside class="hidden lg:block w-56 flex-shrink-0">
+        <!-- ─── Sidebar Filters (static on desktop, slide-in drawer on mobile) ── -->
+        <div id="filter-backdrop" class="hidden fixed inset-0 bg-black/40 z-[180] lg:hidden"></div>
+        <aside id="filter-panel"
+               class="fixed lg:static inset-y-0 left-0 z-[190] w-80 max-w-[85vw] lg:w-56 lg:max-w-none flex-shrink-0
+                      bg-white lg:bg-transparent shadow-2xl lg:shadow-none overflow-y-auto lg:overflow-visible
+                      p-6 lg:p-0 -translate-x-full lg:translate-x-0 transition-transform duration-300">
+            <div class="flex items-center justify-between mb-5 lg:hidden">
+                <h2 class="text-sm font-semibold uppercase tracking-[0.2em] text-neutral-700">Filters</h2>
+                <button type="button" id="filter-close" class="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-900">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"/></svg>
+                    Close
+                </button>
+            </div>
             <form method="get" id="filter-form">
                 @* Preserve the chosen page size across sort/filter submits (only when not the default). *@
                 @if (Model.PageSize != 24)
@@ -195,24 +206,13 @@
         <!-- ─── Product Grid ───────────────────────────────────────────────── -->
         <div class="flex-1 min-w-0">
 
-            <!-- Mobile category nav (the sidebar is hidden on phones/tablets) -->
-            @if (sidebarNodes.Count > 0)
-            {
-                @* Collapsed by default on mobile — taps to open the grouped "Shop Categories" list. *@
-                <details class="lg:hidden mb-6 border border-neutral-200 rounded-sm group">
-                    <summary class="cursor-pointer list-none px-4 py-3 flex items-center justify-between">
-                        <span class="text-xs tracking-[0.2em] uppercase text-neutral-500">
-                            @(string.IsNullOrEmpty(Model.Filters.Category) ? "Shop Categories" : (Model.Filters.Categories.FirstOrDefault(c => c.Slug == Model.Filters.Category)?.Name ?? "Shop Categories"))
-                        </span>
-                        <svg class="accordion-chevron w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 9l-7 7-7-7" />
-                        </svg>
-                    </summary>
-                    <div class="px-4 pb-3 pt-1 max-h-80 overflow-y-auto border-t border-neutral-100">
-                        <partial name="_CategorySidebar" model="@((sidebarNodes, Model.Filters.Category))" />
-                    </div>
-                </details>
-            }
+            <!-- Mobile: open the full filter panel (categories, price, colour…). The sidebar is a
+                 slide-in drawer on phones/tablets and static on desktop. -->
+            <button type="button" id="filter-open"
+                    class="lg:hidden mb-6 w-full flex items-center justify-center gap-2 border border-neutral-300 rounded-sm py-3 text-xs tracking-[0.2em] uppercase text-neutral-700 hover:border-neutral-900 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 4h18M6 12h12M10 20h4"/></svg>
+                Filters
+            </button>
 
             <!-- Sort bar -->
             <div class="flex items-center justify-between gap-4 mb-8 pb-4 border-b border-neutral-100 flex-wrap">
