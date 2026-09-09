@@ -55,6 +55,21 @@ public static class StoreMenu
         return new[] { slug };
     }
 
+    /// <summary>The display label for a menu-group parent slug (e.g. "jewelry" → "Jewelry"), or null
+    /// when the slug isn't a group parent. Lets the shop-listing heading show the group name on the
+    /// "All &lt;group&gt;" pages, where the slug is a StoreMenu group rather than a real Category row.</summary>
+    public static string? GroupLabelForSlug(string? slug)
+    {
+        if (string.IsNullOrWhiteSpace(slug)) return null;
+        foreach (var e in Entries)
+        {
+            if (e.Items.Count == 0) continue; // link-only entry (e.g. "New In")
+            if (string.Equals(e.Label.ToLowerInvariant(), slug, System.StringComparison.OrdinalIgnoreCase))
+                return e.Label;
+        }
+        return null;
+    }
+
     /// <summary>
     /// Builds the shop-page sidebar tree from the categories that actually have products right now.
     /// Groups keep only their in-stock sub-items and are dropped when empty; any active category not
