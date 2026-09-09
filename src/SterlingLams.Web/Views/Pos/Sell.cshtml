@@ -1125,20 +1125,30 @@
                 const stockLabel = out
                     ? '<span class="text-[11px] text-red-500 font-medium">Out of stock</span>'
                     : `<span class="text-[11px] ${st <= 3 ? 'text-amber-600' : 'text-neutral-400'}">${st} in stock</span>`;
-                return `<button type="button" class="variant-opt w-full flex justify-between items-center border border-neutral-200 rounded-lg px-4 py-3 text-left ${out ? 'opacity-50 cursor-not-allowed' : 'hover:border-brand-500 hover:bg-brand-50 transition-colors'}" data-idx="${i}" ${out ? 'disabled' : ''}>
-                    <span class="flex flex-col gap-0.5">
+                const vimg = (v.image || p.image)
+                    ? `<img src="${v.image || p.image}" alt="" class="w-10 h-10 rounded object-cover bg-neutral-100 flex-shrink-0">`
+                    : '<span class="w-10 h-10 rounded bg-neutral-100 flex-shrink-0"></span>';
+                return `<button type="button" class="variant-opt w-full flex items-center gap-3 border border-neutral-200 rounded-lg px-3 py-2.5 text-left ${out ? 'opacity-50 cursor-not-allowed' : 'hover:border-brand-500 hover:bg-brand-50 transition-colors'}" data-idx="${i}" data-img="${v.image || ''}" ${out ? 'disabled' : ''}>
+                    ${vimg}
+                    <span class="flex flex-col gap-0.5 flex-1 min-w-0">
                         <span class="text-sm text-neutral-800">${v.name}</span>
                         ${stockLabel}
                     </span>
                     <span class="text-sm font-medium text-neutral-700">${fmt(price)}</span>
                 </button>`;
             }).join('');
-            variantList.querySelectorAll('.variant-opt').forEach(b => b.addEventListener('click', () => {
-                if (b.disabled) return;
-                variantModal.classList.add('hidden');
-                resolveVariant = null;
-                resolve(p.variants[+b.dataset.idx]);
-            }));
+            variantList.querySelectorAll('.variant-opt').forEach(b => {
+                b.addEventListener('click', () => {
+                    if (b.disabled) return;
+                    variantModal.classList.add('hidden');
+                    resolveVariant = null;
+                    resolve(p.variants[+b.dataset.idx]);
+                });
+                // Show the highlighted variant's own picture in the main frame (e.g. hover "Gold" → Gold).
+                b.addEventListener('mouseenter', () => {
+                    if (b.dataset.img) variantImage.innerHTML = '<img src="' + b.dataset.img + '" alt="" class="w-full h-full object-cover">';
+                });
+            });
             variantModal.classList.remove('hidden');
         });
     }
@@ -1301,19 +1311,20 @@
     });
 
     async function add(p, preVariant) {
-        let variantId = null, variantName = null, unitPrice = p.price, lineStock = p.stock;
+        let variantId = null, variantName = null, unitPrice = p.price, lineStock = p.stock, lineImage = p.image;
         if (p.variants && p.variants.length) {
             const v = preVariant || await pickVariant(p);   // preVariant = the exact variant scanned (no picker)
             if (!v) return;
             variantId = v.id; variantName = v.name; unitPrice = (v.price != null ? v.price : p.price);
             lineStock = (v.stock != null) ? v.stock : p.stock; // per-variant available
+            if (v.image) lineImage = v.image;                  // the variant's own picture (e.g. Gold), if set
         }
         if (lineStock <= 0) { showError('Out of stock.'); return; }
         const key = p.id + '-' + (variantId ?? '');
         const ex = cart.find(c => c.key === key);
         if ((ex ? ex.qty : 0) + 1 > lineStock) { showError('Not enough stock.'); return; }
         if (ex) ex.qty++;
-        else cart.push({ key, productId: p.id, variantId, sku: p.sku, name: p.name, variantName, unitPrice, qty: 1, stock: lineStock, note: null, discountAmount: 0, discountReason: null, discountType: null });
+        else cart.push({ key, productId: p.id, variantId, sku: p.sku, name: p.name, variantName, unitPrice, qty: 1, stock: lineStock, image: lineImage, note: null, discountAmount: 0, discountReason: null, discountType: null });
         renderCart();
     }
 
@@ -1337,6 +1348,7 @@
                 return `
                 <div class="py-2.5">
                     <div class="flex items-start gap-2">
+                        ${c.image ? `<img src="${c.image}" alt="" class="w-9 h-9 rounded object-cover bg-neutral-100 flex-shrink-0">` : ''}
                         <div class="flex-1 min-w-0">
                             ${c.sku ? `<p class="text-[10px] text-neutral-400 font-mono leading-none mb-0.5">${c.sku}</p>` : ''}
                             <p class="text-xs text-neutral-800 font-medium leading-snug">${c.name}${c.variantName ? `<span class="text-neutral-400 font-normal"> · ${c.variantName}</span>` : ''}</p>
