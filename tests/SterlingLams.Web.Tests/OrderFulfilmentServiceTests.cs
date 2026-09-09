@@ -51,6 +51,54 @@ public class OrderFulfilmentServiceTests
     }
 
     [Fact]
+    public async Task Northern_order_is_fulfilled_from_Abuja()
+    {
+        using var t = new TestDb();
+        var user = t.SeedUser();
+        var (abuja, allen, ikota) = t.SeedBranches();
+        var p = t.SeedProduct();
+        // The item is in stock at every branch — routing (not just availability) must send a northern
+        // order to Abuja and leave the southern branches alone.
+        t.SetStock(p.Id, abuja.Id, 5);
+        t.SetStock(p.Id, allen.Id, 5);
+        t.SetStock(p.Id, ikota.Id, 5);
+
+        var order = t.NewDeliveryOrder(user, "Kano", "Kano", (p, 2));
+        await Svc(t).FulfilPaidOrderAsync(order.Id);
+
+        var o = await t.Db.Orders.FindAsync(order.Id);
+        Assert.Equal(abuja.Id, o!.FulfillingStoreId);
+        Assert.Equal(OrderStatus.Processing, o.Status);
+        Assert.Empty(await t.Db.StockTransfers.ToListAsync());       // Abuja had it all — no transfer
+        Assert.Equal(3, t.Inv(p.Id, abuja.Id).QuantityOnHand);      // 2 sold from Abuja
+        Assert.Equal(5, t.Inv(p.Id, allen.Id).QuantityOnHand);      // southern branches untouched
+        Assert.Equal(5, t.Inv(p.Id, ikota.Id).QuantityOnHand);
+    }
+
+    [Fact]
+    public async Task Southern_order_prefers_the_branch_that_has_all_the_items()
+    {
+        using var t = new TestDb();
+        var user = t.SeedUser();
+        var (abuja, allen, ikota) = t.SeedBranches();
+        var p = t.SeedProduct();
+        // Allen (Ikeja) is closest to the customer but has only 1; Ikota holds both units. The order
+        // should ship whole from Ikota (no transfer) rather than from the closer, partial Allen.
+        t.SetStock(p.Id, allen.Id, 1);
+        t.SetStock(p.Id, ikota.Id, 2);
+
+        var order = t.NewDeliveryOrder(user, "Lagos", "Ikeja", (p, 2));
+        await Svc(t).FulfilPaidOrderAsync(order.Id);
+
+        var o = await t.Db.Orders.FindAsync(order.Id);
+        Assert.Equal(ikota.Id, o!.FulfillingStoreId);
+        Assert.Equal(OrderStatus.Processing, o.Status);
+        Assert.Empty(await t.Db.StockTransfers.ToListAsync());       // whole order from one branch
+        Assert.Equal(0, t.Inv(p.Id, ikota.Id).QuantityOnHand);      // 2 sold from Ikota
+        Assert.Equal(1, t.Inv(p.Id, allen.Id).QuantityOnHand);      // Allen untouched
+    }
+
+    [Fact]
     public async Task Fulfil_is_idempotent()
     {
         using var t = new TestDb();

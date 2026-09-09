@@ -69,25 +69,65 @@ public class OrderFulfilmentService : IOrderFulfilmentService
     private static Func<int, int?, int, int?> EffectiveVariantResolver(IEnumerable<StoreInventory> rows)
         => (_, vid, _) => vid;
 
+    // ── Fulfilment-branch choice (region routing + "has all the items") ─────────
+    // Picks the branch that fulfils the order and the ordered list of branches to draw from. Honours the
+    // North/South routing (see DeliveryZoneService.GetRegion): a customer's own region is preferred and
+    // the other region is only a last resort. Within the region we'd rather ship the WHOLE order from one
+    // branch (no inter-branch transfer) — so:
+    //   (a) closest in-region branch that alone has every item  → ship from it, no transfer;
+    //   (b) else if the in-region branches collectively cover it → closest in-region + transfers from
+    //       the other in-region branches (the other region tails last);
+    //   (c) else (region can't cover, even together)            → last-resort: any single branch that
+    //       has everything, else the overall closest, drawing from every branch.
+    // `ranked` is already region-first proximity order, so the source tail always prefers same-region
+    // branches and falls back cross-region only at the end.
+    private static (Store fulfil, List<int> storeOrder) ChooseFulfilment(
+        Order order, List<Store> ranked, List<Store> activeStores, IEnumerable<string> northStates,
+        Func<int, int?, int, int?> effVid, Func<int, int?, int, int> avail)
+    {
+        List<int> Order(Store head) =>
+            new List<int> { head.Id }.Concat(ranked.Where(s => s.Id != head.Id).Select(s => s.Id)).ToList();
+
+        // Store pickup: the customer chose the branch — fulfil there, transfer anything it lacks.
+        if (order.FulfillmentType == FulfillmentType.StorePickup)
+        {
+            var pick = activeStores.FirstOrDefault(s => s.Id == order.PickupStoreId) ?? ranked.First();
+            return (pick, Order(pick));
+        }
+
+        var north = northStates as ICollection<string> ?? northStates.ToList();
+        var region = DeliveryZoneService.GetRegion(order.DeliveryAddress?.State, north);
+        var inRegion = ranked.Where(s => DeliveryZoneService.GetRegion(s.State, north) == region).ToList();
+
+        // Does a single branch hold every line (summing repeated lines of the same effective row)?
+        bool Covers(Store s) => order.Items
+            .GroupBy(i => (i.ProductId, Eff: effVid(i.ProductId, i.ProductVariantId, s.Id)))
+            .All(g => avail(g.Key.ProductId, g.First().ProductVariantId, s.Id) >= g.Sum(x => x.Quantity));
+        // Do the branches together hold every line?
+        bool GroupCovers(List<Store> grp) => grp.Count > 0 && order.Items
+            .GroupBy(i => (i.ProductId, i.ProductVariantId))
+            .All(g => grp.Sum(s => avail(g.Key.ProductId, g.Key.ProductVariantId, s.Id)) >= g.Sum(x => x.Quantity));
+
+        var single = inRegion.FirstOrDefault(Covers);              // (a)
+        if (single != null) return (single, Order(single));
+        if (GroupCovers(inRegion)) return (inRegion.First(), Order(inRegion.First())); // (b)
+
+        var anySingle = ranked.FirstOrDefault(Covers);             // (c) last resort
+        var fulfil = anySingle ?? ranked.First();
+        return (fulfil, Order(fulfil));
+    }
+
     // ── Allocation ────────────────────────────────────────────────────────────
-    // Spreads an order's lines across branches: the fulfilment branch first (pickup store, or
-    // nearest to the customer), then the next-nearest. `avail(product, variant, store)` supplies the
-    // usable quantity of the effective row; `effVid` maps each line to the inventory row it draws on
-    // (the variant's own row, or the pool row for a simple product) so repeated lines of the same
-    // product/variant decrement one balance. Returns the per-(store, product, variant) allocation and
-    // the first line that couldn't be fully covered (null = success).
-    private static (Store fulfilStore, Dictionary<(int store, int product, int? variant), int> alloc, OrderItem? shortLine)
-        Allocate(Order order, List<Store> activeStores, List<Store> ranked,
+    // Spreads an order's lines across branches in the given source order (fulfilment branch first, then
+    // the next-nearest). `avail(product, variant, store)` supplies the usable quantity of the effective
+    // row; `effVid` maps each line to the inventory row it draws on (the variant's own row, or the pool
+    // row for a simple product) so repeated lines of the same product/variant decrement one balance.
+    // Returns the per-(store, product, variant) allocation and the first line that couldn't be fully
+    // covered (null = success).
+    private static (Dictionary<(int store, int product, int? variant), int> alloc, OrderItem? shortLine)
+        Allocate(Order order, List<int> storeOrder,
             Func<int, int?, int, int?> effVid, Func<int, int?, int, int> avail)
     {
-        Store fulfilStore = (order.FulfillmentType == FulfillmentType.StorePickup
-                ? activeStores.FirstOrDefault(s => s.Id == order.PickupStoreId)
-                : null)
-            ?? ranked.First();
-
-        var storeOrder = new List<int> { fulfilStore.Id };
-        storeOrder.AddRange(ranked.Where(s => s.Id != fulfilStore.Id).Select(s => s.Id));
-
         // Keyed by the EFFECTIVE row so repeated lines of the same product/variant share one balance.
         var remaining = new Dictionary<(int product, int? effVid, int store), int>();
         int Remaining(int pid, int? vid, int sid)
@@ -111,9 +151,9 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                 alloc[(sid, line.ProductId, line.ProductVariantId)] = acc + take;
                 need -= take;
             }
-            if (need > 0) return (fulfilStore, alloc, line);
+            if (need > 0) return (alloc, line);
         }
-        return (fulfilStore, alloc, null);
+        return (alloc, null);
     }
 
     // ── Concurrency helper ───────────────────────────────────────────────────
@@ -198,8 +238,10 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                 _logger.LogError("No active stores — cannot fulfil order {OrderNumber}.", order.OrderNumber);
                 return FulfilOutcome.Deferred;
             }
+            // Region routing set (which states go to the Abuja branch) — admin-editable, default built-in.
+            var northStates = DeliveryZoneService.ParseNorthStates(await _settings.GetAsync("fulfilment.north_states", ""));
             var ranked = DeliveryZoneService.RankStoresByProximity(
-                activeStores, order.DeliveryAddress?.State, order.DeliveryAddress?.City);
+                activeStores, order.DeliveryAddress?.State, order.DeliveryAddress?.City, northStates);
 
             var productIds = order.Items.Select(i => i.ProductId).Distinct().ToList();
             var storeIds = activeStores.Select(s => s.Id).ToList();
@@ -244,7 +286,8 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                         ? Math.Max(0, si.QuantityOnHand - si.QuantityReserved) : 0;
                 }
 
-                var (fulfilStore, alloc, shortLine) = Allocate(order, activeStores, ranked, effVid, SaleAvail);
+                var (fulfilStore, storeOrder) = ChooseFulfilment(order, ranked, activeStores, northStates, effVid, SaleAvail);
+                var (alloc, shortLine) = Allocate(order, storeOrder, effVid, SaleAvail);
                 if (shortLine != null)
                 {
                     _logger.LogWarning("Order {OrderNumber} sold out before its payment landed — product {ProductId}.",

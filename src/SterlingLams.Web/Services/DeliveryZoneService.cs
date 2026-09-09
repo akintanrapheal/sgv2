@@ -4,6 +4,11 @@ namespace SterlingLams.Web.Services;
 
 public enum DeliveryZone { Lagos, Abuja, Oyo, National }
 
+/// <summary>Fulfilment region an order is routed to. North → the Abuja branch; South → the southern
+/// branches (Allen, Ikota, Ibadan). The set of states counted as "North" is editable in
+/// Admin → Delivery Zones (setting <c>fulfilment.north_states</c>); everything else is South.</summary>
+public enum StoreRegion { North, South }
+
 public class DeliveryOption
 {
     public string Type { get; set; } = "Standard";   // "Express" | "Standard"
@@ -63,6 +68,66 @@ public class DeliveryZoneService
         DeliveryZone.Oyo => "Oyo",
         _ => "National"
     };
+
+    // ── Fulfilment region (North → Abuja branch, South → Allen/Ikota/Ibadan) ────
+    // Built-in default: the far North (North-West + North-East) plus FCT/Abuja route to the Abuja store.
+    // Everything else (incl. the North-Central middle belt and the whole South) is South. The admin can
+    // move states between the two groups in Admin → Delivery Zones (setting fulfilment.north_states).
+    public static readonly string[] DefaultNorthStates =
+    {
+        "FCT (Abuja)",
+        // North-West
+        "Kaduna", "Kano", "Katsina", "Kebbi", "Sokoto", "Jigawa", "Zamfara",
+        // North-East
+        "Adamawa", "Bauchi", "Borno", "Gombe", "Taraba", "Yobe",
+    };
+
+    /// <summary>Parses the stored fulfilment.north_states JSON (an array of state names). A blank or
+    /// unparseable value falls back to <see cref="DefaultNorthStates"/>; an explicit empty array is
+    /// honoured (every state then routes South).</summary>
+    public static List<string> ParseNorthStates(string? json)
+    {
+        if (!string.IsNullOrWhiteSpace(json))
+        {
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<List<string>>(json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (parsed != null)
+                    return parsed.Select(s => (s ?? "").Trim()).Where(s => s.Length > 0).ToList();
+            }
+            catch { /* fall back to the default below */ }
+        }
+        return DefaultNorthStates.ToList();
+    }
+
+    /// <summary>The admin-editable set of states that route to the North (Abuja) branch.</summary>
+    public async Task<List<string>> GetNorthStatesAsync()
+        => ParseNorthStates(await _settings.GetAsync("fulfilment.north_states", ""));
+
+    /// <summary>Which fulfilment region a state belongs to, given the North state set. Tolerates the
+    /// FCT/Abuja name variants ("FCT", "Abuja", "FCT (Abuja)", "Federal Capital Territory").</summary>
+    public static StoreRegion GetRegion(string? state, IEnumerable<string> northStates)
+    {
+        var s = (state ?? "").Trim();
+        if (s.Length == 0) return StoreRegion.South; // unknown → the larger southern group
+        foreach (var n in northStates)
+            if (StateMatches(s, n)) return StoreRegion.North;
+        return StoreRegion.South;
+    }
+
+    private static bool IsFct(string s) =>
+        s.Contains("Abuja", StringComparison.OrdinalIgnoreCase)
+        || s.Equals("FCT", StringComparison.OrdinalIgnoreCase)
+        || s.Contains("FCT ", StringComparison.OrdinalIgnoreCase)
+        || s.Contains("Federal Capital", StringComparison.OrdinalIgnoreCase);
+
+    private static bool StateMatches(string a, string b)
+    {
+        a = a.Trim(); b = b.Trim();
+        if (a.Equals(b, StringComparison.OrdinalIgnoreCase)) return true;
+        return IsFct(a) && IsFct(b); // "FCT (Abuja)" ≡ "FCT" ≡ "Abuja"
+    }
 
     // ── Zone config (admin-editable JSON, with a sensible built-in default) ────
     public async Task<List<DeliveryZoneDef>> GetZonesAsync()
@@ -135,7 +200,18 @@ public class DeliveryZoneService
     // ── Rank branches by proximity to a customer (for online fulfilment) ──────
     public static List<Models.Domain.Store> RankStoresByProximity(
         IEnumerable<Models.Domain.Store> stores, string? customerState, string? customerCity)
+        => RankStoresByProximity(stores, customerState, customerCity, DefaultNorthStates);
+
+    /// <summary>Ranks branches for fulfilling a customer's order: same fulfilment region first (so a
+    /// northern order prefers Abuja and a southern order prefers Allen/Ikota/Ibadan — the other region
+    /// is only a last-resort tail), then same fine zone (Lagos/Oyo/Abuja), then a city match, then Id.
+    /// Stock isn't considered here; the caller picks the branch that actually has the items.</summary>
+    public static List<Models.Domain.Store> RankStoresByProximity(
+        IEnumerable<Models.Domain.Store> stores, string? customerState, string? customerCity,
+        IEnumerable<string> northStates)
     {
+        var north = northStates as ICollection<string> ?? northStates.ToList();
+        var customerRegion = GetRegion(customerState, north);
         var customerZone = GetZone(customerState ?? "");
         var city = (customerCity ?? "").Trim();
 
@@ -148,7 +224,8 @@ public class DeliveryZoneService
         }
 
         return stores
-            .OrderBy(s => GetZone(s.State) == customerZone ? 0 : 1)
+            .OrderBy(s => GetRegion(s.State, north) == customerRegion ? 0 : 1) // region group first
+            .ThenBy(s => GetZone(s.State) == customerZone ? 0 : 1)
             .ThenBy(s => CityMatches(s) ? 0 : 1)
             .ThenBy(s => s.Id)
             .ToList();
