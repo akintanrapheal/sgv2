@@ -300,7 +300,7 @@ async function addToBag(productId, variantId, qty, btn) {
         const data = res.ok ? await res.json().catch(() => null) : null;
         if (data && data.success) {
             updateCartBadge(data.cartCount);
-            showToast('Added to bag');
+            if (window.SGCart) { window.SGCart.open(); } else { showToast('Added to bag'); }
             return true;
         }
         showToast((data && data.message) || 'Sorry, we couldn’t add this to your bag.');
@@ -745,3 +745,64 @@ function bindProductCards(root) {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scan);
     else scan();
 }());
+
+// ─── Slide-out mini-cart drawer (opens after Add to Cart / clicking the bag) ──
+(function () {
+    var drawer = document.getElementById('cart-drawer');
+    if (!drawer) return;
+    var panel = document.getElementById('cart-drawer-panel');
+    var backdrop = document.getElementById('cart-drawer-backdrop');
+    var body = document.getElementById('cart-drawer-body');
+    var closeBtn = document.getElementById('cart-drawer-close');
+    var isOpen = false;
+
+    function show() {
+        drawer.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+        requestAnimationFrame(function () {
+            panel.classList.remove('translate-x-full');
+            backdrop.classList.remove('opacity-0');
+        });
+        isOpen = true;
+    }
+    function hide() {
+        panel.classList.add('translate-x-full');
+        backdrop.classList.add('opacity-0');
+        document.body.style.overflow = '';
+        setTimeout(function () { drawer.classList.add('hidden'); }, 300);
+        isOpen = false;
+    }
+    async function refresh() {
+        try {
+            var res = await fetch('/Cart/MiniCart');
+            if (res.ok) body.innerHTML = await res.text();
+        } catch (e) {}
+    }
+    window.SGCart = {
+        open: async function () { await refresh(); show(); },
+        refresh: refresh,
+        close: hide
+    };
+
+    if (closeBtn) closeBtn.addEventListener('click', hide);
+    if (backdrop) backdrop.addEventListener('click', hide);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && isOpen) hide(); });
+
+    // Remove a line straight from the drawer.
+    body.addEventListener('click', async function (e) {
+        var btn = e.target.closest('.mini-cart-remove');
+        if (!btn) return;
+        var token = await SiteHeader.ensureToken();
+        var params = new URLSearchParams({ productId: btn.dataset.productId, __RequestVerificationToken: token });
+        if (btn.dataset.variantId) params.append('variantId', btn.dataset.variantId);
+        try {
+            var res = await fetch('/Cart/Remove', { method: 'POST', body: params });
+            var data = res.ok ? await res.json().catch(function () { return null; }) : null;
+            if (data && data.success) { updateCartBadge(data.cartCount); await refresh(); }
+        } catch (err) {}
+    });
+
+    // The header bag icon opens the drawer instead of navigating (falls back to /cart if JS fails).
+    var cartLink = document.getElementById('cart-link');
+    if (cartLink) cartLink.addEventListener('click', function (e) { e.preventDefault(); window.SGCart.open(); });
+})();
