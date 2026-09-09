@@ -182,13 +182,18 @@ public class ProductsController : Controller
             select new ColorFacet { Value = g.Key.Value, Hex = g.Key.ColorHex, Count = g.Distinct().Count() }
         ).OrderByDescending(f => f.Count).ThenBy(f => f.Value).ToListAsync();
 
-        // Page heading: the category being viewed, else the search term, else the default.
+        // Page heading: the category being viewed (real category name, or the menu-group label for an
+        // "All <group>" page like Jewelry/Accessories), else the search term, else the "New In" listing,
+        // else the default.
         string? pageTitle = null;
         if (!string.IsNullOrWhiteSpace(filters.Category))
             pageTitle = await _db.Categories.Where(c => c.Slug == filters.Category)
-                .Select(c => c.Name).FirstOrDefaultAsync();
+                    .Select(c => c.Name).FirstOrDefaultAsync()
+                ?? SterlingLams.Web.Infrastructure.StoreMenu.GroupLabelForSlug(filters.Category);
         else if (!string.IsNullOrWhiteSpace(filters.Search))
             pageTitle = $"Results for “{filters.Search.Trim()}”";
+        else if (filters.SortBy == "newest" || filters.SortBy == "newness")
+            pageTitle = "New In";
 
         var vm = new ProductListViewModel
         {
