@@ -48,6 +48,7 @@ public static class AdminSections
         // ── Settings & administration ─────────────────────────────────────────
         new("Stores",     "Stores",     "Stores",     "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z", "Settings"),
         new("Users",      "Users",      "Users",      "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z", "Settings", OwnerOnly: true),
+        new("CustomerImport", "Import Customers", "CustomerImport", "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12", "Settings", OwnerOnly: true),
         new("Roles",      "Roles & Permissions", "Roles", "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z", "Settings", OwnerOnly: true),
         // OwnerOnly: this screen holds the payment gateway keys and SMTP credentials. The class summary
         // above always listed it as owner-only and IntegrationsController documents itself the same way,
