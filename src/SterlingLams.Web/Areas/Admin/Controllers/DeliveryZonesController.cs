@@ -52,6 +52,11 @@ public class DeliveryZonesController : AdminBaseController
         // Not persisted until the admin reviews and clicks Save.
         if (!zones.Any(z => string.Equals(z.State, "Oyo", StringComparison.OrdinalIgnoreCase)))
             zones = zones.Concat(DeliveryZoneService.DefaultZones().Where(z => z.State == "Oyo")).ToList();
+
+        // Order-routing editor: the full state list + which of them currently route North (Abuja).
+        var north = await _zones.GetNorthStatesAsync();
+        ViewData["AllStates"] = DeliveryZoneService.NigerianStates;
+        ViewData["NorthStates"] = north;
         return View(zones);
     }
 
@@ -91,6 +96,36 @@ public class DeliveryZonesController : AdminBaseController
 
         return Json(new { ok = true, count = clean.Count });
     }
+
+    /// <summary>Saves the order-routing region set — the states that fulfil from the Abuja (North)
+    /// branch. Everything not listed routes to the southern branches (Allen / Ikota / Ibadan).</summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveRouting([FromBody] List<string>? northStates)
+    {
+        if (!await CanEditAsync())
+            return StatusCode(403, new { ok = false, error = "You don't have access to shipping settings." });
+
+        // Keep only real Nigerian states (guards against junk); de-dupe, preserve a stable order.
+        var valid = new HashSet<string>(DeliveryZoneService.NigerianStates, StringComparer.OrdinalIgnoreCase);
+        var clean = (northStates ?? new())
+            .Select(s => (s ?? "").Trim())
+            .Where(s => s.Length > 0 && valid.Contains(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var json = JsonSerializer.Serialize(clean);
+        await _settings.SaveManyAsync(new Dictionary<string, string> { ["fulfilment.north_states"] = json });
+        await LogAsync("Update", "Setting", "fulfilment.north_states",
+            $"Updated order-routing: {clean.Count} state(s) route to the Abuja branch; the rest route to the southern branches.");
+        return Json(new { ok = true, count = clean.Count });
+    }
+
+    /// <summary>Returns the built-in default routing (far North + FCT → Abuja) to the editor.</summary>
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult ResetRouting()
+        => Json(new { ok = true, northStates = DeliveryZoneService.DefaultNorthStates });
 
     [HttpPost]
     [ValidateAntiForgeryToken]

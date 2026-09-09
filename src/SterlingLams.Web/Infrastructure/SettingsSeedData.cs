@@ -107,6 +107,10 @@ public static class SettingsSeedData
         // Distance-based delivery zones (JSON) — managed in Admin → Delivery Zones. Empty = use the
         // built-in default zones (DeliveryZoneService.DefaultZones) until edited.
         new() { Key = "shipping.delivery_zones", Group = "Shipping", Label = "", Type = "hidden", Value = "", Description = "", SortOrder = 99 },
+        // Order-routing region set (JSON array of state names that fulfil from the Abuja branch) —
+        // managed in Admin → Delivery Zones. Empty = use the built-in default (DeliveryZoneService
+        // .DefaultNorthStates: far North + FCT); everything not listed routes to the southern branches.
+        new() { Key = "fulfilment.north_states", Group = "Shipping", Label = "", Type = "hidden", Value = "", Description = "", SortOrder = 98 },
         // National — Standard
         new() { Key = "shipping.national_standard_fee",   Group = "Shipping", Label = "Nationwide Standard Fee (N)",           Type = "number", Value = "7500",               Description = "Delivery fee for all other Nigerian states.",                  SortOrder = 5 },
         new() { Key = "shipping.national_standard_days",  Group = "Shipping", Label = "Nationwide Standard Timeframe",         Type = "text",   Value = "2 - 5 working days", Description = "Timeframe shown to customers for nationwide standard delivery.", SortOrder = 6 },

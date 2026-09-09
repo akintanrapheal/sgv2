@@ -3,6 +3,8 @@
 @{
     ViewData["Title"] = "Delivery Zones";
     var json = JsonSerializer.Serialize(Model, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+    var allStates = (string[])(ViewData["AllStates"] ?? Array.Empty<string>());
+    var northSet = new HashSet<string>((List<string>)(ViewData["NorthStates"] ?? new List<string>()), StringComparer.OrdinalIgnoreCase);
 }
 
 @Html.AntiForgeryToken()
@@ -37,6 +39,46 @@
         </section>
     }
 </div>
+
+<!-- ── Order routing (which branch fulfils an online order) ─────────────────── -->
+<section class="mt-12 border-t border-neutral-200 pt-8">
+    <div class="flex items-start justify-between gap-4 mb-2 flex-wrap">
+        <div>
+            <h2 class="text-lg font-semibold text-neutral-900">Order routing</h2>
+            <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
+                Decide which branch fulfils an online order based on the customer's state. Ticked states are
+                sent to the <strong>Abuja</strong> branch; every other state is sent to the <strong>southern</strong>
+                branches (<strong>Allen, Ikota, Ibadan</strong>) — whichever has all the items and is closest to
+                the customer. If a branch group runs short, stock is pulled from the other region as a last resort.
+            </p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+            <button type="button" id="rt-reset" class="px-4 py-2 border border-neutral-200 text-neutral-600 text-sm rounded-md hover:border-neutral-400">Reset to defaults</button>
+            <button type="button" id="rt-save" class="px-6 py-2 bg-neutral-900 text-white text-sm font-medium rounded-md hover:bg-black">Save routing</button>
+        </div>
+    </div>
+
+    <div class="bg-white border border-neutral-200 rounded-md p-4 mt-4">
+        <div class="flex items-center justify-between mb-3">
+            <span class="text-sm font-semibold tracking-wide uppercase text-neutral-700">Send to Abuja branch (North)</span>
+            <div class="flex items-center gap-3 text-xs">
+                <button type="button" id="rt-none" class="text-neutral-500 hover:underline">Clear all</button>
+                <span class="text-neutral-300">|</span>
+                <span class="text-neutral-500"><span id="rt-count">@northSet.Count</span> selected</span>
+            </div>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-2">
+            @foreach (var s in allStates)
+            {
+                <label class="flex items-center gap-2 text-sm text-neutral-700 cursor-pointer">
+                    <input type="checkbox" class="rt-state accent-neutral-900" value="@s" @(northSet.Contains(s) ? "checked" : "") />
+                    <span>@s</span>
+                </label>
+            }
+        </div>
+        <p class="text-xs text-neutral-400 mt-3">Unticked states (the whole South, plus the North-Central middle belt) route to Allen / Ikota / Ibadan.</p>
+    </div>
+</section>
 
 @section Scripts {
 <script>
@@ -159,6 +201,47 @@
     });
 
     render();
+
+    // ── Order-routing editor ────────────────────────────────────────────────
+    var rtBoxes = function () { return [].slice.call(document.querySelectorAll('.rt-state')); };
+    function rtRefresh() {
+        var n = rtBoxes().filter(function (b) { return b.checked; }).length;
+        var c = document.getElementById('rt-count'); if (c) c.textContent = n;
+    }
+    document.addEventListener('change', function (e) {
+        if (e.target && e.target.classList && e.target.classList.contains('rt-state')) rtRefresh();
+    });
+    var rtNone = document.getElementById('rt-none');
+    if (rtNone) rtNone.addEventListener('click', function () { rtBoxes().forEach(function (b) { b.checked = false; }); rtRefresh(); });
+
+    var rtSave = document.getElementById('rt-save');
+    if (rtSave) rtSave.addEventListener('click', function () {
+        var states = rtBoxes().filter(function (b) { return b.checked; }).map(function (b) { return b.value; });
+        fetch('@Url.Action("SaveRouting", "DeliveryZones", new { area = "Admin" })', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token ? token.value : '' },
+            body: JSON.stringify(states)
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            if (d && d.ok) toast(d.count + ' state(s) now route to Abuja. Routing is live.', true);
+            else toast((d && d.error) || 'Save failed.', false);
+        }).catch(function () { toast('Save failed.', false); });
+    });
+
+    var rtReset = document.getElementById('rt-reset');
+    if (rtReset) rtReset.addEventListener('click', function () {
+        if (!confirm('Reset order routing to the built-in defaults (far North + FCT → Abuja)? (You still need to Save.)')) return;
+        fetch('@Url.Action("ResetRouting", "DeliveryZones", new { area = "Admin" })', {
+            method: 'POST',
+            headers: { 'RequestVerificationToken': token ? token.value : '' }
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            if (!d || !d.ok) { toast('Could not load defaults.', false); return; }
+            var set = {};
+            (d.northStates || []).forEach(function (s) { set[String(s).toLowerCase()] = true; });
+            rtBoxes().forEach(function (b) { b.checked = !!set[b.value.toLowerCase()]; });
+            rtRefresh();
+            toast('Defaults loaded — review, then Save routing.', true);
+        }).catch(function () { toast('Could not load defaults.', false); });
+    });
 })();
 </script>
 }
