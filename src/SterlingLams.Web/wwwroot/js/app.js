@@ -78,8 +78,13 @@
     }
     function naira(n) { return '\u20a6' + Number(n).toLocaleString('en-NG'); }
     function priceHtml(item) {
+        // Variants with differing prices \u2192 "\u20a6from \u2013 \u20a6to".
         if (item.hasRange) {
             return '<span class="text-brand-600 font-medium">' + naira(item.price) + ' \u2013 ' + naira(item.maxPrice) + '</span>';
+        }
+        // On sale \u2192 struck regular price + sale price.
+        if (item.onSale) {
+            return '<s class="text-neutral-400 mr-1">' + naira(item.regular) + '</s><span class="text-brand-600 font-medium">' + naira(item.price) + '</span>';
         }
         return '<span class="text-brand-600 font-medium">' + naira(item.price) + '</span>';
     }

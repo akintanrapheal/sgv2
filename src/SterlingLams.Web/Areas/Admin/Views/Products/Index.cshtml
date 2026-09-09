@@ -479,7 +479,13 @@
         });
     }
     function naira(n) { return '₦' + Number(n).toLocaleString('en-NG'); }
-    function priceText(it) { return it.hasRange ? (naira(it.price) + ' – ' + naira(it.maxPrice)) : naira(it.price); }
+    function priceText(it) {
+        // Variants with differing prices → "₦from – ₦to" (like the storefront).
+        if (it.hasRange) return '<span class="text-neutral-800">' + naira(it.price) + ' – ' + naira(it.maxPrice) + '</span>';
+        // On sale → struck regular price + sale price.
+        if (it.onSale) return '<s class="text-neutral-400 mr-1">' + naira(it.regular) + '</s><span class="text-brand-600">' + naira(it.price) + '</span>';
+        return '<span class="text-neutral-800">' + naira(it.price) + '</span>';
+    }
     function hide() { box.classList.add('hidden'); box.innerHTML = ''; }
 
     var timer;
