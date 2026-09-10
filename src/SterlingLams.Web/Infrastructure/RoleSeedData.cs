@@ -23,7 +23,7 @@ public static class RoleSeedData
         ["Admin"]        = FullGrants,
         ["Owner"]        = FullGrants,
         ["Developer"]    = FullGrants,
-        ["Operations"]   = new[] { "Dashboard", "Orders", "Inventory", "Stores" },
+        ["Operations"]   = new[] { "Dashboard", "Orders", "Inventory", "Stores", "Finance" },
         ["Sales"]        = new[] { "Dashboard", "Orders", "Customers", "Discounts" },
         ["Inventory"]    = new[] { "Dashboard", "Products", "Inventory", "Stores", "Categories", "Attributes" },
         ["Social Media"] = new[] { "Dashboard", "Products" },
@@ -79,6 +79,32 @@ public static class RoleSeedData
                 await db.SaveChangesAsync();
                 logger.LogInformation("Upgraded {Count} role permissions to the View/Manage model.", added);
             }
+        }
+
+        // One-time grant of the Finance dashboard (view) to the Operations role on databases that were
+        // seeded before Finance was added to the Operations defaults. Marker-gated so it runs exactly
+        // once — if the owner later removes Finance from Operations on Roles & Permissions, it stays
+        // removed rather than being re-added on every restart.
+        const string financeMarker = "seed.finance_granted_to_operations";
+        var financeSeeded = await db.SiteSettings.AnyAsync(s => s.Key == financeMarker);
+        if (!financeSeeded)
+        {
+            var opsExists = await roleManager.RoleExistsAsync("Operations");
+            var opsHasFinance = await db.RolePermissions.AnyAsync(rp => rp.RoleName == "Operations" && rp.Section == "Finance");
+            if (opsExists && !opsHasFinance)
+            {
+                db.RolePermissions.Add(new RolePermission { RoleName = "Operations", Section = "Finance" });
+                logger.LogInformation("Granted Finance (view) to the Operations role.");
+            }
+            db.SiteSettings.Add(new SiteSetting
+            {
+                Key = financeMarker,
+                Value = "true",
+                Group = "System",
+                Label = "Finance granted to Operations (seed marker)",
+                Type = "boolean"
+            });
+            await db.SaveChangesAsync();
         }
     }
 }

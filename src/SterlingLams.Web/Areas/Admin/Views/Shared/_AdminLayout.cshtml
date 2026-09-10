@@ -106,7 +106,13 @@
                     var groupOpen = items.Any(i => currentController == i.Controller);
                     <details class="group/nav" open="@groupOpen">
                         <summary class="cursor-pointer list-none flex items-center justify-between px-3 pt-3 pb-1 text-[10px] tracking-widest uppercase text-neutral-500 hover:text-neutral-300">
-                            <span>@group</span>
+                            <span class="flex items-center gap-2">
+                                @if (SterlingLams.Web.Areas.Admin.AdminSections.GroupIcons.TryGetValue(group, out var groupIcon))
+                                {
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="@groupIcon"/></svg>
+                                }
+                                @group
+                            </span>
                             <svg class="w-3 h-3 transition-transform group-open/nav:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                         </summary>
                         <div class="space-y-0.5 mb-1">
