@@ -23,7 +23,7 @@ public static class RoleSeedData
         ["Admin"]        = FullGrants,
         ["Owner"]        = FullGrants,
         ["Developer"]    = FullGrants,
-        ["Operations"]   = new[] { "Dashboard", "Orders", "Inventory", "Stores", "Finance" },
+        ["Operations"]   = new[] { "Dashboard", "Orders", "Inventory", "Stores" },
         ["Sales"]        = new[] { "Dashboard", "Orders", "Customers", "Discounts" },
         ["Inventory"]    = new[] { "Dashboard", "Products", "Inventory", "Stores", "Categories", "Attributes" },
         ["Social Media"] = new[] { "Dashboard", "Products" },
@@ -81,10 +81,11 @@ public static class RoleSeedData
             }
         }
 
-        // One-time grant of the Finance dashboard (view) to the Operations role on databases that were
-        // seeded before Finance was added to the Operations defaults. Marker-gated so it runs exactly
-        // once — if the owner later removes Finance from Operations on Roles & Permissions, it stays
-        // removed rather than being re-added on every restart.
+        // Grant the Finance dashboard (VIEW only) to the Operations role. Done here rather than via
+        // DefaultRoles so it stays view-only — the granular upgrade above auto-appends ":manage" to
+        // every DefaultRoles grant, which we don't want for money-sensitive Finance. Marker-gated so it
+        // runs exactly once (fresh installs and existing DBs alike); if the owner later removes Finance
+        // from Operations on Roles & Permissions, it stays removed rather than being re-added on restart.
         const string financeMarker = "seed.finance_granted_to_operations";
         var financeSeeded = await db.SiteSettings.AnyAsync(s => s.Key == financeMarker);
         if (!financeSeeded)
