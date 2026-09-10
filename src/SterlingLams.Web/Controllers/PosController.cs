@@ -1636,6 +1636,49 @@ public class PosController : Controller
         return Json(result);
     }
 
+    // ── Per-variant stock across all branches, for the Sell-screen variant picker ──────────────
+    // When a cashier expands a variant in the "choose an option" picker, we show that one variant's
+    // available stock at every active branch (so they can see where a colour/size is). Returns one
+    // entry per variant, each with a per-store availability list. Availability mirrors VarAvail: a
+    // variant's own inventory row if it has one, otherwise the shared variant-null product pool row
+    // (the same fallback the picker's this-store number and checkout use), clamped at 0.
+    [Authorize, HttpGet]
+    public async Task<IActionResult> VariantStock(int productId)
+    {
+        if (productId <= 0) return Json(new { productId, variants = Array.Empty<object>() });
+
+        var stores = await Infrastructure.DbRead.RetryAsync(() => _db.Stores
+            .Where(s => s.IsActive).OrderBy(s => s.Name)
+            .Select(s => new { s.Id, s.Name }).ToListAsync());
+
+        var inv = await Infrastructure.DbRead.RetryAsync(() => _db.StoreInventories
+            .Where(si => si.ProductId == productId)
+            .Select(si => new { si.StoreId, si.ProductVariantId, avail = si.QuantityOnHand - si.QuantityReserved })
+            .ToListAsync());
+
+        var variants = await Infrastructure.DbRead.RetryAsync(() => _db.ProductVariants
+            .Where(v => v.ProductId == productId && v.IsActive).OrderBy(v => v.Name)
+            .Select(v => new { v.Id, v.Name }).ToListAsync());
+
+        int Avail(int storeId, int vid)
+        {
+            var own = inv.FirstOrDefault(i => i.StoreId == storeId && i.ProductVariantId == vid);
+            if (own != null) return Math.Max(0, own.avail);
+            var pool = inv.FirstOrDefault(i => i.StoreId == storeId && i.ProductVariantId == null);
+            return Math.Max(0, pool?.avail ?? 0);
+        }
+
+        var register = await BoundRegisterAsync();
+        var result = variants.Select(v => new
+        {
+            variantId = v.Id,
+            name = v.Name,
+            stores = stores.Select(s => new { storeId = s.Id, store = s.Name, avail = Avail(s.Id, v.Id) }).ToList()
+        }).ToList();
+
+        return Json(new { productId, currentStoreId = register?.StoreId, variants = result });
+    }
+
     public class PosVisibilityRequest { public int ProductId { get; set; } public bool Hidden { get; set; } }
 
     // Staff "Mark unavailable" from the product popup — hides a product from the POS only (the

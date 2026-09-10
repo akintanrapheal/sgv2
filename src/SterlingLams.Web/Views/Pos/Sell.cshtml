@@ -1102,6 +1102,30 @@
     const variantImage = document.getElementById('variant-image');
     const imgPlaceholder = '<svg class="w-10 h-10 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>';
     let resolveVariant = null;
+    // Cache of all-branch stock per product (fetched lazily the first time a variant is expanded).
+    const variantStockCache = {};
+    async function loadVariantStock(productId) {
+        if (variantStockCache[productId]) return variantStockCache[productId];
+        const promise = fetch('/Pos/VariantStock?productId=' + encodeURIComponent(productId))
+            .then(r => r.ok ? r.json() : null).catch(() => null);
+        variantStockCache[productId] = promise;
+        return promise;
+    }
+    function renderBranchPanel(panel, data, vid) {
+        if (!data || !data.variants) { panel.innerHTML = '<span class="text-neutral-400">Couldn\'t load stock.</span>'; return; }
+        const v = data.variants.find(x => x.variantId === vid);
+        const stores = (v && v.stores) || [];
+        if (!stores.length) { panel.innerHTML = '<span class="text-neutral-400">No branch stock recorded.</span>'; return; }
+        panel.innerHTML = '<p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Stock by branch</p>' + stores.map(s => {
+            const here = data.currentStoreId != null && s.storeId === data.currentStoreId;
+            const label = s.store.replace('Sterlin Glams ', '');
+            const qtyCls = s.avail <= 0 ? 'text-red-500' : (s.avail <= 3 ? 'text-amber-600' : 'text-emerald-600');
+            return `<div class="flex justify-between py-0.5 ${here ? 'font-semibold text-neutral-800' : 'text-neutral-600'}">
+                        <span>${label}${here ? ' · here' : ''}</span>
+                        <span class="${qtyCls}">${s.avail <= 0 ? 'Out' : s.avail + ' in stock'}</span>
+                    </div>`;
+        }).join('');
+    }
     function closeVariant() {
         variantModal.classList.add('hidden');
         if (resolveVariant) { resolveVariant(null); resolveVariant = null; }
@@ -1118,25 +1142,38 @@
             variantImage.innerHTML = p.image
                 ? '<img src="' + p.image + '" alt="" class="w-full h-full object-cover">'
                 : imgPlaceholder;
+            // Each variant is its own expandable row: tap the row to ADD it to the cart; tap the ▾
+            // chevron to expand a per-branch stock panel for just that variant (loaded on first open).
             variantList.innerHTML = p.variants.map((v, i) => {
                 const price = (v.price != null ? v.price : p.price);
                 const st = (v.stock != null) ? v.stock : 0;
                 const out = st <= 0;
                 const stockLabel = out
-                    ? '<span class="text-[11px] text-red-500 font-medium">Out of stock</span>'
-                    : `<span class="text-[11px] ${st <= 3 ? 'text-amber-600' : 'text-neutral-400'}">${st} in stock</span>`;
+                    ? '<span class="text-[11px] text-red-500 font-medium">Out of stock here</span>'
+                    : `<span class="text-[11px] ${st <= 3 ? 'text-amber-600' : 'text-neutral-400'}">${st} in stock here</span>`;
                 const vimg = (v.image || p.image)
                     ? `<img src="${v.image || p.image}" alt="" class="w-10 h-10 rounded object-cover bg-neutral-100 flex-shrink-0">`
                     : '<span class="w-10 h-10 rounded bg-neutral-100 flex-shrink-0"></span>';
-                return `<button type="button" class="variant-opt w-full flex items-center gap-3 border border-neutral-200 rounded-lg px-3 py-2.5 text-left ${out ? 'opacity-50 cursor-not-allowed' : 'hover:border-brand-500 hover:bg-brand-50 transition-colors'}" data-idx="${i}" data-img="${v.image || ''}" ${out ? 'disabled' : ''}>
-                    ${vimg}
-                    <span class="flex flex-col gap-0.5 flex-1 min-w-0">
-                        <span class="text-sm text-neutral-800">${v.name}</span>
-                        ${stockLabel}
-                    </span>
-                    <span class="text-sm font-medium text-neutral-700">${fmt(price)}</span>
-                </button>`;
+                return `<div class="variant-row border border-neutral-200 rounded-lg overflow-hidden ${out ? 'opacity-60' : ''}">
+                    <div class="flex items-stretch">
+                        <button type="button" class="variant-opt flex items-center gap-3 flex-1 min-w-0 px-3 py-2.5 text-left ${out ? 'cursor-not-allowed' : 'hover:bg-brand-50 transition-colors'}" data-idx="${i}" data-img="${v.image || ''}" ${out ? 'disabled' : ''}>
+                            ${vimg}
+                            <span class="flex flex-col gap-0.5 flex-1 min-w-0">
+                                <span class="text-sm text-neutral-800">${v.name}</span>
+                                ${stockLabel}
+                            </span>
+                            <span class="text-sm font-medium text-neutral-700">${fmt(price)}</span>
+                        </button>
+                        <button type="button" class="variant-exp flex items-center justify-center w-11 border-l border-neutral-200 text-neutral-400 hover:bg-neutral-50 transition-colors" data-vid="${v.id}" aria-expanded="false" title="Stock at all branches">
+                            <svg class="w-4 h-4 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        </button>
+                    </div>
+                    <div class="variant-branch hidden bg-neutral-50 border-t border-neutral-100 px-3 py-2" data-vid="${v.id}">
+                        <span class="text-xs text-neutral-400">Loading stock…</span>
+                    </div>
+                </div>`;
             }).join('');
+            // Add-to-cart: tapping the main row area resolves with that variant.
             variantList.querySelectorAll('.variant-opt').forEach(b => {
                 b.addEventListener('click', () => {
                     if (b.disabled) return;
@@ -1147,6 +1184,27 @@
                 // Show the highlighted variant's own picture in the main frame (e.g. hover "Gold" → Gold).
                 b.addEventListener('mouseenter', () => {
                     if (b.dataset.img) variantImage.innerHTML = '<img src="' + b.dataset.img + '" alt="" class="w-full h-full object-cover">';
+                });
+            });
+            // Chevron: expand/collapse the per-branch stock panel without adding to cart.
+            variantList.querySelectorAll('.variant-exp').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const vid = +btn.dataset.vid;
+                    const panel = variantList.querySelector('.variant-branch[data-vid="' + vid + '"]');
+                    const chev = btn.querySelector('svg');
+                    const open = !panel.classList.contains('hidden');
+                    if (open) {
+                        panel.classList.add('hidden');
+                        btn.setAttribute('aria-expanded', 'false');
+                        if (chev) chev.style.transform = '';
+                        return;
+                    }
+                    panel.classList.remove('hidden');
+                    btn.setAttribute('aria-expanded', 'true');
+                    if (chev) chev.style.transform = 'rotate(180deg)';
+                    const data = await loadVariantStock(p.id);
+                    renderBranchPanel(panel, data, vid);
                 });
             });
             variantModal.classList.remove('hidden');
