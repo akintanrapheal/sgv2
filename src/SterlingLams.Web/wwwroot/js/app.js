@@ -779,7 +779,16 @@ function bindProductCards(root) {
         } catch (e) {}
     }
     window.SGCart = {
-        open: async function () { await refresh(); show(); },
+        // Show the drawer IMMEDIATELY, then fill it — never await the /Cart/MiniCart fetch before
+        // opening, or a slow/hung request would leave the drawer stuck hidden (the "sometimes it
+        // just adds, no drawer" bug). A brief loading line shows until the contents arrive.
+        open: function () {
+            if (!body.innerHTML.trim()) {
+                body.innerHTML = '<div style="padding:24px;font-size:14px;color:#a3a3a3">Loading your bag…</div>';
+            }
+            show();
+            refresh();
+        },
         refresh: refresh,
         close: hide
     };
