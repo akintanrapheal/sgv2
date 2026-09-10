@@ -18,4 +18,9 @@ public class Address
     public string? PostalCode { get; set; }
 
     public bool IsDefault { get; set; }
+
+    /// <summary>Soft-delete flag: the customer removed this from their address book, but the row is
+    /// kept because past orders reference it (FK is Restrict to protect order history). Archived
+    /// addresses are hidden from the profile list and checkout.</summary>
+    public bool IsArchived { get; set; }
 }

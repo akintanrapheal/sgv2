@@ -153,7 +153,7 @@ public class CheckoutController : Controller
         // Saved addresses (signed-in customers): list them and prefill the form with the default.
         if (user != null)
         {
-            var saved = await _db.Addresses.Where(a => a.UserId == user.Id)
+            var saved = await _db.Addresses.Where(a => a.UserId == user.Id && !a.IsArchived)
                 .OrderByDescending(a => a.IsDefault).ThenBy(a => a.Id).ToListAsync();
             vm.SavedAddresses = saved;
             var def = saved.FirstOrDefault(a => a.IsDefault) ?? saved.FirstOrDefault();
