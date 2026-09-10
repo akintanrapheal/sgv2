@@ -42,6 +42,9 @@ public static class AdminSections
 
         // ── Reports ───────────────────────────────────────────────────────────
         new("Reports",    "Reports",    "Reports",    "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z", "Reports"),
+        // Finance stays registered here (keeps "Finance" a grantable RBAC section + controller access),
+        // but _AdminLayout SKIPS it in the group loop and renders it as its own standalone expandable
+        // section whose children are FinanceTabs below (all actions on FinanceController).
         new("Finance",    "Finance",    "Finance",    "M11 3.055A9.001 9.001 0 1020.945 13H11V3.055zM20.488 9A9.004 9.004 0 0012 3.512V9h8.488z", "Reports"),
         new("Traffic",    "Traffic",    "Traffic",    "M3 3v18h18M7 14l3-3 3 3 5-6", "Reports", OwnerOnly: true),
 
@@ -58,6 +61,23 @@ public static class AdminSections
         new("AuditLog",   "Audit Log",  "AuditLog",   "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z", "Settings"),
         new("EmailLog",   "Email Log",  "EmailLog",   "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z", "Settings"),
         new("Settings",   "Settings",   "Settings",   "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z", "Settings"),
+    };
+
+    /// <summary>Finance sub-tabs — every action on FinanceController, rendered as sub-links under the
+    /// standalone "Finance" section in the sidebar (see _AdminLayout). (Action, Label). Section key "Finance".</summary>
+    public static readonly (string Action, string Label)[] FinanceTabs =
+    {
+        ("Index",        "Overview"),
+        ("Transactions", "Transactions"),
+        ("Cash",         "Cash-up"),
+        ("Refunds",      "Refunds"),
+        ("Leakage",      "Leakage"),
+        ("Liabilities",  "Customer Points"),
+        ("Receivables",  "Receivables"),
+        ("Settlement",   "Settlement"),
+        ("Customers",    "Customers"),
+        ("Profit",       "Profit"),
+        ("Logistics",    "Logistics P&L"),
     };
 
     /// <summary>Order the sidebar renders groups in. "" is the top, non-collapsible Overview.</summary>
