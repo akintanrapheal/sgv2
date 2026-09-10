@@ -415,7 +415,7 @@ public class AccountController : Controller
             .ToListAsync();
 
         var addresses = await _db.Addresses
-            .Where(a => a.UserId == user.Id)
+            .Where(a => a.UserId == user.Id && !a.IsArchived)
             .ToListAsync();
 
         var vm = new ProfileViewModel
@@ -491,7 +491,7 @@ public class AccountController : Controller
         if (id == 0)
         {
             // First address becomes the default automatically.
-            if (!await _db.Addresses.AnyAsync(a => a.UserId == userId)) isDefault = true;
+            if (!await _db.Addresses.AnyAsync(a => a.UserId == userId && !a.IsArchived)) isDefault = true;
             _db.Addresses.Add(addr);
         }
 
@@ -512,15 +512,28 @@ public class AccountController : Controller
     public async Task<IActionResult> DeleteAddress(int id)
     {
         var userId = _userManager.GetUserId(User)!;
-        var addr = await _db.Addresses.FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId);
+        var addr = await _db.Addresses.FirstOrDefaultAsync(a => a.Id == id && a.UserId == userId && !a.IsArchived);
         if (addr != null)
         {
             var wasDefault = addr.IsDefault;
-            _db.Addresses.Remove(addr);
+            // A past order may reference this address (FK is Restrict to protect order history), so a
+            // hard delete would throw. If it's used by any order, archive it (hide from the book but
+            // keep the row); otherwise it's safe to remove outright.
+            var usedByOrder = await _db.Orders.AnyAsync(o => o.DeliveryAddressId == id);
+            if (usedByOrder)
+            {
+                addr.IsArchived = true;
+                addr.IsDefault = false;
+            }
+            else
+            {
+                _db.Addresses.Remove(addr);
+            }
             await _db.SaveChangesAsync();
             if (wasDefault)
             {
-                var next = await _db.Addresses.Where(a => a.UserId == userId).OrderBy(a => a.Id).FirstOrDefaultAsync();
+                var next = await _db.Addresses.Where(a => a.UserId == userId && !a.IsArchived)
+                    .OrderBy(a => a.Id).FirstOrDefaultAsync();
                 if (next != null) { next.IsDefault = true; await _db.SaveChangesAsync(); }
             }
             TempData["Success"] = "Address removed.";
