@@ -80,5 +80,32 @@ public static class RoleSeedData
                 logger.LogInformation("Upgraded {Count} role permissions to the View/Manage model.", added);
             }
         }
+
+        // Grant the Finance dashboard (VIEW only) to the Operations role. Done here rather than via
+        // DefaultRoles so it stays view-only — the granular upgrade above auto-appends ":manage" to
+        // every DefaultRoles grant, which we don't want for money-sensitive Finance. Marker-gated so it
+        // runs exactly once (fresh installs and existing DBs alike); if the owner later removes Finance
+        // from Operations on Roles & Permissions, it stays removed rather than being re-added on restart.
+        const string financeMarker = "seed.finance_granted_to_operations";
+        var financeSeeded = await db.SiteSettings.AnyAsync(s => s.Key == financeMarker);
+        if (!financeSeeded)
+        {
+            var opsExists = await roleManager.RoleExistsAsync("Operations");
+            var opsHasFinance = await db.RolePermissions.AnyAsync(rp => rp.RoleName == "Operations" && rp.Section == "Finance");
+            if (opsExists && !opsHasFinance)
+            {
+                db.RolePermissions.Add(new RolePermission { RoleName = "Operations", Section = "Finance" });
+                logger.LogInformation("Granted Finance (view) to the Operations role.");
+            }
+            db.SiteSettings.Add(new SiteSetting
+            {
+                Key = financeMarker,
+                Value = "true",
+                Group = "System",
+                Label = "Finance granted to Operations (seed marker)",
+                Type = "boolean"
+            });
+            await db.SaveChangesAsync();
+        }
     }
 }
