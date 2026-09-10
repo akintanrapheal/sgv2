@@ -1,37 +1,18 @@
 @model string
-@inject SterlingLams.Web.Services.IRefundApprovalService Approvals
 @{
-    var pendingRefunds = await Approvals.PendingCountAsync();
-    // (Key, Action, Label) — Key matches the value each view passes as the model.
-    // Tabs are added here as each report lands (keeps every tab a live link).
-    var tabs = new (string Key, string Action, string Label)[]
+    // Finance navigation now lives in the left sidebar (a standalone "Finance" section that expands to
+    // all its tabs) — so this partial just renders the page heading for the current view.
+    var labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ("Overview",    "Index",        "Overview"),
-        ("Transactions","Transactions", "Transactions"),
-        ("Cash",        "Cash",         "Cash-up"),
-        ("Refunds",     "Refunds",      "Refunds"),
-        ("Leakage",     "Leakage",      "Leakage"),
-        ("Liabilities", "Liabilities",  "Customer Points"),
-        ("Receivables", "Receivables",  "Receivables"),
-        ("Settlement",  "Settlement",   "Settlement"),
-        ("Customers",   "Customers",    "Customers"),
-        ("Profit",      "Profit",       "Profit"),
-        ("Logistics",   "Logistics",    "Logistics P&L"),
+        ["Overview"] = "Overview", ["Transactions"] = "Transactions", ["Cash"] = "Cash-up",
+        ["Refunds"] = "Refunds", ["Leakage"] = "Leakage", ["Liabilities"] = "Customer Points",
+        ["Receivables"] = "Receivables", ["Settlement"] = "Settlement", ["Customers"] = "Customers",
+        ["Profit"] = "Profit", ["Logistics"] = "Logistics P&L",
     };
-    string Cls(string key) => key == Model
-        ? "border-neutral-900 text-neutral-900"
-        : "border-transparent text-neutral-400 hover:text-neutral-700";
+    var current = labels.TryGetValue(Model ?? "", out var l) ? l : "Overview";
 }
-<div class="flex items-center justify-between mb-2">
+<div class="flex items-baseline gap-2 mb-6 border-b border-neutral-200 pb-4">
     <h1 class="text-lg font-medium text-neutral-800">Finance</h1>
-</div>
-<div class="flex gap-1 border-b border-neutral-200 mb-6 overflow-x-auto">
-    @foreach (var (key, action, label) in tabs)
-    {
-        <a asp-area="Admin" asp-controller="Finance" asp-action="@action"
-           class="px-4 py-2.5 text-xs font-medium border-b-2 whitespace-nowrap transition-colors @Cls(key)">
-            @label@if (key == "Refunds" && pendingRefunds > 0)
-            {<span class="ml-1.5 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[10px] font-semibold align-middle">@pendingRefunds</span>}
-        </a>
-    }
+    <span class="text-neutral-300">/</span>
+    <span class="text-lg font-light text-neutral-500">@current</span>
 </div>
