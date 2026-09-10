@@ -40,6 +40,22 @@
         .tag .nm2 { font-size: 12px; line-height: 1.15; margin: 0 0 2px; }
         .tag .sk, .tag .cc { font-size: 12px; color: #57534e; margin: 0; }
         .tag .pr { font-size: 14px; font-weight: bold; margin: 3px 0 0; }
+        /* live suggestions */
+        .suggest { position: absolute; left: 0; right: 0; top: 100%; margin-top: 4px; z-index: 40; background: #fff;
+            border: 1px solid #d6d3d1; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.12); max-height: 60vh; overflow-y: auto; }
+        .sg-item { padding: 8px 12px; border-bottom: 1px solid #f1f1f0; }
+        .sg-item:last-child { border-bottom: 0; }
+        .sg-head { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+        .sg-head:hover { background: #fafaf9; }
+        .sg-img { width: 34px; height: 34px; object-fit: cover; border-radius: 4px; background: #f1f1f0; flex-shrink: 0; }
+        .sg-nm { flex: 1 1 auto; min-width: 0; font-size: 14px; color: #1c1917; }
+        .sg-sub { font-size: 11px; color: #a8a29e; }
+        .sg-add { border: 1px solid #059669; color: #059669; background: #fff; border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .sg-add:hover { background: #ecfdf5; }
+        .sg-chev { font-size: 12px; color: #a8a29e; }
+        .sg-vars { margin: 6px 0 2px; padding-left: 44px; }
+        .sg-var { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+        .sg-var .sg-nm { font-size: 13px; }
     </style>
 </head>
 <body>
@@ -68,8 +84,11 @@
             </div>
         }
         <div class="card">
-            <h2>Scan or type a barcode / SKU to add an item</h2>
-            <input id="scan" class="scan" type="text" autocomplete="off" placeholder="Scan a barcode…" />
+            <h2>Scan or type a barcode / SKU / name to add an item</h2>
+            <div style="position:relative">
+                <input id="scan" class="scan" type="text" autocomplete="off" placeholder="Scan a barcode, or type a name / SKU…" />
+                <div id="suggest" class="suggest" style="display:none"></div>
+            </div>
             <p id="msg" class="muted" style="margin:8px 0 0"></p>
         </div>
 
@@ -108,6 +127,7 @@
 
     <script>
         var LOOKUP = '@Url.Action("LabelLookup", "Pos")';
+        var SEARCH = '@Url.Action("LabelSearch", "Pos")';
         var SHEET = '@Url.Action("LabelSheet", "Pos")';
         var QR = '@Url.Action("Qr", "Pos")';
         var el = function (id) { return document.getElementById(id); };
@@ -137,18 +157,72 @@
             el('pv-code').textContent = p.code || '';
             el('pv-price').textContent = money(p.price);
         }
+        function addPick(key, name, sku, code, price) {
+            if (!key) return;
+            if (picks[key]) picks[key].qty += 1;
+            else picks[key] = { name: name, sku: sku, code: code, price: +price || 0, qty: 1 };
+            el('msg').textContent = '';
+            render();
+        }
         function addByCode(code) {
             code = (code || '').trim(); if (!code) return;
             fetch(LOOKUP + '?code=' + encodeURIComponent(code)).then(function (r) { return r.json(); }).then(function (d) {
                 if (!d.found) { el('msg').textContent = 'No product matches "' + code + '".'; return; }
-                el('msg').textContent = '';
-                if (picks[d.key]) picks[d.key].qty += 1;
-                else picks[d.key] = { name: d.name, sku: d.sku, code: d.code, price: d.price, qty: 1 };
-                render();
-                el('scan').value = ''; el('scan').focus();
+                addPick(d.key, d.name, d.sku, d.code, d.price);
+                el('scan').value = ''; closeSuggest(); el('scan').focus();
             }).catch(function () { el('msg').textContent = 'Lookup failed — try again.'; });
         }
-        el('scan').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addByCode(this.value); } });
+
+        // ── Live suggestions (name / SKU / barcode) with a variant picker ──────────
+        var sgBox = el('suggest'), sgTimer;
+        function closeSuggest() { sgBox.style.display = 'none'; sgBox.innerHTML = ''; }
+        function attr(s) { return esc(s == null ? '' : s); }
+        function renderSuggest(items, q) {
+            if (!items || !items.length) {
+                sgBox.innerHTML = '<div class="sg-item sg-sub">No product matches "' + esc(q) + '".</div>';
+                sgBox.style.display = 'block'; return;
+            }
+            sgBox.innerHTML = items.map(function (it, i) {
+                var info = '<img class="sg-img" src="' + attr(it.image) + '" alt="" onerror="this.style.visibility=\'hidden\'"/>'
+                    + '<span class="sg-nm">' + esc(it.name) + '<br><span class="sg-sub">' + esc(it.sku || '—') + ' · ' + money(it.price)
+                    + (it.hasVariants ? ' · ' + it.variants.length + ' variant' + (it.variants.length === 1 ? '' : 's') : '') + '</span></span>';
+                var head, vars = '';
+                if (it.hasVariants) {
+                    head = '<div class="sg-head" data-tg="' + i + '">' + info + '<span class="sg-chev">▾ variants</span></div>';
+                    vars = '<div class="sg-vars" id="sgv-' + i + '" style="display:none">' + it.variants.map(function (v) {
+                        return '<div class="sg-var"><span class="sg-nm">' + esc(v.name) + '<br><span class="sg-sub">' + esc(v.code || '—') + ' · ' + money(v.price) + '</span></span>'
+                            + '<button type="button" class="sg-add" data-add="' + attr(v.key) + '" data-nm="' + attr(it.name + ' – ' + v.name) + '" data-sk="' + attr(v.sku) + '" data-cd="' + attr(v.code) + '" data-pr="' + v.price + '">＋ Add</button></div>';
+                    }).join('') + '</div>';
+                } else {
+                    head = '<div class="sg-head" data-add="' + attr(it.key) + '" data-nm="' + attr(it.name) + '" data-sk="' + attr(it.sku) + '" data-cd="' + attr(it.code) + '" data-pr="' + it.price + '">'
+                        + info + '<button type="button" class="sg-add">＋ Add</button></div>';
+                }
+                return '<div class="sg-item">' + head + vars + '</div>';
+            }).join('');
+            sgBox.style.display = 'block';
+        }
+        sgBox.addEventListener('click', function (e) {
+            var tgEl = e.target.closest('[data-tg]');
+            if (tgEl) { var vb = el('sgv-' + tgEl.getAttribute('data-tg')); if (vb) vb.style.display = vb.style.display === 'none' ? 'block' : 'none'; return; }
+            var addEl = e.target.closest('[data-add]');
+            if (addEl) { addPick(addEl.getAttribute('data-add'), addEl.getAttribute('data-nm'), addEl.getAttribute('data-sk'), addEl.getAttribute('data-cd'), addEl.getAttribute('data-pr')); }
+        });
+        el('scan').addEventListener('input', function () {
+            var q = this.value.trim();
+            clearTimeout(sgTimer);
+            if (q.length < 2) { closeSuggest(); return; }
+            sgTimer = setTimeout(function () {
+                fetch(SEARCH + '?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (items) {
+                    if (el('scan').value.trim() !== q) return;
+                    renderSuggest(items, q);
+                }).catch(function () {});
+            }, 200);
+        });
+        el('scan').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); addByCode(this.value); }
+            else if (e.key === 'Escape') { closeSuggest(); }
+        });
+        document.addEventListener('click', function (e) { if (e.target !== el('scan') && !sgBox.contains(e.target)) closeSuggest(); });
         el('rows').addEventListener('input', function (e) {
             var k = e.target.getAttribute('data-qk'); if (k && picks[k]) { picks[k].qty = Math.max(1, parseInt(e.target.value, 10) || 1); el('print').disabled = false; }
         });
