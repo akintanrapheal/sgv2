@@ -1421,7 +1421,24 @@ public class PosController : Controller
 
         var query = _db.Products.Where(p => p.IsActive && !p.HiddenFromPos);
         if (categoryId.HasValue)
-            query = query.Where(p => p.CategoryId == categoryId.Value);
+        {
+            // Roll a menu-group parent tile (e.g. Clutches, Accessories) up to all its sub-categories,
+            // like the storefront — so tapping a parent shows every product across its children instead
+            // of only the (usually empty) parent category. A leaf category still filters to itself.
+            var clickedSlug = await _db.Categories.Where(c => c.Id == categoryId.Value)
+                .Select(c => c.Slug).FirstOrDefaultAsync();
+            var slugs = SterlingLams.Web.Infrastructure.StoreMenu.ExpandSlug(clickedSlug);
+            if (!string.IsNullOrEmpty(clickedSlug) && slugs.Count > 1)
+            {
+                var catIds = await _db.Categories.Where(c => slugs.Contains(c.Slug))
+                    .Select(c => c.Id).ToListAsync();
+                query = query.Where(p => catIds.Contains(p.CategoryId));
+            }
+            else
+            {
+                query = query.Where(p => p.CategoryId == categoryId.Value);
+            }
+        }
         if (q.Length > 0)
             query = query.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
                                   || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
