@@ -268,6 +268,56 @@ public class PosController : Controller
 
     // Scan/type a code in the picker → the exact variant (or the product) to add.
     [Authorize, HttpGet]
+    // Live label-search suggestions (name / SKU / barcode) with each product's variants, so the cashier
+    // can preview and pick the exact variant(s) to print without leaving the POS.
+    [HttpGet]
+    public async Task<IActionResult> LabelSearch(string? q)
+    {
+        q = (q ?? "").Trim();
+        if (q.Length < 2) return Json(Array.Empty<object>());
+
+        var rows = await _db.Products
+            .Where(p => p.IsActive && (
+                EF.Functions.ILike(p.Name, $"%{q}%")
+                || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
+                || p.Barcode == q
+                || p.Variants.Any(v => v.IsActive && (EF.Functions.ILike(v.Sku ?? "", $"%{q}%") || v.Barcode == q))))
+            .OrderBy(p => p.Name)
+            .Take(12)
+            .Select(p => new
+            {
+                pid = p.Id,
+                name = p.Name,
+                sku = p.Sku,
+                code = p.Barcode ?? p.Sku ?? "",
+                price = p.Price,
+                image = p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder)
+                    .Select(i => i.Url).FirstOrDefault(),
+                variants = p.Variants.Where(v => v.IsActive)
+                    .Select(v => new
+                    {
+                        key = p.Id + "." + v.Id,
+                        name = v.Name,
+                        sku = v.Sku ?? p.Sku,
+                        code = v.Barcode ?? v.Sku ?? "",
+                        price = v.Price ?? p.Price,
+                    }).ToList()
+            })
+            .ToListAsync();
+
+        return Json(rows.Select(r => new
+        {
+            key = r.pid.ToString(),
+            r.name,
+            r.sku,
+            r.code,
+            r.price,
+            image = PosThumb(r.image),
+            hasVariants = r.variants.Count > 0,
+            r.variants,
+        }));
+    }
+
     public async Task<IActionResult> LabelLookup(string? code)
     {
         code = (code ?? "").Trim();
