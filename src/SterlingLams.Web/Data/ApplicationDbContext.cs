@@ -627,19 +627,25 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
             if (e.State != EntityState.Modified) continue;
             var price = e.Property(nameof(Product.Price));
             var sale = e.Property(nameof(Product.SalePrice));
+            var pos = e.Property(nameof(Product.PosPrice));
             if (price.IsModified && !Equals(price.OriginalValue, price.CurrentValue))
                 reasons[e.Entity.Id] = $"Price {N(price.OriginalValue)} → {N(price.CurrentValue)}";
             else if (sale.IsModified && !Equals(sale.OriginalValue, sale.CurrentValue))
                 reasons[e.Entity.Id] = sale.CurrentValue is decimal
                     ? $"Now on sale: {N(sale.CurrentValue)}" : "Sale ended";
+            else if (pos.IsModified && !Equals(pos.OriginalValue, pos.CurrentValue))
+                reasons[e.Entity.Id] = pos.CurrentValue is decimal
+                    ? $"POS price {N(pos.CurrentValue)}" : "POS price cleared";
         }
         foreach (var e in ChangeTracker.Entries<ProductVariant>())
         {
             if (e.State != EntityState.Modified) continue;
             var price = e.Property(nameof(ProductVariant.Price));
-            if (price.IsModified && !Equals(price.OriginalValue, price.CurrentValue)
-                && !reasons.ContainsKey(e.Entity.ProductId))
-                reasons[e.Entity.ProductId] = "Variant price changed";
+            var pos = e.Property(nameof(ProductVariant.PosPrice));
+            var priceChanged = price.IsModified && !Equals(price.OriginalValue, price.CurrentValue);
+            var posChanged = pos.IsModified && !Equals(pos.OriginalValue, pos.CurrentValue);
+            if ((priceChanged || posChanged) && !reasons.ContainsKey(e.Entity.ProductId))
+                reasons[e.Entity.ProductId] = posChanged && !priceChanged ? "Variant POS price changed" : "Variant price changed";
         }
         return reasons;
     }

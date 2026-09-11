@@ -74,6 +74,11 @@
             <label class="block text-xs text-neutral-500 mb-1">Low-stock threshold</label>
             <input name="lowStockThreshold" type="number" min="0" value="@Model.LowStockThreshold" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
         </div>
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">POS price (₦) <span class="font-normal text-[10px] text-neutral-300">blank = same as online</span></label>
+            <input name="posPrice" type="number" step="0.01" min="0" value="@(Model.PosPrice)" placeholder="@Model.Price.ToString("0.##")" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-emerald-400" />
+            <p class="text-[10px] text-neutral-400 mt-1">In-store price on the till. Leave blank to charge the normal price. For products with variants, set the POS price per variant below.</p>
+        </div>
     </div>
 
     <div class="grid grid-cols-2 gap-4">
@@ -140,6 +145,7 @@
                         <th class="text-left px-3 py-2 font-medium">Name</th>
                         <th class="text-left px-3 py-2 font-medium">SKU</th>
                         <th class="text-left px-3 py-2 font-medium">Price (₦) <span class="font-normal text-[10px] text-neutral-300">blank = base ₦@Model.Price.ToString("N0")</span></th>
+                        <th class="text-left px-3 py-2 font-medium">POS price (₦) <span class="font-normal text-[10px] text-neutral-300">blank = same as online</span></th>
                         <th class="text-left px-3 py-2 font-medium">Barcode</th>
                         <th class="px-2 py-2 w-10"></th>
                     </tr>
@@ -153,6 +159,11 @@
                             <td class="px-3 py-2">
                                 <input name="price" type="number" step="0.01" min="0" value="@v.Price" form="save-variants"
                                        placeholder="@Model.Price.ToString("0.##")" autocomplete="off"
+                                       class="w-28 border border-neutral-200 rounded-sm px-3 py-1.5 text-xs text-right focus:outline-none focus:border-emerald-400" />
+                            </td>
+                            <td class="px-3 py-2">
+                                <input name="posPrice" type="number" step="0.01" min="0" value="@(v.PosPrice)" form="save-variants"
+                                       placeholder="same as online" autocomplete="off"
                                        class="w-28 border border-neutral-200 rounded-sm px-3 py-1.5 text-xs text-right focus:outline-none focus:border-emerald-400" />
                             </td>
                             <td class="px-3 py-2">

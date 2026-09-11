@@ -195,7 +195,8 @@ public class ProductsController : InventoryAreaController
     // (IX_ProductVariants_Barcode); we validate up front and return a friendly message rather than
     // letting a collision surface as a raw 500 (was an ongoing Sentry DbUpdateException / 23505).
     [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> SaveVariants(int productId, int[] variantId, string[] barcode, string[]? price = null)
+    public async Task<IActionResult> SaveVariants(int productId, int[] variantId, string[] barcode, string[]? price = null,
+        string[]? posPrice = null)
     {
         var variants = await _db.ProductVariants.Where(v => v.ProductId == productId).ToListAsync();
 
@@ -203,6 +204,8 @@ public class ProductsController : InventoryAreaController
         var intended = new Dictionary<int, string?>();
         // Intended price per variant: blank/invalid → null (follow the base price).
         var intendedPrice = new Dictionary<int, decimal?>();
+        // Intended POS price per variant: blank/invalid → null (POS uses the normal price).
+        var intendedPos = new Dictionary<int, decimal?>();
         for (int i = 0; variantId != null && i < variantId.Length; i++)
         {
             intended[variantId[i]] = (barcode != null && i < barcode.Length && !string.IsNullOrWhiteSpace(barcode[i]))
@@ -211,6 +214,10 @@ public class ProductsController : InventoryAreaController
                 intendedPrice[variantId[i]] = decimal.TryParse(price[i],
                     System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d) && d >= 0
                         ? d : (decimal?)null;
+            if (posPrice != null && i < posPrice.Length)
+                intendedPos[variantId[i]] = decimal.TryParse(posPrice[i],
+                    System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var dp) && dp >= 0
+                        ? dp : (decimal?)null;
         }
 
         // 1) Same barcode entered on two variants in this submission.
@@ -241,6 +248,7 @@ public class ProductsController : InventoryAreaController
         {
             if (intended.TryGetValue(v.Id, out var bc)) v.Barcode = bc;
             if (intendedPrice.TryGetValue(v.Id, out var pr)) v.Price = pr;   // blank = follow base
+            if (intendedPos.TryGetValue(v.Id, out var pos)) v.PosPrice = pos; // blank = POS uses normal price
         }
 
         try
@@ -286,7 +294,8 @@ public class ProductsController : InventoryAreaController
 
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Save(int id, string name, string? sku, string? barcode, decimal price,
-        int? categoryId, int lowStockThreshold, bool isActive, string? description, string? buttonColour)
+        int? categoryId, int lowStockThreshold, bool isActive, string? description, string? buttonColour,
+        decimal? posPrice = null)
     {
         if (string.IsNullOrWhiteSpace(name) || categoryId == null)
         {
@@ -302,6 +311,7 @@ public class ProductsController : InventoryAreaController
         product.Sku = string.IsNullOrWhiteSpace(sku) ? null : sku.Trim();
         product.Barcode = string.IsNullOrWhiteSpace(barcode) ? null : barcode.Trim();
         product.Price = price;
+        product.PosPrice = posPrice is decimal pp && pp >= 0 ? pp : null;   // blank = POS uses the normal price
         product.CategoryId = categoryId.Value;
         product.LowStockThreshold = lowStockThreshold;
         product.IsActive = isActive;
