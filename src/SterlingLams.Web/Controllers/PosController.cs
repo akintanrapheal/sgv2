@@ -1229,6 +1229,104 @@ public class PosController : Controller
         return Json(new { success = true, id = user.Id, name = user.FullName, phone = user.PhoneNumber });
     }
 
+    /// <summary>Full details for one customer, to pre-fill the POS "edit customer" form (incl. their
+    /// default/most-recent saved address). Any signed-in POS user may read this.</summary>
+    [Authorize, HttpGet]
+    public async Task<IActionResult> CustomerDetails(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return Json(new { success = false, message = "No customer." });
+        var u = await _db.Users.FirstOrDefaultAsync(x => x.Id == id);
+        if (u == null) return Json(new { success = false, message = "Customer not found." });
+        var addr = await _db.Addresses.Where(a => a.UserId == id && !a.IsArchived)
+            .OrderByDescending(a => a.IsDefault).ThenBy(a => a.Id).FirstOrDefaultAsync();
+        return Json(new
+        {
+            success = true,
+            id = u.Id,
+            firstName = u.FirstName,
+            lastName = u.LastName,
+            phone = u.PhoneNumber,
+            email = u.Email,
+            line1 = addr?.Line1,
+            city = addr?.City,
+            state = addr?.State
+        });
+    }
+
+    public class UpdateCustomerReq
+    {
+        public string Id { get; set; } = "";
+        public string FirstName { get; set; } = "";
+        public string LastName { get; set; } = "";
+        public string? Phone { get; set; }
+        public string? Email { get; set; }
+        public string? Line1 { get; set; }
+        public string? City { get; set; }
+        public string? State { get; set; }
+    }
+
+    /// <summary>Edit a customer's details from the POS Customers tab (name, phone, email + a default
+    /// address). Cashiers may do this. The account's sign-in username is left untouched so an imported
+    /// login customer isn't locked out; POS-created shells don't log in anyway.</summary>
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> CustomerUpdate([FromBody] UpdateCustomerReq req)
+    {
+        var u = await _db.Users.FirstOrDefaultAsync(x => x.Id == req.Id);
+        if (u == null) return Json(new { success = false, message = "Customer not found." });
+
+        var first = (req.FirstName ?? "").Trim();
+        var last = (req.LastName ?? "").Trim();
+        var phone = (req.Phone ?? "").Trim();
+        var email = string.IsNullOrWhiteSpace(req.Email) ? null : req.Email.Trim();
+
+        if (first.Length == 0 && last.Length == 0)
+            return Json(new { success = false, message = "Enter a name." });
+        if (phone.Length == 0 && email == null)
+            return Json(new { success = false, message = "Enter a phone number or email." });
+
+        // Don't let an edit collide with a different account's email.
+        if (email != null)
+        {
+            var dupe = await _db.Users.FirstOrDefaultAsync(x => x.NormalizedEmail == _userManager.NormalizeEmail(email));
+            if (dupe != null && dupe.Id != u.Id)
+                return Json(new { success = false, message = "Another account already uses that email." });
+        }
+
+        u.FirstName = first;
+        u.LastName = last;
+        u.PhoneNumber = phone.Length > 0 ? phone : null;
+        if (email != null && !string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase))
+        {
+            await _userManager.SetEmailAsync(u, email);
+            u.EmailConfirmed = true;
+        }
+        await _userManager.UpdateAsync(u);
+
+        // Upsert a single default address when any address field is provided.
+        var line1 = (req.Line1 ?? "").Trim();
+        var city = (req.City ?? "").Trim();
+        var state = (req.State ?? "").Trim();
+        if (line1.Length > 0 || city.Length > 0 || state.Length > 0)
+        {
+            var addr = await _db.Addresses.Where(a => a.UserId == u.Id && !a.IsArchived)
+                .OrderByDescending(a => a.IsDefault).ThenBy(a => a.Id).FirstOrDefaultAsync();
+            if (addr == null)
+            {
+                addr = new Address { UserId = u.Id, IsDefault = true, Label = "Home", Country = "Nigeria" };
+                _db.Addresses.Add(addr);
+            }
+            addr.Line1 = line1;
+            addr.City = city;
+            addr.State = state;
+            addr.FullName = (first + " " + last).Trim();
+            addr.Phone = phone;
+            await _db.SaveChangesAsync();
+        }
+
+        try { await _audit.LogAsync("Update", "User", u.Id, $"Edited customer '{u.FullName}' from POS"); } catch { }
+        return Json(new { success = true, id = u.Id, name = u.FullName, phone = u.PhoneNumber });
+    }
+
     private async Task<string?> ResolveCustomerIdAsync(string? customerUserId)
     {
         if (string.IsNullOrWhiteSpace(customerUserId)) return null;
