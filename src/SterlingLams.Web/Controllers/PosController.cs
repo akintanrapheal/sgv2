@@ -75,6 +75,13 @@ public class PosController : Controller
     // Tokenised public manifest link (same sheet the Inventory System prints) — no login needed to view.
     private string ManifestUrl(int transferId) => "/t/manifest/" + _manifestTokens.Protect(transferId);
 
+    // In-store (POS) charge price. An explicit POS price wins; otherwise the normal POS price — the
+    // variant's own price, else the product's POS price, else its effective (sale-aware) price. So an
+    // item with no POS price set behaves exactly as before.
+    private static decimal PosCharge(Product p, ProductVariant? v) =>
+        v != null ? (v.PosPrice ?? v.Price ?? p.PosPrice ?? p.EffectivePrice)
+                  : (p.PosPrice ?? p.EffectivePrice);
+
     // POS card/receipt thumbnail: rewrite a Cloudinary upload URL to a small, cacheable variant so
     // offline image-caching stays light. Non-Cloudinary URLs are returned unchanged.
     private static string? PosThumb(string? url)
@@ -290,7 +297,7 @@ public class PosController : Controller
                 name = p.Name,
                 sku = p.Sku,
                 code = p.Barcode ?? p.Sku ?? "",
-                price = p.Price,
+                price = p.PosPrice ?? p.Price,
                 image = p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder)
                     .Select(i => i.Url).FirstOrDefault(),
                 variants = p.Variants.Where(v => v.IsActive)
@@ -300,7 +307,7 @@ public class PosController : Controller
                         name = v.Name,
                         sku = v.Sku ?? p.Sku,
                         code = v.Barcode ?? v.Sku ?? "",
-                        price = v.Price ?? p.Price,
+                        price = v.PosPrice ?? v.Price ?? p.PosPrice ?? p.Price,
                     }).ToList()
             })
             .ToListAsync();
@@ -326,10 +333,10 @@ public class PosController : Controller
             .FirstOrDefaultAsync(x => x.IsActive && x.Product.IsActive && (x.Barcode == code || x.Sku == code));
         if (v != null)
             return Json(new { found = true, key = $"{v.ProductId}.{v.Id}", name = $"{v.Product.Name} – {v.Name}",
-                sku = v.Sku ?? v.Product.Sku, code = v.Barcode ?? v.Sku ?? "", price = v.Price ?? v.Product.Price });
+                sku = v.Sku ?? v.Product.Sku, code = v.Barcode ?? v.Sku ?? "", price = v.PosPrice ?? v.Price ?? v.Product.PosPrice ?? v.Product.Price });
         var p = await _db.Products.FirstOrDefaultAsync(x => x.IsActive && (x.Barcode == code || x.Sku == code));
         if (p == null) return Json(new { found = false });
-        return Json(new { found = true, key = p.Id.ToString(), name = p.Name, sku = p.Sku, code = p.Barcode ?? p.Sku ?? "", price = p.Price });
+        return Json(new { found = true, key = p.Id.ToString(), name = p.Name, sku = p.Sku, code = p.Barcode ?? p.Sku ?? "", price = p.PosPrice ?? p.Price });
     }
 
     // The print sheet: either the picked items (ids = "pid[:qty]" / "pid.vid[:qty]", comma-separated), or
@@ -378,12 +385,12 @@ public class PosController : Controller
             {
                 if (variantQty.TryGetValue(p.Id, out var vmap))
                     foreach (var v in p.Variants.Where(v => vmap.ContainsKey(v.Id)).OrderBy(v => v.Name))
-                        Add($"{p.Name} – {v.Name}", v.Price ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, vmap[v.Id]);
+                        Add($"{p.Name} – {v.Name}", v.PosPrice ?? v.Price ?? p.PosPrice ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, vmap[v.Id]);
                 if (qtyById.TryGetValue(p.Id, out var copies))
                 {
                     var vs = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).ToList();
-                    if (vs.Count > 0) foreach (var v in vs) Add($"{p.Name} – {v.Name}", v.Price ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, copies);
-                    else Add(p.Name, p.Price, p.Barcode ?? p.Sku ?? ("P" + p.Id), p.Sku, copies);
+                    if (vs.Count > 0) foreach (var v in vs) Add($"{p.Name} – {v.Name}", v.PosPrice ?? v.Price ?? p.PosPrice ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, copies);
+                    else Add(p.Name, p.PosPrice ?? p.Price, p.Barcode ?? p.Sku ?? ("P" + p.Id), p.Sku, copies);
                 }
             }
             ViewBag.Scope = "selected items";
@@ -396,8 +403,8 @@ public class PosController : Controller
             foreach (var p in products)
             {
                 var vs = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).ToList();
-                if (vs.Count > 0) foreach (var v in vs) Add($"{p.Name} – {v.Name}", v.Price ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, 1);
-                else Add(p.Name, p.Price, p.Barcode ?? p.Sku ?? ("P" + p.Id), p.Sku, 1);
+                if (vs.Count > 0) foreach (var v in vs) Add($"{p.Name} – {v.Name}", v.PosPrice ?? v.Price ?? p.PosPrice ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, 1);
+                else Add(p.Name, p.PosPrice ?? p.Price, p.Barcode ?? p.Sku ?? ("P" + p.Id), p.Sku, 1);
             }
             ViewBag.Scope = all ? "all products" : (register.Store?.Name ?? "this branch");
         }
@@ -1249,6 +1256,8 @@ public class PosController : Controller
             orderNumber = o.OrderNumber,
             status = o.Status.ToString(),
             fulfillmentType = o.FulfillmentType.ToString(),
+            placedAt = o.CreatedAt,           // shown in West Africa Time on the client
+            deliveryType = o.DeliveryType,    // "Express" | "Standard" | null (pickup)
             canPack = o.FulfillmentType == FulfillmentType.Delivery
                       && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing),
             customer = new { name = (o.User.FirstName + " " + o.User.LastName).Trim(), phone = o.User.PhoneNumber, email = o.User.Email },
@@ -1681,15 +1690,15 @@ public class PosController : Controller
                 sku = p.Sku,
                 barcode = p.Barcode,
                 categoryId = p.CategoryId,
-                price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
+                price = p.PosPrice ?? (p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
                         && (p.SaleStartsAt == null || p.SaleStartsAt <= DateTime.UtcNow)
                         && (p.SaleEndsAt == null || p.SaleEndsAt >= DateTime.UtcNow)
-                    ? p.SalePrice.Value : p.Price,
+                    ? p.SalePrice.Value : p.Price),
                 image = p.Images.Where(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
                 variants = p.ProductType == "variable"
                     ? p.Variants.Where(v => v.IsActive)
-                        .Select(v => new { id = v.Id, name = v.Name, price = v.Price, imageUrl = v.ImageUrl }).ToList()
+                        .Select(v => new { id = v.Id, name = v.Name, price = v.PosPrice ?? v.Price, imageUrl = v.ImageUrl }).ToList()
                     : null
             })
             .ToListAsync();
@@ -1792,15 +1801,15 @@ public class PosController : Controller
                 name = p.Name,
                 sku = p.Sku,
                 barcode = p.Barcode,
-                price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
+                price = p.PosPrice ?? (p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
                         && (p.SaleStartsAt == null || p.SaleStartsAt <= DateTime.UtcNow)
                         && (p.SaleEndsAt == null || p.SaleEndsAt >= DateTime.UtcNow)
-                    ? p.SalePrice.Value : p.Price,
+                    ? p.SalePrice.Value : p.Price),
                 image = p.Images.Where(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
                 variants = p.ProductType == "variable"
                     ? p.Variants.Where(v => v.IsActive)
-                        .Select(v => new { id = v.Id, name = v.Name, barcode = v.Barcode, price = v.Price, imageUrl = v.ImageUrl }).ToList()
+                        .Select(v => new { id = v.Id, name = v.Name, barcode = v.Barcode, price = v.PosPrice ?? v.Price, imageUrl = v.ImageUrl }).ToList()
                     : null
             })
             .ToListAsync();
@@ -1861,10 +1870,10 @@ public class PosController : Controller
                 barcode = p.Barcode,
                 description = p.ShortDescription,
                 category = p.Category.Name,
-                price = p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
+                price = p.PosPrice ?? (p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
                         && (p.SaleStartsAt == null || p.SaleStartsAt <= DateTime.UtcNow)
                         && (p.SaleEndsAt == null || p.SaleEndsAt >= DateTime.UtcNow)
-                    ? p.SalePrice.Value : p.Price,
+                    ? p.SalePrice.Value : p.Price),
                 inv = p.StoreInventories.Select(si => new { si.StoreId, store = si.Store.Name, si.ProductVariantId, si.QuantityOnHand, si.QuantityReserved }).ToList(),
                 variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).Select(v => new { id = v.Id, name = v.Name }).ToList()
             })
@@ -2238,7 +2247,7 @@ public class PosController : Controller
             var isCustom = prod.IsCustomItem;
             var variant = (!isCustom && line.VariantId.HasValue) ? prod.Variants.FirstOrDefault(v => v.Id == line.VariantId) : null;
             // Custom (one-off) lines carry their own name + price; everything else uses the catalog.
-            var unitPrice = isCustom ? Math.Max(0, line.UnitPrice ?? 0) : (variant?.Price ?? prod.EffectivePrice);
+            var unitPrice = isCustom ? Math.Max(0, line.UnitPrice ?? 0) : PosCharge(prod, variant);
             var lineName = isCustom ? (string.IsNullOrWhiteSpace(line.Name) ? "Custom item" : line.Name.Trim()) : prod.Name;
             var lineDiscount = Math.Max(0, Math.Min(line.DiscountAmount, unitPrice * qty));
             subtotal += unitPrice * qty;
@@ -2453,7 +2462,7 @@ public class PosController : Controller
             if (!products.TryGetValue(line.ProductId, out var prod)) { shortfalls.Add($"#{line.ProductId} (removed)"); continue; }
             var qty = Math.Max(1, line.Quantity);
             var variant = line.VariantId.HasValue ? prod.Variants.FirstOrDefault(v => v.Id == line.VariantId) : null;
-            var unitPrice = (variant?.Price ?? prod.EffectivePrice);
+            var unitPrice = PosCharge(prod, variant);
             var lineDiscount = Math.Max(0, Math.Min(line.DiscountAmount, unitPrice * qty));
             subtotal += unitPrice * qty;
             totalDiscount += lineDiscount;

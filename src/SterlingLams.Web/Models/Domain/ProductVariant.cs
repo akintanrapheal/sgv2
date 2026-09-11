@@ -21,6 +21,12 @@ public class ProductVariant
     // sale (a variant with its own Price only goes on sale when this is set; a variant with a null Price
     // inherits the product's sale). Effective pricing lives in Domain.VariantPricing — do not re-derive.
     public decimal? SalePrice { get; set; }
+
+    // Optional in-store (POS) price for THIS variant. When set, the till charges this instead of the
+    // variant's normal price — lets in-store prices differ from online per variant. Null = POS behaves
+    // as before for this variant (its own Price, else the product's POS/effective price).
+    public decimal? PosPrice { get; set; }
+
     public int StockQuantity { get; set; }
     public bool IsActive { get; set; } = true;
 

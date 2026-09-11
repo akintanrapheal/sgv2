@@ -35,9 +35,15 @@ public class Product
         && (SaleStartsAt == null || SaleStartsAt <= DateTime.UtcNow)
         && (SaleEndsAt == null || SaleEndsAt >= DateTime.UtcNow);
 
-    /// <summary>The price actually charged: the sale price when on sale, otherwise the regular price.</summary>
+    /// <summary>The price actually charged online: the sale price when on sale, otherwise the regular price.</summary>
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public decimal EffectivePrice => IsOnSale ? SalePrice!.Value : Price;
+
+    /// <summary>Optional in-store (POS) price. When set, the till charges this instead of the normal
+    /// price — used to keep in-store and online prices different (e.g. to encourage online shopping).
+    /// Null = the POS behaves as before (variant price, else the effective/sale price). Applies to a
+    /// simple product's own price and backstops a variant that has no price of its own.</summary>
+    public decimal? PosPrice { get; set; }
 
     public string Currency { get; set; } = "NGN";
 
