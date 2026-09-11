@@ -1249,6 +1249,8 @@ public class PosController : Controller
             orderNumber = o.OrderNumber,
             status = o.Status.ToString(),
             fulfillmentType = o.FulfillmentType.ToString(),
+            placedAt = o.CreatedAt,           // shown in West Africa Time on the client
+            deliveryType = o.DeliveryType,    // "Express" | "Standard" | null (pickup)
             canPack = o.FulfillmentType == FulfillmentType.Delivery
                       && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing),
             customer = new { name = (o.User.FirstName + " " + o.User.LastName).Trim(), phone = o.User.PhoneNumber, email = o.User.Email },
