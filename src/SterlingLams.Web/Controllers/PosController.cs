@@ -297,7 +297,7 @@ public class PosController : Controller
                 name = p.Name,
                 sku = p.Sku,
                 code = p.Barcode ?? p.Sku ?? "",
-                price = p.PosPrice ?? p.Price,
+                price = p.Price,
                 image = p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder)
                     .Select(i => i.Url).FirstOrDefault(),
                 variants = p.Variants.Where(v => v.IsActive)
@@ -307,7 +307,7 @@ public class PosController : Controller
                         name = v.Name,
                         sku = v.Sku ?? p.Sku,
                         code = v.Barcode ?? v.Sku ?? "",
-                        price = v.PosPrice ?? v.Price ?? p.PosPrice ?? p.Price,
+                        price = v.Price ?? p.Price,
                     }).ToList()
             })
             .ToListAsync();
@@ -333,10 +333,10 @@ public class PosController : Controller
             .FirstOrDefaultAsync(x => x.IsActive && x.Product.IsActive && (x.Barcode == code || x.Sku == code));
         if (v != null)
             return Json(new { found = true, key = $"{v.ProductId}.{v.Id}", name = $"{v.Product.Name} – {v.Name}",
-                sku = v.Sku ?? v.Product.Sku, code = v.Barcode ?? v.Sku ?? "", price = v.PosPrice ?? v.Price ?? v.Product.PosPrice ?? v.Product.Price });
+                sku = v.Sku ?? v.Product.Sku, code = v.Barcode ?? v.Sku ?? "", price = v.Price ?? v.Product.Price });
         var p = await _db.Products.FirstOrDefaultAsync(x => x.IsActive && (x.Barcode == code || x.Sku == code));
         if (p == null) return Json(new { found = false });
-        return Json(new { found = true, key = p.Id.ToString(), name = p.Name, sku = p.Sku, code = p.Barcode ?? p.Sku ?? "", price = p.PosPrice ?? p.Price });
+        return Json(new { found = true, key = p.Id.ToString(), name = p.Name, sku = p.Sku, code = p.Barcode ?? p.Sku ?? "", price = p.Price });
     }
 
     // The print sheet: either the picked items (ids = "pid[:qty]" / "pid.vid[:qty]", comma-separated), or
@@ -385,12 +385,12 @@ public class PosController : Controller
             {
                 if (variantQty.TryGetValue(p.Id, out var vmap))
                     foreach (var v in p.Variants.Where(v => vmap.ContainsKey(v.Id)).OrderBy(v => v.Name))
-                        Add($"{p.Name} – {v.Name}", v.PosPrice ?? v.Price ?? p.PosPrice ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, vmap[v.Id]);
+                        Add($"{p.Name} – {v.Name}", v.Price ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, vmap[v.Id]);
                 if (qtyById.TryGetValue(p.Id, out var copies))
                 {
                     var vs = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).ToList();
-                    if (vs.Count > 0) foreach (var v in vs) Add($"{p.Name} – {v.Name}", v.PosPrice ?? v.Price ?? p.PosPrice ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, copies);
-                    else Add(p.Name, p.PosPrice ?? p.Price, p.Barcode ?? p.Sku ?? ("P" + p.Id), p.Sku, copies);
+                    if (vs.Count > 0) foreach (var v in vs) Add($"{p.Name} – {v.Name}", v.Price ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, copies);
+                    else Add(p.Name, p.Price, p.Barcode ?? p.Sku ?? ("P" + p.Id), p.Sku, copies);
                 }
             }
             ViewBag.Scope = "selected items";
@@ -403,8 +403,8 @@ public class PosController : Controller
             foreach (var p in products)
             {
                 var vs = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).ToList();
-                if (vs.Count > 0) foreach (var v in vs) Add($"{p.Name} – {v.Name}", v.PosPrice ?? v.Price ?? p.PosPrice ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, 1);
-                else Add(p.Name, p.PosPrice ?? p.Price, p.Barcode ?? p.Sku ?? ("P" + p.Id), p.Sku, 1);
+                if (vs.Count > 0) foreach (var v in vs) Add($"{p.Name} – {v.Name}", v.Price ?? p.Price, VarCode(p, v), v.Sku ?? p.Sku, 1);
+                else Add(p.Name, p.Price, p.Barcode ?? p.Sku ?? ("P" + p.Id), p.Sku, 1);
             }
             ViewBag.Scope = all ? "all products" : (register.Store?.Name ?? "this branch");
         }
