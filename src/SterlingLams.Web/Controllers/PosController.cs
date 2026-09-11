@@ -1133,6 +1133,196 @@ public class PosController : Controller
         return Json(orders);
     }
 
+    // ── Fulfilment queue: online orders THIS branch was assigned to pack/ship ─────
+    // "To pack" = paid delivery orders allocated here with all stock present (Confirmed/Processing).
+    // "Awaiting transfer" = allocated here but still waiting on stock coming from another branch.
+    // Store-pickup collections stay in their own Pickup screen and are intentionally excluded here.
+    [Authorize, HttpGet]
+    public async Task<IActionResult> FulfilOrders()
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { toPack = Array.Empty<object>(), awaitingTransfer = Array.Empty<object>() });
+        var storeId = register.StoreId;
+
+        var toPack = await _db.Orders
+            .Where(o => o.Channel == OrderChannel.Online && o.FulfillingStoreId == storeId
+                     && o.FulfillmentType == FulfillmentType.Delivery && o.IsPaid
+                     && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing))
+            .OrderBy(o => o.CreatedAt)
+            .Select(o => new
+            {
+                id = o.Id,
+                orderNumber = o.OrderNumber,
+                customer = (o.User.FirstName + " " + o.User.LastName).Trim(),
+                phone = o.User.PhoneNumber,
+                itemCount = o.Items.Sum(i => i.Quantity),
+                total = o.Total,
+                createdAt = o.CreatedAt,
+                place = o.DeliveryAddress != null ? (o.DeliveryAddress.City + ", " + o.DeliveryAddress.State).Trim(' ', ',') : "",
+                hasNote = o.Notes != null && o.Notes != "",
+                status = o.Status.ToString()
+            })
+            .ToListAsync();
+
+        var awaitingTransfer = await _db.Orders
+            .Where(o => o.Channel == OrderChannel.Online && o.FulfillingStoreId == storeId
+                     && o.Status == OrderStatus.AwaitingTransfer)
+            .OrderBy(o => o.CreatedAt)
+            .Select(o => new
+            {
+                id = o.Id,
+                orderNumber = o.OrderNumber,
+                customer = (o.User.FirstName + " " + o.User.LastName).Trim(),
+                phone = o.User.PhoneNumber,
+                itemCount = o.Items.Sum(i => i.Quantity),
+                total = o.Total,
+                createdAt = o.CreatedAt,
+                place = o.DeliveryAddress != null ? (o.DeliveryAddress.City + ", " + o.DeliveryAddress.State).Trim(' ', ',') : "",
+                hasNote = o.Notes != null && o.Notes != "",
+                status = o.Status.ToString()
+            })
+            .ToListAsync();
+
+        return Json(new { toPack, awaitingTransfer });
+    }
+
+    // Lightweight poll for the fulfilment badge + "new order to pack" toast (see the Sell screen).
+    [Authorize, HttpGet]
+    public async Task<IActionResult> FulfilPoll(long sinceTicks = 0)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { toPack = 0, awaiting = 0, latestTicks = "0", newOrders = Array.Empty<object>() });
+        var storeId = register.StoreId;
+
+        var toPackQ = _db.Orders.Where(o => o.Channel == OrderChannel.Online && o.FulfillingStoreId == storeId
+            && o.FulfillmentType == FulfillmentType.Delivery && o.IsPaid
+            && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing));
+        var awaitQ = _db.Orders.Where(o => o.Channel == OrderChannel.Online && o.FulfillingStoreId == storeId
+            && o.Status == OrderStatus.AwaitingTransfer);
+
+        var toPackCount = await toPackQ.CountAsync();
+        var awaitCount = await awaitQ.CountAsync();
+        var latestPack = await toPackQ.MaxAsync(o => (DateTime?)o.UpdatedAt);
+        var latestAwait = await awaitQ.MaxAsync(o => (DateTime?)o.UpdatedAt);
+        var latest = new[] { latestPack, latestAwait }.Max();
+        var latestTicks = latest?.Ticks ?? 0L;
+
+        var newOrders = new List<object>();
+        if (sinceTicks > 0 && latestTicks > sinceTicks)
+        {
+            var since = new DateTime(sinceTicks, DateTimeKind.Utc);
+            newOrders = await toPackQ.Where(o => o.UpdatedAt > since)
+                .OrderByDescending(o => o.UpdatedAt).Take(5)
+                .Select(o => new { number = o.OrderNumber, customer = (o.User.FirstName + " " + o.User.LastName).Trim() })
+                .ToListAsync<object>();
+        }
+        // latestTicks is returned as a string: DateTime.Ticks exceeds JS's safe-integer range.
+        return Json(new { toPack = toPackCount, awaiting = awaitCount, latestTicks = latestTicks.ToString(), newOrders });
+    }
+
+    // Full detail for one assigned order — items (with pictures), customer, shipping address, note.
+    [Authorize, HttpGet]
+    public async Task<IActionResult> FulfilOrderDetail(int id)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { success = false, message = "This POS isn't set up." });
+        var o = await _db.Orders
+            .Include(x => x.Items).Include(x => x.User).Include(x => x.DeliveryAddress)
+            .FirstOrDefaultAsync(x => x.Id == id && x.Channel == OrderChannel.Online && x.FulfillingStoreId == register.StoreId);
+        if (o == null) return Json(new { success = false, message = "Order not found for this branch." });
+
+        var imgs = await PrimaryImagesAsync(o.Items.Select(i => i.ProductId).Distinct().ToList());
+        var items = o.Items.Select(i => new
+        {
+            name = i.ProductName,
+            variant = i.VariantName,
+            qty = i.Quantity,
+            unitPrice = i.UnitPrice,
+            lineTotal = i.LineTotal,
+            image = imgs.GetValueOrDefault(i.ProductId)
+        }).ToList();
+        var a = o.DeliveryAddress;
+        return Json(new
+        {
+            success = true,
+            id = o.Id,
+            orderNumber = o.OrderNumber,
+            status = o.Status.ToString(),
+            fulfillmentType = o.FulfillmentType.ToString(),
+            canPack = o.FulfillmentType == FulfillmentType.Delivery
+                      && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing),
+            customer = new { name = (o.User.FirstName + " " + o.User.LastName).Trim(), phone = o.User.PhoneNumber, email = o.User.Email },
+            address = a == null ? null : new { a.FullName, a.Line1, a.Line2, a.City, a.State, a.Country, a.Phone, a.PostalCode },
+            note = o.Notes,
+            subtotal = o.Subtotal,
+            deliveryFee = o.DeliveryFee,
+            total = o.Total,
+            items
+        });
+    }
+
+    public class FulfilPackDto { public int OrderId { get; set; } }
+
+    // Cashier marks a delivery order packed & dispatched from the POS: advance it to Shipped, note it,
+    // and send the customer the "shipped" email (+ WhatsApp). Guarded to this branch's own orders.
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> FulfilMarkPacked([FromBody] FulfilPackDto req)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { success = false, message = "This POS isn't set up." });
+        if (!await _access.CanWriteAsync(User, register.StoreId))
+            return Json(new { success = false, message = "You're not assigned to this branch's POS." });
+
+        var o = await _db.Orders.Include(x => x.Items).Include(x => x.User)
+            .FirstOrDefaultAsync(x => x.Id == req.OrderId && x.Channel == OrderChannel.Online && x.FulfillingStoreId == register.StoreId);
+        if (o == null) return Json(new { success = false, message = "Order not found for this branch." });
+        if (o.FulfillmentType != FulfillmentType.Delivery)
+            return Json(new { success = false, message = "Only delivery orders are dispatched here." });
+        if (o.Status != OrderStatus.Confirmed && o.Status != OrderStatus.Processing)
+            return Json(new { success = false, message = $"Order is {o.Status} — not ready to dispatch." });
+
+        var me = await _userManager.GetUserAsync(User);
+        var staff = me?.FullName ?? User.Identity?.Name ?? "staff";
+
+        o.Status = OrderStatus.Shipped;
+        o.UpdatedAt = DateTime.UtcNow;
+        OrderNotes.AddSystem(_db, o.Id, $"Packed & dispatched by {staff} at {register.Store?.Name}.");
+        await _db.SaveChangesAsync();
+
+        await SendPosShippedEmailAsync(o.Id);
+        _ = _whatsapp.NotifyOrderAsync(o.Id, WhatsAppOrderEvent.Shipped);
+        try { await _audit.LogAsync("Dispatch", "Order", o.Id.ToString(), $"POS packed & dispatched {o.OrderNumber} from {register.Store?.Name}"); } catch { }
+
+        return Json(new { success = true });
+    }
+
+    // The customer-facing "shipped" email, built from the shared order-email template. Best-effort.
+    private async Task SendPosShippedEmailAsync(int orderId)
+    {
+        var order = await _db.Orders.Include(o => o.Items).Include(o => o.User)
+            .FirstOrDefaultAsync(o => o.Id == orderId);
+        var email = order?.User?.Email;
+        if (order == null || string.IsNullOrWhiteSpace(email)) return;
+
+        const string key = "order_shipped";
+        var subject = await _settings.GetAsync($"email.{key}.subject", "Your order is on its way");
+        var introText = await _settings.GetAsync($"email.{key}.intro",
+            "Great news — your order {order} has been shipped and is on its way to you.");
+        var firstName = string.IsNullOrWhiteSpace(order.User.FirstName) ? "there" : order.User.FirstName;
+        var introHtml = OrderEmailTemplate.ApplyPlaceholders(introText, order.OrderNumber, order.CreatedAt, firstName);
+        var imgs = await PrimaryImagesAsync(order.Items.Select(i => i.ProductId).Distinct().ToList());
+        var items = order.Items
+            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, imgs.GetValueOrDefault(i.ProductId)))
+            .ToList();
+        var body = OrderEmailTemplate.BuildStatusUpdate(subject, introHtml, order.OrderNumber, items, order.Total);
+        var sent = await _email.SendAsync(email!, subject, body, order.User.FullName);
+        if (sent)
+        {
+            OrderNotes.AddSystem(_db, order.Id, "'Shipped' status email sent to the customer.");
+            await _db.SaveChangesAsync();
+        }
+    }
+
     // ── Customers (attach a buyer to a POS sale) ──────────────────────────────
     [Authorize, HttpGet]
     public async Task<IActionResult> CustomerSearch(string? q)

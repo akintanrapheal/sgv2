@@ -110,6 +110,13 @@
                 Verify pickup
             </button>
 
+            <p class="px-4 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Fulfilment</p>
+            <button type="button" id="menu-fulfil-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
+                <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                Orders to fulfil
+                <span id="fulfil-badge" class="hidden ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-brand-500 text-white text-[10px] leading-[18px] text-center font-semibold"></span>
+            </button>
+
             <p class="px-4 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">Stock</p>
             <button type="button" id="menu-stocklookup-btn" class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 transition-colors text-left">
                 <svg class="w-5 h-5 flex-shrink-0 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
@@ -646,6 +653,42 @@
             <p class="text-center text-neutral-400 py-8 text-xs">Loading…</p>
         </div>
     </div>
+</div>
+
+<!-- ── Orders to fulfil (full-screen) ──────────────────────────────────── -->
+<div id="till-fulfil" class="hidden fixed inset-0 z-50 bg-white flex flex-col">
+    <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 flex-shrink-0">
+        <div class="flex items-center gap-3 min-w-0">
+            <button type="button" id="fulfil-back" class="hidden text-neutral-400 hover:text-neutral-700 transition-colors flex-shrink-0">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </button>
+            <div class="min-w-0">
+                <p class="text-xs text-neutral-400">Fulfilment</p>
+                <h3 id="fulfil-title" class="text-lg font-semibold text-neutral-900 truncate leading-tight">Orders to fulfil</h3>
+            </div>
+        </div>
+        <button type="button" id="fulfil-close" class="text-neutral-400 hover:text-neutral-700 transition-colors flex-shrink-0">
+            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+        </button>
+    </div>
+
+    <!-- List view (tabs + order cards) -->
+    <div id="fulfil-listview" class="flex-1 flex flex-col overflow-hidden">
+        <div class="flex border-b border-neutral-100 flex-shrink-0">
+            <button type="button" id="fulfil-tab-pack" class="flex-1 py-3 text-sm font-semibold tracking-wide text-brand-600 border-b-2 border-brand-500 transition-colors">
+                To pack <span id="fulfil-pack-count" class="ml-1 text-xs text-neutral-400"></span>
+            </button>
+            <button type="button" id="fulfil-tab-transfer" class="flex-1 py-3 text-sm font-semibold tracking-wide text-neutral-400 border-b-2 border-transparent transition-colors">
+                Awaiting transfer <span id="fulfil-transfer-count" class="ml-1 text-xs text-neutral-400"></span>
+            </button>
+        </div>
+        <div id="fulfil-list" class="flex-1 overflow-y-auto p-4 space-y-2">
+            <p class="text-center text-neutral-400 py-10 text-sm">Loading…</p>
+        </div>
+    </div>
+
+    <!-- Detail view (one order) -->
+    <div id="fulfil-detailview" class="hidden flex-1 overflow-y-auto"></div>
 </div>
 
 <!-- ── Sale complete modal ───────────────────────────────────────────────── -->
@@ -2728,6 +2771,184 @@
     document.getElementById('menu-transferhistory-btn').addEventListener('click', function () { histPanel.classList.remove('hidden'); loadHistory(); });
     document.getElementById('transferhistory-close').addEventListener('click', function () { histPanel.classList.add('hidden'); });
     loadLists(); setInterval(loadLists, 60000);   // keep the "receive" badge fresh
+}());
+</script>
+
+<script>
+// ── Orders to fulfil (per-store fulfilment queue) ─────────────────────────────
+(function () {
+    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+    const modal = document.getElementById('till-fulfil');
+    if (!modal) return;
+    const listView = document.getElementById('fulfil-listview');
+    const detailView = document.getElementById('fulfil-detailview');
+    const listEl = document.getElementById('fulfil-list');
+    const titleEl = document.getElementById('fulfil-title');
+    const backBtn = document.getElementById('fulfil-back');
+    const tabPack = document.getElementById('fulfil-tab-pack');
+    const tabTransfer = document.getElementById('fulfil-tab-transfer');
+    const badge = document.getElementById('fulfil-badge');
+    let currentTab = 'pack';          // 'pack' | 'transfer'
+    let cache = { toPack: [], awaitingTransfer: [] };
+    let cursor = '0';                 // '0' = baseline, don't toast pre-existing orders
+
+    const money = n => '₦' + Math.round(n || 0).toLocaleString();
+    const esc = s => (s == null ? '' : String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])));
+    function toast(msg) {
+        if (window.showToast) { window.showToast(msg); return; }
+        const t = document.createElement('div');
+        t.textContent = msg;
+        t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#1c1917;color:#fff;padding:10px 18px;border-radius:9px;font-size:13px;z-index:60;box-shadow:0 6px 24px rgba(0,0,0,.25)';
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 3500);
+    }
+    function setBadge(n) {
+        if (n > 0) { badge.textContent = n; badge.classList.remove('hidden'); }
+        else badge.classList.add('hidden');
+    }
+
+    function showList() {
+        detailView.classList.add('hidden');
+        listView.classList.remove('hidden');
+        backBtn.classList.add('hidden');
+        titleEl.textContent = 'Orders to fulfil';
+    }
+    function setTab(tab) {
+        currentTab = tab;
+        const on = 'flex-1 py-3 text-sm font-semibold tracking-wide text-brand-600 border-b-2 border-brand-500 transition-colors';
+        const off = 'flex-1 py-3 text-sm font-semibold tracking-wide text-neutral-400 border-b-2 border-transparent transition-colors';
+        tabPack.className = tab === 'pack' ? on : off;
+        tabTransfer.className = tab === 'transfer' ? on : off;
+        renderList();
+    }
+    function orderCard(o, packable) {
+        const noteFlag = o.hasNote ? ' · <span class="text-amber-600">note</span>' : '';
+        const place = o.place ? ' · ' + esc(o.place) : '';
+        return `<button type="button" class="fulfil-card w-full text-left border border-neutral-200 rounded-xl p-3 hover:border-brand-400 transition-colors" data-id="${o.id}">
+            <div class="flex items-center justify-between gap-2">
+                <span class="font-medium text-neutral-800">${esc(o.orderNumber)}</span>
+                <span class="text-sm font-semibold text-neutral-700">${money(o.total)}</span>
+            </div>
+            <div class="text-sm text-neutral-600 mt-0.5 truncate">${esc(o.customer) || 'Customer'}${o.phone ? ' · ' + esc(o.phone) : ''}</div>
+            <div class="text-[11px] text-neutral-400 mt-0.5">${o.itemCount} item${o.itemCount === 1 ? '' : 's'}${place}${noteFlag}</div>
+        </button>`;
+    }
+    function renderList() {
+        const list = currentTab === 'pack' ? cache.toPack : cache.awaitingTransfer;
+        document.getElementById('fulfil-pack-count').textContent = cache.toPack.length ? '(' + cache.toPack.length + ')' : '';
+        document.getElementById('fulfil-transfer-count').textContent = cache.awaitingTransfer.length ? '(' + cache.awaitingTransfer.length + ')' : '';
+        if (!list.length) {
+            listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">' +
+                (currentTab === 'pack' ? 'No orders waiting to be packed.' : 'No orders awaiting a transfer.') + '</p>';
+            return;
+        }
+        listEl.innerHTML = list.map(o => orderCard(o, currentTab === 'pack')).join('');
+        listEl.querySelectorAll('.fulfil-card').forEach(b => b.addEventListener('click', () => openDetail(+b.dataset.id)));
+    }
+    async function loadList() {
+        listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Loading…</p>';
+        try {
+            const r = await fetch('/Pos/FulfilOrders');
+            cache = await r.json();
+            setBadge((cache.toPack || []).length + (cache.awaitingTransfer || []).length);
+            renderList();
+        } catch { listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Could not load orders.</p>'; }
+    }
+    async function openDetail(id) {
+        listView.classList.add('hidden');
+        detailView.classList.remove('hidden');
+        backBtn.classList.remove('hidden');
+        detailView.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Loading…</p>';
+        try {
+            const r = await fetch('/Pos/FulfilOrderDetail?id=' + id);
+            const d = await r.json();
+            if (!d.success) { detailView.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">' + esc(d.message || 'Not found.') + '</p>'; return; }
+            titleEl.textContent = d.orderNumber;
+            const items = (d.items || []).map(i => `
+                <div class="flex items-center gap-3 py-2 border-b border-neutral-100">
+                    ${i.image ? `<img src="${esc(i.image)}" alt="" class="w-12 h-12 rounded object-cover bg-neutral-100 flex-shrink-0">` : '<span class="w-12 h-12 rounded bg-neutral-100 flex-shrink-0"></span>'}
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm text-neutral-800">${esc(i.name)}${i.variant ? ' <span class="text-neutral-400">· ' + esc(i.variant) + '</span>' : ''}</div>
+                        <div class="text-[11px] text-neutral-400">Qty ${i.qty} × ${money(i.unitPrice)}</div>
+                    </div>
+                    <div class="text-sm font-medium text-neutral-700">${money(i.lineTotal)}</div>
+                </div>`).join('');
+            const a = d.address;
+            const addr = a ? [a.line1, a.line2, a.city, a.state, a.postalCode, a.country].filter(x => x && x.trim()).map(esc).join(', ') : '<span class="text-neutral-400">No address on file</span>';
+            const cust = d.customer || {};
+            const packBtn = d.canPack
+                ? `<button type="button" id="fulfil-pack-btn" data-id="${d.id}" class="w-full bg-brand-500 text-white rounded-lg py-3 text-sm font-semibold hover:bg-brand-600 transition-colors">Mark packed &amp; dispatched</button>`
+                : '';
+            detailView.innerHTML = `
+                <div class="max-w-2xl mx-auto p-4 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs uppercase tracking-wide text-neutral-400">${esc(d.fulfillmentType)} · ${esc(d.status)}</span>
+                        <span class="text-sm font-semibold text-neutral-800">${money(d.total)}</span>
+                    </div>
+                    <div class="border border-neutral-200 rounded-xl p-3">
+                        <p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Items</p>
+                        ${items}
+                        <div class="flex justify-between text-xs text-neutral-500 pt-2"><span>Subtotal</span><span>${money(d.subtotal)}</span></div>
+                        <div class="flex justify-between text-xs text-neutral-500"><span>Delivery</span><span>${money(d.deliveryFee)}</span></div>
+                        <div class="flex justify-between text-sm font-semibold text-neutral-800 pt-1"><span>Total</span><span>${money(d.total)}</span></div>
+                    </div>
+                    <div class="border border-neutral-200 rounded-xl p-3">
+                        <p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Customer</p>
+                        <p class="text-sm text-neutral-800">${esc(cust.name) || 'Customer'}</p>
+                        ${cust.phone ? `<p class="text-sm text-brand-600"><a href="tel:${esc(cust.phone)}">${esc(cust.phone)}</a></p>` : ''}
+                        ${cust.email ? `<p class="text-[13px] text-neutral-500">${esc(cust.email)}</p>` : ''}
+                    </div>
+                    <div class="border border-neutral-200 rounded-xl p-3">
+                        <p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Shipping address</p>
+                        ${a && a.fullName ? `<p class="text-sm text-neutral-800">${esc(a.fullName)}</p>` : ''}
+                        <p class="text-sm text-neutral-600">${addr}</p>
+                        ${a && a.phone ? `<p class="text-[13px] text-neutral-500 mt-0.5">${esc(a.phone)}</p>` : ''}
+                    </div>
+                    ${d.note ? `<div class="border border-amber-200 bg-amber-50 rounded-xl p-3"><p class="text-[10px] uppercase tracking-wide text-amber-600 mb-1">Order note</p><p class="text-sm text-amber-800">${esc(d.note)}</p></div>` : ''}
+                    ${packBtn}
+                </div>`;
+            const pb = document.getElementById('fulfil-pack-btn');
+            if (pb) pb.addEventListener('click', () => markPacked(+pb.dataset.id, pb));
+        } catch { detailView.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Could not load the order.</p>'; }
+    }
+    async function markPacked(id, btn) {
+        btn.disabled = true; const ot = btn.textContent; btn.textContent = 'Dispatching…';
+        try {
+            const res = await fetch('/Pos/FulfilMarkPacked', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                body: JSON.stringify({ orderId: id })
+            });
+            const data = await res.json();
+            if (data.success) {
+                toast('Order dispatched — customer notified');
+                showList();
+                await loadList();
+            } else { btn.disabled = false; btn.textContent = ot; toast(data.message || 'Could not dispatch.'); }
+        } catch { btn.disabled = false; btn.textContent = ot; toast('Could not dispatch.'); }
+    }
+
+    function open() { modal.classList.remove('hidden'); showList(); setTab('pack'); loadList(); }
+    document.getElementById('menu-fulfil-btn').addEventListener('click', open);
+    document.getElementById('fulfil-close').addEventListener('click', () => modal.classList.add('hidden'));
+    backBtn.addEventListener('click', showList);
+    tabPack.addEventListener('click', () => setTab('pack'));
+    tabTransfer.addEventListener('click', () => setTab('transfer'));
+
+    // Background poll: keep the badge fresh and toast when a new order needs packing.
+    async function poll() {
+        try {
+            const r = await fetch('/Pos/FulfilPoll?sinceTicks=' + encodeURIComponent(cursor));
+            const d = await r.json();
+            setBadge((d.toPack || 0) + (d.awaiting || 0));
+            if (cursor !== '0' && d.newOrders && d.newOrders.length) {
+                d.newOrders.forEach(o => toast('New order to pack: ' + o.number + (o.customer ? ' · ' + o.customer : '')));
+            }
+            cursor = d.latestTicks || cursor;
+        } catch { /* offline — try again next tick */ }
+    }
+    poll();
+    setInterval(poll, 45000);
 }());
 </script>
 }
