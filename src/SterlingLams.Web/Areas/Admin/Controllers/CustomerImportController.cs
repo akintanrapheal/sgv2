@@ -12,11 +12,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
     /// "Users/Customers" CSV, which carries <c>user_pass</c> — the phpass hash). Creates a native
     /// account per customer with the WordPress hash preserved, so they sign in with their EXISTING
     /// password and are transparently upgraded on first login (see WordPressPasswordHasher).
-    /// Owner-only (Section == null). Dry-run preview first, then Apply.
+    /// Grantable section ("CustomerImport"): view to preview, "CustomerImport:manage" to Apply.
+    /// (The owner account bypasses all section checks.) Dry-run preview first, then Apply.
     /// </summary>
     public class CustomerImportController : AdminBaseController
     {
-        protected override string? Section => null; // super-admin/owner only
+        protected override string? Section => "CustomerImport"; // grantable; manage required to Apply
 
         private readonly UserManager<ApplicationUser> _users;
         private readonly ApplicationDbContext _db;

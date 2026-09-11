@@ -323,6 +323,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 return RedirectToAction("Index", "MyAccount", new { area = "" }); // edit your own on /me
             ViewData["Title"] = "Edit User";
             ViewBag.Role = (await _userManager.GetRolesAsync(user)).FirstOrDefault(r => r != "Customer") ?? "Customer";
+            // Roles selectable here (staff roles + "Customer" = no backend access). The owner account's
+            // role is protected and can't be changed (SetRole enforces this too).
+            var staffRoles = await _roleManager.Roles.Where(r => r.Name != "Customer")
+                .Select(r => r.Name!).OrderBy(r => r).ToListAsync();
+            ViewBag.AssignableRoles = staffRoles.Append("Customer").ToList();
+            ViewBag.CanChangeRole = !IsOwnerAccount(user);
             return View(user);
         }
 

@@ -13,7 +13,9 @@ public class SeoController : AdminBaseController
     private readonly ApplicationDbContext _db;
     private readonly SeoDescriptionGenerator _gen;
 
-    // Full administrators only (Section == null).
+    // Grantable section: view to read, "Seo:manage" to run/apply. (The owner account bypasses all.)
+    protected override string? Section => "Seo";
+
     public SeoController(ApplicationDbContext db, SeoDescriptionGenerator gen)
     {
         _db = db;

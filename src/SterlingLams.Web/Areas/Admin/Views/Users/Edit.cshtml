@@ -2,6 +2,8 @@
 @{
     ViewData["Title"] = "Edit User";
     var role = ViewBag.Role as string ?? "";
+    var assignableRoles = ViewBag.AssignableRoles as List<string> ?? new List<string>();
+    var canChangeRole = ViewBag.CanChangeRole as bool? ?? false;
 }
 
 <div class="max-w-2xl">
@@ -61,6 +63,29 @@
                class="px-6 py-2.5 border border-neutral-200 text-neutral-600 text-sm rounded-sm hover:bg-neutral-50 transition-colors">Cancel</a>
         </div>
     </form>
+
+    @* Role — its own form so the change (and the forced sign-out it triggers) is deliberate. *@
+    <div class="bg-white border border-neutral-200 rounded-sm p-6 mt-4">
+        <div class="text-sm font-medium text-neutral-800 mb-1">Role</div>
+        @if (canChangeRole)
+        {
+            <p class="text-[11px] text-neutral-400 mb-3">Sets what this user can access in the backends. Changing it signs them out of any active session, so they sign back in under the new role. Choose <span class="font-medium">Customer</span> to remove all staff access.</p>
+            <form asp-area="Admin" asp-controller="Users" asp-action="SetRole" asp-route-id="@Model.Id" method="post" class="flex flex-wrap items-center gap-3">
+                @Html.AntiForgeryToken()
+                <select name="role" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400 min-w-[200px]">
+                    @foreach (var r in assignableRoles)
+                    {
+                        <option value="@r" selected="@(string.Equals(r, role, StringComparison.OrdinalIgnoreCase))">@r</option>
+                    }
+                </select>
+                <button type="submit" class="px-6 py-2.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Update role</button>
+            </form>
+        }
+        else
+        {
+            <p class="text-sm text-neutral-500">This is the protected owner account — its role can’t be changed. (Currently <span class="font-medium text-neutral-700">@role</span>.)</p>
+        }
+    </div>
 </div>
 
 @section Scripts {

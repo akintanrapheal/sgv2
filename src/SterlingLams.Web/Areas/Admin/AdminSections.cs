@@ -4,8 +4,10 @@ namespace SterlingLams.Web.Areas.Admin;
 
 /// <summary>
 /// A backend section. <see cref="Group"/> places it under a collapsible heading in the
-/// sidebar; <see cref="OwnerOnly"/> items (Roles, Integrations, SEO) are shown only to full
-/// Administrators and are intentionally NOT grantable to roles (no privilege escalation).
+/// sidebar; <see cref="OwnerOnly"/> items (Users, Roles, Integrations, Subscribe) are shown only to
+/// the owner/super-admin and are intentionally NOT grantable to roles — these control the system
+/// itself (creating admins, editing permissions, payment keys, billing), so granting them would be a
+/// privilege-escalation path. Everything else is grantable with View/Manage on Roles & Permissions.
 /// </summary>
 public record AdminSection(string Key, string Label, string Controller, string Icon, string Group = "", bool OwnerOnly = false);
 
@@ -38,7 +40,7 @@ public static class AdminSections
         new("Marketing",  "Marketing",  "Marketing",  "M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z", "Marketing"),
         new("Journal",    "Journal",    "Journal",    "M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25", "Marketing"),
         new("Emails",     "Emails",     "EmailCustomizer", "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z", "Marketing"),
-        new("Seo",        "SEO Descriptions", "Seo",  "M7 8h10M7 12h6m-6 8l-4-4V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2H9l-2 2z", "Marketing", OwnerOnly: true),
+        new("Seo",        "SEO Descriptions", "Seo",  "M7 8h10M7 12h6m-6 8l-4-4V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2H9l-2 2z", "Marketing"),
 
         // ── Reports ───────────────────────────────────────────────────────────
         new("Reports",    "Reports",    "Reports",    "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z", "Reports"),
@@ -46,12 +48,12 @@ public static class AdminSections
         // but _AdminLayout SKIPS it in the group loop and renders it as its own standalone expandable
         // section whose children are FinanceTabs below (all actions on FinanceController).
         new("Finance",    "Finance",    "Finance",    "M11 3.055A9.001 9.001 0 1020.945 13H11V3.055zM20.488 9A9.004 9.004 0 0012 3.512V9h8.488z", "Reports"),
-        new("Traffic",    "Traffic",    "Traffic",    "M3 3v18h18M7 14l3-3 3 3 5-6", "Reports", OwnerOnly: true),
+        new("Traffic",    "Traffic",    "Traffic",    "M3 3v18h18M7 14l3-3 3 3 5-6", "Reports"),
 
         // ── Settings & administration ─────────────────────────────────────────
         new("Stores",     "Stores",     "Stores",     "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z", "Settings"),
         new("Users",      "Users",      "Users",      "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z", "Settings", OwnerOnly: true),
-        new("CustomerImport", "Import Customers", "CustomerImport", "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12", "Settings", OwnerOnly: true),
+        new("CustomerImport", "Import Customers", "CustomerImport", "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12", "Settings"),
         new("Roles",      "Roles & Permissions", "Roles", "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z", "Settings", OwnerOnly: true),
         // OwnerOnly: this screen holds the payment gateway keys and SMTP credentials. The class summary
         // above always listed it as owner-only and IntegrationsController documents itself the same way,
