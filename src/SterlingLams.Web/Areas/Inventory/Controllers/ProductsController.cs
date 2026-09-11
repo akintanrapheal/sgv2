@@ -106,6 +106,7 @@ public class ProductsController : InventoryAreaController
                 Sku = p.Sku,
                 Barcode = p.Barcode,
                 Price = p.Price,
+                PosPrice = p.PosPrice,
                 CategoryName = p.Category != null ? p.Category.Name : "—",
                 ImageUrl = p.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault(),
                 IsActive = p.IsActive,
@@ -120,7 +121,8 @@ public class ProductsController : InventoryAreaController
                         Name = v.Name,
                         Sku = v.Sku,
                         Barcode = v.Barcode,
-                        Price = v.Price ?? p.Price
+                        Price = v.Price ?? p.Price,
+                        PosPrice = v.PosPrice
                     }).ToList()
             })
             .ToListAsync();
@@ -1058,6 +1060,7 @@ public class InvProductRow
     public string? Sku { get; set; }
     public string? Barcode { get; set; }
     public decimal Price { get; set; }
+    public decimal? PosPrice { get; set; }
     public string CategoryName { get; set; } = "";
     public string? ImageUrl { get; set; }
     public bool IsActive { get; set; }
@@ -1075,4 +1078,5 @@ public class InvVariantRow
     public string? Sku { get; set; }
     public string? Barcode { get; set; }
     public decimal Price { get; set; }
+    public decimal? PosPrice { get; set; }
 }
