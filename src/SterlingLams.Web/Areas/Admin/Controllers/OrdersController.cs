@@ -312,6 +312,19 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         {
             var old = order.Status;
 
+            // Confirming an as-yet-unpaid order means the money has arrived out of band — typically a
+            // direct bank transfer the shop received and is now confirming. Mark it paid so it reconciles
+            // in Finance and can be fulfilled, and record a Transfer tender for the full total. Saved
+            // immediately so it survives the reload after fulfilment below.
+            if (newStatus == OrderStatus.Confirmed && !order.IsPaid)
+            {
+                order.IsPaid = true;
+                order.PaidAt = DateTime.UtcNow;
+                _db.OrderPayments.Add(new OrderPayment { OrderId = order.Id, Method = "Transfer", Amount = order.Total });
+                OrderNotes.AddSystem(_db, order.Id, $"Payment marked received (Transfer, ₦{order.Total:N0}) by {staff} on confirmation.");
+                await _db.SaveChangesAsync();
+            }
+
             // Deduct stock when staff move an online order forward for the first time (e.g. they
             // confirmed an offline/bank-transfer payment). The fulfilment engine allocates from the
             // nearest branch + sets up any inter-branch transfers, and is idempotent (it no-ops once
@@ -363,12 +376,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     if (order.PickupReadyEmailedAt == null)
                         await SendPickupReadyEmailAsync(order.Id);
                 }
-                else if (order.Status is OrderStatus.Processing or OrderStatus.Shipped
+                else if (order.Status is OrderStatus.Confirmed or OrderStatus.Processing or OrderStatus.Shipped
                          or OrderStatus.Delivered or OrderStatus.ReadyForPickup
                          or OrderStatus.Collected or OrderStatus.Cancelled)
                 {
-                    // Collected: confirm the in-store pickup was completed. Cancelled: tell the customer
-                    // their order was cancelled (refund arranged separately if it was paid).
+                    // Confirmed: the order-confirmed email (e.g. after a bank-transfer payment is
+                    // confirmed here — checkout only emails orders paid online at checkout). Collected:
+                    // confirm the in-store pickup was completed. Cancelled: tell the customer it was
+                    // cancelled (refund arranged separately if it was paid).
                     await SendStatusUpdateEmailAsync(order.Id, order.Status);
                 }
             }
