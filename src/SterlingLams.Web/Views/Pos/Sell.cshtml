@@ -327,7 +327,7 @@
             </div>
 
             <!-- CUSTOMERS tab -->
-            <div id="tab-customers" class="hidden flex-1 flex flex-col overflow-hidden">
+            <div id="tab-customers" class="hidden flex-1 flex flex-col overflow-hidden relative">
                 <div class="p-3 border-b border-neutral-100 flex-shrink-0">
                     <input id="cust-search" type="text" autocomplete="off" placeholder="Search name or phone…"
                            class="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
@@ -351,6 +351,34 @@
                         <input id="cust-email" type="email" placeholder="Email (optional)" class="w-full border border-neutral-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:border-brand-500" />
                         <button type="button" id="cust-save"
                                 class="w-full bg-brand-500 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-brand-600 transition-colors">Save &amp; attach</button>
+                    </div>
+                </div>
+
+                <!-- Edit customer (overlay) — opened from the pencil on a search result -->
+                <div id="cust-edit-panel" class="hidden absolute inset-0 bg-white flex flex-col z-20">
+                    <div class="p-3 border-b border-neutral-100 flex items-center gap-2 flex-shrink-0">
+                        <button type="button" id="cust-edit-back" class="text-neutral-400 hover:text-neutral-700 transition-colors" title="Back">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+                        </button>
+                        <span class="text-sm font-medium text-neutral-800">Edit customer details</span>
+                    </div>
+                    <div class="flex-1 overflow-y-auto p-3 space-y-2">
+                        <div class="flex gap-2">
+                            <input id="ce-first" type="text" placeholder="First name" class="flex-1 min-w-0 border border-neutral-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:border-brand-500" />
+                            <input id="ce-last" type="text" placeholder="Last name" class="flex-1 min-w-0 border border-neutral-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:border-brand-500" />
+                        </div>
+                        <input id="ce-phone" type="tel" placeholder="Phone" class="w-full border border-neutral-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:border-brand-500" />
+                        <input id="ce-email" type="email" placeholder="Email" class="w-full border border-neutral-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:border-brand-500" />
+                        <input id="ce-line1" type="text" placeholder="Address line" class="w-full border border-neutral-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:border-brand-500" />
+                        <div class="flex gap-2">
+                            <input id="ce-city" type="text" placeholder="Town / City" class="flex-1 min-w-0 border border-neutral-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:border-brand-500" />
+                            <input id="ce-state" type="text" placeholder="State" class="flex-1 min-w-0 border border-neutral-200 rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:border-brand-500" />
+                        </div>
+                        <p id="ce-msg" class="text-xs text-red-500 min-h-[16px]"></p>
+                    </div>
+                    <div class="p-3 border-t border-neutral-200 flex-shrink-0">
+                        <button type="button" id="cust-edit-save"
+                                class="w-full bg-brand-500 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-brand-600 transition-colors">Save changes</button>
                     </div>
                 </div>
             </div>
@@ -1331,15 +1359,76 @@
                 return;
             }
             custResults.innerHTML = list.map(c =>
-                `<button type="button" data-cust='${JSON.stringify(c).replace(/'/g, "&#39;")}' class="cust-row w-full text-left px-3 py-2.5 hover:bg-neutral-50 transition-colors flex items-center justify-between gap-2">
-                    <span class="min-w-0"><span class="block text-neutral-800 truncate">${c.name || '(no name)'}</span>${c.phone ? `<span class="block text-[11px] text-neutral-400">${c.phone}</span>` : ''}</span>
-                    <span class="text-[11px] text-brand-500 font-medium flex-shrink-0">Attach</span>
-                </button>`).join('');
+                `<div class="flex items-stretch">
+                    <button type="button" data-cust='${JSON.stringify(c).replace(/'/g, "&#39;")}' class="cust-row flex-1 min-w-0 text-left px-3 py-2.5 hover:bg-neutral-50 transition-colors flex items-center justify-between gap-2">
+                        <span class="min-w-0"><span class="block text-neutral-800 truncate">${c.name || '(no name)'}</span>${c.phone ? `<span class="block text-[11px] text-neutral-400">${c.phone}</span>` : ''}</span>
+                        <span class="text-[11px] text-brand-500 font-medium flex-shrink-0">Attach</span>
+                    </button>
+                    <button type="button" data-id="${c.id}" class="cust-edit-btn px-3 flex items-center text-neutral-400 hover:text-brand-600 border-l border-neutral-100 transition-colors" title="Edit details">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                    </button>
+                </div>`).join('');
             custResults.querySelectorAll('.cust-row').forEach(b =>
                 b.addEventListener('click', () => attachAndGo(JSON.parse(b.dataset.cust.replace(/&#39;/g, "'")))));
+            custResults.querySelectorAll('.cust-edit-btn').forEach(b =>
+                b.addEventListener('click', () => openCustomerEdit(b.dataset.id)));
         } catch { custResults.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">Could not search.</p>'; }
     }
     custSearch.addEventListener('input', () => { clearTimeout(custDebounce); custDebounce = setTimeout(() => searchCustomers(custSearch.value), 250); });
+
+    // ── Edit an existing customer (name / phone / email / address) ────────────────
+    let editingCustomerId = null;
+    const custEditPanel = document.getElementById('cust-edit-panel');
+    const ceMsg = document.getElementById('ce-msg');
+    const ceVal = id => document.getElementById(id).value.trim();
+    function setCe(id, v) { document.getElementById(id).value = v || ''; }
+    async function openCustomerEdit(id) {
+        editingCustomerId = id;
+        ceMsg.textContent = '';
+        ['ce-first', 'ce-last', 'ce-phone', 'ce-email', 'ce-line1', 'ce-city', 'ce-state'].forEach(x => setCe(x, ''));
+        custEditPanel.classList.remove('hidden');
+        try {
+            const r = await fetch('/Pos/CustomerDetails?id=' + encodeURIComponent(id));
+            const d = await r.json();
+            if (d.success) {
+                setCe('ce-first', d.firstName); setCe('ce-last', d.lastName);
+                setCe('ce-phone', d.phone); setCe('ce-email', d.email);
+                setCe('ce-line1', d.line1); setCe('ce-city', d.city); setCe('ce-state', d.state);
+            } else { ceMsg.textContent = d.message || 'Could not load customer.'; }
+        } catch { ceMsg.textContent = 'Could not load customer.'; }
+    }
+    function closeCustomerEdit() { custEditPanel.classList.add('hidden'); editingCustomerId = null; }
+    document.getElementById('cust-edit-back').addEventListener('click', closeCustomerEdit);
+    document.getElementById('cust-edit-save').addEventListener('click', async () => {
+        if (!editingCustomerId) return;
+        ceMsg.textContent = '';
+        const body = {
+            id: editingCustomerId,
+            firstName: ceVal('ce-first'), lastName: ceVal('ce-last'),
+            phone: ceVal('ce-phone'), email: ceVal('ce-email') || null,
+            line1: ceVal('ce-line1'), city: ceVal('ce-city'), state: ceVal('ce-state')
+        };
+        if (!body.firstName && !body.lastName) { ceMsg.textContent = 'Enter a name.'; return; }
+        if (!body.phone && !body.email) { ceMsg.textContent = 'Enter a phone number or email.'; return; }
+        const btn = document.getElementById('cust-edit-save');
+        btn.disabled = true; const ot = btn.textContent; btn.textContent = 'Saving…';
+        try {
+            const res = await fetch('/Pos/CustomerUpdate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            if (data.success) {
+                // If the edited customer is the one attached to the sale, refresh the banner.
+                if (customer && customer.id === data.id) { customer.name = data.name; customer.phone = data.phone; renderCustomerBanner(); saveCart(); }
+                closeCustomerEdit();
+                searchCustomers(custSearch.value);
+                if (window.showToast) showToast('Customer updated');
+            } else { ceMsg.textContent = data.message || 'Could not save.'; }
+        } catch { ceMsg.textContent = 'Could not save.'; }
+        finally { btn.disabled = false; btn.textContent = ot; }
+    });
 
     document.getElementById('cust-add-toggle').addEventListener('click', () => {
         document.getElementById('cust-add-form').classList.toggle('hidden');
