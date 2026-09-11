@@ -364,8 +364,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                         await SendPickupReadyEmailAsync(order.Id);
                 }
                 else if (order.Status is OrderStatus.Processing or OrderStatus.Shipped
-                         or OrderStatus.Delivered or OrderStatus.ReadyForPickup)
+                         or OrderStatus.Delivered or OrderStatus.ReadyForPickup
+                         or OrderStatus.Collected or OrderStatus.Cancelled)
                 {
+                    // Collected: confirm the in-store pickup was completed. Cancelled: tell the customer
+                    // their order was cancelled (refund arranged separately if it was paid).
                     await SendStatusUpdateEmailAsync(order.Id, order.Status);
                 }
             }
@@ -467,6 +470,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             OrderStatus.ReadyForPickup => "ready_for_pickup",
             OrderStatus.Shipped        => "order_shipped",
             OrderStatus.Delivered      => "order_delivered",
+            OrderStatus.Collected      => "order_collected",
+            OrderStatus.Cancelled      => "order_cancelled",
             _                          => "order_confirmed",
         };
 

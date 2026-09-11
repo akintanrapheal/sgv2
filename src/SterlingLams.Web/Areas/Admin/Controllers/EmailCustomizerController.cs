@@ -25,6 +25,8 @@ public class EmailCustomizerController : AdminBaseController
         ("ready_for_pickup", "Ready for pickup",   "Your order is ready for pickup", "Your order {order} is ready to collect. Show the QR code below at the counter and we'll hand it over."),
         ("order_shipped",    "Shipped",            "Your order is on its way",      "Great news — your order {order} has been shipped and is on its way to you."),
         ("order_delivered",  "Delivered",          "Your order has been delivered", "Your order {order} has been delivered. We hope you love it — thank you for shopping with us!"),
+        ("order_collected",  "Collected (pickup)", "Thanks for collecting your order", "Thank you {name} — your order {order} has been collected in store. We hope you love it! Do come again."),
+        ("order_cancelled",  "Cancelled",          "Your order has been cancelled", "Hi {name}, your order {order} ({date}) has been cancelled. If you paid for it, a refund will be arranged. Reply to this email if you have any questions."),
         ("back_in_stock",   "Back in stock",      "Good news — it's back in stock", "An item you wanted is available again. These pieces sell quickly, so don't wait."),
         ("abandoned_cart",  "Abandoned cart",     "You left something in your bag", "You have items waiting in your bag — we've saved them for you."),
         ("password_reset",  "Password reset",     "Reset your password", "We received a request to reset your password. Click below to choose a new one. This link expires shortly."),
@@ -154,9 +156,10 @@ public class EmailCustomizerController : AdminBaseController
             return (subject, body0);
         }
 
-        // Order-status update emails (Processing / Ready for pickup / Shipped / Delivered) — share the
-        // compact order-summary layout used by the real status emails.
-        if (type is "order_processing" or "ready_for_pickup" or "order_shipped" or "order_delivered")
+        // Order-status update emails (Processing / Ready for pickup / Shipped / Delivered / Collected /
+        // Cancelled) — share the compact order-summary layout used by the real status emails.
+        if (type is "order_processing" or "ready_for_pickup" or "order_shipped" or "order_delivered"
+                or "order_collected" or "order_cancelled")
         {
             var sampleDate = DateTime.UtcNow;
             var introHtml = OrderEmailTemplate.ApplyPlaceholders(intro, "62175", sampleDate, "Zino");
