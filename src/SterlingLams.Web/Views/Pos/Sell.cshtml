@@ -2875,6 +2875,7 @@
                 </div>`).join('');
             const a = d.address;
             const addr = a ? [a.line1, a.line2, a.city, a.state, a.postalCode, a.country].filter(x => x && x.trim()).map(esc).join(', ') : '<span class="text-neutral-400">No address on file</span>';
+            const placed = d.placedAt ? new Date(d.placedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
             const cust = d.customer || {};
             const packBtn = d.canPack
                 ? `<button type="button" id="fulfil-pack-btn" data-id="${d.id}" class="w-full bg-brand-500 text-white rounded-lg py-3 text-sm font-semibold hover:bg-brand-600 transition-colors">Mark packed &amp; dispatched</button>`
@@ -2882,14 +2883,15 @@
             detailView.innerHTML = `
                 <div class="max-w-2xl mx-auto p-4 space-y-4">
                     <div class="flex items-center justify-between">
-                        <span class="text-xs uppercase tracking-wide text-neutral-400">${esc(d.fulfillmentType)} · ${esc(d.status)}</span>
+                        <span class="text-xs uppercase tracking-wide text-neutral-400">${esc(d.fulfillmentType)}${d.deliveryType ? ' · ' + esc(d.deliveryType) : ''} · ${esc(d.status)}</span>
                         <span class="text-sm font-semibold text-neutral-800">${money(d.total)}</span>
                     </div>
+                    ${placed ? `<p class="text-[11px] text-neutral-400 -mt-2">Placed ${placed}</p>` : ''}
                     <div class="border border-neutral-200 rounded-xl p-3">
                         <p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Items</p>
                         ${items}
                         <div class="flex justify-between text-xs text-neutral-500 pt-2"><span>Subtotal</span><span>${money(d.subtotal)}</span></div>
-                        <div class="flex justify-between text-xs text-neutral-500"><span>Delivery</span><span>${money(d.deliveryFee)}</span></div>
+                        <div class="flex justify-between text-xs text-neutral-500"><span>Delivery${d.deliveryType ? ' (' + esc(d.deliveryType) + ')' : ''}</span><span>${money(d.deliveryFee)}</span></div>
                         <div class="flex justify-between text-sm font-semibold text-neutral-800 pt-1"><span>Total</span><span>${money(d.total)}</span></div>
                     </div>
                     <div class="border border-neutral-200 rounded-xl p-3">
