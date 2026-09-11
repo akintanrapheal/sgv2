@@ -6,10 +6,10 @@ using SterlingLams.Web.Services;
 namespace SterlingLams.Web.Areas.Admin.Controllers;
 
 /// <summary>Admin → Traffic: storefront page-view analytics from our own request log (TrafficHits).
-/// Owner/super-admin only (Section == null), matching Users/Roles/Integrations.</summary>
+/// Grantable section ("Traffic") — read-only analytics, so view is enough. (Owner account bypasses all.)</summary>
 public class TrafficController : AdminBaseController
 {
-    protected override string? Section => null;
+    protected override string? Section => "Traffic";
 
     private readonly ApplicationDbContext _db;
     private readonly ICloudflareAnalytics _cf;

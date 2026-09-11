@@ -41,8 +41,8 @@
                 var allowedSections = ViewData["AllowedSections"] as HashSet<string> ?? new HashSet<string>();
                 var isFullAdmin = ViewData["IsFullAdmin"] as bool? ?? false;
 
-                // Owner-only entries (Roles, Integrations, SEO) show to full admins; everything else
-                // shows if the role has been granted that section.
+                // Owner-only entries (Users, Roles, Integrations, Subscribe) show to full admins;
+                // everything else shows if the role has been granted that section.
                 bool Visible(SterlingLams.Web.Areas.Admin.AdminSection s)
                 {
                     // Subscribe (billing) is restricted to the configured owner ACCOUNT only (email),
