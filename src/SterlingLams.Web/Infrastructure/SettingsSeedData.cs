@@ -135,6 +135,7 @@ public static class SettingsSeedData
         new() { Key = "notifications.abandoned_cart_discount_expiry_days", Group = "Notifications", Label = "Recovery Coupon Expiry (days)", Type = "number", Value = "7", Description = "How long each recovery coupon stays valid.", SortOrder = 11 },
         new() { Key = "notifications.cart_low_stock",           Group = "Notifications", Label = "Low-stock cart nudge",        Type = "boolean", Value = "true", Description = "Email a shopper when an item in their bag is running low (others are buying it) — a 'selling fast, buy now' nudge. Sent once per bag.", SortOrder = 12 },
         new() { Key = "notifications.cart_low_stock_threshold", Group = "Notifications", Label = "Low-stock nudge threshold",   Type = "number",  Value = "3",    Description = "Send the nudge when an item in the bag drops to this many or fewer left in stock.", SortOrder = 13 },
+        new() { Key = "notifications.cart_low_stock_max_hours",  Group = "Notifications", Label = "Low-stock nudge window (hours)", Type = "number", Value = "24",   Description = "Only nudge carts abandoned within the last this-many hours, so a stale old cart never triggers a 'selling fast' email. 0 = never send.", SortOrder = 14 },
 
         // ── Welcome popup (exit-intent list growth) ───────────────────────────
         new() { Key = "popup.enabled",      Group = "Marketing", Label = "Welcome Popup",            Type = "boolean",  Value = "false", Description = "Show an exit-intent popup offering a first-order discount for a newsletter signup.", SortOrder = 1 },

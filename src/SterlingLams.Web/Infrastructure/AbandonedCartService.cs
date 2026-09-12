@@ -165,10 +165,15 @@ public class AbandonedCartService : BackgroundService
         if (!await settings.GetBoolAsync("notifications.cart_low_stock", true)) return;
         var threshold = await settings.GetIntAsync("notifications.cart_low_stock_threshold", 3);
         if (threshold <= 0) threshold = 3;
+        // Only nudge a RECENTLY abandoned cart. A background sweep can't see a shopper's live session
+        // bag, so a stale snapshot from days ago would otherwise email "your bag is almost gone" to
+        // someone whose cart is long empty. Keep the window tight (default 24h; 0 = disabled).
+        var maxHours = await settings.GetIntAsync("notifications.cart_low_stock_max_hours", 24);
+        if (maxHours <= 0) return;
 
         var now = DateTime.UtcNow;
         var minAge = now - TimeSpan.FromHours(1);              // not while they're still actively shopping
-        var oldest = now - TimeSpan.FromDays(MaxAgeDays);
+        var oldest = now - TimeSpan.FromHours(maxHours);       // …and not a stale, days-old snapshot
 
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var candidates = await db.AbandonedCarts
