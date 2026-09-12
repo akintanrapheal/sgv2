@@ -248,6 +248,7 @@ builder.Services.AddSterlingLamsServices(builder.Configuration);
 // ─── Email (SMTP) ─────────────────────────────────────────────────────────────
 builder.Services.Configure<SterlingLams.Web.Services.EmailOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.AddScoped<SterlingLams.Web.Services.IEmailService, SterlingLams.Web.Services.SmtpEmailService>();
+builder.Services.AddScoped<SterlingLams.Web.Services.IAbandonedCartCapture, SterlingLams.Web.Services.AbandonedCartCapture>();
 builder.Services.AddScoped<SterlingLams.Web.Services.BarcodeImportService>();
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────

@@ -16,14 +16,32 @@ public class CartController : Controller
     private readonly IDiscountService _discounts;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IStockService _stock;
+    private readonly IAbandonedCartCapture _abandoned;
 
     public CartController(ApplicationDbContext db, IDiscountService discounts,
-        UserManager<ApplicationUser> userManager, IStockService stock)
+        UserManager<ApplicationUser> userManager, IStockService stock, IAbandonedCartCapture abandoned)
     {
         _db = db;
         _discounts = discounts;
         _userManager = userManager;
         _stock = stock;
+        _abandoned = abandoned;
+    }
+
+    /// <summary>Keep a signed-in shopper's abandoned-cart snapshot in step with their live bag, so an
+    /// add-to-cart that never reaches checkout still triggers the recovery sequence. Anonymous shoppers
+    /// have no address to email, so they're skipped. Best-effort — never blocks the cart action.</summary>
+    private async Task SyncAbandonedAsync(CartViewModel cart)
+    {
+        try
+        {
+            if (User?.Identity?.IsAuthenticated != true) return;
+            var email = (await _userManager.GetUserAsync(User))?.Email;
+            if (string.IsNullOrWhiteSpace(email)) return;
+            if (cart.IsEmpty) await _abandoned.MarkRecoveredAsync(email);
+            else await _abandoned.CaptureAsync(email, cart);
+        }
+        catch { /* recovery capture is a convenience — never break add-to-cart */ }
     }
 
     public async Task<IActionResult> Index()
@@ -76,6 +94,7 @@ public class CartController : Controller
         }
 
         SaveCart(cart);
+        await SyncAbandonedAsync(cart);
 
         return Json(new
         {
@@ -156,6 +175,7 @@ public class CartController : Controller
         }
 
         SaveCart(cart);
+        await SyncAbandonedAsync(cart);
         return Json(new { success = true, cartCount = cart.TotalItems, subtotal = cart.FormattedSubtotal });
     }
 
@@ -172,12 +192,13 @@ public class CartController : Controller
     }
 
     [HttpPost, ValidateAntiForgeryToken]
-    public IActionResult Remove(int productId, int? variantId = null)
+    public async Task<IActionResult> Remove(int productId, int? variantId = null)
     {
         var cart = GetCart();
         var item = cart.Items.FirstOrDefault(i => i.ProductId == productId && i.VariantId == variantId);
         if (item != null) cart.Items.Remove(item);
         SaveCart(cart);
+        await SyncAbandonedAsync(cart);
         return Json(new { success = true, cartCount = cart.TotalItems });
     }
 
@@ -185,7 +206,7 @@ public class CartController : Controller
     // Moves a line out of the bag into the saved list (kept in the session cart, not checked out).
 
     [HttpPost, ValidateAntiForgeryToken]
-    public IActionResult SaveForLater(int productId, int? variantId = null)
+    public async Task<IActionResult> SaveForLater(int productId, int? variantId = null)
     {
         var cart = GetCart();
         var item = cart.Items.FirstOrDefault(i => i.ProductId == productId && i.VariantId == variantId);
@@ -196,6 +217,7 @@ public class CartController : Controller
                 cart.SavedItems.Add(item);
         }
         SaveCart(cart);
+        await SyncAbandonedAsync(cart);
         return RedirectToAction(nameof(Index));
     }
 
@@ -231,6 +253,7 @@ public class CartController : Controller
             }
         }
         SaveCart(cart);
+        await SyncAbandonedAsync(cart);
         return RedirectToAction(nameof(Index));
     }
 

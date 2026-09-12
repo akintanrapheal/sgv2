@@ -1,9 +1,10 @@
 namespace SterlingLams.Web.Models.Domain;
 
 /// <summary>
-/// A snapshot of a shopper's cart taken when they reached checkout, used to email a recovery link if
-/// they don't complete payment. One row per email (refreshed on each checkout attempt). Survives the
-/// 30-min auto-cancel of unpaid orders, so the hours-later recovery email still has the items.
+/// A snapshot of a shopper's cart, used to email a recovery link if they don't complete payment.
+/// Captured for a signed-in shopper as they change their bag (add-to-cart abandonment) and at
+/// checkout (checkout abandonment). One row per email (refreshed each time). Survives the 30-min
+/// auto-cancel of unpaid orders, so the hours-later recovery email still has the items.
 /// </summary>
 public class AbandonedCart
 {
