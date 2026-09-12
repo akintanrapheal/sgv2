@@ -57,6 +57,7 @@ public class AbandonedCartCapture : IAbandonedCartCapture
             existing.CreatedAt = now;      // reset the clock so the email only fires once they go quiet
             existing.EmailedAt = null;
             existing.RecoveredAt = null;
+            existing.LowStockNotifiedAt = null; // bag changed → allow a fresh low-stock nudge
         }
         try { await _db.SaveChangesAsync(); }
         catch (DbUpdateException) { _db.ChangeTracker.Clear(); } // benign race on the unique email

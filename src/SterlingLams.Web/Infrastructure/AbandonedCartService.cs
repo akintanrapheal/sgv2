@@ -30,6 +30,8 @@ public class AbandonedCartService : BackgroundService
         {
             try { await SweepAsync(stoppingToken); }
             catch (Exception ex) { _logger.LogError(ex, "Abandoned-cart sweep failed."); }
+            try { await LowStockSweepAsync(stoppingToken); }
+            catch (Exception ex) { _logger.LogError(ex, "Cart low-stock sweep failed."); }
             try { await Task.Delay(Interval, stoppingToken); }
             catch (TaskCanceledException) { break; }
         }
@@ -150,6 +152,113 @@ public class AbandonedCartService : BackgroundService
         }
         sb.Append("</table>");
         return sb.ToString();
+    }
+
+    // ── Low-stock "selling fast" nudge ────────────────────────────────────────
+    // For an open cart snapshot, if any item has dropped to the threshold or fewer left in stock
+    // (others are buying it), send a one-time urgency email with a Buy-now link. Independent of the
+    // time-based recovery sequence above; reset to re-fire only when the shopper changes their bag.
+    private async Task LowStockSweepAsync(CancellationToken ct)
+    {
+        using var scope = _sp.CreateScope();
+        var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
+        if (!await settings.GetBoolAsync("notifications.cart_low_stock", true)) return;
+        var threshold = await settings.GetIntAsync("notifications.cart_low_stock_threshold", 3);
+        if (threshold <= 0) threshold = 3;
+
+        var now = DateTime.UtcNow;
+        var minAge = now - TimeSpan.FromHours(1);              // not while they're still actively shopping
+        var oldest = now - TimeSpan.FromDays(MaxAgeDays);
+
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var candidates = await db.AbandonedCarts
+            .Where(a => a.RecoveredAt == null && a.LowStockNotifiedAt == null
+                     && a.CreatedAt < minAge && a.CreatedAt > oldest)
+            .OrderBy(a => a.CreatedAt).Take(500).ToListAsync(ct);
+        if (candidates.Count == 0) return;
+
+        var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
+        var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
+        var baseUrl = (config["App:BaseUrl"] ?? "").TrimEnd('/');
+        var subject = await settings.GetAsync("email.cart_low_stock.subject", "⏳ Selling fast — your bag is almost gone");
+        var intro = await settings.GetAsync("email.cart_low_stock.intro",
+            "Great taste — and you're not the only one! Some pieces in your bag are down to their last few. Grab them now before they're gone for good.");
+        var activeStoreIds = await db.Stores.Where(s => s.IsActive).Select(s => s.Id).ToListAsync(ct);
+        int sent = 0;
+
+        foreach (var ab in candidates)
+        {
+            var converted = await db.Orders.AnyAsync(o => o.User.Email == ab.Email && o.IsPaid && o.CreatedAt >= ab.CreatedAt, ct);
+            if (converted) { ab.RecoveredAt = now; continue; }
+
+            List<CartSnap>? lines;
+            try
+            {
+                lines = System.Text.Json.JsonSerializer.Deserialize<List<CartSnap>>(ab.ItemsJson,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch { lines = null; }
+            if (lines == null || lines.Count == 0) continue;
+
+            var pids = lines.Select(l => l.ProductId).Distinct().ToList();
+            var inv = await db.StoreInventories
+                .Where(si => activeStoreIds.Contains(si.StoreId) && pids.Contains(si.ProductId))
+                .Select(si => new { si.ProductId, si.ProductVariantId, Avail = si.QuantityOnHand - si.QuantityReserved })
+                .ToListAsync(ct);
+            int AvailFor(int pid, int? vid)
+            {
+                if (vid.HasValue)
+                {
+                    var hasOwn = inv.Any(i => i.ProductId == pid && i.ProductVariantId == vid);
+                    if (hasOwn) return Math.Max(0, inv.Where(i => i.ProductId == pid && i.ProductVariantId == vid).Sum(i => i.Avail));
+                    return Math.Max(0, inv.Where(i => i.ProductId == pid && i.ProductVariantId == null).Sum(i => i.Avail)); // pool fallback
+                }
+                return Math.Max(0, inv.Where(i => i.ProductId == pid).Sum(i => i.Avail));
+            }
+            var low = lines.Select(l => new { l.ProductId, Avail = AvailFor(l.ProductId, l.VariantId) })
+                           .Where(x => x.Avail > 0 && x.Avail <= threshold).ToList();
+            if (low.Count == 0) continue;
+
+            var names = await db.Products.Where(p => low.Select(x => x.ProductId).Contains(p.Id))
+                .Select(p => new { p.Id, p.Name, Img = p.Images.OrderByDescending(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault() })
+                .ToDictionaryAsync(x => x.Id, ct);
+
+            var sb = new System.Text.StringBuilder(@"<table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""font-size:14px;border-collapse:collapse;margin:12px 0;"">");
+            foreach (var x in low)
+            {
+                if (!names.TryGetValue(x.ProductId, out var p)) continue;
+                var abs = string.IsNullOrWhiteSpace(p.Img) ? null
+                    : (p.Img.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? p.Img
+                       : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + p.Img.TrimStart('/')));
+                sb.Append($@"<tr><td style=""padding:8px 0;border-bottom:1px solid #f0efee;color:#374151;vertical-align:middle;"">{OrderEmailTemplate.Thumb(abs)}<strong style=""color:#1c1917;"">{System.Net.WebUtility.HtmlEncode(p.Name)}</strong> &nbsp;<span style=""color:#dc2626;font-weight:700;"">Only {x.Avail} left!</span></td></tr>");
+            }
+            sb.Append("</table>");
+
+            var body = BuildLowStockBody(subject, intro, ab, baseUrl, sb.ToString());
+            if (await email.SendAsync(ab.Email, subject, body, ct: ct))
+            {
+                ab.LowStockNotifiedAt = now;
+                sent++;
+            }
+        }
+
+        if (db.ChangeTracker.HasChanges()) await db.SaveChangesAsync(ct);
+        if (sent > 0) _logger.LogInformation("Cart low-stock: sent {Count} nudge email(s).", sent);
+    }
+
+    private static string BuildLowStockBody(string subject, string intro, AbandonedCart ab, string baseUrl, string itemsHtml)
+    {
+        string Enc(string s) => System.Net.WebUtility.HtmlEncode(s);
+        var link = string.IsNullOrEmpty(baseUrl) ? null : $"{baseUrl}/cart/recover?token={ab.Token}";
+        var cta = link != null
+            ? $@"<p style=""margin:24px 0;""><a href=""{link}"" style=""background:#0a0a0a;color:#fff;text-decoration:none;padding:12px 28px;display:inline-block;font-size:13px;letter-spacing:1px;text-transform:uppercase;"">Buy now</a></p>"
+            : "<p>Return to our website to complete your order.</p>";
+        return $@"
+            <h2 style=""font-size:18px;margin:0 0 12px;"">{Enc(subject)}</h2>
+            <p>{Enc(intro)}</p>
+            {itemsHtml}
+            {cta}
+            <p style=""font-size:13px;color:#78716c;"">Stock is limited and moving fast — don't miss out.</p>";
     }
 
     private static string BuildBody(string subject, string intro, AbandonedCart ab, string baseUrl,

@@ -29,6 +29,7 @@ public class EmailCustomizerController : AdminBaseController
         ("order_cancelled",  "Cancelled",          "Your order has been cancelled", "Hi {name}, your order {order} ({date}) has been cancelled. If you paid for it, a refund will be arranged. Reply to this email if you have any questions."),
         ("back_in_stock",   "Back in stock",      "Good news — it's back in stock", "An item you wanted is available again. These pieces sell quickly, so don't wait."),
         ("abandoned_cart",  "Abandoned cart",     "You left something in your bag", "You have items waiting in your bag — we've saved them for you."),
+        ("cart_low_stock",  "Cart low-stock nudge", "⏳ Selling fast — your bag is almost gone", "Great taste — and you're not the only one! Some pieces in your bag are down to their last few. Grab them now before they're gone for good."),
         ("password_reset",  "Password reset",     "Reset your password", "We received a request to reset your password. Click below to choose a new one. This link expires shortly."),
         ("email_confirm",   "Email confirmation", "Confirm your email", "Thanks for creating an account with us. Please confirm this is your email address by clicking below."),
         // Sent to a NEW staff member the admin adds — a link to set their own password. Placeholder: {name}.
@@ -233,6 +234,13 @@ public class EmailCustomizerController : AdminBaseController
                     <tr><td style=""padding:8px 0;border-bottom:1px solid #f0efed;color:#374151;vertical-align:middle;"">{OrderEmailTemplate.Thumb(SampleImg)}<strong style=""color:#1c1917;"">2-Tone Band Ring</strong> &times; 1</td></tr>
                 </table>
                 {Button("Return to your bag", "#")}",
+            "cart_low_stock" => $@"
+                <h2 style=""font-size:18px;margin:0 0 16px;"">Selling fast!</h2>
+                <p>{E(intro)}</p>
+                <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""margin:20px 0;font-size:14px;border-collapse:collapse;"">
+                    <tr><td style=""padding:8px 0;border-bottom:1px solid #f0efed;color:#374151;vertical-align:middle;"">{OrderEmailTemplate.Thumb(SampleImg)}<strong style=""color:#1c1917;"">2-Tone Band Ring</strong> &nbsp;<span style=""color:#dc2626;font-weight:600;"">Only 3 left!</span></td></tr>
+                </table>
+                {Button("Buy now", "#")}",
             "password_reset" => $@"
                 <h2 style=""font-size:18px;margin:0 0 16px;"">Reset your password</h2>
                 <p>{E(intro)}</p>
