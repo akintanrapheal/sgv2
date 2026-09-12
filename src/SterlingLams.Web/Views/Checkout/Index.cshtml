@@ -535,13 +535,45 @@ function updateSummary(fee) {
 
     function esc(s){ const d=document.createElement('div'); d.textContent = s==null?'':String(s); return d.innerHTML; }
 
-    async function removeItem(pid, vid){
+    async function removeItem(pid, vid, btnEl){
+        if (btnEl) { btnEl.disabled = true; btnEl.textContent = 'Removing…'; }
         const fd = new URLSearchParams();
         fd.set('__RequestVerificationToken', token);
         fd.set('productId', pid);
         if (vid !== null && vid !== undefined) fd.set('variantId', vid);
-        try { await fetch('/Cart/Remove', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd.toString()}); } catch {}
-        window.location.reload();
+        let cartCount = null;
+        try {
+            const r = await fetch('/Cart/Remove', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd.toString()});
+            const j = await r.json().catch(() => ({}));
+            if (typeof j.cartCount === 'number') cartCount = j.cartCount;
+        } catch {}
+        // Nothing left to check out → send them to the bag rather than an empty checkout form.
+        if (cartCount === 0) { window.location.href = '/cart'; return; }
+        // Re-check fulfilment with the remaining items — WITHOUT reloading, so the details they've
+        // already typed are kept. If everything's now available, continue to payment; else refresh the list.
+        await runFulfilmentCheck();
+    }
+
+    // Runs the fulfilment preview using the current form values. Returns via submit (all clear) or by
+    // (re)showing the timeframe modal. Shared by the submit handler and the in-modal "Remove" action.
+    async function runFulfilmentCheck(){
+        const ff = form.querySelector('input[name="FulfillmentType"]:checked')?.value || 'Delivery';
+        const fd = new URLSearchParams();
+        fd.set('__RequestVerificationToken', token);
+        fd.set('fulfillmentType', ff);
+        fd.set('state', document.getElementById('state-select')?.value || '');
+        fd.set('city', document.getElementById('city-input')?.value || '');
+        const storeId = form.querySelector('input[name="SelectedStoreId"]:checked')?.value;
+        if (storeId) fd.set('storeId', storeId);
+
+        let data = { delayed: [] };
+        try {
+            const r = await fetch('/Checkout/FulfilmentPreview', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body: fd.toString()});
+            data = await r.json();
+        } catch { /* on error, don't block the sale */ }
+
+        if (!data.delayed || data.delayed.length === 0) { ackPassed = true; modal.classList.add('hidden'); form.submit(); return; }
+        showModal(data.delayed);
     }
 
     function showModal(items){
