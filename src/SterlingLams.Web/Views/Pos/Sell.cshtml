@@ -2877,8 +2877,14 @@
             const addr = a ? [a.line1, a.line2, a.city, a.state, a.postalCode, a.country].filter(x => x && x.trim()).map(esc).join(', ') : '<span class="text-neutral-400">No address on file</span>';
             const placed = d.placedAt ? new Date(d.placedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
             const cust = d.customer || {};
-            const packBtn = d.canPack
-                ? `<button type="button" id="fulfil-pack-btn" data-id="${d.id}" class="w-full bg-brand-500 text-white rounded-lg py-3 text-sm font-semibold hover:bg-brand-600 transition-colors">Mark packed &amp; dispatched</button>`
+            const isPickup = d.fulfillmentType === 'StorePickup';
+            // Context-aware action: delivery → Processing then dispatch; pickup → notify the customer.
+            let act = null, actLabel = '';
+            if (d.canProcess) { act = 'process'; actLabel = 'Update to Processing'; }
+            else if (d.canDispatch) { act = 'dispatch'; actLabel = 'Mark packed &amp; dispatched'; }
+            else if (d.canNotifyPickup) { act = 'pickup'; actLabel = d.pickupNotified ? 'Resend pickup notification' : 'Send pickup-ready notification'; }
+            const packBtn = act
+                ? `<button type="button" id="fulfil-action-btn" data-id="${d.id}" data-act="${act}" class="w-full bg-brand-500 text-white rounded-lg py-3 text-sm font-semibold hover:bg-brand-600 transition-colors">${actLabel}</button>`
                 : '';
             detailView.innerHTML = `
                 <div class="max-w-2xl mx-auto p-4 space-y-4">
@@ -2901,33 +2907,36 @@
                         ${cust.email ? `<p class="text-[13px] text-neutral-500">${esc(cust.email)}</p>` : ''}
                     </div>
                     <div class="border border-neutral-200 rounded-xl p-3">
-                        <p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Shipping address</p>
-                        ${a && a.fullName ? `<p class="text-sm text-neutral-800">${esc(a.fullName)}</p>` : ''}
-                        <p class="text-sm text-neutral-600">${addr}</p>
-                        ${a && a.phone ? `<p class="text-[13px] text-neutral-500 mt-0.5">${esc(a.phone)}</p>` : ''}
+                        <p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">${isPickup ? 'Collection' : 'Shipping address'}</p>
+                        ${isPickup
+                            ? `<p class="text-sm text-neutral-800">Store pickup${d.pickupStore ? ' · ' + esc(d.pickupStore) : ''}</p>`
+                            : `${a && a.fullName ? `<p class="text-sm text-neutral-800">${esc(a.fullName)}</p>` : ''}<p class="text-sm text-neutral-600">${addr}</p>${a && a.phone ? `<p class="text-[13px] text-neutral-500 mt-0.5">${esc(a.phone)}</p>` : ''}`}
                     </div>
                     ${d.note ? `<div class="border border-amber-200 bg-amber-50 rounded-xl p-3"><p class="text-[10px] uppercase tracking-wide text-amber-600 mb-1">Order note</p><p class="text-sm text-amber-800">${esc(d.note)}</p></div>` : ''}
                     ${packBtn}
                 </div>`;
-            const pb = document.getElementById('fulfil-pack-btn');
-            if (pb) pb.addEventListener('click', () => markPacked(+pb.dataset.id, pb));
+            const pb = document.getElementById('fulfil-action-btn');
+            if (pb) pb.addEventListener('click', () => fulfilAction(+pb.dataset.id, pb.dataset.act, pb));
         } catch { detailView.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Could not load the order.</p>'; }
     }
-    async function markPacked(id, btn) {
-        btn.disabled = true; const ot = btn.textContent; btn.textContent = 'Dispatching…';
+    async function fulfilAction(id, act, btn) {
+        const map = {
+            process: { url: '/Pos/FulfilMarkProcessing', busy: 'Updating…', ok: 'Moved to Processing' },
+            dispatch: { url: '/Pos/FulfilMarkPacked', busy: 'Dispatching…', ok: 'Order dispatched — customer notified' },
+            pickup:  { url: '/Pos/FulfilNotifyPickup', busy: 'Sending…', ok: 'Pickup notification sent to the customer' }
+        }[act];
+        if (!map) return;
+        btn.disabled = true; const ot = btn.textContent; btn.textContent = map.busy;
         try {
-            const res = await fetch('/Pos/FulfilMarkPacked', {
+            const res = await fetch(map.url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
                 body: JSON.stringify({ orderId: id })
             });
             const data = await res.json();
-            if (data.success) {
-                toast('Order dispatched — customer notified');
-                showList();
-                await loadList();
-            } else { btn.disabled = false; btn.textContent = ot; toast(data.message || 'Could not dispatch.'); }
-        } catch { btn.disabled = false; btn.textContent = ot; toast('Could not dispatch.'); }
+            if (data.success) { toast(map.ok); showList(); await loadList(); }
+            else { btn.disabled = false; btn.textContent = ot; toast(data.message || 'Could not complete that.'); }
+        } catch { btn.disabled = false; btn.textContent = ot; toast('Could not complete that.'); }
     }
 
     function open() { modal.classList.remove('hidden'); showList(); setTab('pack'); loadList(); }
