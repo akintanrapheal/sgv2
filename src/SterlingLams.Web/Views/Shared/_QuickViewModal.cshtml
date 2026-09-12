@@ -29,6 +29,13 @@
 
             <div id="qv-options" class="space-y-4 mb-5"></div>
 
+            <!-- Availability by branch (per selected option) -->
+            <div id="qv-store-stock" class="mb-5 hidden">
+                <p class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-3">Availability by branch</p>
+                <p id="qv-stock-prompt" class="text-sm text-neutral-400 hidden">Select an option above to see stock at each branch.</p>
+                <div id="qv-stock-list" class="space-y-2"></div>
+            </div>
+
             <p id="qv-msg" class="text-xs text-amber-600 mb-3 hidden"></p>
 
             <button type="button" id="qv-add"
