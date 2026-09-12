@@ -2518,12 +2518,30 @@ public class PosController : Controller
     public async Task<IActionResult> Receipt(int id)
     {
         var order = await _db.Orders.Include(o => o.Items).Include(o => o.PickupStore)
-            .Include(o => o.Customer).Include(o => o.User).Include(o => o.Register)
+            .Include(o => o.Customer).Include(o => o.User)
+            .Include(o => o.Register).ThenInclude(r => r!.Store)
             .FirstOrDefaultAsync(o => o.Id == id && o.Channel == OrderChannel.Pos);
         if (order == null) return NotFound();
         // Split-payment breakdown for the receipt (empty for single-tender sales).
         ViewBag.Payments = await _db.OrderPayments.Where(p => p.OrderId == id)
             .OrderBy(p => p.Id).Select(p => new KeyValuePair<string, decimal>(p.Method, p.Amount)).ToListAsync();
+
+        // Loyalty block: previous / gained / current / value, for the attached customer.
+        if (!string.IsNullOrEmpty(order.CustomerUserId) && await _settings.GetBoolAsync("pos.receipt_show_points", true))
+        {
+            var gained = await _db.PointsLedgerEntries.Where(p => p.OrderId == id && p.Points > 0).SumAsync(p => (int?)p.Points) ?? 0;
+            var current = await _loyalty.GetBalanceAsync(order.CustomerUserId);
+            var pointValue = await _loyalty.PointValueAsync();
+            var redeemed = order.LoyaltyRedeemedAt != null ? order.LoyaltyPointsRedeemed : 0;
+            if (gained > 0 || current > 0 || redeemed > 0)
+                ViewBag.Loyalty = new Dictionary<string, decimal>
+                {
+                    ["previous"] = current - gained + redeemed,
+                    ["gained"] = gained,
+                    ["current"] = current,
+                    ["value"] = current * pointValue
+                };
+        }
         return View(order);
     }
 

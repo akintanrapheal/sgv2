@@ -193,12 +193,24 @@ public class TillController : InventoryAreaController
         ViewBag.ApprovalRefunds = await _settings.GetBoolAsync("pos.approval_refunds", false);
         ViewBag.ApprovalDiscounts = await _settings.GetBoolAsync("pos.approval_discounts", false);
         ViewBag.ApprovalDiscountMinPct = await _settings.GetIntAsync("pos.approval_discount_min_pct", 0);
+        // Receipt customizer
+        ViewBag.ReceiptBusinessName = await _settings.GetAsync("pos.receipt_business_name", "");
+        ViewBag.ReceiptAddress = await _settings.GetAsync("pos.receipt_address", "");
+        ViewBag.ReceiptPhone = await _settings.GetAsync("pos.receipt_phone", "");
+        ViewBag.ReceiptWebsite = await _settings.GetAsync("pos.receipt_website", "");
+        ViewBag.ReceiptThanks = await _settings.GetAsync("pos.receipt_thanks", "Thanks for shopping with Sterlin Glams");
+        ViewBag.ReceiptShowLogo = await _settings.GetBoolAsync("pos.receipt_show_logo", true);
+        ViewBag.ReceiptShowPoints = await _settings.GetBoolAsync("pos.receipt_show_points", true);
+        ViewBag.ReceiptShowBarcode = await _settings.GetBoolAsync("pos.receipt_show_barcode", true);
+        ViewBag.SiteName = await _settings.GetAsync("general.site_name", "Sterlin Glams");
         return View();
     }
 
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveSettings(string? receiptHeader, string? receiptFooter,
-        bool approvalRefunds, bool approvalDiscounts, int approvalDiscountMinPct)
+        bool approvalRefunds, bool approvalDiscounts, int approvalDiscountMinPct,
+        string? receiptBusinessName, string? receiptAddress, string? receiptPhone, string? receiptWebsite,
+        string? receiptThanks, bool receiptShowLogo, bool receiptShowPoints, bool receiptShowBarcode)
     {
         await _settings.SaveManyAsync(new Dictionary<string, string>
         {
@@ -206,7 +218,15 @@ public class TillController : InventoryAreaController
             ["pos.receipt_footer"] = receiptFooter?.Trim() ?? "",
             ["pos.approval_refunds"] = approvalRefunds ? "true" : "false",
             ["pos.approval_discounts"] = approvalDiscounts ? "true" : "false",
-            ["pos.approval_discount_min_pct"] = Math.Clamp(approvalDiscountMinPct, 0, 100).ToString()
+            ["pos.approval_discount_min_pct"] = Math.Clamp(approvalDiscountMinPct, 0, 100).ToString(),
+            ["pos.receipt_business_name"] = receiptBusinessName?.Trim() ?? "",
+            ["pos.receipt_address"] = receiptAddress?.Trim() ?? "",
+            ["pos.receipt_phone"] = receiptPhone?.Trim() ?? "",
+            ["pos.receipt_website"] = receiptWebsite?.Trim() ?? "",
+            ["pos.receipt_thanks"] = receiptThanks?.Trim() ?? "",
+            ["pos.receipt_show_logo"] = receiptShowLogo ? "true" : "false",
+            ["pos.receipt_show_points"] = receiptShowPoints ? "true" : "false",
+            ["pos.receipt_show_barcode"] = receiptShowBarcode ? "true" : "false"
         });
         await LogAsync("Update", "Setting", null, "Updated POS settings");
         TempData["Success"] = "POS settings saved.";
