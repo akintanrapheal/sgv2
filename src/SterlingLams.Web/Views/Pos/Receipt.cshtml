@@ -3,32 +3,53 @@
 @inject ISettingsService Settings
 @{
     Layout = null;
-    var siteName     = await Settings.GetAsync("general.site_name", "Sterlin Glams");
-    var receiptHeader = await Settings.GetAsync("pos.receipt_header", "");
-    var receiptFooter = await Settings.GetAsync("pos.receipt_footer", "NO EXCHANGE OF GOODS, NO REFUND OF CASH");
+    var siteName      = await Settings.GetAsync("general.site_name", "Sterlin Glams");
     var contactEmail  = await Settings.GetAsync("general.contact_email", "");
     var contactPhone  = await Settings.GetAsync("general.contact_phone", "");
     var logoUrl       = await Settings.GetAsync("general.logo_url", "");
     if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = "/images/sg-logo.png";
 
-    var store = Model.PickupStore;
-    // Break a comma-separated store address into one line per part.
-    var addressLines = (store?.Address ?? "")
-        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    var phone = string.IsNullOrWhiteSpace(store?.Phone) ? contactPhone : store!.Phone;
-    // Derive a display website from the contact email domain (info@sterlinglams.com → www.sterlinglams.com).
-    var website = "";
-    if (contactEmail.Contains('@')) website = "www." + contactEmail.Split('@')[1];
+    // Receipt customizer
+    var bizName       = await Settings.GetAsync("pos.receipt_business_name", "");
+    if (string.IsNullOrWhiteSpace(bizName)) bizName = $"{siteName} Ltd";
+    var addrOverride  = await Settings.GetAsync("pos.receipt_address", "");
+    var phoneOverride = await Settings.GetAsync("pos.receipt_phone", "");
+    var websiteLine   = await Settings.GetAsync("pos.receipt_website", "");
+    var thanksLine    = await Settings.GetAsync("pos.receipt_thanks", $"Thanks for shopping with {siteName}");
+    var receiptHeader = await Settings.GetAsync("pos.receipt_header", "");
+    var receiptFooter = await Settings.GetAsync("pos.receipt_footer", "NO EXCHANGE OF GOODS, NO REFUND OF CASH");
+    var showLogo      = await Settings.GetBoolAsync("pos.receipt_show_logo", true);
+    var showBarcode   = await Settings.GetBoolAsync("pos.receipt_show_barcode", true);
 
-    // "Change the till there to Pos" — the register/device name shows "Till"; display it as "Pos".
-    var deviceName = (Model.Register?.Name ?? "POS").Replace("Till", "Pos").Replace("till", "pos");
+    // Each branch prints its OWN details: the selling register's store (fall back to pickup store).
+    var store = Model.Register?.Store ?? Model.PickupStore;
+
+    // Address block: the override (one line per row) wins; otherwise the selling store's own address.
+    List<string> addressLines;
+    if (!string.IsNullOrWhiteSpace(addrOverride))
+        addressLines = addrOverride.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+    else
+    {
+        addressLines = (store?.Address ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        var cityState = $"{store?.City} {store?.State}".Trim();
+        if (!string.IsNullOrWhiteSpace(cityState)) addressLines.Add(cityState);
+    }
+    var phone = !string.IsNullOrWhiteSpace(phoneOverride) ? phoneOverride
+              : !string.IsNullOrWhiteSpace(store?.Phone) ? store!.Phone : contactPhone;
+    if (string.IsNullOrWhiteSpace(websiteLine) && contactEmail.Contains('@'))
+        websiteLine = "www." + contactEmail.Split('@')[1] + " | " + contactEmail;
+
+    // Register/device name — show "Till" wording as the branch set it (e.g. "Ajah Till 1").
+    var deviceName = Model.Register?.Name ?? "POS";
 
     var payParts = ViewBag.Payments as List<KeyValuePair<string, decimal>> ?? new();
     if (payParts.Count == 0)
         payParts.Add(new(string.IsNullOrWhiteSpace(Model.PaymentProvider) ? "CASH" : Model.PaymentProvider, Model.Total));
 
+    var loyalty = ViewBag.Loyalty as Dictionary<string, decimal>;
     var totalQty = Model.Items.Sum(i => i.Quantity);
-    string N(decimal v) => "₦" + v.ToString("0.00"); // receipt money: 2 dp, no thousands separator
+    string N(decimal v) => "₦" + v.ToString("0.00");            // money: 2dp, no thousands sep (matches the tag/receipt)
+    string P(decimal v) => ((long)v).ToString("N0");            // whole points, thousands-separated
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -37,56 +58,57 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Receipt @Model.OrderNumber</title>
     <style>
+        /* 8cm thermal roll: fixed width, length grows with the number of items, no page margins so the
+           browser never adds its own header/footer (URL, date) around the print. */
+        @@page { size: 80mm auto; margin: 0; }
         * { box-sizing: border-box; }
-        body { font-family: Arial, Helvetica, sans-serif; color:#000; margin:0; padding:16px; font-size:12px; line-height:1.35; }
-        .r { width:300px; margin:0 auto; }
+        html, body { margin: 0; padding: 0; }
+        body { font-family: Arial, Helvetica, sans-serif; color:#000; font-size:13px; line-height:1.4; font-weight:600; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        .r { width:80mm; margin:0 auto; padding:4mm 3mm; }
         .c { text-align:center; }
-        .b { font-weight:bold; }
-        .muted { color:#333; }
-        .logo { display:block; margin:0 auto 4px; max-width:190px; max-height:70px; object-fit:contain; }
-        .biz { text-align:center; font-size:15px; font-weight:bold; margin:0 0 4px; }
-        .addr { text-align:center; font-size:11px; margin:0; }
-        hr { border:none; border-top:1px solid #000; margin:8px 0; }
+        .logo { display:block; margin:0 auto 5px; max-width:56mm; max-height:20mm; object-fit:contain; }
+        .biz { text-align:center; font-size:17px; font-weight:800; margin:0 0 3px; }
+        .addr { text-align:center; font-size:11px; font-weight:600; line-height:1.35; }
+        .addr div { margin:0; }
+        hr { border:none; border-top:1px solid #000; margin:7px 0; }
         .row { display:flex; justify-content:space-between; gap:8px; margin:2px 0; }
         .row span:last-child { text-align:right; }
-        table { width:100%; border-collapse:collapse; }
-        th { font-size:11px; text-align:left; padding:0 0 3px; border-bottom:1px solid #000; }
+        .b { font-weight:800; }
+        /* Fixed layout so 4 columns always fit the 80mm roll — the product name wraps, prices don't. */
+        table { width:100%; border-collapse:collapse; table-layout:fixed; }
+        th { font-size:10px; font-weight:800; text-align:left; padding:0 0 4px; border-bottom:1px solid #000; }
+        td { padding:3px 0; vertical-align:top; font-size:11px; font-weight:700; overflow-wrap:break-word; word-break:break-word; }
+        col.c-prod { width:44%; } col.c-price { width:23%; } col.c-qty { width:10%; } col.c-total { width:23%; }
+        .num { text-align:right; white-space:nowrap; }
+        .qty { text-align:center; white-space:nowrap; }
         .tender th { border-bottom:none; padding-bottom:0; }
-        td { padding:3px 0; vertical-align:top; font-size:11px; }
-        .num { text-align:right; white-space:nowrap; padding-left:10px; }
-        .qty { text-align:center; white-space:nowrap; padding-left:10px; }
-        .tot-line { font-size:12px; }
-        .grand { font-size:18px; font-weight:bold; }
-        .foot { text-align:center; font-size:11px; margin:3px 0; }
-        .btns { width:300px; margin:16px auto 0; display:flex; gap:8px; }
-        .btns button, .btns a { flex:1; padding:8px; font-size:12px; text-align:center; border:1px solid #ccc; background:#fff; cursor:pointer; text-decoration:none; color:#111; border-radius:3px; }
-        @@media print { .btns { display:none; } body { padding:0; } }
+        .grand { font-size:20px; font-weight:800; }
+        .foot { text-align:center; font-size:12px; font-weight:800; margin:3px 0; white-space:pre-line; }
+        .btns { width:80mm; margin:14px auto 0; display:flex; gap:8px; }
+        .btns button, .btns a { flex:1; padding:9px; font-size:12px; text-align:center; border:1px solid #ccc; background:#fff; cursor:pointer; text-decoration:none; color:#111; border-radius:4px; font-weight:600; }
+        @@media print { .btns { display:none; } }
     </style>
 </head>
 <body onload="window.print()">
     <div class="r">
-        <img src="@logoUrl" alt="" class="logo" onerror="this.style.display='none'" />
-        <p class="biz">@siteName Ltd</p>
+        @if (showLogo)
+        {
+            <img src="@logoUrl" alt="" class="logo" onerror="this.style.display='none'" />
+        }
+        <div class="biz">@bizName</div>
         <div class="addr">
             @if (store != null) { <div>@store.Name</div> }
             @foreach (var ln in addressLines) { <div>@ln</div> }
-            @if (store != null && (!string.IsNullOrWhiteSpace(store.City) || !string.IsNullOrWhiteSpace(store.State)))
-            {
-                <div>@($"{store.City} {store.State}".Trim())</div>
-            }
             @if (!string.IsNullOrWhiteSpace(phone)) { <div>Tel : @phone</div> }
-            @if (!string.IsNullOrWhiteSpace(website) || !string.IsNullOrWhiteSpace(contactEmail))
-            {
-                <div>@website @(string.IsNullOrWhiteSpace(website) ? "" : "|") @contactEmail</div>
-            }
+            @if (!string.IsNullOrWhiteSpace(websiteLine)) { <div>@websiteLine</div> }
         </div>
         @if (!string.IsNullOrWhiteSpace(receiptHeader))
         {
-            <p class="c muted" style="font-size:11px;margin:6px 0 0;white-space:pre-line;">@receiptHeader</p>
+            <div class="c" style="font-size:11px;margin-top:5px;white-space:pre-line;">@receiptHeader</div>
         }
         <hr />
 
-        <div class="row"><span class="b">Receipt of Purchase (inc Tax)</span><span>@Model.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</span></div>
+        <div class="row"><span class="b">Receipt of Purchase (Inc Tax)</span><span>@Model.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</span></div>
         <div class="row"><span>Staff</span><span>@(Model.User?.FullName ?? "—")</span></div>
         <div class="row"><span>Device</span><span>@deviceName</span></div>
         @if (Model.Customer != null)
@@ -96,14 +118,14 @@
         <hr />
 
         <table>
+            <colgroup><col class="c-prod" /><col class="c-price" /><col class="c-qty" /><col class="c-total" /></colgroup>
             <thead>
                 <tr><th>PRODUCT</th><th class="num">PRICE</th><th class="qty">QTY</th><th class="num">TOTAL</th></tr>
             </thead>
             <tbody>
                 @foreach (var item in Model.Items)
                 {
-                    var desc = item.ProductName + (item.VariantName != null ? " " + item.VariantName : "");
-                    var label = desc;   // name only (no SKU prefix)
+                    var label = item.ProductName + (item.VariantName != null ? " " + item.VariantName : "");
                     <tr>
                         <td>@label</td>
                         <td class="num">@N(item.UnitPrice)</td>
@@ -116,20 +138,21 @@
         <div class="row" style="margin-top:4px;"><span class="b">Total Qty</span><span class="b">@totalQty</span></div>
         <hr />
 
-        <div class="row tot-line"><span>Sub Total</span><span>@N(Model.Subtotal)</span></div>
+        <div class="row"><span>Sub Total</span><span>@N(Model.Subtotal)</span></div>
         @if (Model.DiscountAmount > 0)
         {
-            <div class="row tot-line"><span>Discount</span><span>-@N(Model.DiscountAmount)</span></div>
+            <div class="row"><span>Discount</span><span>-@N(Model.DiscountAmount)</span></div>
         }
         <div class="row grand"><span>Total</span><span>@N(Model.Total)</span></div>
         @if (Model.AmountTendered.HasValue && (Model.ChangeGiven ?? 0) > 0)
         {
-            <div class="row tot-line"><span>Tendered</span><span>@N(Model.AmountTendered.Value)</span></div>
-            <div class="row tot-line"><span>Change</span><span>@N(Model.ChangeGiven ?? 0)</span></div>
+            <div class="row"><span>Tendered</span><span>@N(Model.AmountTendered.Value)</span></div>
+            <div class="row"><span>Change</span><span>@N(Model.ChangeGiven ?? 0)</span></div>
         }
         <hr />
 
         <table class="tender">
+            <colgroup><col style="width:60%" /><col style="width:40%" /></colgroup>
             <thead><tr><th>PAYMENT BY TENDER</th><th class="num">AMOUNT</th></tr></thead>
             <tbody>
                 @foreach (var pp in payParts)
@@ -138,27 +161,39 @@
                 }
             </tbody>
         </table>
+
+        @if (loyalty != null)
+        {
+            <hr />
+            <div class="row"><span>Previous points</span><span>@P(loyalty["previous"])</span></div>
+            <div class="row"><span>Points gained</span><span>@P(loyalty["gained"])</span></div>
+            <div class="row b"><span>Current points</span><span>@P(loyalty["current"])</span></div>
+            <div class="row"><span>Points value</span><span>@N(loyalty["value"])</span></div>
+        }
         <hr />
 
-        <table>
-            <thead><tr><th>TAX RATE</th><th class="qty">PERCENTAGE</th><th class="num">TAX</th></tr></thead>
-        </table>
-        <hr />
-
-        <p class="foot">Thanks for shopping with @siteName</p>
+        <div class="foot">@thanksLine</div>
         @if (!string.IsNullOrWhiteSpace(receiptFooter))
         {
-            <p class="foot b" style="white-space:pre-line;">@receiptFooter</p>
+            <div class="foot">@receiptFooter</div>
         }
-        <div class="c" style="margin-top:8px;"><svg id="barcode" style="display:inline-block;max-width:100%;height:auto;"></svg></div>
+        @if (showBarcode)
+        {
+            <div class="c" style="margin-top:8px;"><svg id="barcode" style="display:inline-block;max-width:100%;height:auto;"></svg></div>
+        }
     </div>
 
     <div class="btns"><button onclick="window.print()">Print</button><button id="email-btn" type="button">Email</button><a href="@($"/{SterlingLams.Web.Infrastructure.StaffPaths.Pos}")">Next sale</a></div>
     @Html.AntiForgeryToken()
     <script src="/js/jsbarcode.min.js"></script>
     <script>
-        try { JsBarcode("#barcode", "@Model.OrderNumber", { format: "CODE128", displayValue: true, width: 1, height: 34, margin: 0, fontSize: 10 }); }
-        catch (e) { var el = document.getElementById('barcode'); if (el) el.outerHTML = '<p class="c muted" style="font-size:11px;">' + "@Model.OrderNumber" + '</p>'; }
+        @if (showBarcode)
+        {
+            <text>
+            try { JsBarcode("#barcode", "@Model.OrderNumber", { format: "CODE128", displayValue: true, width: 1.4, height: 38, margin: 0, fontSize: 11 }); }
+            catch (e) { var el = document.getElementById('barcode'); if (el) el.outerHTML = '<p class="c" style="font-size:11px;">' + "@Model.OrderNumber" + '</p>'; }
+            </text>
+        }
         (function () {
             var btn = document.getElementById('email-btn');
             var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
