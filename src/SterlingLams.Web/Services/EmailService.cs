@@ -118,17 +118,17 @@ public class SmtpEmailService : IEmailService
         var logoHeight = (int)await _settings.GetDecimalAsync("email.logo_height", 72);
         if (logoHeight is < 16 or > 300) logoHeight = 72;
 
-        // Logo only renders in email if we can build an absolute URL (clients won't load relative paths).
+        // Show the store logo, not the plain-text name. Falls back to the bundled SG logo when no
+        // custom logo is configured. Emails need an ABSOLUTE URL (clients won't load relative paths),
+        // built from App:BaseUrl — so with that set the logo always renders.
         var logo = await _settings.GetAsync("general.logo_url", "");
+        if (string.IsNullOrWhiteSpace(logo)) logo = "/images/sg-logo.png";
         string? logoUrl = null;
-        if (!string.IsNullOrWhiteSpace(logo))
+        if (logo.StartsWith("http", StringComparison.OrdinalIgnoreCase)) logoUrl = logo;
+        else
         {
-            if (logo.StartsWith("http", StringComparison.OrdinalIgnoreCase)) logoUrl = logo;
-            else
-            {
-                var baseUrl = (_config["App:BaseUrl"] ?? "").TrimEnd('/');
-                if (!string.IsNullOrEmpty(baseUrl)) logoUrl = baseUrl + "/" + logo.TrimStart('/');
-            }
+            var baseUrl = (_config["App:BaseUrl"] ?? "").TrimEnd('/');
+            if (!string.IsNullOrEmpty(baseUrl)) logoUrl = baseUrl + "/" + logo.TrimStart('/');
         }
         return new Branding(fromName, replyTo, headerColor, footerText, logoUrl, logoHeight);
     }
