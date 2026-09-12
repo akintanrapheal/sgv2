@@ -416,8 +416,38 @@ function populateQuickView(d) {
         optsWrap.appendChild(block);
     });
 
+    // Availability by branch: simple products show it now; variant products wait for a selection.
+    qvState.storeStock = d.storeStock || [];
+    qvState.lowStockThreshold = d.lowStockThreshold || 0;
+    renderQvStock((d.variants && d.variants.length) ? null : qvState.storeStock);
+
     document.getElementById('qv-msg').classList.add('hidden');
     updateQuickViewPrice();
+}
+
+// Render the per-branch stock list in the quick-view popup (mirrors the full product page).
+// Pass null to show the "select an option" prompt (variant product, nothing chosen yet).
+function renderQvStock(list) {
+    const wrap = document.getElementById('qv-store-stock');
+    const prompt = document.getElementById('qv-stock-prompt');
+    const listEl = document.getElementById('qv-stock-list');
+    if (!wrap || !listEl) return;
+    if (!qvState.storeStock || !qvState.storeStock.length) { wrap.classList.add('hidden'); return; }
+    wrap.classList.remove('hidden');
+    if (!list) { prompt.classList.remove('hidden'); listEl.classList.add('hidden'); listEl.innerHTML = ''; return; }
+    prompt.classList.add('hidden'); listEl.classList.remove('hidden');
+    const thr = qvState.lowStockThreshold || 0;
+    const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    listEl.innerHTML = list.map(s => {
+        const qty = s.qty, low = thr > 0 && qty > 0 && qty <= thr;
+        const dot = qty === 0 ? 'bg-neutral-300' : low ? 'bg-amber-500' : 'bg-emerald-500';
+        const badge = qty > 0
+            ? '<span class="text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap ' + (low ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700') + '">' + qty + ' in stock</span>'
+            : '<span class="text-xs px-2.5 py-1 rounded-full bg-neutral-100 text-neutral-400 whitespace-nowrap">Out of stock</span>';
+        return '<div class="flex items-center justify-between rounded-lg border border-neutral-100 px-4 py-2.5">'
+            + '<span class="flex items-center gap-2.5 min-w-0"><span class="w-2 h-2 rounded-full flex-shrink-0 ' + dot + '"></span>'
+            + '<span class="text-sm text-neutral-700 truncate">' + esc(s.name) + '</span></span>' + badge + '</div>';
+    }).join('');
 }
 
 function onQuickViewSelect() {
@@ -435,10 +465,13 @@ function onQuickViewSelect() {
     const selects = document.querySelectorAll('#qv-options .attr-select');
     const allPicked = [...selects].every(s => s.value !== '');
     qvState.variantId = null;
+    let matched = null;
     if (allPicked) {
-        const match = qvState.variants.find(v => entries.every(([k, val]) => v.attributes[k] === val));
-        if (match) qvState.variantId = match.id;
+        matched = qvState.variants.find(v => entries.every(([k, val]) => v.attributes[k] === val)) || null;
+        if (matched) qvState.variantId = matched.id;
     }
+    // Show the chosen variant's per-branch stock; otherwise prompt to pick.
+    renderQvStock(matched ? matched.storeStock : null);
     document.getElementById('qv-msg').classList.add('hidden');
     updateQuickViewPrice();
 }

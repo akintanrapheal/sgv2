@@ -488,13 +488,26 @@ public class ProductsController : Controller
 
         // Per-variant availability with the variant-row → product-pool fallback (matches Detail/cart).
         var activeStores = product.StoreInventories.Where(si => si.Store.IsActive)
-            .Select(si => si.StoreId).Distinct().ToList();
-        int VariantAvailable(int variantId) => activeStores.Sum(storeId =>
+            .Select(si => new { si.StoreId, Name = si.Store.Name })
+            .Distinct().OrderBy(s => s.Name).ToList();
+        int StoreQty(int storeId, int? variantId)
         {
             var row = product.StoreInventories.FirstOrDefault(si => si.StoreId == storeId && si.ProductVariantId == variantId)
                       ?? product.StoreInventories.FirstOrDefault(si => si.StoreId == storeId && si.ProductVariantId == null);
             return row != null ? Math.Max(0, row.QuantityOnHand - row.QuantityReserved) : 0;
-        });
+        }
+        // Per-branch stock for a variant (or the whole product when variantId is null): [{name, qty}].
+        object VariantStoreStock(int? variantId) => activeStores.Select(s => new
+        {
+            name = s.Name.Replace("Sterlin Glams ", ""),
+            qty = variantId.HasValue ? StoreQty(s.StoreId, variantId)
+                : product.StoreInventories.Where(si => si.StoreId == s.StoreId).Sum(si => Math.Max(0, si.QuantityOnHand - si.QuantityReserved))
+        }).ToList();
+        int VariantAvailable(int variantId) => activeStores.Sum(s => StoreQty(s.StoreId, variantId));
+
+        // Low-stock badge threshold (0 = nudge disabled), same source as the full product page.
+        var lowStockThreshold = (int)await _settings.GetDecimalAsync("inventory.low_stock_threshold", 5);
+        if (!await _settings.GetBoolAsync("inventory.show_low_stock_nudge", true)) lowStockThreshold = 0;
 
         var onSale = product.SalePrice is decimal sp && sp > 0m && sp < product.Price;
 
@@ -509,6 +522,9 @@ public class ProductsController : Controller
             currency = product.Currency,
             primaryImage = product.Images.OrderByDescending(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
                 ?? "/images/placeholder.jpg",
+            lowStockThreshold,
+            // Product-level per-branch stock (used for simple products with no options).
+            storeStock = VariantStoreStock(null),
             attributes = product.Variants.Where(v => v.IsActive)
                 .SelectMany(v => v.AttributeValues)
                 .GroupBy(av => new { av.Attribute.Name, av.Attribute.SortOrder })
@@ -523,6 +539,7 @@ public class ProductsController : Controller
                 regularPrice = VariantPricing.RegularPrice(product, v),
                 onSale = VariantPricing.IsOnSale(product, v),
                 inStock = VariantAvailable(v.Id) > 0,
+                storeStock = VariantStoreStock(v.Id),
                 attributes = v.AttributeValues.ToDictionary(av => av.Attribute.Name, av => av.Value)
             })
         });
