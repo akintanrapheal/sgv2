@@ -26,4 +26,9 @@ public class AbandonedCart
     public int RemindersSent { get; set; }
     /// <summary>Set when the shopper completed a paid order (or used the recovery link) — no email.</summary>
     public DateTime? RecoveredAt { get; set; }
+
+    /// <summary>Set when a "low stock — selling fast" nudge has been sent for this snapshot, so it
+    /// only goes out once. Reset to null whenever the shopper changes their bag, so a fresh low-stock
+    /// situation can nudge again.</summary>
+    public DateTime? LowStockNotifiedAt { get; set; }
 }
