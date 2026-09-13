@@ -1,17 +1,34 @@
 @model SterlingLams.Web.Models.Domain.Register
+@inject SterlingLams.Web.Services.ISettingsService Settings
 @{
     ViewData["Title"] = "Sell";
     var session = ViewData["Session"] as SterlingLams.Web.Models.Domain.TillSession;
     var cashierName = ViewData["CashierName"]?.ToString() ?? User.Identity?.Name ?? "";
     var reprintCount = ViewData["ReprintCount"] as int? ?? 0;
+    // Scrolling welcome message shown to in-store customers across the top bar. Editable in POS settings.
+    var welcomeMessage = (await Settings.GetAsync("pos.welcome_message",
+        "Welcome to Sterlin Glams — where elegance meets you. Enjoy a beautiful shopping experience with us today.")).Trim();
 }
 
 @Html.AntiForgeryToken()
 
+<style nonce="@Context.Items["csp-nonce"]">
+    /* Scrolling customer welcome across the POS top bar. Content is duplicated in the markup, so
+       translating the track by -50% loops seamlessly. Pauses on hover; respects reduced-motion. */
+    .pos-welcome-track { display:inline-flex; align-items:center; white-space:nowrap; will-change:transform;
+        animation: pos-welcome-scroll 28s linear infinite; }
+    .pos-welcome:hover .pos-welcome-track { animation-play-state: paused; }
+    .pos-welcome-item { font-family:'Cormorant Garamond', Georgia, serif; font-size:1.15rem; font-weight:500;
+        letter-spacing:.02em; color:#fbe9f3; }
+    .pos-welcome-sep { margin:0 1.75rem; color:#ec4899; font-size:.9rem; }
+    @@keyframes pos-welcome-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+    @@media (prefers-reduced-motion: reduce) { .pos-welcome-track { animation: none; } }
+</style>
+
 <div class="h-screen flex flex-col bg-neutral-100 overflow-hidden select-none">
 
     <!-- ── Top bar ───────────────────────────────────────────────────────── -->
-    <header class="flex items-center gap-3 px-4 py-2 bg-neutral-900 text-white flex-shrink-0">
+    <header class="flex items-center gap-3 px-4 py-3 bg-neutral-900 text-white flex-shrink-0">
         <!-- Menu -->
         <button type="button" id="hamburger-btn"
                 class="relative flex-shrink-0 w-8 h-8 flex items-center justify-center rounded hover:bg-neutral-800 transition-colors" title="Menu">
@@ -21,12 +38,29 @@
             <span id="hamburger-dot" class="hidden absolute top-1 right-1 w-2 h-2 rounded-full bg-brand-500"></span>
         </button>
         <!-- Logo -->
-        <img src="~/images/sg-logo.png" alt="Sterlin Glams" class="h-7 object-contain flex-shrink-0 bg-white rounded-md px-1.5 py-0.5" />
-        <div class="flex-1 min-w-0">
-            <p class="text-xs font-medium text-white leading-none">@Model.Store?.Name</p>
-            <p class="text-[10px] text-neutral-400 leading-none mt-0.5">@Model.Name</p>
+        <img src="~/images/sg-logo.png" alt="Sterlin Glams" class="h-11 object-contain flex-shrink-0 bg-white rounded-md px-2 py-1" />
+        <div class="flex-shrink-0 min-w-0">
+            <p class="text-xs font-medium text-white leading-none truncate">@Model.Store?.Name</p>
+            <p class="text-[10px] text-neutral-400 leading-none mt-0.5 truncate">@Model.Name</p>
         </div>
-        <div class="flex items-center gap-4">
+        @if (!string.IsNullOrWhiteSpace(welcomeMessage))
+        {
+            @* Scrolling welcome/greeting for in-store customers. Content is duplicated so the loop is
+               seamless; the message is admin-editable in POS settings. *@
+            <div class="pos-welcome flex-1 min-w-0 overflow-hidden mx-2" aria-hidden="true">
+                <div class="pos-welcome-track">
+                    <span class="pos-welcome-item">@welcomeMessage</span>
+                    <span class="pos-welcome-sep">✦</span>
+                    <span class="pos-welcome-item">@welcomeMessage</span>
+                    <span class="pos-welcome-sep">✦</span>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="flex-1"></div>
+        }
+        <div class="flex items-center gap-4 flex-shrink-0">
             @if (reprintCount > 0)
             {
                 <a asp-controller="Pos" asp-action="Labels"
