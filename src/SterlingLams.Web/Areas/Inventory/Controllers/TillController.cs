@@ -188,6 +188,7 @@ public class TillController : InventoryAreaController
     public async Task<IActionResult> Settings()
     {
         ViewData["Title"] = "POS Settings";
+        ViewBag.WelcomeMessage = await _settings.GetAsync("pos.welcome_message", "Welcome to Sterlin Glams — where elegance meets you. Enjoy a beautiful shopping experience with us today.");
         ViewBag.ReceiptHeader = await _settings.GetAsync("pos.receipt_header", "");
         ViewBag.ReceiptFooter = await _settings.GetAsync("pos.receipt_footer", "Thank you for shopping with us!");
         ViewBag.ApprovalRefunds = await _settings.GetBoolAsync("pos.approval_refunds", false);
@@ -216,10 +217,11 @@ public class TillController : InventoryAreaController
         bool approvalRefunds, bool approvalDiscounts, int approvalDiscountMinPct,
         string? receiptBusinessName, string? receiptAddress, string? receiptPhone, string? receiptWebsite,
         string? receiptThanks, bool receiptShowLogo, bool receiptShowPoints, bool receiptShowBarcode,
-        string? receiptLogoUrl, int receiptLogoHeight)
+        string? receiptLogoUrl, int receiptLogoHeight, string? welcomeMessage)
     {
         await _settings.SaveManyAsync(new Dictionary<string, string>
         {
+            ["pos.welcome_message"] = welcomeMessage?.Trim() ?? "",
             ["pos.receipt_logo_url"] = receiptLogoUrl?.Trim() ?? "",
             ["pos.receipt_logo_height"] = Math.Clamp(receiptLogoHeight, 30, 160).ToString(),
             ["pos.receipt_header"] = receiptHeader?.Trim() ?? "",
