@@ -192,4 +192,88 @@ public class ReportsController : AdminBaseController
         };
         return View(vm);
     }
+
+    // ── Order-processing sheet ────────────────────────────────────────────────
+    // One row per online order: who it's for, where it goes, who packed/processed it, at which branch,
+    // its status and when it was processed. Exportable to CSV. Times shown in Lagos (WAT).
+    public record FulfilRow(string OrderNumber, DateTime Placed, string Customer, string? Phone,
+        string Address, string Type, string Store, string? PackedBy, DateTime? ProcessedOn,
+        string Status, decimal Total);
+
+    private async Task<List<FulfilRow>> FulfilRowsAsync(DateTime f, DateTime t, int? storeId)
+    {
+        var stores = await _db.Stores.ToDictionaryAsync(s => s.Id, s => s.Name);
+
+        var q = _db.Orders.Where(o => o.Channel == OrderChannel.Online && o.IsPaid
+            && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t);
+        if (storeId.HasValue) q = q.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
+
+        var raw = await q.OrderByDescending(o => o.PaidAt ?? o.CreatedAt).Take(3000)
+            .Select(o => new
+            {
+                o.OrderNumber,
+                Placed = o.PaidAt ?? o.CreatedAt,
+                Customer = (o.User.FirstName + " " + o.User.LastName).Trim(),
+                Phone = o.User.PhoneNumber,
+                o.FulfillmentType,
+                o.PickupStoreId,
+                o.FulfillingStoreId,
+                Addr = o.DeliveryAddress,
+                o.PackedByName,
+                o.PackedAt,
+                o.PickupReadyEmailedAt,
+                o.Status,
+                o.Total
+            }).ToListAsync();
+
+        string StoreOf(int? id) => id.HasValue && stores.TryGetValue(id.Value, out var n) ? n.Replace("Sterlin Glams ", "") : "—";
+
+        return raw.Select(o =>
+        {
+            var pickup = o.FulfillmentType == FulfillmentType.StorePickup;
+            var addr = pickup
+                ? "Store pickup" + (o.PickupStoreId.HasValue ? " · " + StoreOf(o.PickupStoreId) : "")
+                : (o.Addr != null
+                    ? string.Join(", ", new[] { o.Addr.Line1, o.Addr.Line2, o.Addr.City, o.Addr.State }.Where(x => !string.IsNullOrWhiteSpace(x)))
+                    : "");
+            var processedOn = pickup ? o.PickupReadyEmailedAt : o.PackedAt;
+            return new FulfilRow(
+                o.OrderNumber,
+                SterlingLams.Web.Services.ReportCalendar.ToLocal(o.Placed),
+                string.IsNullOrWhiteSpace(o.Customer) ? "Customer" : o.Customer,
+                o.Phone,
+                addr,
+                pickup ? "Store pickup" : "Delivery",
+                StoreOf(pickup ? o.PickupStoreId : o.FulfillingStoreId),
+                o.PackedByName,
+                processedOn.HasValue ? SterlingLams.Web.Services.ReportCalendar.ToLocal(processedOn.Value) : (DateTime?)null,
+                o.Status.ToString(),
+                o.Total);
+        }).ToList();
+    }
+
+    public async Task<IActionResult> Fulfilment(string? from, string? to, int? storeId)
+    {
+        ViewData["Title"] = "Order Processing";
+        var (f, t, fLocal, tLocal) = Range(from, to);
+        ViewBag.From = fLocal; ViewBag.To = tLocal; ViewBag.StoreId = storeId;
+        ViewBag.Stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
+        return View(await FulfilRowsAsync(f, t, storeId));
+    }
+
+    public async Task<IActionResult> FulfilmentCsv(string? from, string? to, int? storeId)
+    {
+        var (f, t, fLocal, tLocal) = Range(from, to);
+        var rows = await FulfilRowsAsync(f, t, storeId);
+        var sb = new System.Text.StringBuilder();
+        SterlingLams.Web.Services.Csv.AppendRow(sb, "Order", "Placed (WAT)", "Customer", "Phone", "Address",
+            "Type", "Store", "Processed by", "Processed on (WAT)", "Status", "Total (₦)");
+        foreach (var r in rows)
+            SterlingLams.Web.Services.Csv.AppendRow(sb,
+                r.OrderNumber, r.Placed.ToString("yyyy-MM-dd HH:mm"), r.Customer, r.Phone ?? "", r.Address,
+                r.Type, r.Store, r.PackedBy ?? "", r.ProcessedOn?.ToString("yyyy-MM-dd HH:mm") ?? "",
+                r.Status, r.Total.ToString("0"));
+        return File(SterlingLams.Web.Services.Csv.ToBytes(sb), "text/csv",
+            $"order-processing_{fLocal:yyyyMMdd}-{tLocal:yyyyMMdd}.csv");
+    }
 }

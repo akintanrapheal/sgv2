@@ -681,6 +681,9 @@
             <button type="button" id="fulfil-tab-transfer" class="flex-1 py-3 text-sm font-semibold tracking-wide text-neutral-400 border-b-2 border-transparent transition-colors">
                 Awaiting transfer <span id="fulfil-transfer-count" class="ml-1 text-xs text-neutral-400"></span>
             </button>
+            <button type="button" id="fulfil-tab-history" class="flex-1 py-3 text-sm font-semibold tracking-wide text-neutral-400 border-b-2 border-transparent transition-colors">
+                History
+            </button>
         </div>
         <div id="fulfil-list" class="flex-1 overflow-y-auto p-4 space-y-2">
             <p class="text-center text-neutral-400 py-10 text-sm">Loading…</p>
@@ -2787,9 +2790,11 @@
     const backBtn = document.getElementById('fulfil-back');
     const tabPack = document.getElementById('fulfil-tab-pack');
     const tabTransfer = document.getElementById('fulfil-tab-transfer');
+    const tabHistory = document.getElementById('fulfil-tab-history');
     const badge = document.getElementById('fulfil-badge');
-    let currentTab = 'pack';          // 'pack' | 'transfer'
+    let currentTab = 'pack';          // 'pack' | 'transfer' | 'history'
     let cache = { toPack: [], awaitingTransfer: [] };
+    let historyCache = null;          // lazily loaded when the History tab is opened
     let cursor = '0';                 // '0' = baseline, don't toast pre-existing orders
 
     const money = n => '₦' + Math.round(n || 0).toLocaleString();
@@ -2819,7 +2824,31 @@
         const off = 'flex-1 py-3 text-sm font-semibold tracking-wide text-neutral-400 border-b-2 border-transparent transition-colors';
         tabPack.className = tab === 'pack' ? on : off;
         tabTransfer.className = tab === 'transfer' ? on : off;
+        tabHistory.className = tab === 'history' ? on : off;
+        if (tab === 'history') { loadHistory(); return; }
         renderList();
+    }
+    function historyCard(o) {
+        const isPickup = o.fulfillmentType === 'StorePickup';
+        const when = o.actionedAt ? new Date(o.actionedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+        const kind = isPickup ? 'Pickup' : 'Delivery';
+        return `<button type="button" class="fulfil-card w-full text-left bg-white border border-neutral-200 rounded-xl p-3.5 hover:border-neutral-300 transition" data-id="${o.id}">
+            <div class="flex items-center justify-between gap-2">
+                <span class="font-semibold text-neutral-900 truncate">${esc(o.orderNumber)}</span>
+                <span class="text-sm font-semibold text-neutral-900 tabular-nums flex-shrink-0">${money(o.total)}</span>
+            </div>
+            <div class="text-sm text-neutral-700 truncate mt-0.5">${esc(o.customer) || 'Customer'}${o.phone ? ' · ' + esc(o.phone) : ''}</div>
+            <div class="text-[11px] text-neutral-400 mt-1 truncate">${kind} · ${esc(o.status)}${o.packedBy ? ' · by ' + esc(o.packedBy) : ''}${when ? ' · ' + when : ''}</div>
+        </button>`;
+    }
+    async function loadHistory() {
+        listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Loading…</p>';
+        try {
+            if (!historyCache) { const r = await fetch('/Pos/FulfilHistory'); historyCache = (await r.json()).orders || []; }
+            if (!historyCache.length) { listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Nothing packed or processed yet.</p>'; return; }
+            listEl.innerHTML = historyCache.map(historyCard).join('');
+            listEl.querySelectorAll('.fulfil-card').forEach(b => b.addEventListener('click', () => openDetail(+b.dataset.id)));
+        } catch { listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Could not load history.</p>'; }
     }
     function orderCard(o, packable) {
         const isPickup = o.fulfillmentType === 'StorePickup';
@@ -2898,14 +2927,15 @@
             const placed = d.placedAt ? new Date(d.placedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
             const cust = d.customer || {};
             const isPickup = d.fulfillmentType === 'StorePickup';
-            // Context-aware action: delivery → Processing then dispatch; pickup → notify the customer.
+            // Context-aware action: delivery → mark packed (logistics ships); pickup → notify the customer.
             let act = null, actLabel = '';
-            if (d.canProcess) { act = 'process'; actLabel = 'Update to Processing'; }
-            else if (d.canDispatch) { act = 'dispatch'; actLabel = 'Mark packed &amp; dispatched'; }
+            if (d.canPack) { act = 'pack'; actLabel = 'Mark as packed'; }
             else if (d.canNotifyPickup) { act = 'pickup'; actLabel = d.pickupNotified ? 'Resend pickup notification' : 'Send pickup-ready notification'; }
             const packBtn = act
                 ? `<button type="button" id="fulfil-action-btn" data-id="${d.id}" data-act="${act}" class="w-full bg-brand-500 text-white rounded-lg py-3 text-sm font-semibold hover:bg-brand-600 transition-colors">${actLabel}</button>`
                 : '';
+            const packedNote = d.packed && d.packedBy
+                ? `<p class="text-center text-[12px] text-emerald-600">✓ Packed by ${esc(d.packedBy)}</p>` : '';
             detailView.innerHTML = `
                 <div class="max-w-2xl mx-auto p-4 space-y-4">
                     <div class="flex items-center justify-between">
@@ -2934,6 +2964,7 @@
                     </div>
                     ${d.note ? `<div class="border border-amber-200 bg-amber-50 rounded-xl p-3"><p class="text-[10px] uppercase tracking-wide text-amber-600 mb-1">Order note</p><p class="text-sm text-amber-800">${esc(d.note)}</p></div>` : ''}
                     ${packBtn}
+                    ${packedNote}
                 </div>`;
             const pb = document.getElementById('fulfil-action-btn');
             if (pb) pb.addEventListener('click', () => fulfilAction(+pb.dataset.id, pb.dataset.act, pb));
@@ -2941,9 +2972,8 @@
     }
     async function fulfilAction(id, act, btn) {
         const map = {
-            process: { url: '/Pos/FulfilMarkProcessing', busy: 'Updating…', ok: 'Moved to Processing' },
-            dispatch: { url: '/Pos/FulfilMarkPacked', busy: 'Dispatching…', ok: 'Order dispatched — customer notified' },
-            pickup:  { url: '/Pos/FulfilNotifyPickup', busy: 'Sending…', ok: 'Pickup notification sent to the customer' }
+            pack:   { url: '/Pos/FulfilMarkPacked', busy: 'Saving…', ok: 'Marked as packed — handed to logistics' },
+            pickup: { url: '/Pos/FulfilNotifyPickup', busy: 'Sending…', ok: 'Pickup notification sent to the customer' }
         }[act];
         if (!map) return;
         btn.disabled = true; const ot = btn.textContent; btn.textContent = map.busy;
@@ -2954,7 +2984,7 @@
                 body: JSON.stringify({ orderId: id })
             });
             const data = await res.json();
-            if (data.success) { toast(map.ok); showList(); await loadList(); }
+            if (data.success) { toast(map.ok); historyCache = null; showList(); await loadList(); }
             else { btn.disabled = false; btn.textContent = ot; toast(data.message || 'Could not complete that.'); }
         } catch { btn.disabled = false; btn.textContent = ot; toast('Could not complete that.'); }
     }
@@ -2965,6 +2995,7 @@
     backBtn.addEventListener('click', showList);
     tabPack.addEventListener('click', () => setTab('pack'));
     tabTransfer.addEventListener('click', () => setTab('transfer'));
+    tabHistory.addEventListener('click', () => setTab('history'));
 
     // ── New-order alert: a chime + a pop-up when an order arrives to pack ──────
     // Browsers block sound until the user interacts, so we create/resume the audio
@@ -3040,13 +3071,18 @@
     }
 
     // Background poll: keep the badge fresh and ring + pop up when a new order needs packing.
+    const alerted = new Set();   // order numbers already rung for → never alert the same one twice
     async function poll() {
         try {
             const r = await fetch('/Pos/FulfilPoll?sinceTicks=' + encodeURIComponent(cursor));
             const d = await r.json();
             setBadge((d.toPack || 0) + (d.awaiting || 0));
             if (cursor !== '0' && d.newOrders && d.newOrders.length) {
-                notifyNewOrders(d.newOrders);
+                // Only ring for orders we haven't already alerted on — so acting on one (which can
+                // bump its timestamp) never makes the alarm come back.
+                const fresh = d.newOrders.filter(o => !alerted.has(o.number));
+                fresh.forEach(o => alerted.add(o.number));
+                if (fresh.length) notifyNewOrders(fresh);
             }
             cursor = d.latestTicks || cursor;
         } catch { /* offline — try again next tick */ }
