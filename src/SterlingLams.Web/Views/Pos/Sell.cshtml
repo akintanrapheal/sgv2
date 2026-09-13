@@ -8,21 +8,37 @@
     // Scrolling welcome message shown to in-store customers across the top bar. Editable in POS settings.
     var welcomeMessage = (await Settings.GetAsync("pos.welcome_message",
         "Welcome to Sterlin Glams — where elegance meets you. Enjoy a beautiful shopping experience with us today.")).Trim();
+    var welcomeColor = (await Settings.GetAsync("pos.welcome_color", "default")).Trim().ToLowerInvariant();
+    var isRainbow = welcomeColor == "rainbow";
+    var welcomeCss = welcomeColor switch { "white" => "#ffffff", "gold" => "#f5d98a", "pink" => "#ec4899", _ => "#fbe9f3" };
 }
 
 @Html.AntiForgeryToken()
 
 <style nonce="@Context.Items["csp-nonce"]">
-    /* Scrolling customer welcome across the POS top bar. Content is duplicated in the markup, so
-       translating the track by -50% loops seamlessly. Pauses on hover; respects reduced-motion. */
-    .pos-welcome-track { display:inline-flex; align-items:center; white-space:nowrap; will-change:transform;
-        animation: pos-welcome-scroll 28s linear infinite; }
+    /* Scrolling customer welcome across the POS top bar. Two identical groups, each exactly the bar's
+       width (flex:0 0 100%), scroll left by one full group (-100%) — so there's always content on
+       screen and the loop is seamless (no empty pause, no word split). Pauses on hover; respects
+       reduced-motion. */
+    .pos-welcome-track { display:flex; width:100%; will-change:transform;
+        animation: pos-welcome-scroll 32s linear infinite; }
     .pos-welcome:hover .pos-welcome-track { animation-play-state: paused; }
+    .pos-welcome-group { flex:0 0 100%; display:flex; align-items:center; white-space:nowrap; }
     .pos-welcome-item { font-family:'Cormorant Garamond', Georgia, serif; font-size:1.15rem; font-weight:500;
-        letter-spacing:.02em; color:#fbe9f3; }
+        letter-spacing:.02em; }
     .pos-welcome-sep { margin:0 1.75rem; color:#ec4899; font-size:.9rem; }
-    @@keyframes pos-welcome-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-    @@media (prefers-reduced-motion: reduce) { .pos-welcome-track { animation: none; } }
+    @@keyframes pos-welcome-scroll { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+    /* Rainbow option: animated gradient painted through the text itself. */
+    .pos-welcome-rainbow .pos-welcome-item {
+        background: linear-gradient(90deg,#ff004c,#ff8a00,#ffd500,#48ff00,#00c2ff,#5a00ff,#c400ff,#ff004c);
+        background-size: 200% auto; -webkit-background-clip: text; background-clip: text;
+        -webkit-text-fill-color: transparent; color: transparent;
+        animation: pos-welcome-rainbow 6s linear infinite;
+    }
+    @@keyframes pos-welcome-rainbow { to { background-position: 200% center; } }
+    @@media (prefers-reduced-motion: reduce) {
+        .pos-welcome-track, .pos-welcome-rainbow .pos-welcome-item { animation: none; }
+    }
 </style>
 
 <div class="h-screen flex flex-col bg-neutral-100 overflow-hidden select-none">
@@ -47,12 +63,16 @@
         {
             @* Scrolling welcome/greeting for in-store customers. Content is duplicated so the loop is
                seamless; the message is admin-editable in POS settings. *@
-            <div class="pos-welcome flex-1 min-w-0 overflow-hidden mx-2" aria-hidden="true">
+            <div class="pos-welcome @(isRainbow ? "pos-welcome-rainbow" : "") flex-1 min-w-0 overflow-hidden mx-2" aria-hidden="true">
                 <div class="pos-welcome-track">
-                    <span class="pos-welcome-item">@welcomeMessage</span>
-                    <span class="pos-welcome-sep">✦</span>
-                    <span class="pos-welcome-item">@welcomeMessage</span>
-                    <span class="pos-welcome-sep">✦</span>
+                    <div class="pos-welcome-group">
+                        <span class="pos-welcome-item" style="@(isRainbow ? "" : $"color:{welcomeCss}")">@welcomeMessage</span>
+                        <span class="pos-welcome-sep">✦</span>
+                    </div>
+                    <div class="pos-welcome-group">
+                        <span class="pos-welcome-item" style="@(isRainbow ? "" : $"color:{welcomeCss}")">@welcomeMessage</span>
+                        <span class="pos-welcome-sep">✦</span>
+                    </div>
                 </div>
             </div>
         }
