@@ -274,6 +274,21 @@ public class OrderFulfilmentService : IOrderFulfilmentService
             {
                 await LockInventoryRowsAsync(productIds.SelectMany(pid => storeIds.Select(sid => (pid, sid))));
 
+                // Idempotency UNDER the lock. The guard above ran before we took the row lock, so a
+                // concurrent caller (the payment webhook and the checkout return fire for the same
+                // payment; the retry service is a third) can have fulfilled this order while we were
+                // waiting for the lock — our in-memory `order` is from before the lock and is now
+                // stale. Re-read the committed state and bail if it's already fulfilled/terminal,
+                // otherwise we deduct the sale a SECOND time and spuriously create a transfer for
+                // the shortfall we ourselves caused (this is what happened to SGW-30050).
+                var committed = await _db.Orders.AsNoTracking()
+                    .Where(o => o.Id == orderId)
+                    .Select(o => new { o.FulfillingStoreId, o.Status })
+                    .FirstOrDefaultAsync();
+                if (committed == null || committed.FulfillingStoreId != null
+                    || committed.Status is OrderStatus.Cancelled or OrderStatus.Refunded)
+                    return FulfilOutcome.Fulfilled; // tx disposed → lock released, nothing written
+
                 var invRows = await _db.StoreInventories
                     .Where(si => productIds.Contains(si.ProductId) && storeIds.Contains(si.StoreId))
                     .ToListAsync();
