@@ -1151,10 +1151,14 @@ public class PosController : Controller
         if (register == null) return Json(new { toPack = Array.Empty<object>(), awaitingTransfer = Array.Empty<object>() });
         var storeId = register.StoreId;
 
+        // "To pack" = paid orders this branch must physically prepare: delivery orders allocated here
+        // (Confirmed/Processing) and store-pickup orders for this branch (Confirmed/Processing/ReadyForPickup).
         var toPack = await _db.Orders
-            .Where(o => o.Channel == OrderChannel.Online && o.FulfillingStoreId == storeId
-                     && o.FulfillmentType == FulfillmentType.Delivery && o.IsPaid
-                     && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing))
+            .Where(o => o.Channel == OrderChannel.Online && o.IsPaid
+                && ((o.FulfillmentType == FulfillmentType.Delivery && o.FulfillingStoreId == storeId
+                        && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing))
+                    || (o.FulfillmentType == FulfillmentType.StorePickup && o.PickupStoreId == storeId
+                        && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing || o.Status == OrderStatus.ReadyForPickup))))
             .OrderBy(o => o.CreatedAt)
             .Select(o => new
             {
@@ -1165,7 +1169,9 @@ public class PosController : Controller
                 itemCount = o.Items.Sum(i => i.Quantity),
                 total = o.Total,
                 createdAt = o.CreatedAt,
-                place = o.DeliveryAddress != null ? (o.DeliveryAddress.City + ", " + o.DeliveryAddress.State).Trim(' ', ',') : "",
+                fulfillmentType = o.FulfillmentType.ToString(),
+                place = o.FulfillmentType == FulfillmentType.StorePickup ? "Store pickup"
+                        : (o.DeliveryAddress != null ? (o.DeliveryAddress.City + ", " + o.DeliveryAddress.State).Trim(' ', ',') : ""),
                 hasNote = o.Notes != null && o.Notes != "",
                 status = o.Status.ToString()
             })
@@ -1201,9 +1207,11 @@ public class PosController : Controller
         if (register == null) return Json(new { toPack = 0, awaiting = 0, latestTicks = "0", newOrders = Array.Empty<object>() });
         var storeId = register.StoreId;
 
-        var toPackQ = _db.Orders.Where(o => o.Channel == OrderChannel.Online && o.FulfillingStoreId == storeId
-            && o.FulfillmentType == FulfillmentType.Delivery && o.IsPaid
-            && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing));
+        var toPackQ = _db.Orders.Where(o => o.Channel == OrderChannel.Online && o.IsPaid
+            && ((o.FulfillmentType == FulfillmentType.Delivery && o.FulfillingStoreId == storeId
+                    && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing))
+                || (o.FulfillmentType == FulfillmentType.StorePickup && o.PickupStoreId == storeId
+                    && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing || o.Status == OrderStatus.ReadyForPickup))));
         var awaitQ = _db.Orders.Where(o => o.Channel == OrderChannel.Online && o.FulfillingStoreId == storeId
             && o.Status == OrderStatus.AwaitingTransfer);
 
@@ -1233,9 +1241,12 @@ public class PosController : Controller
     {
         var register = await BoundRegisterAsync();
         if (register == null) return Json(new { success = false, message = "This POS isn't set up." });
+        var storeId = register.StoreId;
         var o = await _db.Orders
-            .Include(x => x.Items).Include(x => x.User).Include(x => x.DeliveryAddress)
-            .FirstOrDefaultAsync(x => x.Id == id && x.Channel == OrderChannel.Online && x.FulfillingStoreId == register.StoreId);
+            .Include(x => x.Items).Include(x => x.User).Include(x => x.DeliveryAddress).Include(x => x.PickupStore)
+            .FirstOrDefaultAsync(x => x.Id == id && x.Channel == OrderChannel.Online
+                && ((x.FulfillmentType == FulfillmentType.Delivery && x.FulfillingStoreId == storeId)
+                    || (x.FulfillmentType == FulfillmentType.StorePickup && x.PickupStoreId == storeId)));
         if (o == null) return Json(new { success = false, message = "Order not found for this branch." });
 
         var imgs = await PrimaryImagesAsync(o.Items.Select(i => i.ProductId).Distinct().ToList());
@@ -1258,8 +1269,13 @@ public class PosController : Controller
             fulfillmentType = o.FulfillmentType.ToString(),
             placedAt = o.CreatedAt,           // shown in West Africa Time on the client
             deliveryType = o.DeliveryType,    // "Express" | "Standard" | null (pickup)
-            canPack = o.FulfillmentType == FulfillmentType.Delivery
-                      && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing),
+            // Context-aware actions: delivery → confirm to Processing then dispatch; pickup → notify.
+            canProcess = o.FulfillmentType == FulfillmentType.Delivery && o.Status == OrderStatus.Confirmed,
+            canDispatch = o.FulfillmentType == FulfillmentType.Delivery && o.Status == OrderStatus.Processing,
+            canNotifyPickup = o.FulfillmentType == FulfillmentType.StorePickup
+                      && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing || o.Status == OrderStatus.ReadyForPickup),
+            pickupNotified = o.FulfillmentType == FulfillmentType.StorePickup && o.PickupReadyEmailedAt != null,
+            pickupStore = o.PickupStore != null ? o.PickupStore.Name : null,
             customer = new { name = (o.User.FirstName + " " + o.User.LastName).Trim(), phone = o.User.PhoneNumber, email = o.User.Email },
             address = a == null ? null : new { a.FullName, a.Line1, a.Line2, a.City, a.State, a.Country, a.Phone, a.PostalCode },
             note = o.Notes,
@@ -1272,8 +1288,35 @@ public class PosController : Controller
 
     public class FulfilPackDto { public int OrderId { get; set; } }
 
-    // Cashier marks a delivery order packed & dispatched from the POS: advance it to Shipped, note it,
-    // and send the customer the "shipped" email (+ WhatsApp). Guarded to this branch's own orders.
+    // Delivery: the branch confirms it's handling the order → Processing (into the delivery pipeline).
+    // Sends the customer the "processing" email. Guarded to this branch's own orders.
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> FulfilMarkProcessing([FromBody] FulfilPackDto req)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { success = false, message = "This POS isn't set up." });
+        if (!await _access.CanWriteAsync(User, register.StoreId))
+            return Json(new { success = false, message = "You're not assigned to this branch's POS." });
+
+        var o = await _db.Orders.Include(x => x.Items).Include(x => x.User)
+            .FirstOrDefaultAsync(x => x.Id == req.OrderId && x.Channel == OrderChannel.Online
+                && x.FulfillmentType == FulfillmentType.Delivery && x.FulfillingStoreId == register.StoreId);
+        if (o == null) return Json(new { success = false, message = "Order not found for this branch." });
+        if (o.Status != OrderStatus.Confirmed) return Json(new { success = false, message = $"Order is {o.Status} — can't move to Processing." });
+
+        var staff = (await _userManager.GetUserAsync(User))?.FullName ?? User.Identity?.Name ?? "staff";
+        o.Status = OrderStatus.Processing;
+        o.UpdatedAt = DateTime.UtcNow;
+        OrderNotes.AddSystem(_db, o.Id, $"Moved to Processing by {staff} at {register.Store?.Name}.");
+        await _db.SaveChangesAsync();
+
+        await SendPosStatusEmailAsync(o.Id, "order_processing", "Your order is being prepared",
+            "Good news {name} — your order {order} is now being prepared and will be on its way soon.");
+        try { await _audit.LogAsync("Update", "Order", o.Id.ToString(), $"POS moved {o.OrderNumber} to Processing at {register.Store?.Name}"); } catch { }
+        return Json(new { success = true });
+    }
+
+    // Delivery: packed & handed to the courier → Shipped. Sends the "shipped" email (+ WhatsApp).
     [Authorize, HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> FulfilMarkPacked([FromBody] FulfilPackDto req)
     {
@@ -1283,40 +1326,63 @@ public class PosController : Controller
             return Json(new { success = false, message = "You're not assigned to this branch's POS." });
 
         var o = await _db.Orders.Include(x => x.Items).Include(x => x.User)
-            .FirstOrDefaultAsync(x => x.Id == req.OrderId && x.Channel == OrderChannel.Online && x.FulfillingStoreId == register.StoreId);
+            .FirstOrDefaultAsync(x => x.Id == req.OrderId && x.Channel == OrderChannel.Online
+                && x.FulfillmentType == FulfillmentType.Delivery && x.FulfillingStoreId == register.StoreId);
         if (o == null) return Json(new { success = false, message = "Order not found for this branch." });
-        if (o.FulfillmentType != FulfillmentType.Delivery)
-            return Json(new { success = false, message = "Only delivery orders are dispatched here." });
-        if (o.Status != OrderStatus.Confirmed && o.Status != OrderStatus.Processing)
-            return Json(new { success = false, message = $"Order is {o.Status} — not ready to dispatch." });
+        if (o.Status != OrderStatus.Processing)
+            return Json(new { success = false, message = $"Order is {o.Status} — move it to Processing first." });
 
-        var me = await _userManager.GetUserAsync(User);
-        var staff = me?.FullName ?? User.Identity?.Name ?? "staff";
-
+        var staff = (await _userManager.GetUserAsync(User))?.FullName ?? User.Identity?.Name ?? "staff";
         o.Status = OrderStatus.Shipped;
         o.UpdatedAt = DateTime.UtcNow;
         OrderNotes.AddSystem(_db, o.Id, $"Packed & dispatched by {staff} at {register.Store?.Name}.");
         await _db.SaveChangesAsync();
 
-        await SendPosShippedEmailAsync(o.Id);
+        await SendPosStatusEmailAsync(o.Id, "order_shipped", "Your order is on its way",
+            "Great news — your order {order} has been shipped and is on its way to you.");
         _ = _whatsapp.NotifyOrderAsync(o.Id, WhatsAppOrderEvent.Shipped);
         try { await _audit.LogAsync("Dispatch", "Order", o.Id.ToString(), $"POS packed & dispatched {o.OrderNumber} from {register.Store?.Name}"); } catch { }
-
         return Json(new { success = true });
     }
 
-    // The customer-facing "shipped" email, built from the shared order-email template. Best-effort.
-    private async Task SendPosShippedEmailAsync(int orderId)
+    // Store pickup: tell the customer their order is ready to collect (QR pass email) → ReadyForPickup.
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> FulfilNotifyPickup([FromBody] FulfilPackDto req)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { success = false, message = "This POS isn't set up." });
+        if (!await _access.CanWriteAsync(User, register.StoreId))
+            return Json(new { success = false, message = "You're not assigned to this branch's POS." });
+
+        var o = await _db.Orders.Include(x => x.Items).Include(x => x.User).Include(x => x.PickupStore)
+            .FirstOrDefaultAsync(x => x.Id == req.OrderId && x.Channel == OrderChannel.Online
+                && x.FulfillmentType == FulfillmentType.StorePickup && x.PickupStoreId == register.StoreId);
+        if (o == null) return Json(new { success = false, message = "Order not found for this branch." });
+        var email = o.User?.Email;
+        if (string.IsNullOrWhiteSpace(email)) return Json(new { success = false, message = "This customer has no email on file." });
+
+        if (string.IsNullOrEmpty(o.PickupToken))
+            o.PickupToken = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+        o.Status = OrderStatus.ReadyForPickup;
+        o.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var sent = await SendPosPickupReadyEmailAsync(o.Id);
+        _ = _whatsapp.NotifyOrderAsync(o.Id, WhatsAppOrderEvent.ReadyForPickup);
+        try { await _audit.LogAsync("Update", "Order", o.Id.ToString(), $"POS sent pickup-ready notice for {o.OrderNumber} at {register.Store?.Name}"); } catch { }
+        return Json(new { success = sent, message = sent ? null : "Couldn't send the email — check SMTP settings." });
+    }
+
+    // Customer-facing status email (processing / shipped), built from the shared order-email template.
+    private async Task SendPosStatusEmailAsync(int orderId, string key, string defaultSubject, string defaultIntro)
     {
         var order = await _db.Orders.Include(o => o.Items).Include(o => o.User)
             .FirstOrDefaultAsync(o => o.Id == orderId);
         var email = order?.User?.Email;
         if (order == null || string.IsNullOrWhiteSpace(email)) return;
 
-        const string key = "order_shipped";
-        var subject = await _settings.GetAsync($"email.{key}.subject", "Your order is on its way");
-        var introText = await _settings.GetAsync($"email.{key}.intro",
-            "Great news — your order {order} has been shipped and is on its way to you.");
+        var subject = await _settings.GetAsync($"email.{key}.subject", defaultSubject);
+        var introText = await _settings.GetAsync($"email.{key}.intro", defaultIntro);
         var firstName = string.IsNullOrWhiteSpace(order.User.FirstName) ? "there" : order.User.FirstName;
         var introHtml = OrderEmailTemplate.ApplyPlaceholders(introText, order.OrderNumber, order.CreatedAt, firstName);
         var imgs = await PrimaryImagesAsync(order.Items.Select(i => i.ProductId).Distinct().ToList());
@@ -1327,9 +1393,46 @@ public class PosController : Controller
         var sent = await _email.SendAsync(email!, subject, body, order.User.FullName);
         if (sent)
         {
-            OrderNotes.AddSystem(_db, order.Id, "'Shipped' status email sent to the customer.");
+            OrderNotes.AddSystem(_db, order.Id, $"'{key}' status email sent to the customer.");
             await _db.SaveChangesAsync();
         }
+    }
+
+    // Ready-for-pickup email with the QR collection pass. Absolute URLs from the current request.
+    private async Task<bool> SendPosPickupReadyEmailAsync(int orderId)
+    {
+        var order = await _db.Orders.Include(o => o.Items).Include(o => o.User).Include(o => o.PickupStore)
+            .FirstOrDefaultAsync(o => o.Id == orderId);
+        var email = order?.User?.Email;
+        if (order == null || string.IsNullOrWhiteSpace(email) || string.IsNullOrEmpty(order.PickupToken)) return false;
+
+        var subject = await _settings.GetAsync("email.ready_for_pickup.subject", "Your order is ready for pickup");
+        var introText = await _settings.GetAsync("email.ready_for_pickup.intro",
+            "Your order {order} is ready to collect. Show the QR code below at the counter and we'll hand it over.");
+        var firstName = string.IsNullOrWhiteSpace(order.User.FirstName) ? "there" : order.User.FirstName;
+        var introHtml = OrderEmailTemplate.ApplyPlaceholders(introText, order.OrderNumber, order.CreatedAt, firstName);
+        var baseUrl = $"{Request.Scheme}://{Request.Host}";
+        var passUrl = $"{baseUrl}/pickup/{order.PickupToken}";
+        var imgs = await PrimaryImagesAsync(order.Items.Select(i => i.ProductId).Distinct().ToList());
+        var items = order.Items
+            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, imgs.GetValueOrDefault(i.ProductId)))
+            .ToList();
+        string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+        var store = order.PickupStore;
+        var storeBlock = store == null ? "" :
+            $"<p style=\"font-weight:600;margin:18px 0 4px\">Pickup location</p><p style=\"margin:0\">{Enc(store.Name)}</p>"
+            + $"<p style=\"margin:0;color:#6b7280;font-size:13px\">{Enc($"{store.Address}, {store.City}, {store.State}".Trim(' ', ','))}</p>";
+        var qr = $"<div style=\"text-align:center;margin:18px 0\"><img src=\"{passUrl}/qr.png\" alt=\"Pickup QR\" width=\"180\" height=\"180\" style=\"width:180px;height:180px\"/><br/><span style=\"font:12px monospace;color:#6b7280\">{Enc(order.OrderNumber)}</span></div>{storeBlock}";
+        var body = OrderEmailTemplate.BuildStatusUpdate(subject, introHtml, order.OrderNumber, items, order.Total,
+            extraHtml: qr, buttonLabel: "View pickup pass", buttonHref: passUrl);
+        var sent = await _email.SendAsync(email!, subject, body, order.User.FullName);
+        if (sent)
+        {
+            order.PickupReadyEmailedAt = DateTime.UtcNow;
+            OrderNotes.AddSystem(_db, order.Id, "Ready-for-pickup email (with QR pass) sent to the customer from POS.");
+            await _db.SaveChangesAsync();
+        }
+        return sent;
     }
 
     // ── Customers (attach a buyer to a POS sale) ──────────────────────────────
