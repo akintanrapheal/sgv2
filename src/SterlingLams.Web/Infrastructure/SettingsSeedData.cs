@@ -161,6 +161,7 @@ public static class SettingsSeedData
 
         // ── POS / Pos ────────────────────────────────────────────────────────
         new() { Key = "pos.welcome_message", Group = "POS / Pos", Label = "Customer welcome message", Type = "textarea", Value = "Welcome to Sterlin Glams — where elegance meets you. Enjoy a beautiful shopping experience with us today.", Description = "Scrolls across the top of the POS screen to greet in-store customers. Blank = hide it.", SortOrder = 0 },
+        new() { Key = "pos.welcome_color", Group = "POS / Pos", Label = "Welcome message colour", Type = "text", Value = "default", Description = "Colour of the scrolling welcome message: default, white, gold, pink, or rainbow (animated multicolour).", SortOrder = 0 },
         new() { Key = "pos.receipt_header", Group = "POS / Pos", Label = "Receipt Header Line", Type = "text",     Value = "",                                  Description = "Extra line printed at the top of POS receipts (e.g. a slogan or address). Blank = none.", SortOrder = 1 },
         new() { Key = "pos.receipt_footer", Group = "POS / Pos", Label = "Receipt Footer Line", Type = "textarea", Value = "NO EXCHANGE OF GOODS, NO REFUND OF CASH",    Description = "Policy line printed below \"Thanks for shopping with …\" at the bottom of POS receipts.", SortOrder = 2 },
         // Receipt customizer. Address/phone/website blank = use each selling store's own details.

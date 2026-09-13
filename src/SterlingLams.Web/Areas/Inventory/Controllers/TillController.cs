@@ -189,6 +189,7 @@ public class TillController : InventoryAreaController
     {
         ViewData["Title"] = "POS Settings";
         ViewBag.WelcomeMessage = await _settings.GetAsync("pos.welcome_message", "Welcome to Sterlin Glams — where elegance meets you. Enjoy a beautiful shopping experience with us today.");
+        ViewBag.WelcomeColor = await _settings.GetAsync("pos.welcome_color", "default");
         ViewBag.ReceiptHeader = await _settings.GetAsync("pos.receipt_header", "");
         ViewBag.ReceiptFooter = await _settings.GetAsync("pos.receipt_footer", "Thank you for shopping with us!");
         ViewBag.ApprovalRefunds = await _settings.GetBoolAsync("pos.approval_refunds", false);
@@ -217,11 +218,14 @@ public class TillController : InventoryAreaController
         bool approvalRefunds, bool approvalDiscounts, int approvalDiscountMinPct,
         string? receiptBusinessName, string? receiptAddress, string? receiptPhone, string? receiptWebsite,
         string? receiptThanks, bool receiptShowLogo, bool receiptShowPoints, bool receiptShowBarcode,
-        string? receiptLogoUrl, int receiptLogoHeight, string? welcomeMessage)
+        string? receiptLogoUrl, int receiptLogoHeight, string? welcomeMessage, string? welcomeColor)
     {
+        var color = (welcomeColor ?? "default").Trim().ToLowerInvariant();
+        if (color is not ("default" or "white" or "gold" or "pink" or "rainbow")) color = "default";
         await _settings.SaveManyAsync(new Dictionary<string, string>
         {
             ["pos.welcome_message"] = welcomeMessage?.Trim() ?? "",
+            ["pos.welcome_color"] = color,
             ["pos.receipt_logo_url"] = receiptLogoUrl?.Trim() ?? "",
             ["pos.receipt_logo_height"] = Math.Clamp(receiptLogoHeight, 30, 160).ToString(),
             ["pos.receipt_header"] = receiptHeader?.Trim() ?? "",
