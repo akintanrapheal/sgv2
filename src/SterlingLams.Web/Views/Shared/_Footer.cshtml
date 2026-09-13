@@ -12,6 +12,9 @@
     var tiktok     = await SettingsService.GetAsync("general.tiktok_url");
     var tagline    = await SettingsService.GetAsync("general.tagline", "Timeless luxury jewellery crafted with the finest materials.");
     var logoUrl    = await SettingsService.GetAsync("general.logo_url");
+    // Fall back to the built-in Sterlin Glams logo when none is configured, and let admins size it.
+    var logoSrc    = string.IsNullOrWhiteSpace(logoUrl) ? "/images/sg-logo.png" : logoUrl;
+    var logoHeight = Math.Clamp(await SettingsService.GetIntAsync("general.logo_height", 72), 24, 200);
 
     // Normalise to null when unset so Razor omits the href entirely (an empty href="" would point the
     // icon at the current page). Each social box then shows always but only links once its URL is set.
@@ -130,17 +133,11 @@
         @* Centred brand logo — the footer's single logo, sitting above the payment badges. *@
         <div class="border-t border-neutral-800 mt-12 pt-10 flex justify-center">
             <a asp-controller="Home" asp-action="Index">
-                @if (!string.IsNullOrEmpty(logoUrl))
-                {
-                    @* A broken logo URL falls back to the text brand rather than a broken-image glyph. *@
-                    <img src="@logoUrl" alt="Sterlin Glams" class="h-14 w-auto mx-auto"
-                         onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block';" />
-                    <span class="font-cormorant text-2xl font-light tracking-[0.3em] uppercase text-white" style="display:none">Sterlin Glams</span>
-                }
-                else
-                {
-                    <span class="font-cormorant text-2xl font-light tracking-[0.3em] uppercase text-white">Sterlin Glams</span>
-                }
+                @* Admin-sized brand logo (built-in when none uploaded). A broken URL falls back to the
+                   text wordmark rather than a broken-image glyph. *@
+                <img src="@logoSrc" alt="Sterlin Glams" class="w-auto mx-auto" style="height:@(logoHeight)px"
+                     onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block';" />
+                <span class="font-cormorant text-2xl font-light tracking-[0.3em] uppercase text-white" style="display:none">Sterlin Glams</span>
             </a>
         </div>
 

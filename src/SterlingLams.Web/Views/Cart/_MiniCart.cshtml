@@ -25,7 +25,17 @@
                         {
                             <p class="text-xs text-neutral-400">@item.VariantName</p>
                         }
-                        <p class="text-sm text-neutral-600 mt-1">@item.Quantity &times; <span class="text-brand-600">@item.FormattedUnitPrice</span></p>
+                        <p class="text-xs text-neutral-400 mt-0.5">@item.FormattedUnitPrice each</p>
+                        <div class="mt-2 flex items-center justify-between gap-2">
+                            <div class="flex items-center border border-neutral-200 rounded">
+                                <button type="button" class="mini-qty w-7 h-7 flex items-center justify-center text-neutral-500 hover:bg-neutral-50 leading-none"
+                                        data-product-id="@item.ProductId" data-variant-id="@item.VariantId" data-delta="-1" aria-label="Decrease quantity">−</button>
+                                <span class="w-8 text-center text-sm tabular-nums">@item.Quantity</span>
+                                <button type="button" class="mini-qty w-7 h-7 flex items-center justify-center text-neutral-500 hover:bg-neutral-50 leading-none"
+                                        data-product-id="@item.ProductId" data-variant-id="@item.VariantId" data-delta="1" aria-label="Increase quantity">+</button>
+                            </div>
+                            <span class="text-sm text-brand-600">@item.FormattedLineTotal</span>
+                        </div>
                     </div>
                     <button type="button" class="mini-cart-remove text-neutral-300 hover:text-neutral-700 text-xl leading-none flex-shrink-0"
                             data-product-id="@item.ProductId" data-variant-id="@item.VariantId" aria-label="Remove @item.ProductName">&times;</button>

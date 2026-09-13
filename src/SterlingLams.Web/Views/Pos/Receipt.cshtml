@@ -6,8 +6,11 @@
     var siteName      = await Settings.GetAsync("general.site_name", "Sterlin Glams");
     var contactEmail  = await Settings.GetAsync("general.contact_email", "");
     var contactPhone  = await Settings.GetAsync("general.contact_phone", "");
-    var logoUrl       = await Settings.GetAsync("general.logo_url", "");
+    // Receipt logo: a receipt-specific override → the site logo → the built-in logo. Size is admin-set.
+    var logoUrl       = await Settings.GetAsync("pos.receipt_logo_url", "");
+    if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = await Settings.GetAsync("general.logo_url", "");
     if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = "/images/sg-logo.png";
+    var logoHeight    = Math.Clamp(await Settings.GetIntAsync("pos.receipt_logo_height", 76), 30, 160);
 
     // Receipt customizer
     var bizName       = await Settings.GetAsync("pos.receipt_business_name", "");
@@ -93,7 +96,7 @@
     <div class="r">
         @if (showLogo)
         {
-            <img src="@logoUrl" alt="" class="logo" onerror="this.style.display='none'" />
+            <img src="@logoUrl" alt="" class="logo" style="max-height:@(logoHeight)px" onerror="this.style.display='none'" />
         }
         <div class="biz">@bizName</div>
         <div class="addr">

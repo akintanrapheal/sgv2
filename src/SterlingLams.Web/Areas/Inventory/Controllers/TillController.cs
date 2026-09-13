@@ -202,6 +202,11 @@ public class TillController : InventoryAreaController
         ViewBag.ReceiptShowLogo = await _settings.GetBoolAsync("pos.receipt_show_logo", true);
         ViewBag.ReceiptShowPoints = await _settings.GetBoolAsync("pos.receipt_show_points", true);
         ViewBag.ReceiptShowBarcode = await _settings.GetBoolAsync("pos.receipt_show_barcode", true);
+        ViewBag.ReceiptLogoUrl = await _settings.GetAsync("pos.receipt_logo_url", "");
+        ViewBag.ReceiptLogoHeight = await _settings.GetIntAsync("pos.receipt_logo_height", 76);
+        // What the receipt actually prints when no receipt-specific logo is set (site logo → built-in).
+        var siteLogo = await _settings.GetAsync("general.logo_url", "");
+        ViewBag.ReceiptLogoFallback = string.IsNullOrWhiteSpace(siteLogo) ? "/images/sg-logo.png" : siteLogo;
         ViewBag.SiteName = await _settings.GetAsync("general.site_name", "Sterlin Glams");
         return View();
     }
@@ -210,10 +215,13 @@ public class TillController : InventoryAreaController
     public async Task<IActionResult> SaveSettings(string? receiptHeader, string? receiptFooter,
         bool approvalRefunds, bool approvalDiscounts, int approvalDiscountMinPct,
         string? receiptBusinessName, string? receiptAddress, string? receiptPhone, string? receiptWebsite,
-        string? receiptThanks, bool receiptShowLogo, bool receiptShowPoints, bool receiptShowBarcode)
+        string? receiptThanks, bool receiptShowLogo, bool receiptShowPoints, bool receiptShowBarcode,
+        string? receiptLogoUrl, int receiptLogoHeight)
     {
         await _settings.SaveManyAsync(new Dictionary<string, string>
         {
+            ["pos.receipt_logo_url"] = receiptLogoUrl?.Trim() ?? "",
+            ["pos.receipt_logo_height"] = Math.Clamp(receiptLogoHeight, 30, 160).ToString(),
             ["pos.receipt_header"] = receiptHeader?.Trim() ?? "",
             ["pos.receipt_footer"] = receiptFooter?.Trim() ?? "",
             ["pos.approval_refunds"] = approvalRefunds ? "true" : "false",

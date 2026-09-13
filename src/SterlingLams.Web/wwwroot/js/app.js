@@ -830,13 +830,31 @@ function bindProductCards(root) {
     if (backdrop) backdrop.addEventListener('click', hide);
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && isOpen) hide(); });
 
-    // Remove a line straight from the drawer.
+    // Remove a line, or step its quantity, straight from the drawer.
     body.addEventListener('click', async function (e) {
-        var btn = e.target.closest('.mini-cart-remove');
-        if (!btn) return;
+        var removeBtn = e.target.closest('.mini-cart-remove');
+        var qtyBtn = e.target.closest('.mini-qty');
+        if (!removeBtn && !qtyBtn) return;
         var token = await SiteHeader.ensureToken();
-        var params = new URLSearchParams({ productId: btn.dataset.productId, __RequestVerificationToken: token });
-        if (btn.dataset.variantId) params.append('variantId', btn.dataset.variantId);
+
+        if (qtyBtn) {
+            // Read the current quantity from the stepper and ask the server for the new one — it caps
+            // to available stock, then we re-render the drawer so the number/totals show the truth.
+            var wrap = qtyBtn.parentElement;
+            var current = parseInt((wrap.querySelector('span') || {}).textContent, 10) || 1;
+            var next = Math.max(0, current + parseInt(qtyBtn.dataset.delta, 10));
+            var p = new URLSearchParams({ productId: qtyBtn.dataset.productId, quantity: next, __RequestVerificationToken: token });
+            if (qtyBtn.dataset.variantId) p.append('variantId', qtyBtn.dataset.variantId);
+            try {
+                var r = await fetch('/Cart/UpdateQuantity', { method: 'POST', body: p });
+                var d = r.ok ? await r.json().catch(function () { return null; }) : null;
+                if (d && d.success) { updateCartBadge(d.cartCount); await refresh(); }
+            } catch (err) {}
+            return;
+        }
+
+        var params = new URLSearchParams({ productId: removeBtn.dataset.productId, __RequestVerificationToken: token });
+        if (removeBtn.dataset.variantId) params.append('variantId', removeBtn.dataset.variantId);
         try {
             var res = await fetch('/Cart/Remove', { method: 'POST', body: params });
             var data = res.ok ? await res.json().catch(function () { return null; }) : null;
