@@ -122,6 +122,14 @@ public class Order
     public string? PickupToken { get; set; }
     /// <summary>When the "ready for pickup" email (with the QR pass) was sent — used to send it once.</summary>
     public DateTime? PickupReadyEmailedAt { get; set; }
+    /// <summary>When a cashier marked this DELIVERY order packed (handed to logistics) at the POS. While
+    /// null it sits in the branch's "to pack" queue; once set it moves to fulfilment history. Shipping/
+    /// delivery itself is owned by logistics, not the POS.</summary>
+    public DateTime? PackedAt { get; set; }
+    /// <summary>Staff member who packed the delivery order / prepared the pickup at the POS, captured for
+    /// the admin order-processing report. Name is denormalised so the report never needs a user join.</summary>
+    public string? PackedByUserId { get; set; }
+    public string? PackedByName { get; set; }
 
     public string? TrackingNumber { get; set; }
     public string? Notes { get; set; }

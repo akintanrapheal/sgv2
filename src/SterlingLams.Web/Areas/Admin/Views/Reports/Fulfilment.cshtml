@@ -1,0 +1,92 @@
+@model List<SterlingLams.Web.Areas.Admin.Controllers.ReportsController.FulfilRow>
+@{
+    ViewData["Title"] = "Order Processing";
+    var from = (DateTime)ViewBag.From;
+    var to = (DateTime)ViewBag.To;
+    var storeId = ViewBag.StoreId as int?;
+    var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
+    var processed = Model.Count(r => r.ProcessedOn != null);
+}
+
+@await Html.PartialAsync("_ReportTabs", "Fulfilment")
+
+<form method="get" class="flex flex-wrap items-end gap-3 mb-6">
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">From</label>
+        <input type="date" name="from" value="@from.ToString("yyyy-MM-dd")" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+    </div>
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">To</label>
+        <input type="date" name="to" value="@to.ToString("yyyy-MM-dd")" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+    </div>
+    <div>
+        <label class="block text-xs text-neutral-500 mb-1">Branch</label>
+        <select name="storeId" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm">
+            <option value="">All branches</option>
+            @foreach (var s in stores)
+            {
+                <option value="@s.Id" selected="@(storeId == s.Id)">@s.Name</option>
+            }
+        </select>
+    </div>
+    <button class="px-4 py-1.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Apply</button>
+    <a asp-action="FulfilmentCsv" asp-route-from="@from.ToString("yyyy-MM-dd")" asp-route-to="@to.ToString("yyyy-MM-dd")" asp-route-storeId="@storeId"
+       class="px-4 py-1.5 border border-neutral-300 text-neutral-700 text-sm rounded-sm hover:bg-neutral-50 transition-colors ml-auto">Export CSV</a>
+</form>
+
+<div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Orders in range</p><p class="text-xl font-light text-neutral-900 mt-1">@Model.Count</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Processed / packed</p><p class="text-xl font-light text-neutral-900 mt-1">@processed</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Awaiting processing</p><p class="text-xl font-light text-amber-600 mt-1">@(Model.Count - processed)</p>
+    </div>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="text-left text-xs text-neutral-400 border-b border-neutral-100">
+                <th class="px-4 py-3 font-medium">Order</th>
+                <th class="px-4 py-3 font-medium">Placed</th>
+                <th class="px-4 py-3 font-medium">Customer</th>
+                <th class="px-4 py-3 font-medium">Phone</th>
+                <th class="px-4 py-3 font-medium">Address</th>
+                <th class="px-4 py-3 font-medium">Type</th>
+                <th class="px-4 py-3 font-medium">Store</th>
+                <th class="px-4 py-3 font-medium">Processed by</th>
+                <th class="px-4 py-3 font-medium">Processed on</th>
+                <th class="px-4 py-3 font-medium">Status</th>
+                <th class="px-4 py-3 font-medium text-right">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            @if (!Model.Any())
+            {
+                <tr><td colspan="11" class="px-4 py-10 text-center text-neutral-400">No orders in this range.</td></tr>
+            }
+            @foreach (var r in Model)
+            {
+                <tr class="border-b border-neutral-50 hover:bg-neutral-50/60">
+                    <td class="px-4 py-3 font-medium text-neutral-800 whitespace-nowrap">@r.OrderNumber</td>
+                    <td class="px-4 py-3 text-neutral-500 whitespace-nowrap">@r.Placed.ToString("dd MMM, HH:mm")</td>
+                    <td class="px-4 py-3 text-neutral-700 whitespace-nowrap">@r.Customer</td>
+                    <td class="px-4 py-3 text-neutral-500 whitespace-nowrap">@r.Phone</td>
+                    <td class="px-4 py-3 text-neutral-500 max-w-[220px] truncate" title="@r.Address">@r.Address</td>
+                    <td class="px-4 py-3 whitespace-nowrap">
+                        <span class="text-xs font-medium px-2 py-0.5 rounded-full @(r.Type == "Store pickup" ? "bg-brand-50 text-brand-600" : "bg-sky-50 text-sky-600")">@r.Type</span>
+                    </td>
+                    <td class="px-4 py-3 text-neutral-600 whitespace-nowrap">@r.Store</td>
+                    <td class="px-4 py-3 text-neutral-700 whitespace-nowrap">@(string.IsNullOrEmpty(r.PackedBy) ? "—" : r.PackedBy)</td>
+                    <td class="px-4 py-3 text-neutral-500 whitespace-nowrap">@(r.ProcessedOn.HasValue ? r.ProcessedOn.Value.ToString("dd MMM, HH:mm") : "—")</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-neutral-600">@r.Status</td>
+                    <td class="px-4 py-3 text-right font-medium text-neutral-800 whitespace-nowrap">₦@r.Total.ToString("N0")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+<p class="text-xs text-neutral-400 mt-3">"Processed by" and "Processed on" record the cashier who packed the delivery order (or prepared the store-pickup) and when. Delivery itself is completed by logistics. Times are West Africa Time.</p>
