@@ -249,32 +249,48 @@
             @if (Model.StoreStock.Any())
             {
                 <div class="mb-8" id="store-stock">
-                    <p class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-4">Availability by branch</p>
+                    <div class="mb-4 flex items-baseline justify-between gap-3">
+                        <p class="text-xs tracking-[0.2em] uppercase text-neutral-500">Availability by branch</p>
+                        @if (Model.Variants.Any())
+                        {
+                            <span id="stock-summary" class="text-xs text-neutral-400 tabular-nums hidden"></span>
+                        }
+                        else
+                        {
+                            var inCount = Model.StoreStock.Count(s => s.Quantity > 0);
+                            <span class="text-xs text-neutral-400 tabular-nums">@inCount of @Model.StoreStock.Count in stock</span>
+                        }
+                    </div>
                     @if (Model.Variants.Any())
                     {
                         @* Variant product: counts are per chosen option, so wait for a selection. *@
-                        <p id="stock-prompt" class="text-sm text-neutral-400">Select an option above to see stock at each branch.</p>
-                        <div id="store-stock-list" class="space-y-2.5 hidden"></div>
+                        <p id="stock-prompt" class="text-sm text-neutral-400 rounded-2xl border border-dashed border-neutral-200 px-4 py-5 text-center">Select an option above to see stock at each branch.</p>
+                        <div id="store-stock-list" class="hidden divide-y divide-neutral-100 rounded-2xl border border-neutral-100 overflow-hidden"></div>
                     }
                     else
                     {
-                        <div class="space-y-2.5">
+                        <div class="divide-y divide-neutral-100 rounded-2xl border border-neutral-100 overflow-hidden">
                             @foreach (var store in Model.StoreStock)
                             {
                                 var qty = store.Quantity;
                                 var low = qty > 0 && qty <= lowStockThreshold;
-                                <div class="flex items-center justify-between rounded-lg border border-neutral-100 px-4 py-3 transition-colors hover:border-neutral-200">
-                                    <span class="flex items-center gap-2.5 min-w-0">
-                                        <span class="w-2 h-2 rounded-full flex-shrink-0 @(qty == 0 ? "bg-neutral-300" : low ? "bg-amber-500" : "bg-emerald-500")"></span>
-                                        <span class="text-sm text-neutral-700 truncate">@store.StoreName.Replace("Sterlin Glams ", "")</span>
+                                var chip = qty == 0 ? "bg-neutral-100 text-neutral-300" : low ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600";
+                                <div class="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-neutral-50">
+                                    <span class="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center @chip">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/></svg>
+                                    </span>
+                                    <span class="min-w-0 flex-1">
+                                        <span class="block text-sm font-medium text-neutral-800 truncate">@store.StoreName.Replace("Sterlin Glams ", "")</span>
                                     </span>
                                     @if (qty > 0)
                                     {
-                                        <span class="text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap @(low ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700")">@qty in stock</span>
+                                        <span class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full whitespace-nowrap @(low ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700")">
+                                            <span class="w-1.5 h-1.5 rounded-full @(low ? "bg-amber-500" : "bg-emerald-500")"></span>@(low ? $"Only {qty} left" : $"{qty} in stock")
+                                        </span>
                                     }
                                     else
                                     {
-                                        <span class="text-xs px-2.5 py-1 rounded-full bg-neutral-100 text-neutral-400 whitespace-nowrap">Out of stock</span>
+                                        <span class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full whitespace-nowrap bg-neutral-100 text-neutral-400">Out of stock</span>
                                     }
                                 </div>
                             }
@@ -833,12 +849,24 @@
     };
 
     // ── Qty selector ──────────────────────────────────────────────────────
+    // Never let the customer pick more than is actually in stock (the server caps too, but this
+    // keeps the number honest so "Add to bag" can't promise 7 when only 3 exist).
+    //  · simple product  → combined available across branches
+    //  · variant chosen  → that variant's own combined available
+    const SIMPLE_MAX = Math.max(0, @Model.TotalStock);
+    function getMaxQty() {
+        if (selectedVariantId) {
+            const v = variants.find(x => x.id === selectedVariantId);
+            if (v) return Math.max(1, v.available);
+        }
+        return Math.max(1, SIMPLE_MAX);
+    }
     const qtyDisplay = document.getElementById('qty-display');
     document.getElementById('qty-minus')?.addEventListener('click', () => {
         if (qty > 1) { qty--; qtyDisplay.textContent = qty; }
     });
     document.getElementById('qty-plus')?.addEventListener('click', () => {
-        if (qty < 10) { qty++; qtyDisplay.textContent = qty; }
+        if (qty < getMaxQty()) { qty++; qtyDisplay.textContent = qty; }
     });
 
     // ── Dropdown-based variant selection ──────────────────────────────────────
@@ -910,23 +938,33 @@
     const stockList = document.getElementById('store-stock-list');
     const stockPrompt = document.getElementById('stock-prompt');
     const escHtml = s => { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
+    const PIN = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/></svg>';
     function renderVariantStock(stores) {
         if (!stockList) return;
-        stockList.innerHTML = (stores || []).map(s => {
-            const dot = s.qty === 0 ? 'bg-neutral-300' : (s.low ? 'bg-amber-500' : 'bg-emerald-500');
+        const list = stores || [];
+        stockList.innerHTML = list.map(s => {
+            const chip = s.qty === 0 ? 'bg-neutral-100 text-neutral-300' : (s.low ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600');
             const right = s.qty > 0
-                ? '<span class="text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap ' + (s.low ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700') + '">' + s.qty + ' in stock</span>'
-                : '<span class="text-xs px-2.5 py-1 rounded-full bg-neutral-100 text-neutral-400 whitespace-nowrap">Out of stock</span>';
-            return '<div class="flex items-center justify-between rounded-lg border border-neutral-100 px-4 py-3 transition-colors hover:border-neutral-200">'
-                 + '<span class="flex items-center gap-2.5 min-w-0"><span class="w-2 h-2 rounded-full flex-shrink-0 ' + dot + '"></span>'
-                 + '<span class="text-sm text-neutral-700 truncate">' + escHtml(s.name) + '</span></span>' + right + '</div>';
+                ? '<span class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full whitespace-nowrap ' + (s.low ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700') + '"><span class="w-1.5 h-1.5 rounded-full ' + (s.low ? 'bg-amber-500' : 'bg-emerald-500') + '"></span>' + (s.low ? ('Only ' + s.qty + ' left') : (s.qty + ' in stock')) + '</span>'
+                : '<span class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full whitespace-nowrap bg-neutral-100 text-neutral-400">Out of stock</span>';
+            return '<div class="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-neutral-50">'
+                 + '<span class="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ' + chip + '">' + PIN + '</span>'
+                 + '<span class="min-w-0 flex-1"><span class="block text-sm font-medium text-neutral-800 truncate">' + escHtml(s.name) + '</span></span>'
+                 + right + '</div>';
         }).join('');
         stockList.classList.remove('hidden');
         stockPrompt?.classList.add('hidden');
+        const summary = document.getElementById('stock-summary');
+        if (summary) {
+            const inCount = list.filter(s => s.qty > 0).length;
+            summary.textContent = inCount + ' of ' + list.length + ' in stock';
+            summary.classList.remove('hidden');
+        }
     }
     function resetVariantStock() {
         stockList?.classList.add('hidden');
         stockPrompt?.classList.remove('hidden');
+        document.getElementById('stock-summary')?.classList.add('hidden');
     }
 
     // Variant dropdown change handler (wired via addEventListener below — CSP-safe).
@@ -955,6 +993,9 @@
                 }
                 nudge?.classList.toggle('hidden', !match.lowStock);
                 renderVariantStock(match.stores);
+                // If they'd already bumped the quantity above this variant's stock, pull it back.
+                const cap = getMaxQty();
+                if (qty > cap) { qty = Math.max(1, cap); if (qtyDisplay) qtyDisplay.textContent = qty; }
                 // The main price (below) already updates to this variant's full price via
                 // applyVariantPrice(), so no separate "+₦X for this option" note is needed.
             } else {
@@ -1005,7 +1046,11 @@
             const data = res.ok ? await res.json().catch(() => null) : null;
             if (data && data.success) {
                 updateCartBadge(data.cartCount);
-                showToast(`Added to bag — ${qty > 1 ? qty + ' items' : '@Model.Name'}`);
+                // Slide open the bag (desktop + mobile). It shows the real saved quantity — which the
+                // server caps to stock — so it never claims more than was actually added. Toast is a
+                // fallback only if the drawer module didn't load.
+                if (window.SGCart) { window.SGCart.open(); }
+                else { showToast('Added to bag'); }
             } else {
                 showToast((data && data.message) || 'Sorry, we couldn’t add this to your bag.');
             }
