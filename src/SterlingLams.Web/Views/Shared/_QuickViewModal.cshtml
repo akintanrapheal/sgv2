@@ -31,9 +31,12 @@
 
             <!-- Availability by branch (per selected option) -->
             <div id="qv-store-stock" class="mb-5 hidden">
-                <p class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-3">Availability by branch</p>
-                <p id="qv-stock-prompt" class="text-sm text-neutral-400 hidden">Select an option above to see stock at each branch.</p>
-                <div id="qv-stock-list" class="space-y-2"></div>
+                <div class="mb-3 flex items-baseline justify-between gap-3">
+                    <p class="text-xs tracking-[0.2em] uppercase text-neutral-500">Availability by branch</p>
+                    <span id="qv-stock-summary" class="text-xs text-neutral-400 tabular-nums hidden"></span>
+                </div>
+                <p id="qv-stock-prompt" class="text-sm text-neutral-400 rounded-2xl border border-dashed border-neutral-200 px-4 py-5 text-center hidden">Select an option above to see stock at each branch.</p>
+                <div id="qv-stock-list" class="hidden divide-y divide-neutral-100 rounded-2xl border border-neutral-100 overflow-hidden"></div>
             </div>
 
             <p id="qv-msg" class="text-xs text-amber-600 mb-3 hidden"></p>

@@ -431,23 +431,35 @@ function renderQvStock(list) {
     const wrap = document.getElementById('qv-store-stock');
     const prompt = document.getElementById('qv-stock-prompt');
     const listEl = document.getElementById('qv-stock-list');
+    const summary = document.getElementById('qv-stock-summary');
     if (!wrap || !listEl) return;
     if (!qvState.storeStock || !qvState.storeStock.length) { wrap.classList.add('hidden'); return; }
     wrap.classList.remove('hidden');
-    if (!list) { prompt.classList.remove('hidden'); listEl.classList.add('hidden'); listEl.innerHTML = ''; return; }
+    if (!list) {
+        prompt.classList.remove('hidden'); listEl.classList.add('hidden'); listEl.innerHTML = '';
+        if (summary) summary.classList.add('hidden');
+        return;
+    }
     prompt.classList.add('hidden'); listEl.classList.remove('hidden');
     const thr = qvState.lowStockThreshold || 0;
     const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    const pin = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/></svg>';
     listEl.innerHTML = list.map(s => {
         const qty = s.qty, low = thr > 0 && qty > 0 && qty <= thr;
-        const dot = qty === 0 ? 'bg-neutral-300' : low ? 'bg-amber-500' : 'bg-emerald-500';
+        const chip = qty === 0 ? 'bg-neutral-100 text-neutral-300' : low ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600';
         const badge = qty > 0
-            ? '<span class="text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap ' + (low ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700') + '">' + qty + ' in stock</span>'
-            : '<span class="text-xs px-2.5 py-1 rounded-full bg-neutral-100 text-neutral-400 whitespace-nowrap">Out of stock</span>';
-        return '<div class="flex items-center justify-between rounded-lg border border-neutral-100 px-4 py-2.5">'
-            + '<span class="flex items-center gap-2.5 min-w-0"><span class="w-2 h-2 rounded-full flex-shrink-0 ' + dot + '"></span>'
-            + '<span class="text-sm text-neutral-700 truncate">' + esc(s.name) + '</span></span>' + badge + '</div>';
+            ? '<span class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full whitespace-nowrap ' + (low ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700') + '"><span class="w-1.5 h-1.5 rounded-full ' + (low ? 'bg-amber-500' : 'bg-emerald-500') + '"></span>' + (low ? ('Only ' + qty + ' left') : (qty + ' in stock')) + '</span>'
+            : '<span class="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full whitespace-nowrap bg-neutral-100 text-neutral-400">Out of stock</span>';
+        return '<div class="flex items-center gap-3 px-4 py-3.5 transition-colors hover:bg-neutral-50">'
+            + '<span class="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ' + chip + '">' + pin + '</span>'
+            + '<span class="min-w-0 flex-1"><span class="block text-sm font-medium text-neutral-800 truncate">' + esc(s.name) + '</span></span>'
+            + badge + '</div>';
     }).join('');
+    if (summary) {
+        const inCount = list.filter(s => s.qty > 0).length;
+        summary.textContent = inCount + ' of ' + list.length + ' in stock';
+        summary.classList.remove('hidden');
+    }
 }
 
 function onQuickViewSelect() {
