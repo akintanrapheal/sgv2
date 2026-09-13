@@ -86,7 +86,11 @@ public class AbandonedCartService : BackgroundService
         foreach (var ab in candidates)
         {
             // Did they buy after this snapshot? Then it's not abandoned — stop the sequence.
-            var converted = await db.Orders.AnyAsync(o => o.User.Email == ab.Email && o.IsPaid && o.CreatedAt >= ab.CreatedAt, ct);
+            // Grace of 15 min: PlaceOrder re-captures the snapshot (resetting its clock) a moment
+            // AFTER the order row is created, so the paid order's CreatedAt is a hair before the
+            // snapshot's — without the grace a paid customer would keep getting reminders.
+            var convertedSince = ab.CreatedAt.AddMinutes(-15);
+            var converted = await db.Orders.AnyAsync(o => o.User.Email == ab.Email && o.IsPaid && o.CreatedAt >= convertedSince, ct);
             if (converted) { ab.RecoveredAt = now; continue; }
 
             var stepIndex = ab.RemindersSent;               // 0-based next step
@@ -193,7 +197,7 @@ public class AbandonedCartService : BackgroundService
 
         foreach (var ab in candidates)
         {
-            var converted = await db.Orders.AnyAsync(o => o.User.Email == ab.Email && o.IsPaid && o.CreatedAt >= ab.CreatedAt, ct);
+            var converted = await db.Orders.AnyAsync(o => o.User.Email == ab.Email && o.IsPaid && o.CreatedAt >= ab.CreatedAt.AddMinutes(-15), ct);
             if (converted) { ab.RecoveredAt = now; continue; }
 
             List<CartSnap>? lines;

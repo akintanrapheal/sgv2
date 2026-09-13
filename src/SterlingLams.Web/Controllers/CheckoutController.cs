@@ -716,6 +716,10 @@ public class CheckoutController : Controller
                 SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
                     $"Payment via {_payment.ProviderName} successful (Transaction Reference: {refToVerify}).");
             await _db.SaveChangesAsync();
+            // Payment landed → close this buyer's abandoned-cart snapshot so they get no more
+            // "you left something in your bag" reminders for a bag they've already paid for.
+            var buyerEmail = await _db.Users.Where(u => u.Id == order.UserId).Select(u => u.Email).FirstOrDefaultAsync();
+            await MarkAbandonedRecoveredAsync(buyerEmail);
             if (wasUnpaid)
             {
                 try { await _audit.LogAsync("Payment", "Order", order.Id.ToString(), $"Payment received for {order.OrderNumber} — ₦{order.Total:N0} ({_payment.ProviderName})"); } catch { }
@@ -776,6 +780,7 @@ public class CheckoutController : Controller
         order.PaymentReference = $"SIM-DEV-{order.OrderNumber}";
         order.PaymentProvider = "Simulated (Dev Only)";
         await _db.SaveChangesAsync();
+        await MarkAbandonedRecoveredAsync(user.Email);
 
         var outcome = await _fulfilment.FulfilPaidOrderAsync(order.Id);
         if (outcome == SterlingLams.Web.Services.FulfilOutcome.SoldOut)
@@ -1036,4 +1041,17 @@ public class CheckoutController : Controller
         await HttpContext.RequestServices
             .GetRequiredService<SterlingLams.Web.Services.IAbandonedCartCapture>()
             .CaptureAsync(email, cart);
+
+    /// <summary>Closes the abandoned-cart snapshot once payment lands, so a paid customer never gets a
+    /// "you left something in your bag" reminder. Best-effort — never blocks the payment flow.</summary>
+    private async Task MarkAbandonedRecoveredAsync(string? email)
+    {
+        try
+        {
+            await HttpContext.RequestServices
+                .GetRequiredService<SterlingLams.Web.Services.IAbandonedCartCapture>()
+                .MarkRecoveredAsync(email);
+        }
+        catch { /* recovery bookkeeping — never break checkout */ }
+    }
 }
