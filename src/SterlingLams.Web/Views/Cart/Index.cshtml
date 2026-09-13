@@ -67,7 +67,8 @@
                         </div>
                     </div>
                     <div class="text-right flex-shrink-0">
-                        <p class="font-light text-neutral-800">@item.FormattedLineTotal</p>
+                        <p class="line-total font-light text-neutral-800"
+                           data-product-id="@item.ProductId" data-variant-id="@item.VariantId">@item.FormattedLineTotal</p>
                     </div>
                 </div>
             }
@@ -201,7 +202,6 @@
     // ── Quantity buttons ───────────────────────────────────────────────────
     document.querySelectorAll('.qty-btn').forEach(btn => {
         btn.addEventListener('click', async () => {
-            const row   = btn.closest('[data-product-id]') ?? btn.parentElement.parentElement.parentElement.parentElement;
             const pid   = btn.dataset.productId;
             const vid   = btn.dataset.variantId ?? '';
             const delta = parseInt(btn.dataset.delta, 10);
@@ -214,12 +214,21 @@
                 body: `productId=${pid}&variantId=${vid}&quantity=${newQty}&__RequestVerificationToken=${encodeURIComponent(token())}`
             });
             const data = await res.json();
-            if (data.success) {
-                if (newQty <= 0) { location.reload(); return; }
-                display.textContent = newQty;
-                document.getElementById('subtotal-display').textContent = data.subtotal;
-                document.getElementById('total-display').textContent    = data.subtotal;
-                updateCartBadge(data.cartCount);
+            if (!data.success) return;
+            if (newQty <= 0 || data.quantity <= 0) { location.reload(); return; }
+
+            // Use the ACTUAL applied quantity — the server caps it to available stock, so if they
+            // hit "+" past the limit the number simply holds instead of over-promising.
+            display.textContent = data.quantity;
+            const line = document.querySelector('.line-total[data-product-id="' + pid + '"][data-variant-id="' + vid + '"]');
+            if (line) line.textContent = data.lineTotal;
+            document.getElementById('subtotal-display').textContent = data.subtotal;
+            document.getElementById('total-display').textContent    = data.total;
+            const discAmt = document.getElementById('discount-amount-display');
+            if (discAmt && data.hasDiscount) discAmt.textContent = data.discount;
+            updateCartBadge(data.cartCount);
+            if (data.capped && typeof showToast === 'function') {
+                showToast('Only ' + data.maxQuantity + ' of this item ' + (data.maxQuantity === 1 ? 'is' : 'are') + ' available.');
             }
         });
     });

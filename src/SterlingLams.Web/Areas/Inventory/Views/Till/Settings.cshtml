@@ -13,6 +13,9 @@
     var showLogo = ViewBag.ReceiptShowLogo as bool? ?? true;
     var showPoints = ViewBag.ReceiptShowPoints as bool? ?? true;
     var showBarcode = ViewBag.ReceiptShowBarcode as bool? ?? true;
+    var rcLogoUrl = ViewBag.ReceiptLogoUrl as string ?? "";
+    var rcLogoHeight = ViewBag.ReceiptLogoHeight as int? ?? 76;
+    var rcLogoFallback = ViewBag.ReceiptLogoFallback as string ?? "/images/sg-logo.png";
     var siteName = ViewBag.SiteName as string ?? "Sterlin Glams";
 }
 
@@ -82,6 +85,19 @@
                     <input type="checkbox" name="receiptShowLogo" value="true" id="f-logo" @(showLogo ? "checked" : "") class="rounded border-neutral-300 accent-emerald-600 w-4 h-4" />
                     <span class="text-sm text-neutral-800">Logo</span>
                 </label>
+                <div class="ml-6 mb-3 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_120px] gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-neutral-700 mb-1">Receipt logo URL</label>
+                        <input type="text" name="receiptLogoUrl" id="f-logo-url" value="@rcLogoUrl" placeholder="Blank = your site logo"
+                               class="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500" />
+                        <p class="text-[11px] text-neutral-400 mt-1">Paste an image URL, or leave blank to use the Site Logo from Admin → Settings.</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-neutral-700 mb-1">Logo size (px)</label>
+                        <input type="number" name="receiptLogoHeight" id="f-logo-height" value="@rcLogoHeight" min="30" max="160"
+                               class="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500" />
+                    </div>
+                </div>
                 <label class="flex items-center gap-2.5 cursor-pointer mb-2.5">
                     <input type="checkbox" name="receiptShowPoints" value="true" id="f-points" @(showPoints ? "checked" : "") class="rounded border-neutral-300 accent-emerald-600 w-4 h-4" />
                     <span class="text-sm text-neutral-800">Loyalty points <span class="text-[11px] text-neutral-400">(when a customer is attached)</span></span>
@@ -129,7 +145,7 @@
         <p class="text-[11px] uppercase tracking-wide text-neutral-400 mb-2">Live preview</p>
         <div class="bg-neutral-100 rounded-xl p-4 flex justify-center">
             <div id="rc-preview" style="width:300px;background:#fff;color:#000;padding:14px 12px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.4;box-shadow:0 4px 18px rgba(0,0,0,.12);">
-                <img id="pv-logo" src="/images/sg-logo.png" style="display:block;margin:0 auto 6px;max-width:150px;max-height:56px;object-fit:contain" onerror="this.style.display='none'" />
+                <img id="pv-logo" src="@(string.IsNullOrWhiteSpace(rcLogoUrl) ? rcLogoFallback : rcLogoUrl)" data-fallback="@rcLogoFallback" style="display:block;margin:0 auto 6px;max-width:150px;max-height:@(rcLogoHeight)px;object-fit:contain" onerror="this.style.display='none'" />
                 <div id="pv-biz" style="text-align:center;font-weight:800;font-size:15px;margin-bottom:3px"></div>
                 <div id="pv-addr" style="text-align:center;font-size:11px"></div>
                 <div id="pv-header" style="text-align:center;font-size:11px;margin-top:4px"></div>
@@ -184,11 +200,17 @@
         document.getElementById('pv-header').innerHTML = hdr ? esc(hdr) : '';
         document.getElementById('pv-thanks').textContent = val('f-thanks') || ('Thanks for shopping with ' + siteName);
         document.getElementById('pv-footer').innerHTML = esc(val('f-footer')).replace(/\n/g, '<br>');
-        document.getElementById('pv-logo').style.display = checked('f-logo') ? '' : 'none';
+        var pvLogo = document.getElementById('pv-logo');
+        pvLogo.style.display = checked('f-logo') ? '' : 'none';
+        // Live logo preview: chosen URL → the site-logo fallback; and the admin-set size.
+        var wanted = val('f-logo-url') || pvLogo.getAttribute('data-fallback') || '';
+        if (pvLogo.getAttribute('src') !== wanted) { pvLogo.style.display = checked('f-logo') ? '' : 'none'; pvLogo.src = wanted; }
+        var h = parseInt(val('f-logo-height'), 10);
+        pvLogo.style.maxHeight = (h >= 30 && h <= 160 ? h : 76) + 'px';
         document.getElementById('pv-points').style.display = checked('f-points') ? '' : 'none';
         document.getElementById('pv-barcode').style.display = checked('f-barcode') ? '' : 'none';
     }
-    ['f-biz','f-address','f-phone','f-website','f-header','f-thanks','f-footer'].forEach(function (id) {
+    ['f-biz','f-address','f-phone','f-website','f-header','f-thanks','f-footer','f-logo-url','f-logo-height'].forEach(function (id) {
         var e = document.getElementById(id); if (e) e.addEventListener('input', render);
     });
     ['f-logo','f-points','f-barcode'].forEach(function (id) {

@@ -163,6 +163,7 @@ public class CartController : Controller
         var cart = GetCart();
         var item = cart.Items.FirstOrDefault(i => i.ProductId == productId && i.VariantId == variantId);
 
+        var capped = false;
         if (item != null)
         {
             if (quantity <= 0)
@@ -170,13 +171,32 @@ public class CartController : Controller
             else
             {
                 item.MaxQuantity = await CombinedAvailableAsync(productId, variantId); // refresh against live stock (per variant)
-                item.Quantity = Math.Min(quantity, Math.Max(1, item.MaxQuantity));
+                var clamped = Math.Min(quantity, Math.Max(1, item.MaxQuantity));
+                capped = clamped < quantity;      // asked for more than we have
+                item.Quantity = clamped;
             }
         }
 
+        await ApplyAutomaticDiscountAsync(cart); // keep any spend-threshold promo in step with the new subtotal
         SaveCart(cart);
         await SyncAbandonedAsync(cart);
-        return Json(new { success = true, cartCount = cart.TotalItems, subtotal = cart.FormattedSubtotal });
+
+        // Return the ACTUAL applied figures so the page shows the truth (never the number the shopper
+        // asked for when stock capped it) and can live-update the line, subtotal and total in place.
+        var applied = cart.Items.FirstOrDefault(i => i.ProductId == productId && i.VariantId == variantId);
+        return Json(new
+        {
+            success = true,
+            cartCount = cart.TotalItems,
+            quantity = applied?.Quantity ?? 0,
+            maxQuantity = applied?.MaxQuantity ?? 0,
+            capped,
+            lineTotal = applied?.FormattedLineTotal ?? "₦0",
+            subtotal = cart.FormattedSubtotal,
+            total = cart.FormattedTotal,
+            hasDiscount = cart.HasDiscount,
+            discount = cart.FreeShipping && cart.DiscountAmount == 0 ? "Free shipping" : cart.FormattedDiscount
+        });
     }
 
     /// <summary>Combined AVAILABLE stock (on-hand minus reservations held by unpaid orders) across
