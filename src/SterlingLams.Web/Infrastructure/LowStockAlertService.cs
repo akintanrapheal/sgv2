@@ -50,9 +50,12 @@ public class LowStockAlertService : BackgroundService
             return; // not due yet
 
         var adminEmail = await settings.GetAsync("notifications.admin_email", "");
-        if (string.IsNullOrWhiteSpace(adminEmail))
+        // Per-store digest: each branch also gets a low-stock email for ITS OWN stock, to the store's
+        // email. On by default; the admin all-branches digest still goes to notifications.admin_email.
+        var perStore = await settings.GetBoolAsync("notifications.low_stock_per_store", true);
+        if (string.IsNullOrWhiteSpace(adminEmail) && !perStore)
         {
-            _logger.LogWarning("Low-stock alerts are on but notifications.admin_email is not set.");
+            _logger.LogWarning("Low-stock alerts are on but no admin email and per-store digests are off.");
             return;
         }
 
@@ -80,26 +83,24 @@ public class LowStockAlertService : BackgroundService
 
         if (items.Count == 0) return; // nothing to flag → no email
 
-        var negative = items.Count(x => x.Status == "Negative");
-        var outOf = items.Count(x => x.Status == "Out");
-        var lowCnt = items.Count(x => x.Status == "Low");
-        var branchCount = items.Select(x => x.Branch).Distinct().Count();
-
-        string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
-        string Badge(string? st) => st switch
+        static string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+        static string Badge(string? st) => st switch
         {
             "Negative" => "<span style=\"color:#b91c1c;font-weight:600;\">Negative</span>",
             "Out"      => "<span style=\"color:#dc2626;\">Out of stock</span>",
             _           => "<span style=\"color:#b45309;\">Low</span>"
         };
-
-        // Group by branch; within a branch order Negative → Out → Low, then by on-hand.
         var rank = new Dictionary<string, int> { ["Negative"] = 0, ["Out"] = 1, ["Low"] = 2 };
-        var sections = string.Join("", items
-            .GroupBy(x => x.Branch).OrderBy(g => g.Key)
-            .Select(g =>
+
+        // Build a digest body from a set of flagged items (one section per branch).
+        string BuildBody(IEnumerable<dynamic> list)
+        {
+            var ls = list.ToList();
+            int neg = ls.Count(x => x.Status == "Negative"), o = ls.Count(x => x.Status == "Out"), lo = ls.Count(x => x.Status == "Low");
+            var branches = ls.Select(x => (string)x.Branch).Distinct().Count();
+            var sections = string.Join("", ls.GroupBy(x => (string)x.Branch).OrderBy(g => g.Key).Select(g =>
             {
-                var rows = string.Join("", g.OrderBy(x => rank[x.Status!]).ThenBy(x => x.OnHand).Take(100).Select(x =>
+                var rows = string.Join("", g.OrderBy(x => rank[(string)x.Status]).ThenBy(x => (int)x.OnHand).Take(200).Select(x =>
                     $"<tr><td style=\"padding:6px 0;border-bottom:1px solid #f0efed;\">{Enc(x.Name)}</td>" +
                     $"<td style=\"padding:6px 0 6px 16px;border-bottom:1px solid #f0efed;color:#78716c;\">{Enc(x.Sku)}</td>" +
                     $"<td align=\"right\" style=\"padding:6px 0 6px 16px;border-bottom:1px solid #f0efed;\">{x.OnHand}</td>" +
@@ -111,26 +112,51 @@ public class LowStockAlertService : BackgroundService
                             <th align=""right"" style=""padding-left:16px;"">On hand</th><th align=""right"" style=""padding-left:16px;"">Threshold</th>
                             <th align=""right"" style=""padding-left:16px;"">Status</th></tr>{rows}</table>";
             }));
-
-        var body = $@"
-            <h2 style=""font-size:18px;margin:0 0 6px;"">Stock alert — {items.Count} item(s) across {branchCount} branch(es)</h2>
-            <p style=""color:#57534e;"">{negative} negative (oversold) · {outOf} out of stock · {lowCnt} low. Review in the Inventory Reorder report.</p>
-            {sections}";
+            return $@"<h2 style=""font-size:18px;margin:0 0 6px;"">Stock alert — {ls.Count} item(s) across {branches} branch(es)</h2>
+                <p style=""color:#57534e;"">{neg} negative (oversold) · {o} out of stock · {lo} low. Review in the Inventory Reorder report.</p>{sections}";
+        }
+        string BuildSubject(IEnumerable<dynamic> list)
+        {
+            var ls = list.ToList();
+            int neg = ls.Count(x => x.Status == "Negative"), o = ls.Count(x => x.Status == "Out"), lo = ls.Count(x => x.Status == "Low");
+            return neg > 0 ? $"Stock alert — {neg} oversold + {o + lo} low/out" : $"Stock alert — {o} out, {lo} low";
+        }
 
         var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
-        var subject = negative > 0
-            ? $"Stock alert — {negative} oversold + {outOf + lowCnt} low/out"
-            : $"Stock alert — {outOf} out, {lowCnt} low";
-        var sent = await email.SendAsync(adminEmail, subject, body, ct: ct);
-        if (sent)
+        var anySent = false;
+
+        // 1) Admin digest — every branch, to the configured admin email (as before).
+        if (!string.IsNullOrWhiteSpace(adminEmail))
         {
+            if (await email.SendAsync(adminEmail, BuildSubject(items), BuildBody(items), ct: ct))
+            {
+                anySent = true;
+                _logger.LogInformation("Low-stock admin digest sent ({Count} item(s)).", items.Count);
+            }
+        }
+
+        // 2) Per-store digest — each branch's own low stock, to that store's email.
+        if (perStore)
+        {
+            var stores = await db.Stores.Where(s => s.IsActive && s.Email != null && s.Email != "")
+                .Select(s => new { s.Name, s.Email }).ToListAsync(ct);
+            foreach (var s in stores)
+            {
+                var branchKey = s.Name.Replace("Sterlin Glams ", "");
+                var mine = items.Where(x => x.Branch == branchKey).Cast<dynamic>().ToList();
+                if (mine.Count == 0) continue;
+                if (await email.SendAsync(s.Email!, BuildSubject(mine), BuildBody(mine), ct: ct))
+                {
+                    anySent = true;
+                    _logger.LogInformation("Low-stock digest sent to {Branch} ({Count} item(s)).", branchKey, mine.Count);
+                }
+            }
+        }
+
+        if (anySent)
             // Persist so restarts/redeploys don't re-send; honours the cadence next time.
             await settings.SaveManyAsync(new Dictionary<string, string> { ["notifications.low_stock_last_sent"] = today.ToString("yyyy-MM-dd") });
-            _logger.LogInformation("Stock digest sent to {Email} ({Count} item(s), {Branches} branch(es)).", SterlingLams.Web.Infrastructure.LogRedact.Email(adminEmail), items.Count, branchCount);
-        }
         else
-        {
-            _logger.LogWarning("Stock digest NOT sent (email disabled/failed); {Count} item(s) flagged.", items.Count);
-        }
+            _logger.LogWarning("Stock digest NOT sent (no recipient/email disabled); {Count} item(s) flagged.", items.Count);
     }
 }
