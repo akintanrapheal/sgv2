@@ -328,6 +328,7 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                     order.FulfillingStoreId = fulfilStore.Id;
                     order.Status = order.FulfillmentType == FulfillmentType.StorePickup
                         ? OrderStatus.ReadyForPickup : OrderStatus.Processing;
+                    order.UpdatedAt = now;   // marks the moment it entered the branch's pack queue (POS alert)
                     OrderNotes.AddSystem(_db, order.Id, $"Order status changed from {prevStatus} to {order.Status} (fulfilled from {fulfilStore.Name}).");
                     await _db.SaveChangesAsync();
                     await tx.CommitAsync();
@@ -488,6 +489,7 @@ public class OrderFulfilmentService : IOrderFulfilmentService
 
             order.Status = order.FulfillmentType == FulfillmentType.StorePickup
                 ? OrderStatus.ReadyForPickup : OrderStatus.Processing;
+            order.UpdatedAt = DateTime.UtcNow;   // entered the pack queue now → POS alert picks it up
             await _db.SaveChangesAsync();
             await tx.CommitAsync();
 
