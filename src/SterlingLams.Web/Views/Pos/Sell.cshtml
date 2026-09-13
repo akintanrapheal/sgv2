@@ -2822,15 +2822,23 @@
         renderList();
     }
     function orderCard(o, packable) {
-        const noteFlag = o.hasNote ? ' · <span class="text-amber-600">note</span>' : '';
-        const place = o.place ? ' · ' + esc(o.place) : '';
-        return `<button type="button" class="fulfil-card w-full text-left border border-neutral-200 rounded-xl p-3 hover:border-brand-400 transition-colors" data-id="${o.id}">
-            <div class="flex items-center justify-between gap-2">
-                <span class="font-medium text-neutral-800">${esc(o.orderNumber)}</span>
-                <span class="text-sm font-semibold text-neutral-700">${money(o.total)}</span>
+        const isPickup = o.fulfillmentType === 'StorePickup';
+        // Delivery = the cashier packs it for the courier; Pickup = the customer collects in store.
+        const truck = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7h11v8H3zM14 10h4l3 3v2h-7z"/><circle cx="7" cy="17" r="1.6"/><circle cx="17.5" cy="17" r="1.6"/></svg>';
+        const bag = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="w-3.5 h-3.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 8h12l-1 12H7zM9 8V6a3 3 0 016 0v2"/></svg>';
+        const badge = isPickup
+            ? '<span class="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-brand-50 text-brand-600">' + bag + 'Pickup</span>'
+            : '<span class="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-sky-50 text-sky-600">' + truck + 'Delivery</span>';
+        const accent = isPickup ? 'border-l-brand-400' : 'border-l-sky-400';
+        const where = isPickup ? 'Collect in store' : (o.place ? esc(o.place) : 'Delivery');
+        const noteFlag = o.hasNote ? '<span class="text-amber-600 font-medium">note</span>' : '';
+        return `<button type="button" class="fulfil-card w-full text-left bg-white border border-neutral-200 border-l-4 ${accent} rounded-xl p-3.5 hover:border-neutral-300 hover:shadow-sm transition" data-id="${o.id}">
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+                <div class="flex items-center gap-2 min-w-0">${badge}<span class="font-semibold text-neutral-900 truncate">${esc(o.orderNumber)}</span></div>
+                <span class="text-sm font-semibold text-neutral-900 tabular-nums flex-shrink-0">${money(o.total)}</span>
             </div>
-            <div class="text-sm text-neutral-600 mt-0.5 truncate">${esc(o.customer) || 'Customer'}${o.phone ? ' · ' + esc(o.phone) : ''}</div>
-            <div class="text-[11px] text-neutral-400 mt-0.5">${o.itemCount} item${o.itemCount === 1 ? '' : 's'}${place}${noteFlag}</div>
+            <div class="text-sm text-neutral-700 truncate">${esc(o.customer) || 'Customer'}${o.phone ? ' · ' + esc(o.phone) : ''}</div>
+            <div class="text-[11px] text-neutral-400 mt-1 truncate">${o.itemCount} item${o.itemCount === 1 ? '' : 's'} · ${where}${noteFlag ? ' · ' + noteFlag : ''}</div>
         </button>`;
     }
     function renderList() {
@@ -2842,7 +2850,19 @@
                 (currentTab === 'pack' ? 'No orders waiting to be packed.' : 'No orders awaiting a transfer.') + '</p>';
             return;
         }
-        listEl.innerHTML = list.map(o => orderCard(o, currentTab === 'pack')).join('');
+        if (currentTab === 'pack') {
+            // Group so the cashier sees the two jobs apart: deliveries (pack for the courier) first,
+            // then in-store pickups (customer collects).
+            const deliveries = list.filter(o => o.fulfillmentType !== 'StorePickup');
+            const pickups = list.filter(o => o.fulfillmentType === 'StorePickup');
+            const section = (label, arr) => arr.length
+                ? '<div class="flex items-center gap-2 px-0.5 pt-1 pb-0.5"><span class="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">' + label + '</span>'
+                  + '<span class="text-[11px] text-neutral-300">' + arr.length + '</span></div>' + arr.map(o => orderCard(o, true)).join('')
+                : '';
+            listEl.innerHTML = section('For delivery', deliveries) + section('Store pickup', pickups);
+        } else {
+            listEl.innerHTML = list.map(o => orderCard(o, false)).join('');
+        }
         listEl.querySelectorAll('.fulfil-card').forEach(b => b.addEventListener('click', () => openDetail(+b.dataset.id)));
     }
     async function loadList() {
@@ -2960,27 +2980,39 @@
     ['pointerdown', 'keydown', 'click'].forEach(ev =>
         document.addEventListener(ev, ensureAudio, { once: true }));
 
-    function playChime() {
+    function playChimeOnce() {
         const ctx = ensureAudio();
         if (!ctx) return;
         const now = ctx.currentTime;
-        // A soft two-note "ding-dong", repeated once so it's noticeable across a shop floor.
-        [[880, 0], [660, 0.18], [880, 0.6], [660, 0.78]].forEach(([freq, at]) => {
+        // Loud two-note "ding-dong" (triangle carries further than sine on small till speakers).
+        [[988, 0], [740, 0.2]].forEach(([freq, at]) => {
             const osc = ctx.createOscillator(), gain = ctx.createGain();
-            osc.type = 'sine'; osc.frequency.value = freq;
+            osc.type = 'triangle'; osc.frequency.value = freq;
             gain.gain.setValueAtTime(0.0001, now + at);
-            gain.gain.exponentialRampToValueAtTime(0.4, now + at + 0.02);
-            gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.45);
+            gain.gain.exponentialRampToValueAtTime(0.9, now + at + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.55);
             osc.connect(gain); gain.connect(ctx.destination);
-            osc.start(now + at); osc.stop(now + at + 0.5);
+            osc.start(now + at); osc.stop(now + at + 0.6);
         });
     }
+    // Keep ringing for ~20s so a busy cashier can't miss it; stops the moment they act on the pop-up.
+    let alarmTimer = null, alarmUntil = 0;
+    function startAlarm() {
+        playChimeOnce();
+        alarmUntil = Date.now() + 20000;
+        clearInterval(alarmTimer);
+        alarmTimer = setInterval(function () {
+            if (Date.now() >= alarmUntil) { stopAlarm(); return; }
+            playChimeOnce();
+        }, 1500);
+    }
+    function stopAlarm() { if (alarmTimer) { clearInterval(alarmTimer); alarmTimer = null; } }
 
     let popupEl = null;
-    function hideOrderPopup() { if (popupEl) popupEl.style.display = 'none'; }
+    function hideOrderPopup() { stopAlarm(); if (popupEl) popupEl.style.display = 'none'; }
     function notifyNewOrders(orders) {
-        playChime();
-        try { if (navigator.vibrate) navigator.vibrate([120, 60, 120]); } catch (e) {} // buzz on touch tills
+        startAlarm();
+        try { if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]); } catch (e) {} // buzz on touch tills
         const latest = orders[0];
         const extra = orders.length > 1 ? ' · +' + (orders.length - 1) + ' more' : '';
         if (!popupEl) {
