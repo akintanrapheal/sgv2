@@ -2973,8 +2973,12 @@
                     <div class="flex-1 min-w-0">
                         <div class="text-sm text-neutral-800">${esc(i.name)}${i.variant ? ' <span class="text-neutral-400">· ' + esc(i.variant) + '</span>' : ''}</div>
                         <div class="text-[11px] text-neutral-400">Qty ${i.qty} × ${money(i.unitPrice)}</div>
+                        ${(i.sku || i.barcode) ? `<div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-mono">
+                            ${i.sku ? `<span class="text-neutral-600">SKU <span class="font-semibold text-neutral-900">${esc(i.sku)}</span></span>` : ''}
+                            ${i.barcode ? `<span class="text-neutral-600">Barcode <span class="font-semibold text-neutral-900">${esc(i.barcode)}</span></span>` : ''}
+                        </div>` : ''}
                     </div>
-                    <div class="text-sm font-medium text-neutral-700">${money(i.lineTotal)}</div>
+                    <div class="text-sm font-medium text-neutral-700 flex-shrink-0">${money(i.lineTotal)}</div>
                 </div>`).join('');
             const a = d.address;
             const addr = a ? [a.line1, a.line2, a.city, a.state, a.postalCode, a.country].filter(x => x && x.trim()).map(esc).join(', ') : '<span class="text-neutral-400">No address on file</span>';
