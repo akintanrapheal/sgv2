@@ -1,0 +1,72 @@
+@{
+    ViewData["Title"] = "Reset test data";
+}
+
+<div class="max-w-2xl">
+    <h1 class="text-lg font-medium text-neutral-800 mb-1">Reset test data</h1>
+    <p class="text-xs text-neutral-400 mb-6">Owner-only. Clears all test transactions so you can start a fresh test round.</p>
+
+    @if (TempData["Success"] != null)
+    {
+        <div class="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-4 py-3">@TempData["Success"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="mb-4 text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-4 py-3">@TempData["Error"]</div>
+    }
+
+    <div class="rounded-xl border-2 border-red-200 bg-red-50/50 p-6">
+        <div class="flex items-start gap-3 mb-4">
+            <span class="text-2xl leading-none">⚠️</span>
+            <div>
+                <h2 class="text-sm font-semibold text-red-800">This permanently deletes data and cannot be undone</h2>
+                <p class="text-[13px] text-red-700/90 mt-1">Back up the database (Render → your database → backup/export) before running this if you're unsure.</p>
+            </div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-4 text-[13px] mb-5">
+            <div class="bg-white rounded-lg border border-red-100 p-4">
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-red-600 mb-2">Will be cleared</p>
+                <ul class="list-disc pl-4 space-y-1 text-neutral-700">
+                    <li>Orders, order items, payments, refunds</li>
+                    <li>Stock movements (ledger), transfers &amp; reservations</li>
+                    <li>Stock adjustments &amp; stock-takes</li>
+                    <li>POS sessions, cash movements, parked sales</li>
+                    <li>Loyalty points &amp; gift-card transactions</li>
+                    <li>Abandoned carts, back-in-stock, label reprint queue</li>
+                    <li>Email log, campaign/automation runs, referrals, expenses, reviews, traffic</li>
+                </ul>
+            </div>
+            <div class="bg-white rounded-lg border border-neutral-100 p-4">
+                <p class="text-[11px] font-semibold uppercase tracking-wide text-emerald-600 mb-2">Will be kept</p>
+                <ul class="list-disc pl-4 space-y-1 text-neutral-700">
+                    <li>Products, variants, categories, images</li>
+                    <li>Customers &amp; staff / cashier accounts</li>
+                    <li>Stores, registers, discount reasons</li>
+                    <li>All settings &amp; email templates</li>
+                    <li>Roles &amp; permissions</li>
+                </ul>
+                <p class="text-[11px] text-neutral-400 mt-3">Then every stock record is set to the amount below.</p>
+            </div>
+        </div>
+
+        <form asp-action="Run" method="post" onsubmit="return confirm('Last check: permanently clear ALL test transactions and set every stock record to the chosen amount? This cannot be undone.');">
+            @Html.AntiForgeryToken()
+            <div class="flex flex-wrap items-end gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Stock per item (each branch)</label>
+                    <input type="number" name="stockPerItem" value="2" min="0" max="9999"
+                           class="w-32 border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
+                </div>
+                <div class="flex-1 min-w-[200px]">
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Type <span class="font-mono font-semibold">RESET</span> to confirm</label>
+                    <input type="text" name="confirm" autocomplete="off" placeholder="RESET"
+                           class="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-red-400" />
+                </div>
+                <button type="submit" class="px-6 py-2.5 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition-colors">
+                    Clear test data &amp; reset stock
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
