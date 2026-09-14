@@ -40,7 +40,7 @@
                 var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
                 var allowedSections = ViewData["AllowedSections"] as HashSet<string> ?? new HashSet<string>();
                 var isFullAdmin = ViewData["IsFullAdmin"] as bool? ?? false;
-
+                
                 // Owner-only entries (Users, Roles, Integrations, Subscribe) show to full admins;
                 // everything else shows if the role has been granted that section.
                 bool Visible(SterlingLams.Web.Areas.Admin.AdminSection s)
@@ -279,7 +279,7 @@ document.addEventListener('submit', function (e) {
         var items = feed();
         if (!items.length) { listEl.innerHTML = '<div class="px-4 py-8 text-center text-xs text-neutral-400">No new orders yet.</div>'; return; }
         listEl.innerHTML = items.map(function (o) {
-            return '<a href="' + DETAIL_TPL.replace('__ID__', o.id) + '" class="block px-4 py-2.5 hover:bg-neutral-50">'
+            return '<a href="' + DETAIL_TPL.replace('__ID__', o.id) + '" data-id="' + esc(o.id) + '" class="block px-4 py-2.5 hover:bg-neutral-50">'
                 + '<div class="text-sm text-neutral-800">🛎️ New order ' + esc(o.number) + '</div>'
                 + '<div class="text-xs text-neutral-500">₦' + Number(o.total).toLocaleString() + (o.customer ? ' · ' + esc(o.customer) : '') + ' · ' + timeAgo(o.ts) + '</div></a>';
         }).join('');
@@ -325,6 +325,15 @@ document.addEventListener('submit', function (e) {
     }
 
     renderSound(); renderBadge();
+
+    // Clicking a notification opens the order AND clears it from the list (write is synchronous, so it
+    // sticks before the page navigates). The removed item won't be back on the next render.
+    listEl.addEventListener('click', function (e) {
+        var a = e.target.closest('a[data-id]');
+        if (!a) return;
+        var id = a.getAttribute('data-id');
+        saveFeed(feed().filter(function (o) { return String(o.id) !== String(id); }));
+    });
 
     function openPanel() { panel.classList.remove('hidden'); localStorage.setItem(K_UNSEEN, '0'); renderBadge(); renderList(); }
     function closePanel() { panel.classList.add('hidden'); }
