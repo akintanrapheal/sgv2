@@ -6,6 +6,9 @@ namespace SterlingLams.Web.Infrastructure;
 
 public static class SettingsSeedData
 {
+    // Shared so the seed default, the Email Customizer default and the one-time rebrand all match.
+    public const string CancelledIntro = "Hi {name}, we're sorry to let you know that your order {order} placed on {date} has been cancelled. If a payment was made, your refund will be processed within 1–3 working days, and our customer-care team will reach out to you shortly to assist. Thank you for choosing Sterlin Glams — we look forward to welcoming you back soon.";
+
     public static async Task SeedAsync(ApplicationDbContext db, ILogger logger)
     {
         var definitions = GetAllSettings();
@@ -43,6 +46,13 @@ public static class SettingsSeedData
         var heroImg = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "homepage.hero_image_url");
         if (heroImg != null && heroImg.Type == "url")
             heroImg.Type = "image";
+
+        // Rebrand the cancelled-order email to reassure the customer (refund window + customer-care
+        // follow-up). Only replaces the OLD default so any admin customisation is preserved; idempotent.
+        var cancelIntro = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "email.order_cancelled.intro");
+        const string oldCancelIntro = "Hi {name}, your order {order} ({date}) has been cancelled. If you paid for it, a refund will be arranged. Reply to this email if you have any questions.";
+        if (cancelIntro != null && (string.IsNullOrWhiteSpace(cancelIntro.Value) || cancelIntro.Value == oldCancelIntro))
+            cancelIntro.Value = CancelledIntro;
 
         // Keep each setting's METADATA (label/help text/type/group/order) in step with the
         // definitions above for already-seeded keys — without touching the admin-edited Value.
@@ -230,7 +240,7 @@ public static class SettingsSeedData
         new() { Key = "email.order_collected.subject",  Group = "Emails", Label = "Collected (pickup) — Subject", Type = "text",     Value = "Thanks for collecting your order", Description = "Sent when a store-pickup order is marked Collected (also the heading).", SortOrder = 271 },
         new() { Key = "email.order_collected.intro",    Group = "Emails", Label = "Collected (pickup) — Intro",   Type = "textarea", Value = "Thank you {name} — your order {order} has been collected in store. We hope you love it! Do come again.", Description = "Opening line above the order summary. Placeholders: {order}, {date}, {name}.", SortOrder = 272 },
         new() { Key = "email.order_cancelled.subject",  Group = "Emails", Label = "Cancelled — Subject",         Type = "text",     Value = "Your order has been cancelled", Description = "Sent when an order is marked Cancelled (also the heading).", SortOrder = 273 },
-        new() { Key = "email.order_cancelled.intro",    Group = "Emails", Label = "Cancelled — Intro",           Type = "textarea", Value = "Hi {name}, your order {order} ({date}) has been cancelled. If you paid for it, a refund will be arranged. Reply to this email if you have any questions.", Description = "Opening line above the order summary. Placeholders: {order}, {date}, {name}.", SortOrder = 274 },
+        new() { Key = "email.order_cancelled.intro",    Group = "Emails", Label = "Cancelled — Intro",           Type = "textarea", Value = CancelledIntro, Description = "Opening line above the order summary. Placeholders: {order}, {date}, {name}.", SortOrder = 274 },
 
         // Branch/staff emails (sent to a store's email, not the customer). Placeholders: {branch}, {order}.
         new() { Key = "email.branch_transfer_request.subject", Group = "Emails", Label = "Transfer request (branch) — Subject", Type = "text",     Value = "Send stock to {branch} — order {order}", Description = "Emailed to a source branch to send stock for an order. Placeholders: {branch}, {order}.", SortOrder = 28 },
