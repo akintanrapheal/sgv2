@@ -2093,22 +2093,24 @@
         document.getElementById('discount-step2-title').textContent = reason.name;
         document.getElementById('discount-step2-back').onclick = showDiscountStep1;
 
-        const customOptions = [
-            { label: 'Discount by Percentage', type: 'Percentage' },
-            { label: 'Discount by Amount', type: 'Amount' },
-            { label: 'Set New Price', type: 'NewPrice' },
-        ];
-        const presetOptions = (reason.presets || []).map(p => ({ label: p.label, type: p.type, value: p.value, isPreset: true }));
-        const allOptions = [...customOptions, ...presetOptions];
-
+        // Cashiers can ONLY pick a preset configured in Inventory → Discount reasons — no free entry.
+        const presetOptions = (reason.presets || []).map(p => ({ label: p.label, type: p.type, value: p.value }));
+        const fmtVal = o => o.type === 'Amount' ? '₦' + Number(o.value).toLocaleString()
+                          : o.type === 'NewPrice' ? '₦' + Number(o.value).toLocaleString() + ' new'
+                          : Number(o.value) + '%';
         const list = document.getElementById('discount-types-list');
-        list.innerHTML = allOptions.map((opt, i) =>
-            `<button type="button" data-oidx="${i}" class="w-full text-left px-4 py-3 border-b border-neutral-100 text-sm text-blue-700 hover:bg-neutral-50 transition-colors">${opt.label}</button>`
+        if (!presetOptions.length) {
+            list.innerHTML = '<p class="px-4 py-6 text-sm text-neutral-400 text-center">No discount presets for this reason.<br>Add them in Inventory → Discount reasons.</p>';
+            return;
+        }
+        list.innerHTML = presetOptions.map((opt, i) =>
+            `<button type="button" data-oidx="${i}" class="w-full flex items-center justify-between gap-3 text-left px-4 py-3 border-b border-neutral-100 text-sm text-blue-700 hover:bg-neutral-50 transition-colors"><span>${opt.label}</span><span class="text-neutral-400 text-xs">${fmtVal(opt)}</span></button>`
         ).join('');
         list.querySelectorAll('[data-oidx]').forEach(b => b.addEventListener('click', () => {
-            const opt = allOptions[+b.dataset.oidx];
-            if (opt.isPreset) { applyDiscount(reason.name, opt.type, opt.value); itemModal.classList.add('hidden'); renderCart(); }
-            else showDiscountStep3(reason.name, opt.type);
+            const opt = presetOptions[+b.dataset.oidx];
+            applyDiscount(reason.name, opt.type, opt.value);
+            itemModal.classList.add('hidden');
+            renderCart();
         }));
     }
 
