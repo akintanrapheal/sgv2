@@ -45,7 +45,7 @@
 
     <!-- Authentication (cookie auth ships in the ASP.NET Core shared framework — no package needed) -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.11" />
-    <PackageReference Include="Sentry.AspNetCore" Version="6.10.0" />
+    <PackageReference Include="Sentry.AspNetCore" Version="6.11.0" />
 
     <!-- Stripe -->
     <PackageReference Include="Stripe.net" Version="52.4.1" />
