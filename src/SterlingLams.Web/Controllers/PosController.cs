@@ -1285,14 +1285,29 @@ public class PosController : Controller
         if (o == null) return Json(new { success = false, message = "Order not found for this branch." });
 
         var imgs = await PrimaryImagesAsync(o.Items.Select(i => i.ProductId).Distinct().ToList());
-        var items = o.Items.Select(i => new
+        // SKU + barcode so the cashier can confirm they're packing the exact item (variant-specific
+        // value wins, else the product's own).
+        var pids = o.Items.Select(i => i.ProductId).Distinct().ToList();
+        var vids = o.Items.Where(i => i.ProductVariantId != null).Select(i => i.ProductVariantId!.Value).Distinct().ToList();
+        var prodCodes = await _db.Products.Where(p => pids.Contains(p.Id))
+            .Select(p => new { p.Id, p.Sku, p.Barcode }).ToDictionaryAsync(p => p.Id);
+        var varCodes = await _db.ProductVariants.Where(v => vids.Contains(v.Id))
+            .Select(v => new { v.Id, v.Sku, v.Barcode }).ToDictionaryAsync(v => v.Id);
+        var items = o.Items.Select(i =>
         {
-            name = i.ProductName,
-            variant = i.VariantName,
-            qty = i.Quantity,
-            unitPrice = i.UnitPrice,
-            lineTotal = i.LineTotal,
-            image = imgs.GetValueOrDefault(i.ProductId)
+            var pc = prodCodes.GetValueOrDefault(i.ProductId);
+            var vc = i.ProductVariantId != null ? varCodes.GetValueOrDefault(i.ProductVariantId.Value) : null;
+            return new
+            {
+                name = i.ProductName,
+                variant = i.VariantName,
+                qty = i.Quantity,
+                unitPrice = i.UnitPrice,
+                lineTotal = i.LineTotal,
+                image = imgs.GetValueOrDefault(i.ProductId),
+                sku = !string.IsNullOrWhiteSpace(vc?.Sku) ? vc!.Sku : pc?.Sku,
+                barcode = !string.IsNullOrWhiteSpace(vc?.Barcode) ? vc!.Barcode : pc?.Barcode
+            };
         }).ToList();
         var a = o.DeliveryAddress;
         return Json(new
