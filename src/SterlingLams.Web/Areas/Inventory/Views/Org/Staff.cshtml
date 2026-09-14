@@ -163,6 +163,21 @@
                             {
                                 <div class="text-[11px] text-neutral-400">@c.Phone</div>
                             }
+                            @if (canManageOrg)
+                            {
+                                <form asp-area="Inventory" asp-controller="Org" asp-action="EditCashier" method="post" id="edit-cashier-@c.Id" class="hidden mt-2 flex flex-wrap gap-2 items-center">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@c.Id" />
+                                    <input type="text" name="firstName" value="@c.FirstName" placeholder="First name"
+                                           class="border border-neutral-200 rounded-lg px-2 py-1 text-xs w-28 focus:outline-none focus:border-emerald-500" />
+                                    <input type="text" name="lastName" value="@c.LastName" placeholder="Last name"
+                                           class="border border-neutral-200 rounded-lg px-2 py-1 text-xs w-28 focus:outline-none focus:border-emerald-500" />
+                                    <input type="text" name="phone" value="@c.Phone" placeholder="Phone"
+                                           class="border border-neutral-200 rounded-lg px-2 py-1 text-xs w-32 focus:outline-none focus:border-emerald-500" />
+                                    <button type="submit" class="text-xs px-2 py-1 bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-colors">Save</button>
+                                    <button type="button" onclick="document.getElementById('edit-cashier-@c.Id').classList.add('hidden')" class="text-xs text-neutral-500">Cancel</button>
+                                </form>
+                            }
                         </td>
                         <td class="px-4 py-3">
                             @if (canManageOrg)
@@ -189,6 +204,7 @@
                         <td class="px-4 py-3 text-right whitespace-nowrap">
                             @if (canManageOrg)
                             {
+                                <button type="button" onclick="document.getElementById('edit-cashier-@c.Id').classList.toggle('hidden')" class="text-xs text-neutral-600 hover:text-neutral-900 transition-colors mr-3">Edit</button>
                                 <button type="button" onclick="cashierPin('@c.Id')" class="text-xs text-neutral-600 hover:text-neutral-900 transition-colors mr-3">Change PIN</button>
                                 <form asp-area="Inventory" asp-controller="Org" asp-action="SetCashierPin" method="post" class="inline"
                                       onsubmit="return confirm('Remove POS access for this cashier?');">

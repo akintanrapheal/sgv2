@@ -105,6 +105,25 @@ public class OrgController : InventoryAreaController
         return RedirectToAction(nameof(Registers));
     }
 
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteRegister(int id)
+    {
+        var r = await _db.Registers.FindAsync(id);
+        if (r == null) return NotFound();
+        // A register tied to any session or sale can't be removed without orphaning that history — send
+        // them to "Disable" instead so the record and its reports stay intact.
+        if (await _db.TillSessions.AnyAsync(s => s.RegisterId == id) || await _db.Orders.AnyAsync(o => o.RegisterId == id))
+        {
+            TempData["Error"] = $"'{r.Name}' has sales/session history, so it can't be deleted. Use Disable instead.";
+            return RedirectToAction(nameof(Registers));
+        }
+        _db.Registers.Remove(r);
+        await _db.SaveChangesAsync();
+        await LogAsync("Delete", "Register", id.ToString(), $"Removed register '{r.Name}'");
+        TempData["Success"] = $"Register '{r.Name}' removed.";
+        return RedirectToAction(nameof(Registers));
+    }
+
     public async Task<IActionResult> ActivityLog(string? act = null, string q = "", int page = 1)
     {
         ViewData["Title"] = "Activity log";
@@ -164,6 +183,8 @@ public class OrgController : InventoryAreaController
         {
             Id = c.Id,
             Name = (c.FirstName + " " + c.LastName).Trim(),
+            FirstName = c.FirstName ?? "",
+            LastName = c.LastName ?? "",
             Phone = c.PhoneNumber,
             StoreId = storeMap.Where(m => m.UserId == c.Id).Select(m => (int?)m.StoreId).FirstOrDefault(),
             Branches = storeMap.Where(m => m.UserId == c.Id).Select(m => m.Name.Replace("Sterlin Glams ", "")).ToList(),
@@ -215,6 +236,23 @@ public class OrgController : InventoryAreaController
         }
         await LogAsync("Create", "User", user.Id, $"Created cashier '{user.FullName}'");
         TempData["Success"] = $"Cashier {user.FullName} added.";
+        return RedirectToAction(nameof(Staff));
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditCashier(string id, string firstName, string lastName, string? phone)
+    {
+        var user = await _db.Users.FindAsync(id);
+        if (user == null) return NotFound();
+        firstName = (firstName ?? "").Trim(); lastName = (lastName ?? "").Trim(); phone = (phone ?? "").Trim();
+        if (firstName.Length == 0 && lastName.Length == 0)
+        { TempData["Error"] = "Enter the cashier's name."; return RedirectToAction(nameof(Staff)); }
+        user.FirstName = firstName;
+        user.LastName = lastName;
+        user.PhoneNumber = phone.Length > 0 ? phone : null;
+        await _db.SaveChangesAsync();
+        await LogAsync("Update", "User", id, $"Edited cashier details for {user.FullName}");
+        TempData["Success"] = $"Cashier {user.FullName} updated.";
         return RedirectToAction(nameof(Staff));
     }
 
@@ -271,6 +309,8 @@ public class CashierRow
 {
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    public string FirstName { get; set; } = "";
+    public string LastName { get; set; } = "";
     public string? Phone { get; set; }
     public int? StoreId { get; set; }
     public List<string> Branches { get; set; } = new();
