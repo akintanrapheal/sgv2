@@ -103,7 +103,7 @@ public static class RoleSeedData
                 Value = "true",
                 Group = "System",
                 Label = "Finance granted to Operations (seed marker)",
-                Type = "boolean"
+                Type = "hidden"   // internal one-time marker — never shown as a toggle in Settings
             });
             await db.SaveChangesAsync();
         }

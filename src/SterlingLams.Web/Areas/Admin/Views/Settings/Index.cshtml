@@ -2,7 +2,8 @@
 @{
     ViewData["Title"] = "Settings";
     var activeTab = ViewData["ActiveTab"]?.ToString() ?? "General";
-    var groups = Model.GroupBy(s => s.Group).OrderBy(g => g.Key).ToList();
+    // Skip groups that hold only hidden/internal markers (e.g. seed flags) so no empty tab shows.
+    var groups = Model.GroupBy(s => s.Group).Where(g => g.Any(s => s.Type != "hidden")).OrderBy(g => g.Key).ToList();
 
     // group slug used as HTML id
     string Slug(string g) => g.ToLower().Replace(" ", "_");
