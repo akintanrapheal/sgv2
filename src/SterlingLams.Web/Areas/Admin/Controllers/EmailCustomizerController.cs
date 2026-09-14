@@ -26,7 +26,7 @@ public class EmailCustomizerController : AdminBaseController
         ("order_shipped",    "Shipped",            "Your order is on its way",      "Great news — your order {order} has been shipped and is on its way to you."),
         ("order_delivered",  "Delivered",          "Your order has been delivered", "Your order {order} has been delivered. We hope you love it — thank you for shopping with us!"),
         ("order_collected",  "Collected (pickup)", "Thanks for collecting your order", "Thank you {name} — your order {order} has been collected in store. We hope you love it! Do come again."),
-        ("order_cancelled",  "Cancelled",          "Your order has been cancelled", "Hi {name}, your order {order} ({date}) has been cancelled. If you paid for it, a refund will be arranged. Reply to this email if you have any questions."),
+        ("order_cancelled",  "Cancelled",          "Your order has been cancelled", SterlingLams.Web.Infrastructure.SettingsSeedData.CancelledIntro),
         ("back_in_stock",   "Back in stock",      "Good news — it's back in stock", "An item you wanted is available again. These pieces sell quickly, so don't wait."),
         ("abandoned_cart",  "Abandoned cart",     "You left something in your bag", "You have items waiting in your bag — we've saved them for you."),
         ("cart_low_stock",  "Cart low-stock nudge", "⏳ Selling fast — your bag is almost gone", "Great taste — and you're not the only one! Some pieces in your bag are down to their last few. Grab them now before they're gone for good."),
