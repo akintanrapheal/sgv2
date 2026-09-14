@@ -47,6 +47,11 @@ public static class SettingsSeedData
         if (heroImg != null && heroImg.Type == "url")
             heroImg.Type = "image";
 
+        // Receipt logo re-based from height-in-px to width-in-mm. Convert the old default (76px) to the
+        // new 45mm (4.5cm) width; leave any other admin-set value alone.
+        var rcLogo = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "pos.receipt_logo_height");
+        if (rcLogo != null && rcLogo.Value == "76") rcLogo.Value = "45";
+
         // Rebrand the cancelled-order email to reassure the customer (refund window + customer-care
         // follow-up). Only replaces the OLD default so any admin customisation is preserved; idempotent.
         var cancelIntro = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "email.order_cancelled.intro");
@@ -182,7 +187,7 @@ public static class SettingsSeedData
         new() { Key = "pos.receipt_thanks",        Group = "POS / Pos", Label = "Receipt \"Thanks\" line", Type = "text",    Value = "Thanks for shopping with Sterlin Glams", Description = "Friendly line printed near the bottom, above the policy line.", SortOrder = 10 },
         new() { Key = "pos.receipt_show_logo",     Group = "POS / Pos", Label = "Show logo on receipt", Type = "boolean",   Value = "true",  Description = "Print the store logo at the top of the receipt.", SortOrder = 11 },
         new() { Key = "pos.receipt_logo_url",      Group = "POS / Pos", Label = "Receipt logo", Type = "image", Value = "", Description = "Logo printed at the top of POS receipts. Blank = the Site Logo (Admin → Settings), then the built-in Sterlin Glams logo.", SortOrder = 11 },
-        new() { Key = "pos.receipt_logo_height",   Group = "POS / Pos", Label = "Receipt logo size (px)", Type = "number", Value = "76", Description = "Height of the logo printed on the receipt (30–160px).", SortOrder = 11 },
+        new() { Key = "pos.receipt_logo_height",   Group = "POS / Pos", Label = "Receipt logo width (mm)", Type = "number", Value = "45", Description = "Width of the logo printed on the receipt in millimetres (20–76). Its height is capped at 30mm so it fits a 4.5cm × 3cm area.", SortOrder = 11 },
         new() { Key = "pos.receipt_show_points",   Group = "POS / Pos", Label = "Show loyalty points on receipt", Type = "boolean", Value = "true", Description = "Print the customer's points (previous, gained, current, value) when a customer is attached.", SortOrder = 12 },
         new() { Key = "pos.receipt_show_barcode",  Group = "POS / Pos", Label = "Show barcode on receipt", Type = "boolean", Value = "true", Description = "Print the order-number barcode at the foot of the receipt.", SortOrder = 13 },
         new() { Key = "pos.approval_refunds",           Group = "POS / Pos", Label = "Require manager approval for refunds",  Type = "boolean", Value = "false", Description = "When on, a refund needs a manager PIN before it's processed.", SortOrder = 3 },

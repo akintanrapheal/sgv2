@@ -10,7 +10,9 @@
     var logoUrl       = await Settings.GetAsync("pos.receipt_logo_url", "");
     if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = await Settings.GetAsync("general.logo_url", "");
     if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = "/images/sg-logo.png";
-    var logoHeight    = Math.Clamp(await Settings.GetIntAsync("pos.receipt_logo_height", 76), 30, 160);
+    // Logo box on the receipt: admin-set WIDTH in mm (default 45mm = 4.5cm), height capped at 30mm
+    // (3cm) via CSS so the aspect ratio is preserved within a 4.5cm × 3cm area. (Key kept for continuity.)
+    var logoWidthMm   = Math.Clamp(await Settings.GetIntAsync("pos.receipt_logo_height", 45), 20, 76);
 
     // Receipt customizer
     var bizName       = await Settings.GetAsync("pos.receipt_business_name", "");
@@ -69,7 +71,7 @@
         body { font-family: Arial, Helvetica, sans-serif; color:#000; font-size:13px; line-height:1.4; font-weight:600; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
         .r { width:80mm; margin:0 auto; padding:4mm 3mm; }
         .c { text-align:center; }
-        .logo { display:block; margin:0 auto 6px; max-width:72mm; max-height:34mm; object-fit:contain; }
+        .logo { display:block; margin:0 auto 6px; max-width:100%; max-height:30mm; height:auto; object-fit:contain; }
         .biz { text-align:center; font-size:24px; font-weight:800; letter-spacing:.3px; margin:0 0 4px; }
         .addr { text-align:center; font-size:11px; font-weight:600; line-height:1.35; }
         .addr div { margin:0; }
@@ -96,7 +98,7 @@
     <div class="r">
         @if (showLogo)
         {
-            <img src="@logoUrl" alt="" class="logo" style="max-height:@(logoHeight)px" onerror="this.style.display='none'" />
+            <img src="@logoUrl" alt="" class="logo" style="width:@(logoWidthMm)mm" onerror="this.style.display='none'" />
         }
         <div class="biz">@bizName</div>
         <div class="addr">
