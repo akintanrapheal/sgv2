@@ -52,6 +52,11 @@ public static class SettingsSeedData
         var rcLogo = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "pos.receipt_logo_height");
         if (rcLogo != null && rcLogo.Value == "76") rcLogo.Value = "45";
 
+        // Internal one-time seed marker was created as a visible boolean; hide it so it stops showing as
+        // a confusing toggle on the Settings page (its value is unchanged).
+        var finMarker = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "seed.finance_granted_to_operations");
+        if (finMarker != null && finMarker.Type != "hidden") finMarker.Type = "hidden";
+
         // Rebrand the cancelled-order email to reassure the customer (refund window + customer-care
         // follow-up). Only replaces the OLD default so any admin customisation is preserved; idempotent.
         var cancelIntro = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "email.order_cancelled.intro");
