@@ -1371,13 +1371,16 @@ public class PosController : Controller
 
         // "To pack" = paid orders this branch must physically prepare: delivery orders allocated here
         // (Confirmed/Processing) and store-pickup orders for this branch (Confirmed/Processing/ReadyForPickup).
+        // Action list = paid online orders this branch must still act on: delivery orders allocated
+        // here until they're dispatched (Shipped), and pickup orders here until the pickup-ready email
+        // has gone out. Packed-but-not-finalised orders stay listed (their alert just stops).
         var toPack = await _db.Orders
             .Where(o => o.Channel == OrderChannel.Online && o.IsPaid
                 && ((o.FulfillmentType == FulfillmentType.Delivery && o.FulfillingStoreId == storeId
-                        && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing) && o.PackedAt == null)
+                        && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing))
                     || (o.FulfillmentType == FulfillmentType.StorePickup && o.PickupStoreId == storeId
-                        && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing || o.Status == OrderStatus.ReadyForPickup)
-                        && o.PickupReadyEmailedAt == null)))
+                        && o.PickupReadyEmailedAt == null
+                        && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded)))
             .OrderBy(o => o.CreatedAt)
             .Select(o => new
             {
@@ -1392,7 +1395,9 @@ public class PosController : Controller
                 place = o.FulfillmentType == FulfillmentType.StorePickup ? "Store pickup"
                         : (o.DeliveryAddress != null ? (o.DeliveryAddress.City + ", " + o.DeliveryAddress.State).Trim(' ', ',') : ""),
                 hasNote = o.Notes != null && o.Notes != "",
-                status = o.Status.ToString()
+                status = o.Status.ToString(),
+                packed = o.PackedAt != null,
+                packedBy = o.PackedByName
             })
             .ToListAsync();
 
@@ -1429,7 +1434,7 @@ public class PosController : Controller
 
         var orders = await _db.Orders
             .Where(o => o.Channel == OrderChannel.Online
-                && ((o.FulfillmentType == FulfillmentType.Delivery && o.FulfillingStoreId == storeId && o.PackedAt != null)
+                && ((o.FulfillmentType == FulfillmentType.Delivery && o.FulfillingStoreId == storeId && o.Status == OrderStatus.Shipped)
                     || (o.FulfillmentType == FulfillmentType.StorePickup && o.PickupStoreId == storeId && o.PickupReadyEmailedAt != null)))
             .OrderByDescending(o => o.FulfillmentType == FulfillmentType.Delivery ? o.PackedAt : o.PickupReadyEmailedAt)
             .Take(100)
@@ -1459,18 +1464,22 @@ public class PosController : Controller
         if (register == null) return Json(new { toPack = 0, awaiting = 0, latestTicks = "0", newOrders = Array.Empty<object>() });
         var storeId = register.StoreId;
 
+        // Full action list (delivery until dispatched; pickup until the ready email is sent).
         var toPackQ = _db.Orders.Where(o => o.Channel == OrderChannel.Online && o.IsPaid
             && ((o.FulfillmentType == FulfillmentType.Delivery && o.FulfillingStoreId == storeId
-                    && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing) && o.PackedAt == null)
+                    && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing))
                 || (o.FulfillmentType == FulfillmentType.StorePickup && o.PickupStoreId == storeId
-                    && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing || o.Status == OrderStatus.ReadyForPickup)
-                    && o.PickupReadyEmailedAt == null)));
+                    && o.PickupReadyEmailedAt == null
+                    && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded)));
+        // Only NOT-yet-packed orders ring the alarm / trigger the recurring reminder.
+        var unpackedQ = toPackQ.Where(o => o.PackedAt == null);
         var awaitQ = _db.Orders.Where(o => o.Channel == OrderChannel.Online && o.FulfillingStoreId == storeId
             && o.Status == OrderStatus.AwaitingTransfer);
 
         var toPackCount = await toPackQ.CountAsync();
+        var unpackedCount = await unpackedQ.CountAsync();
         var awaitCount = await awaitQ.CountAsync();
-        var latestPack = await toPackQ.MaxAsync(o => (DateTime?)o.UpdatedAt);
+        var latestPack = await unpackedQ.MaxAsync(o => (DateTime?)o.UpdatedAt);
         var latestAwait = await awaitQ.MaxAsync(o => (DateTime?)o.UpdatedAt);
         var latest = new[] { latestPack, latestAwait }.Max();
         var latestTicks = latest?.Ticks ?? 0L;
@@ -1479,13 +1488,13 @@ public class PosController : Controller
         if (sinceTicks > 0 && latestTicks > sinceTicks)
         {
             var since = new DateTime(sinceTicks, DateTimeKind.Utc);
-            newOrders = await toPackQ.Where(o => o.UpdatedAt > since)
+            newOrders = await unpackedQ.Where(o => o.UpdatedAt > since)
                 .OrderByDescending(o => o.UpdatedAt).Take(5)
                 .Select(o => new { number = o.OrderNumber, customer = (o.User.FirstName + " " + o.User.LastName).Trim() })
                 .ToListAsync<object>();
         }
         // latestTicks is returned as a string: DateTime.Ticks exceeds JS's safe-integer range.
-        return Json(new { toPack = toPackCount, awaiting = awaitCount, latestTicks = latestTicks.ToString(), newOrders });
+        return Json(new { toPack = toPackCount, unpacked = unpackedCount, awaiting = awaitCount, latestTicks = latestTicks.ToString(), newOrders });
     }
 
     // Full detail for one assigned order — items (with pictures), customer, shipping address, note.
@@ -1537,11 +1546,13 @@ public class PosController : Controller
             fulfillmentType = o.FulfillmentType.ToString(),
             placedAt = o.CreatedAt,           // shown in West Africa Time on the client
             deliveryType = o.DeliveryType,    // "Express" | "Standard" | null (pickup)
-            // Context-aware actions: delivery → mark packed (then logistics ships); pickup → notify.
-            canPack = o.FulfillmentType == FulfillmentType.Delivery && o.PackedAt == null
+            // Two-step flow for BOTH types: pack first (stops the alert), then notify pickup / dispatch.
+            canPack = o.PackedAt == null
                       && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing),
-            canNotifyPickup = o.FulfillmentType == FulfillmentType.StorePickup
-                      && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing || o.Status == OrderStatus.ReadyForPickup),
+            canNotifyPickup = o.FulfillmentType == FulfillmentType.StorePickup && o.PackedAt != null
+                      && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded,
+            canDispatch = o.FulfillmentType == FulfillmentType.Delivery && o.PackedAt != null
+                      && o.Status != OrderStatus.Shipped,
             packed = o.PackedAt != null,
             packedBy = o.PackedByName,
             pickupNotified = o.FulfillmentType == FulfillmentType.StorePickup && o.PickupReadyEmailedAt != null,
@@ -1558,9 +1569,9 @@ public class PosController : Controller
 
     public class FulfilPackDto { public int OrderId { get; set; } }
 
-    // Delivery: the branch packs the order and hands it to logistics. Records who packed it + when
-    // (PackedAt), moves it out of the pack queue into fulfilment history, and emails the customer that
-    // it's being prepared. Shipping/delivery itself is logistics' job — the POS never sets "Shipped".
+    // Step 1 (both pickup & delivery): the branch packs the order. Records who packed it + when
+    // (PackedAt) and moves it to Processing — this STOPS the new-order alarm. It does NOT finalise:
+    // pickup still needs the pickup-ready notice, delivery still needs to be dispatched.
     [Authorize, HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> FulfilMarkPacked([FromBody] FulfilPackDto req)
     {
@@ -1571,23 +1582,51 @@ public class PosController : Controller
 
         var o = await _db.Orders.Include(x => x.Items).Include(x => x.User)
             .FirstOrDefaultAsync(x => x.Id == req.OrderId && x.Channel == OrderChannel.Online
-                && x.FulfillmentType == FulfillmentType.Delivery && x.FulfillingStoreId == register.StoreId);
+                && ((x.FulfillmentType == FulfillmentType.Delivery && x.FulfillingStoreId == register.StoreId)
+                    || (x.FulfillmentType == FulfillmentType.StorePickup && x.PickupStoreId == register.StoreId)));
         if (o == null) return Json(new { success = false, message = "Order not found for this branch." });
         if (o.PackedAt != null) return Json(new { success = false, message = "This order is already packed." });
 
         var me = await _userManager.GetUserAsync(User);
         var staff = me?.FullName ?? User.Identity?.Name ?? "staff";
-        if (o.Status == OrderStatus.Confirmed) o.Status = OrderStatus.Processing;   // never "Shipped" here
+        if (o.Status == OrderStatus.Confirmed) o.Status = OrderStatus.Processing;
         o.PackedAt = DateTime.UtcNow;
         o.PackedByUserId = me?.Id;
         o.PackedByName = staff;
         o.UpdatedAt = DateTime.UtcNow;
-        OrderNotes.AddSystem(_db, o.Id, $"Packed by {staff} at {register.Store?.Name} — handed to logistics.");
+        OrderNotes.AddSystem(_db, o.Id, $"Packed by {staff} at {register.Store?.Name}.");
         await _db.SaveChangesAsync();
 
-        await SendPosStatusEmailAsync(o.Id, "order_processing", "Your order is being prepared",
-            "Good news {name} — your order {order} is now being prepared and will be on its way soon.");
         try { await _audit.LogAsync("Pack", "Order", o.Id.ToString(), $"POS packed {o.OrderNumber} at {register.Store?.Name}"); } catch { }
+        return Json(new { success = true });
+    }
+
+    // Step 2 (delivery): the packed order goes out for delivery. Marks it Shipped (dispatched → leaves
+    // the queue into history) and emails the customer it's on its way.
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> FulfilOutForDelivery([FromBody] FulfilPackDto req)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { success = false, message = "This POS isn't set up." });
+        if (!await _access.CanWriteAsync(User, register.StoreId))
+            return Json(new { success = false, message = "You're not assigned to this branch's POS." });
+
+        var o = await _db.Orders.Include(x => x.Items).Include(x => x.User)
+            .FirstOrDefaultAsync(x => x.Id == req.OrderId && x.Channel == OrderChannel.Online
+                && x.FulfillmentType == FulfillmentType.Delivery && x.FulfillingStoreId == register.StoreId);
+        if (o == null) return Json(new { success = false, message = "Order not found for this branch." });
+        if (o.PackedAt == null) return Json(new { success = false, message = "Pack the order first." });
+        if (o.Status == OrderStatus.Shipped) return Json(new { success = false, message = "This order is already out for delivery." });
+
+        o.Status = OrderStatus.Shipped;
+        o.UpdatedAt = DateTime.UtcNow;
+        OrderNotes.AddSystem(_db, o.Id, $"Out for delivery from {register.Store?.Name}.");
+        await _db.SaveChangesAsync();
+
+        await SendPosStatusEmailAsync(o.Id, "order_shipped", "Your order is on its way",
+            "Good news {name} — your order {order} is on its way to you.");
+        _ = _whatsapp.NotifyOrderAsync(o.Id, WhatsAppOrderEvent.Shipped);
+        try { await _audit.LogAsync("Update", "Order", o.Id.ToString(), $"POS dispatched {o.OrderNumber} for delivery from {register.Store?.Name}"); } catch { }
         return Json(new { success = true });
     }
 
@@ -1604,6 +1643,7 @@ public class PosController : Controller
             .FirstOrDefaultAsync(x => x.Id == req.OrderId && x.Channel == OrderChannel.Online
                 && x.FulfillmentType == FulfillmentType.StorePickup && x.PickupStoreId == register.StoreId);
         if (o == null) return Json(new { success = false, message = "Order not found for this branch." });
+        if (o.PackedAt == null) return Json(new { success = false, message = "Pack the order first." });
         var email = o.User?.Email;
         if (string.IsNullOrWhiteSpace(email)) return Json(new { success = false, message = "This customer has no email on file." });
 

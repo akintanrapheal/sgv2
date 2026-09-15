@@ -326,8 +326,10 @@ public class OrderFulfilmentService : IOrderFulfilmentService
 
                     var prevStatus = order.Status;
                     order.FulfillingStoreId = fulfilStore.Id;
-                    order.Status = order.FulfillmentType == FulfillmentType.StorePickup
-                        ? OrderStatus.ReadyForPickup : OrderStatus.Processing;
+                    // Both pickup and delivery land in the branch's "to pack" queue as Confirmed — a
+                    // cashier packs them first (which stops the alert), THEN sends the pickup-ready
+                    // notice (pickup) or dispatches for delivery. Nothing is auto-marked ready.
+                    order.Status = OrderStatus.Confirmed;
                     order.UpdatedAt = now;   // marks the moment it entered the branch's pack queue (POS alert)
                     OrderNotes.AddSystem(_db, order.Id, $"Order status changed from {prevStatus} to {order.Status} (fulfilled from {fulfilStore.Name}).");
                     await _db.SaveChangesAsync();
@@ -487,8 +489,8 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                 await _stock.ApplyAsync(line.ProductId, line.ProductVariantId, fulfilStoreId, -line.Quantity,
                     StockMovementType.Sale, order.OrderNumber, $"Online order {order.OrderNumber}", order.UserId);
 
-            order.Status = order.FulfillmentType == FulfillmentType.StorePickup
-                ? OrderStatus.ReadyForPickup : OrderStatus.Processing;
+            // Enters the branch's "to pack" queue as Confirmed (pack first, then notify/dispatch).
+            order.Status = OrderStatus.Confirmed;
             order.UpdatedAt = DateTime.UtcNow;   // entered the pack queue now → POS alert picks it up
             await _db.SaveChangesAsync();
             await tx.CommitAsync();

@@ -42,7 +42,7 @@
     <p class="text-xs text-neutral-400 mt-0.5">@(Model.StoreId.HasValue ? Model.Stores.FirstOrDefault(s => s.Id == Model.StoreId)?.Name ?? "Selected branch" : "All branches")</p>
 </div>
 
-<div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Orders</p><p class="text-xl font-light text-neutral-900 mt-1">@Model.Orders</p>
     </div>
@@ -51,9 +51,6 @@
     </div>
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Refunds</p><p class="text-xl font-light text-red-600 mt-1">@Money(Model.Refunds)</p>
-    </div>
-    <div class="bg-white border border-neutral-100 rounded-sm p-4">
-        <p class="text-xs text-neutral-400">Expenses</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.Expenses)</p>
     </div>
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Net</p><p class="text-xl font-light text-emerald-700 mt-1">@Money(Model.Net)</p>
@@ -78,11 +75,9 @@
             <div class="p-4">
                 <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                     <div class="flex justify-between"><span class="text-neutral-500">Product sales</span><span class="text-neutral-800">@Money(r.Merchandise)</span></div>
-                    <div class="flex justify-between"><span class="text-neutral-500">Delivery fees</span><span class="text-neutral-800">@Money(r.Delivery)</span></div>
                     <div class="flex justify-between"><span class="text-neutral-500">Discounts</span><span class="text-neutral-600">@Money(r.Discounts)</span></div>
                     <div class="flex justify-between"><span class="text-neutral-500">Loyalty</span><span class="text-neutral-600">@Money(r.Loyalty)</span></div>
                     <div class="flex justify-between"><span class="text-neutral-500">Gift cards</span><span class="text-neutral-600">@Money(r.GiftCards)</span></div>
-                    <div class="flex justify-between"><span class="text-neutral-500">Expenses</span><span class="text-neutral-600">@Money(r.Expenses)</span></div>
                     <div class="flex justify-between"><span class="text-neutral-500">Refunds</span><span class="text-red-600">@(r.RefundCount > 0 ? "−" : "")@Money(r.Refunds)@(r.RefundCount > 0 ? $" ({r.RefundCount})" : "")</span></div>
                 </div>
 
