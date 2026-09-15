@@ -2173,7 +2173,8 @@
 (function () {
     const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
     const modal = document.getElementById('till-cashup');
-    document.getElementById('till-cashup-btn').addEventListener('click', () => modal.classList.remove('hidden'));
+    // "Close session" now opens the full Sales & Operation close screen (EposNow-style).
+    document.getElementById('till-cashup-btn').addEventListener('click', () => { location.href = window.__posBase + '/CloseSummary'; });
     document.getElementById('cashup-cancel').addEventListener('click', () => modal.classList.add('hidden'));
     const confirmBtn = document.getElementById('cashup-confirm');
     const cancelBtn = document.getElementById('cashup-cancel');

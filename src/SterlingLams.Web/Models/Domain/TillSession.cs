@@ -22,6 +22,10 @@ public class TillSession
     public decimal? CountedCash { get; set; }
     public string? ClosingNote { get; set; }
 
+    /// <summary>Counted amount per tender at close, as a JSON map (e.g. {"Cash":12000,"Card":5000}).
+    /// Cash is also mirrored to <see cref="CountedCash"/> for the Finance cash-up report.</summary>
+    public string? CountedTenders { get; set; }
+
     public bool IsOpen => ClosedAt == null;
 
     public ICollection<Order> Orders { get; set; } = new List<Order>();
