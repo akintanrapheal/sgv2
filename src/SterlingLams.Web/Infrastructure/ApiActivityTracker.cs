@@ -13,13 +13,18 @@ public sealed class ApiActivityTracker
 
     private readonly object _gate = new();
     private readonly Dictionary<string, Dictionary<long, int>> _data = new();
+    // Un-flushed daily deltas (WAT day, label) → count, drained periodically into the ApiCallDaily table.
+    private readonly Dictionary<(DateOnly Day, string Label), int> _pending = new();
 
     private static long Bucket() => DateTimeOffset.UtcNow.ToUnixTimeSeconds() / BucketSeconds;
+    // Lagos (WAT = UTC+1, no DST) calendar date, matching how the app shows times.
+    private static DateOnly WatDay() => DateOnly.FromDateTime(DateTime.UtcNow.AddHours(1));
 
     public void Record(string label)
     {
         if (string.IsNullOrWhiteSpace(label)) label = "Other";
         var b = Bucket();
+        var day = WatDay();
         lock (_gate)
         {
             if (!_data.TryGetValue(label, out var d)) { d = new Dictionary<long, int>(); _data[label] = d; }
@@ -29,6 +34,19 @@ public sealed class ApiActivityTracker
                 var cut = b - WindowBuckets;
                 foreach (var k in d.Keys.Where(k => k < cut).ToList()) d.Remove(k);
             }
+            var key = (day, label);
+            _pending[key] = _pending.TryGetValue(key, out var pc) ? pc + 1 : 1;
+        }
+    }
+
+    /// <summary>Returns and clears the un-flushed daily deltas so the persistence service can upsert them.</summary>
+    public List<(DateOnly Day, string Label, int Count)> DrainPending()
+    {
+        lock (_gate)
+        {
+            var list = _pending.Select(kv => (kv.Key.Day, kv.Key.Label, kv.Value)).ToList();
+            _pending.Clear();
+            return list;
         }
     }
 

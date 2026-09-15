@@ -286,6 +286,7 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.ReferralReward
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.SocialPublisherService>();
 builder.Services.AddScoped<SterlingLams.Web.Infrastructure.IFinanceReportService, SterlingLams.Web.Infrastructure.FinanceReportService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.FinanceReportScheduler>();
+builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.ApiCallPersistenceService>();
 
 // Storefront traffic analytics (Admin → Traffic). Singleton buffer + background batch-writer.
 builder.Services.AddSingleton<SterlingLams.Web.Infrastructure.ApiActivityTracker>();

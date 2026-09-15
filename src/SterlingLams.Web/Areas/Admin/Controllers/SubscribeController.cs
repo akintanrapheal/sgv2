@@ -132,6 +132,49 @@ public class SubscribeController : AdminBaseController
         return Content(json, "application/json");
     }
 
+    /// <summary>Historical API-call totals grouped by day / week / month, from the persisted daily
+    /// tally. Owner-only. group = "day" (last 30d), "week" (last 12w) or "month" (last 12mo).</summary>
+    [HttpGet]
+    public async Task<IActionResult> ApiHistory(string group = "day")
+    {
+        group = group is "week" or "month" ? group : "day";
+        var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(1));   // WAT
+        var from = group switch
+        {
+            "week" => today.AddDays(-7 * 12),
+            "month" => today.AddMonths(-12),
+            _ => today.AddDays(-29),
+        };
+        var rows = await _db.ApiCallDaily.Where(r => r.Day >= from)
+            .Select(r => new { r.Day, r.Count }).ToListAsync();
+
+        // Bucket start for each day per grouping (week = Monday of that week; month = 1st).
+        DateOnly BucketOf(DateOnly d) => group switch
+        {
+            "week" => d.AddDays(-((int)d.DayOfWeek + 6) % 7),           // ISO-ish: Monday start
+            "month" => new DateOnly(d.Year, d.Month, 1),
+            _ => d,
+        };
+        var grouped = rows.GroupBy(r => BucketOf(r.Day))
+            .Select(g => new { bucket = g.Key, count = g.Sum(x => x.Count) })
+            .OrderBy(x => x.bucket).ToList();
+
+        string Fmt(DateOnly d) => group switch
+        {
+            "week" => d.ToString("d MMM"),
+            "month" => d.ToString("MMM yyyy"),
+            _ => d.ToString("d MMM"),
+        };
+        return Json(new
+        {
+            ok = true,
+            group,
+            labels = grouped.Select(x => Fmt(x.bucket)),
+            counts = grouped.Select(x => x.count),
+            total = grouped.Sum(x => x.count)
+        });
+    }
+
     /// <summary>Live per-store internal-API-call activity for the "Calls per store" chart (polled every
     /// few seconds). Real counts from this instance's rolling 5-minute window. Owner-only.</summary>
     [HttpGet]
