@@ -155,23 +155,50 @@ public class SubscribeController : AdminBaseController
             "month" => new DateOnly(d.Year, d.Month, 1),
             _ => d,
         };
-        var grouped = rows.GroupBy(r => BucketOf(r.Day))
-            .Select(g => new { bucket = g.Key, count = g.Sum(x => x.Count) })
-            .OrderBy(x => x.bucket).ToList();
+        var counts = rows.GroupBy(r => BucketOf(r.Day))
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Count));
+
+        // Build EVERY bucket across the window (zero-filled) so the chart is a continuous time series
+        // that fills in as days pass — not a single stretched bar when only one day has data.
+        var buckets = new List<DateOnly>();
+        if (group == "month")
+        {
+            for (var d = new DateOnly(today.Year, today.Month, 1).AddMonths(-12); d <= today; d = d.AddMonths(1))
+                buckets.Add(d);
+        }
+        else if (group == "week")
+        {
+            var thisMonday = today.AddDays(-((int)today.DayOfWeek + 6) % 7);
+            for (var d = thisMonday.AddDays(-7 * 12); d <= thisMonday; d = d.AddDays(7))
+                buckets.Add(d);
+        }
+        else
+        {
+            for (var d = today.AddDays(-29); d <= today; d = d.AddDays(1))
+                buckets.Add(d);
+        }
 
         string Fmt(DateOnly d) => group switch
         {
-            "week" => d.ToString("d MMM"),
             "month" => d.ToString("MMM yyyy"),
             _ => d.ToString("d MMM"),
         };
+        var series = buckets.Select(b => counts.GetValueOrDefault(b, 0)).ToList();
+        var total = series.Sum();
+        var peak = series.Count > 0 ? series.Max() : 0;
+        var peakIdx = series.IndexOf(peak);
+        var average = buckets.Count > 0 ? (int)Math.Round((double)total / buckets.Count) : 0;
+
         return Json(new
         {
             ok = true,
             group,
-            labels = grouped.Select(x => Fmt(x.bucket)),
-            counts = grouped.Select(x => x.count),
-            total = grouped.Sum(x => x.count)
+            labels = buckets.Select(Fmt),
+            counts = series,
+            total,
+            average,
+            peak,
+            peakLabel = peakIdx >= 0 ? Fmt(buckets[peakIdx]) : ""
         });
     }
 

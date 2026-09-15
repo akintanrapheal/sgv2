@@ -150,7 +150,12 @@
         <div class="flex items-baseline justify-between gap-3 mb-3">
             <div>
                 <h2 class="text-sm font-semibold text-neutral-800">API calls over time</h2>
-                <p class="text-[11px] text-neutral-400">All recorded internal calls · <span id="api-history-total">0</span> total in view</p>
+                <p class="text-[11px] text-neutral-400">
+                    All recorded internal calls ·
+                    Total <span id="api-history-total" class="text-neutral-700 font-medium">0</span> ·
+                    <span id="api-history-avg-label">Daily</span> avg <span id="api-history-avg" class="text-neutral-700 font-medium">0</span> ·
+                    Peak <span id="api-history-peak" class="text-neutral-700 font-medium">0</span><span id="api-history-peak-when" class="text-neutral-400"></span>
+                </p>
             </div>
             <div class="flex gap-1" id="api-history-toggle">
                 <button type="button" data-g="day" class="text-xs px-3 py-1.5 rounded-full border border-brand-300 bg-brand-50 text-brand-600 font-medium">Day</button>
@@ -160,37 +165,11 @@
         </div>
         <div class="relative">
             <canvas id="api-history-canvas" style="width:100%;height:240px;display:block"></canvas>
-            <p id="api-history-empty" class="absolute inset-0 flex items-center justify-center text-sm text-neutral-400 text-center px-4">No calls recorded yet — activity is saved every minute and will build up here.</p>
-        </div>
-    </div>
-
-    @* ── Live API usage (from Zephiel) ──────────────────────────────────── *@
-    <div class="bg-white border border-neutral-200 rounded-sm p-5 mb-6" id="zeph-usage-card">
-        <div class="flex items-center justify-between mb-1">
-            <h2 class="text-sm font-semibold text-neutral-800">Live API usage</h2>
-            <span class="text-[11px] text-neutral-400" id="zeph-usage-updated">updates every 30s</span>
-        </div>
-        <p class="text-xs text-neutral-500 mb-4">Multistore API calls across your stores over the last 30 days — live from Zephiel.</p>
-
-        <div id="zeph-usage-empty" class="text-sm text-neutral-400 py-8 text-center">Loading usage…</div>
-
-        <div id="zeph-usage-body" class="hidden">
-            @* Quota meter *@
-            <div class="mb-5">
-                <div class="flex items-center justify-between text-xs text-neutral-500 mb-1">
-                    <span>Monthly quota used</span>
-                    <span id="zeph-quota-text" class="font-medium text-neutral-700">—</span>
-                </div>
-                <div class="h-2 bg-neutral-100 rounded-full overflow-hidden">
-                    <div id="zeph-quota-bar" class="h-2 bg-brand-500 rounded-full transition-all duration-500" style="width:0%"></div>
-                </div>
+            <div id="api-history-tip" class="pointer-events-none absolute hidden z-10 bg-white border border-neutral-200 shadow-md rounded-md px-2.5 py-1.5 text-xs" style="transform:translate(-50%,-110%)">
+                <div id="api-history-tip-label" class="text-neutral-400 text-[10px]"></div>
+                <div id="api-history-tip-value" class="text-neutral-900 font-semibold"></div>
             </div>
-            @* Calls per day (line) *@
-            <div class="text-[11px] text-neutral-400 uppercase tracking-widest mb-1">Calls per day</div>
-            <div id="zeph-line-wrap" class="mb-5"></div>
-            @* Calls by store (bars) *@
-            <div class="text-[11px] text-neutral-400 uppercase tracking-widest mb-1">Calls by store</div>
-            <div id="zeph-bars-wrap"></div>
+            <p id="api-history-empty" class="absolute inset-0 flex items-center justify-center text-sm text-neutral-400 text-center px-4">No calls recorded yet — activity is saved every minute and will build up here.</p>
         </div>
     </div>
 
@@ -401,59 +380,6 @@
 })();
 </script>
 
-@* Live usage chart — polls the Zephiel usage feed every 30s and redraws with the shared SVG charts. *@
-<partial name="_ChartScripts" />
-<script>
-(function () {
-    var USAGE_URL = '@Url.Action("ZephielUsage", "Subscribe", new { area = "Admin" })';
-    var card = document.getElementById('zeph-usage-card');
-    if (!card || typeof SLCharts === 'undefined') return;
-    var body = document.getElementById('zeph-usage-body'),
-        empty = document.getElementById('zeph-usage-empty'),
-        updated = document.getElementById('zeph-usage-updated');
-
-    function render(d) {
-        if (!d || d.ok === false || !d.series) {
-            body.classList.add('hidden');
-            empty.classList.remove('hidden');
-            empty.textContent = 'No usage yet — enable the connector and add your account key below.';
-            return;
-        }
-        empty.classList.add('hidden');
-        body.classList.remove('hidden');
-
-        var used = (d.quota && d.quota.used) || 0, limit = (d.quota && d.quota.limit) || 0;
-        var pct = limit > 0 ? Math.min(100, Math.round(used / limit * 100)) : 0;
-        document.getElementById('zeph-quota-bar').style.width = pct + '%';
-        document.getElementById('zeph-quota-text').textContent =
-            used.toLocaleString() + ' / ' + limit.toLocaleString() + ' calls (' + pct + '%)';
-
-        // Re-create the chart hosts each poll (SLCharts replaces the target element on render).
-        var lineWrap = document.getElementById('zeph-line-wrap');
-        lineWrap.innerHTML = '<div id="zeph-line"></div>';
-        SLCharts.line('zeph-line',
-            d.series.map(function (p) { return p.day.slice(5); }),
-            [{ label: 'Calls', data: d.series.map(function (p) { return p.count; }) }]);
-
-        var barsWrap = document.getElementById('zeph-bars-wrap');
-        barsWrap.innerHTML = '<div id="zeph-bars"></div>';
-        SLCharts.hbar('zeph-bars',
-            (d.perStore || []).map(function (s) { return String(s.store).replace('Sterlin Glams ', ''); }),
-            (d.perStore || []).map(function (s) { return s.count; }), {});
-
-        updated.textContent = 'updated ' + new Date().toLocaleTimeString();
-    }
-
-    function poll() {
-        fetch(USAGE_URL, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-            .then(function (r) { return r.json(); })
-            .then(render)
-            .catch(function () { /* transient — keep the last render */ });
-    }
-    poll();
-    setInterval(poll, 30000);
-})();
-</script>
 <script>
 // ── Live "Calls per store" — real internal API activity from this instance ──
 (function () {
@@ -537,34 +463,62 @@
     if (!canvas) return;
     var ctx = canvas.getContext('2d');
     var totalEl = document.getElementById('api-history-total');
+    var avgEl = document.getElementById('api-history-avg');
+    var avgLabelEl = document.getElementById('api-history-avg-label');
+    var peakEl = document.getElementById('api-history-peak');
+    var peakWhenEl = document.getElementById('api-history-peak-when');
     var emptyEl = document.getElementById('api-history-empty');
     var toggle = document.getElementById('api-history-toggle');
-    var group = 'day', last = null;
+    var tip = document.getElementById('api-history-tip');
+    var tipLabel = document.getElementById('api-history-tip-label');
+    var tipValue = document.getElementById('api-history-tip-value');
+    var group = 'day', last = null, bars = [];   // bars: hover hit-boxes {x,w,cx,label,value}
 
     function roundRect(c, x, y, w, h, r) { r = Math.min(r, w / 2, h); c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 
     function draw(d) {
         var labels = (d && d.labels) || [], counts = (d && d.counts) || [];
-        totalEl.textContent = (d ? d.total : 0).toLocaleString();
-        emptyEl.style.display = counts.length ? 'none' : '';
+        var total = d ? d.total : 0;
+        totalEl.textContent = total.toLocaleString();
+        avgEl.textContent = (d ? d.average : 0).toLocaleString();
+        avgLabelEl.textContent = group === 'month' ? 'Monthly' : group === 'week' ? 'Weekly' : 'Daily';
+        peakEl.textContent = (d ? d.peak : 0).toLocaleString();
+        peakWhenEl.textContent = (d && d.peak && d.peakLabel) ? ' (' + d.peakLabel + ')' : '';
+        emptyEl.style.display = total > 0 ? 'none' : '';   // zero-filled series still has bars; show empty only when nothing recorded
+        bars = [];
         var dpr = window.devicePixelRatio || 1, cssW = canvas.clientWidth || 600, cssH = 240;
         canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, cssW, cssH);
         if (!counts.length) return;
-        var padL = 32, padR = 10, padT = 10, padB = 26, w = cssW - padL - padR, h = cssH - padT - padB;
+        var padL = 40, padR = 10, padT = 10, padB = 26, w = cssW - padL - padR, h = cssH - padT - padB;
         var max = 1; counts.forEach(function (v) { if (v > max) max = v; }); max = Math.ceil(max * 1.15) || 1;
         ctx.strokeStyle = '#eef0f2'; ctx.fillStyle = '#9aa0a6'; ctx.font = '10px sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-        [0, 0.5, 1].forEach(function (f) { var y = padT + h - (h * f); ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + w, y); ctx.stroke(); ctx.fillText(String(Math.round(max * f)), 2, y); });
+        [0, 0.5, 1].forEach(function (f) { var y = padT + h - (h * f); ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + w, y); ctx.stroke(); ctx.fillText(Math.round(max * f).toLocaleString(), 2, y); });
         var n = counts.length, gap = n > 1 ? Math.min(10, (w / n) * 0.25) : 6, bw = (w - (gap * (n - 1))) / n;
         counts.forEach(function (v, i) {
             var x = padL + i * (bw + gap), bh = h * (v / max), y = padT + h - bh;
-            ctx.fillStyle = '#c31a82'; roundRect(ctx, x, y, Math.max(1, bw), bh, 3); ctx.fill();
+            ctx.fillStyle = v > 0 ? '#c31a82' : '#f1d6e6';   // faint stub for empty days, like the reference
+            roundRect(ctx, x, y, Math.max(1, bw), Math.max(v > 0 ? 2 : 1, bh), 3); ctx.fill();
+            bars.push({ x: x, w: Math.max(1, bw), cx: x + bw / 2, top: y, label: labels[i] || '', value: v });
         });
         ctx.fillStyle = '#9aa0a6'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'alphabetic';
         ctx.textAlign = 'left'; ctx.fillText(labels[0] || '', padL, cssH - 8);
         if (n > 2) { ctx.textAlign = 'center'; ctx.fillText(labels[Math.floor(n / 2)] || '', padL + w / 2, cssH - 8); }
         ctx.textAlign = 'right'; ctx.fillText(labels[n - 1] || '', padL + w, cssH - 8);
     }
+    // Hover tooltip: find the bar under the cursor and float a label + value above it.
+    canvas.addEventListener('mousemove', function (e) {
+        if (!bars.length) { tip.classList.add('hidden'); return; }
+        var rect = canvas.getBoundingClientRect(), mx = e.clientX - rect.left;
+        var hit = null, best = 1e9;
+        bars.forEach(function (b) { var dx = Math.abs(mx - b.cx); if (dx < best) { best = dx; hit = b; } });
+        if (!hit || best > 40) { tip.classList.add('hidden'); return; }
+        tipLabel.textContent = hit.label;
+        tipValue.textContent = hit.value.toLocaleString() + (hit.value === 1 ? ' call' : ' calls');
+        tip.style.left = hit.cx + 'px'; tip.style.top = hit.top + 'px';
+        tip.classList.remove('hidden');
+    });
+    canvas.addEventListener('mouseleave', function () { tip.classList.add('hidden'); });
     function load() {
         fetch(URL + '?group=' + group, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(function (r) { return r.json(); })
