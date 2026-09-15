@@ -17,8 +17,15 @@
     var order = Model.OriginalOrder;
     var customer = order?.Customer;
 
-    var addressLines = (store?.Address ?? "")
-        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    // One compact address line, appending "City State" only when not already named (no repetition).
+    var addressLines = new List<string>();
+    var addr = (store?.Address ?? "").Trim();
+    var cityState = $"{store?.City} {store?.State}".Trim();
+    var addrHasLoc =
+        (!string.IsNullOrWhiteSpace(store?.City)  && addr.Contains(store!.City,  StringComparison.OrdinalIgnoreCase)) ||
+        (!string.IsNullOrWhiteSpace(store?.State) && addr.Contains(store!.State, StringComparison.OrdinalIgnoreCase));
+    if (!string.IsNullOrWhiteSpace(addr)) addressLines.Add(addr);
+    if (!string.IsNullOrWhiteSpace(cityState) && !addrHasLoc) addressLines.Add(cityState);
     var phone = string.IsNullOrWhiteSpace(store?.Phone) ? contactPhone : store!.Phone;
     var website = "";
     if (contactEmail.Contains('@')) website = "www." + contactEmail.Split('@')[1];
@@ -66,10 +73,6 @@
         <div class="addr">
             @if (store != null) { <div>@store.Name</div> }
             @foreach (var ln in addressLines) { <div>@ln</div> }
-            @if (store != null && (!string.IsNullOrWhiteSpace(store.City) || !string.IsNullOrWhiteSpace(store.State)))
-            {
-                <div>@($"{store.City} {store.State}".Trim())</div>
-            }
             @if (!string.IsNullOrWhiteSpace(phone)) { <div>Tel : @phone</div> }
             @if (!string.IsNullOrWhiteSpace(website) || !string.IsNullOrWhiteSpace(contactEmail))
             {
