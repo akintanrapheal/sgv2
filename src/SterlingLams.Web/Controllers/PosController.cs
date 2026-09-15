@@ -82,17 +82,12 @@ public class PosController : Controller
         v != null ? (v.PosPrice ?? v.Price ?? p.PosPrice ?? p.EffectivePrice)
                   : (p.PosPrice ?? p.EffectivePrice);
 
-    // POS card/receipt thumbnail: rewrite a Cloudinary upload URL to a small, cacheable variant so
-    // offline image-caching stays light. Non-Cloudinary URLs are returned unchanged.
-    private static string? PosThumb(string? url)
-    {
-        if (string.IsNullOrEmpty(url)) return url;
-        const string marker = "/image/upload/";
-        var i = url.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-        if (i < 0) return url;
-        var at = i + marker.Length;
-        return url[..at] + "f_auto,q_auto,w_240,h_240,c_fill/" + url[at..];
-    }
+    // POS card thumbnail. Uses Img.Cld so any small transform already baked into the stored URL is
+    // STRIPPED and re-applied from the full-res original (an old w_200 thumbnail becomes sharp again).
+    // Sized at 512² so the large POS cards stay crisp on touch screens and high-DPI displays, while
+    // f_auto/q_auto (WebP/AVIF) keep the file — and the offline cache — light.
+    private static string? PosThumb(string? url) =>
+        SterlingLams.Web.Infrastructure.Img.Cld(url, 512, 512);
 
     // Per-(product, variant) available stock at a store, for the POS grid + variant picker.
     private sealed record InvRow(int ProductId, int? VariantId, int Avail);
