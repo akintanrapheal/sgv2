@@ -132,6 +132,22 @@ public class SubscribeController : AdminBaseController
         return Content(json, "application/json");
     }
 
+    /// <summary>Live per-store internal-API-call activity for the "Calls per store" chart (polled every
+    /// few seconds). Real counts from this instance's rolling 5-minute window. Owner-only.</summary>
+    [HttpGet]
+    public IActionResult ApiActivity([FromServices] SterlingLams.Web.Infrastructure.ApiActivityTracker tracker)
+    {
+        var s = tracker.Snapshot();
+        return Json(new
+        {
+            ok = true,
+            bucketSeconds = s.BucketSeconds,
+            buckets = s.Buckets,                                   // unix seconds per point
+            total = s.Total,                                       // total calls in the window
+            stores = s.Stores.Select(x => new { label = x.Label, total = x.Total, series = x.Series })
+        });
+    }
+
     // Start a real Paystack payment for the subscription, then redirect the admin to Paystack.
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Pay(string plan)

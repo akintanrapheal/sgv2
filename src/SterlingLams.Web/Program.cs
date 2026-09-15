@@ -288,6 +288,7 @@ builder.Services.AddScoped<SterlingLams.Web.Infrastructure.IFinanceReportService
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.FinanceReportScheduler>();
 
 // Storefront traffic analytics (Admin → Traffic). Singleton buffer + background batch-writer.
+builder.Services.AddSingleton<SterlingLams.Web.Infrastructure.ApiActivityTracker>();
 builder.Services.AddSingleton<SterlingLams.Web.Infrastructure.Traffic.TrafficRecorder>();
 builder.Services.AddSingleton<SterlingLams.Web.Infrastructure.Traffic.ITrafficRecorder>(
     sp => sp.GetRequiredService<SterlingLams.Web.Infrastructure.Traffic.TrafficRecorder>());
@@ -480,6 +481,9 @@ app.UseMiddleware<SterlingLams.Web.Infrastructure.Traffic.TrafficMiddleware>();
 
 // Public storefront maintenance page (store.maintenance_mode). After auth so staff are exempt.
 app.UseMiddleware<SterlingLams.Web.Infrastructure.MaintenanceModeMiddleware>();
+
+// Tally internal API/AJAX calls per store for the live "Calls per store" chart (Subscribe page).
+app.UseMiddleware<SterlingLams.Web.Infrastructure.ApiActivityMiddleware>();
 
 // Output cache sits as late as possible: session, order-attribution, auth and maintenance all
 // run BEFORE it, so they still execute on a cache hit — only the MVC page render is short-circuited.
