@@ -1173,9 +1173,16 @@ public class FinanceController : AdminBaseController
     // giveaways, expenses and net — for a single Lagos day, filterable to one store.
     public record EodPayMethod(string Method, int Count, decimal Amount);
     public record EodTillRow(string Till, int Orders, decimal Gross);
+    // Operational & cash-flow figures for one branch's day (the owner's end-of-day checklist).
+    public record EodOps(
+        int PosSales, int TransferPayments, int CashPayments,
+        int WebsiteOrders, decimal WebsiteAmount,
+        int PackedWebsiteOrders, decimal PackedWebsiteAmount,
+        int ItemsSoldQty, decimal ItemsSoldAmount,
+        decimal OpeningCash, decimal PhysicalCashCollected, decimal CashTransfer, decimal ClosingCash);
     public record EodStoreRow(int? StoreId, string Store, int Orders, decimal Gross, decimal Delivery,
         decimal Discounts, decimal Loyalty, decimal GiftCards, decimal Refunds, int RefundCount,
-        decimal Expenses, List<EodPayMethod> Methods, List<EodTillRow> Tills)
+        decimal Expenses, List<EodPayMethod> Methods, List<EodTillRow> Tills, EodOps Ops)
     {
         public decimal Merchandise => Gross - Delivery;
         public decimal Net => Gross - Refunds;
@@ -1213,6 +1220,7 @@ public class FinanceController : AdminBaseController
             Rid = o.RegisterId,
             Till = o.Register != null ? o.Register.Name : null,
             o.Channel,
+            Packed = o.PackedAt != null || o.PickupReadyEmailedAt != null,
             o.Total, o.DeliveryFee, o.DiscountAmount, o.LoyaltyDiscount, o.GiftCardAmount, o.PaymentProvider
         }).ToListAsync();
 
@@ -1245,6 +1253,28 @@ public class FinanceController : AdminBaseController
         if (storeId.HasValue) expQ = expQ.Where(e => e.StoreId == storeId);
         var expRows = await expQ.Select(e => new { e.StoreId, e.Amount }).ToListAsync();
 
+        // Line items sold that day, by branch (for items-sold count/amount).
+        var itemQ = _db.OrderItems.Where(i => i.Order.IsPaid
+            && (i.Order.PaidAt ?? i.Order.CreatedAt) >= f && (i.Order.PaidAt ?? i.Order.CreatedAt) < t);
+        if (storeId.HasValue) itemQ = itemQ.Where(i => i.Order.PickupStoreId == storeId || i.Order.FulfillingStoreId == storeId);
+        var itemRows = await itemQ.Select(i => new
+        {
+            Sid = i.Order.PickupStoreId ?? i.Order.FulfillingStoreId,
+            i.Quantity,
+            Line = i.Quantity * i.UnitPrice - i.DiscountAmount
+        }).ToListAsync();
+
+        // Till sessions closed that day, by branch — for the cash-drawer flow (opening/closing/transfer).
+        var sessQ = _db.TillSessions.Include(sn => sn.Register)
+            .Where(sn => sn.ClosedAt != null && sn.ClosedAt >= f && sn.ClosedAt < t);
+        if (storeId.HasValue) sessQ = sessQ.Where(sn => sn.Register.StoreId == storeId);
+        var sessions = await sessQ.Select(sn => new { sn.Id, Sid = (int?)sn.Register.StoreId, sn.OpeningFloat, sn.CountedCash }).ToListAsync();
+        var sessStore = sessions.ToDictionary(x => x.Id, x => x.Sid);
+        var sessIds = sessions.Select(x => x.Id).ToList();
+        var moveRows = (await _db.CashMovements.Where(m => sessIds.Contains(m.TillSessionId))
+                .Select(m => new { m.TillSessionId, m.Amount }).ToListAsync())
+            .Select(m => new { Sid = sessStore.GetValueOrDefault(m.TillSessionId), m.Amount }).ToList();
+
         string Name(int? sid) => sid.HasValue
             ? (stores.FirstOrDefault(s => s.Id == sid)?.Name ?? $"Store #{sid}")
             : "Online / Unassigned";
@@ -1268,11 +1298,40 @@ public class FinanceController : AdminBaseController
                     : (o.Channel == OrderChannel.Online ? "Website / Online" : "Unassigned"))
                 .Select(g => new EodTillRow(g.Key, g.Count(), g.Sum(o => o.Total)))
                 .OrderByDescending(x => x.Gross).ToList();
+
+            // Operational & cash-flow figures.
+            var web = os.Where(o => o.Channel == OrderChannel.Online).ToList();
+            var packedWeb = web.Where(o => o.Packed).ToList();
+            var ccontribs = contribs.Where(m => m.Sid == sid).ToList();
+            var items = itemRows.Where(i => i.Sid == sid).ToList();
+            var ssns = sessions.Where(x => x.Sid == sid).ToList();
+            var mvs = moveRows.Where(m => m.Sid == sid).ToList();
+            var openingCash = ssns.Sum(x => x.OpeningFloat);
+            var physicalCash = ccontribs.Where(m => m.Method == "Cash").Sum(m => m.Amount);
+            var cashTransfer = mvs.Where(m => m.Amount < 0).Sum(m => -m.Amount);   // cash taken out / banked
+            var closingCash = ssns.Any(x => x.CountedCash.HasValue)
+                ? ssns.Sum(x => x.CountedCash ?? 0)
+                : openingCash + physicalCash - cashTransfer;
+            var ops = new EodOps(
+                PosSales: os.Count(o => o.Channel == OrderChannel.Pos),
+                TransferPayments: ccontribs.Count(m => m.Method == "Transfer"),
+                CashPayments: ccontribs.Count(m => m.Method == "Cash"),
+                WebsiteOrders: web.Count,
+                WebsiteAmount: web.Sum(o => o.Total),
+                PackedWebsiteOrders: packedWeb.Count,
+                PackedWebsiteAmount: packedWeb.Sum(o => o.Total),
+                ItemsSoldQty: items.Sum(i => i.Quantity),
+                ItemsSoldAmount: items.Sum(i => i.Line),
+                OpeningCash: openingCash,
+                PhysicalCashCollected: physicalCash,
+                CashTransfer: cashTransfer,
+                ClosingCash: closingCash);
+
             return new EodStoreRow(sid, Name(sid), os.Count,
                 os.Sum(o => o.Total), os.Sum(o => o.DeliveryFee),
                 os.Sum(o => o.DiscountAmount), os.Sum(o => o.LoyaltyDiscount), os.Sum(o => o.GiftCardAmount),
                 refs.Sum(r => r.Amount), refs.Count,
-                expRows.Where(e => e.StoreId == sid).Sum(e => e.Amount), methods, tills);
+                expRows.Where(e => e.StoreId == sid).Sum(e => e.Amount), methods, tills, ops);
         }).OrderByDescending(r => r.Gross).ThenBy(r => r.Store).ToList();
 
         return View(new EndOfDayVm { Date = fLocal, StoreId = storeId, Stores = stores, Rows = rows });
