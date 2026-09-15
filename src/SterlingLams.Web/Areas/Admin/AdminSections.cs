@@ -80,6 +80,13 @@ public static class AdminSections
         ("EndOfDay",     "End of Day"),
     };
 
+    /// <summary>Finance "Classic reports" sub-group — POS-style operational reports, rendered as a nested
+    /// expandable list under Finance in the sidebar (see _AdminLayout). All actions on FinanceController.</summary>
+    public static readonly (string Action, string Label)[] FinanceClassicTabs =
+    {
+        ("CompletedTransactions", "Completed Transactions"),
+    };
+
     /// <summary>Order the sidebar renders groups in. "" is the top, non-collapsible Overview.</summary>
     public static readonly string[] GroupOrder = { "", "Sales", "Catalogue", "Marketing", "Reports", "Settings" };
 

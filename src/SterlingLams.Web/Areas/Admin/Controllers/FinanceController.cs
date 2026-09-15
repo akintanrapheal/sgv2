@@ -1268,6 +1268,168 @@ public class FinanceController : AdminBaseController
         return View(new EndOfDayVm { Date = fLocal, StoreId = storeId, Stores = stores, Rows = rows });
     }
 
+    // ── Classic reports: Completed Transactions (POS-style transaction list) ─────
+    // One row per completed (paid) sale — online and POS — with the columns a shop expects on a
+    // till report: staff, location, device, customer, discount, total, tender, change and its items.
+    public record CtItem(string Name, string? Variant, string? Sku, int Qty, decimal UnitPrice)
+    { public decimal Line => Qty * UnitPrice; }
+    public record CtRow(int Id, string Number, DateTime When, string Staff, string Location, string Device,
+        string Customer, decimal Discount, string DiscountReason, decimal Total, string Tender, decimal Change,
+        List<CtItem> Items);
+
+    public class CompletedTxnVm
+    {
+        public DateTime From { get; set; }
+        public DateTime To { get; set; }
+        public int? StoreId { get; set; }       // Filter by Location
+        public int? RegisterId { get; set; }    // Filter by Device
+        public string Channel { get; set; } = ""; // "", "Pos", "Online"
+        public string Q { get; set; } = "";      // search: order #, customer, staff, tender
+        public List<Store> Stores { get; set; } = new();
+        public List<Register> Registers { get; set; } = new();
+        public List<CtRow> Rows { get; set; } = new();
+        public int Count => Rows.Count;
+        public decimal Total => Rows.Sum(r => r.Total);
+        public decimal Discount => Rows.Sum(r => r.Discount);
+    }
+
+    // Loads the completed-transaction rows for the given filters (shared by the page and every export).
+    private async Task<(List<CtRow> Rows, DateTime FromLocal, DateTime ToLocal)> LoadCompletedAsync(
+        string? from, string? to, int? storeId, int? registerId, string? channel, string? q)
+    {
+        var today = Services.ReportCalendar.Today.ToString("yyyy-MM-dd");
+        var (f, t, fLocal, tLocal) = Range(from ?? today, to ?? today);
+        channel = channel is "Online" or "Pos" ? channel : "";
+
+        var qry = _db.Orders.Where(o => o.IsPaid && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t);
+        if (storeId.HasValue) qry = qry.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
+        if (registerId.HasValue) qry = qry.Where(o => o.RegisterId == registerId);
+        if (channel == "Online") qry = qry.Where(o => o.Channel == OrderChannel.Online);
+        else if (channel == "Pos") qry = qry.Where(o => o.Channel == OrderChannel.Pos);
+
+        var raw = await qry.OrderByDescending(o => o.PaidAt ?? o.CreatedAt).Select(o => new
+        {
+            o.Id, o.OrderNumber, When = o.PaidAt ?? o.CreatedAt, o.Channel,
+            StaffId = o.Channel == OrderChannel.Pos ? o.UserId : null,
+            StoreName = o.PickupStore != null ? o.PickupStore.Name : (o.FulfillingStore != null ? o.FulfillingStore.Name : null),
+            Device = o.Register != null ? o.Register.Name : null,
+            PosCustName = o.Customer != null ? (o.Customer.FirstName + " " + o.Customer.LastName) : null,
+            PosCustPhone = o.Customer != null ? o.Customer.PhoneNumber : null,
+            OnlineCustName = o.User != null ? (o.User.FirstName + " " + o.User.LastName) : null,
+            AddrName = o.DeliveryAddress != null ? o.DeliveryAddress.FullName : null,
+            AddrPhone = o.DeliveryAddress != null ? o.DeliveryAddress.Phone : null,
+            o.DiscountAmount, o.DiscountCode, o.Total, o.PaymentProvider, o.ChangeGiven,
+            Items = o.Items.Select(i => new CtItem(i.ProductName, i.VariantName, i.ProductSku, i.Quantity, i.UnitPrice)).ToList()
+        }).ToListAsync();
+
+        var oids = raw.Select(r => r.Id).ToList();
+        var pays = (await _db.OrderPayments.Where(p => oids.Contains(p.OrderId))
+                .Select(p => new { p.OrderId, p.Method }).ToListAsync())
+            .GroupBy(p => p.OrderId)
+            .ToDictionary(g => g.Key, g => string.Join(" + ",
+                g.Select(x => string.IsNullOrWhiteSpace(x.Method) ? "Other" : x.Method.Trim()).Distinct()));
+        var staffNames = await UserNamesAsync(raw.Select(r => r.StaffId));
+
+        var rows = raw.Select(r =>
+        {
+            var staff = string.IsNullOrEmpty(r.StaffId) ? "" : staffNames.GetValueOrDefault(r.StaffId!, "—");
+            var name = (r.Channel == OrderChannel.Pos ? r.PosCustName : (r.OnlineCustName ?? r.AddrName))?.Trim();
+            if (string.IsNullOrWhiteSpace(name)) name = "Walk-in";
+            var phone = r.Channel == OrderChannel.Pos ? r.PosCustPhone : r.AddrPhone;
+            var customer = string.IsNullOrWhiteSpace(phone) ? name : $"{name} · {phone}";
+            var tender = pays.GetValueOrDefault(r.Id)
+                ?? (r.Channel == OrderChannel.Online ? "Website"
+                    : string.IsNullOrWhiteSpace(r.PaymentProvider) ? "—" : r.PaymentProvider!);
+            return new CtRow(r.Id, r.OrderNumber, r.When, staff, r.StoreName ?? "Online / Unassigned",
+                r.Device ?? (r.Channel == OrderChannel.Online ? "Website" : "—"), customer,
+                r.DiscountAmount, string.IsNullOrWhiteSpace(r.DiscountCode) ? "—" : r.DiscountCode!,
+                r.Total, tender, r.ChangeGiven ?? 0, r.Items);
+        }).ToList();
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var s = q.Trim();
+            const StringComparison oic = StringComparison.OrdinalIgnoreCase;
+            rows = rows.Where(r => r.Number.Contains(s, oic) || r.Customer.Contains(s, oic)
+                || r.Staff.Contains(s, oic) || r.Tender.Contains(s, oic)).ToList();
+        }
+
+        return (rows, fLocal, tLocal);
+    }
+
+    public async Task<IActionResult> CompletedTransactions(string? from, string? to, int? storeId,
+        int? registerId, string? channel, string? q)
+    {
+        ViewData["Title"] = "Finance — Completed Transactions";
+        var (rows, fLocal, tLocal) = await LoadCompletedAsync(from, to, storeId, registerId, channel, q);
+        return View(new CompletedTxnVm
+        {
+            From = fLocal, To = tLocal, StoreId = storeId, RegisterId = registerId,
+            Channel = channel is "Online" or "Pos" ? channel : "", Q = q ?? "",
+            Stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync(),
+            Registers = await _db.Registers.Include(r => r.Store).OrderBy(r => r.Store.Name).ThenBy(r => r.Name).ToListAsync(),
+            Rows = rows
+        });
+    }
+
+    private static readonly string[] CtHeaders =
+        { "Date/Time (WAT)", "Staff", "Location", "Device", "Customer & Type", "Discount", "Discount Reason", "Total", "Tender", "Change", "Order #" };
+
+    private static string[] CtCells(CtRow r) => new[]
+    {
+        Services.ReportCalendar.ToLocal(r.When).ToString("yyyy-MM-dd HH:mm"),
+        r.Staff, r.Location, r.Device, r.Customer,
+        r.Discount.ToString("0.##"), r.DiscountReason, r.Total.ToString("0.##"),
+        r.Tender, r.Change.ToString("0.##"), r.Number
+    };
+
+    public async Task<IActionResult> CompletedTransactionsCsv(string? from, string? to, int? storeId,
+        int? registerId, string? channel, string? q)
+    {
+        var (rows, fLocal, tLocal) = await LoadCompletedAsync(from, to, storeId, registerId, channel, q);
+        var sb = new StringBuilder();
+        Services.Csv.AppendRow(sb, CtHeaders);
+        foreach (var r in rows) Services.Csv.AppendRow(sb, CtCells(r));
+        return File(Services.Csv.ToBytes(sb), "text/csv", $"completed_transactions_{fLocal:yyyyMMdd}-{tLocal:yyyyMMdd}.csv");
+    }
+
+    // Excel and Word both consume a simple HTML table (no third-party dependency); the content type +
+    // extension decide which app opens it.
+    private static byte[] CompletedHtmlTable(string title, List<CtRow> rows)
+    {
+        string E(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+        var sb = new StringBuilder();
+        sb.Append("<html><head><meta charset=\"utf-8\"></head><body>");
+        sb.Append($"<h3>{E(title)}</h3>");
+        sb.Append("<table border=\"1\" cellspacing=\"0\" cellpadding=\"4\"><thead><tr>");
+        foreach (var h in CtHeaders) sb.Append($"<th>{E(h)}</th>");
+        sb.Append("</tr></thead><tbody>");
+        foreach (var r in rows)
+        {
+            sb.Append("<tr>");
+            foreach (var c in CtCells(r)) sb.Append($"<td>{E(c)}</td>");
+            sb.Append("</tr>");
+        }
+        sb.Append("</tbody></table></body></html>");
+        return Encoding.UTF8.GetBytes(sb.ToString());
+    }
+
+    public async Task<IActionResult> CompletedTransactionsExcel(string? from, string? to, int? storeId,
+        int? registerId, string? channel, string? q)
+    {
+        var (rows, fLocal, tLocal) = await LoadCompletedAsync(from, to, storeId, registerId, channel, q);
+        var bytes = CompletedHtmlTable($"Completed Transactions {fLocal:dd MMM yyyy} – {tLocal:dd MMM yyyy}", rows);
+        return File(bytes, "application/vnd.ms-excel", $"completed_transactions_{fLocal:yyyyMMdd}-{tLocal:yyyyMMdd}.xls");
+    }
+
+    public async Task<IActionResult> CompletedTransactionsWord(string? from, string? to, int? storeId,
+        int? registerId, string? channel, string? q)
+    {
+        var (rows, fLocal, tLocal) = await LoadCompletedAsync(from, to, storeId, registerId, channel, q);
+        var bytes = CompletedHtmlTable($"Completed Transactions {fLocal:dd MMM yyyy} – {tLocal:dd MMM yyyy}", rows);
+        return File(bytes, "application/msword", $"completed_transactions_{fLocal:yyyyMMdd}-{tLocal:yyyyMMdd}.doc");
+    }
+
     private async Task<FinanceVm> BuildAsync(string? from, string? to, int? storeId, string? channel, string? period)
     {
         var (f, t, fLocal, tLocal) = Range(from, to);
