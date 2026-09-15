@@ -2748,9 +2748,6 @@ public class PosController : Controller
         // no customer/phone, or when the toggle is off). Fire-and-forget.
         _ = _whatsapp.NotifyOrderAsync(order.Id, SterlingLams.Web.Services.WhatsAppOrderEvent.OrderConfirmed);
 
-        // Showcase: report the sale as an API call against this register's store (fire-and-forget; no-op unless enabled).
-        _ = _zephiel.NotifyCallAsync(register.StoreId, "/pos/sale");
-
         return Json(new { success = true, orderId = order.Id, orderNumber, total = order.Total, change = order.ChangeGiven });
     }
 

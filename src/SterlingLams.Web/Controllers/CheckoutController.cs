@@ -892,11 +892,6 @@ public class CheckoutController : Controller
             // phone, independent of the email setting above. Fire-and-forget (own scope, never throws).
             _ = _whatsapp.NotifyOrderAsync(order.Id, SterlingLams.Web.Services.WhatsAppOrderEvent.OrderConfirmed);
 
-            // Showcase: report the online order as an API call against its store (pickup or fulfilling
-            // branch). Fire-and-forget; a no-op unless the Zephiel integration is enabled + configured.
-            if ((order.PickupStoreId ?? order.FulfillingStoreId) is int zStoreId)
-                _ = _zephiel.NotifyCallAsync(zStoreId, "/checkout/order");
-
             // Admin new-order alert
             if (await _settings.GetBoolAsync("notifications.new_order", true))
             {
