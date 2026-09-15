@@ -35,9 +35,17 @@
         addressLines = addrOverride.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
     else
     {
-        addressLines = (store?.Address ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        // Keep the address as ONE compact line (don't explode every comma into its own row),
+        // and only append "City State" when the address doesn't already name the location —
+        // otherwise the receipt repeats e.g. "…Ajah, Lagos" then "Ajah Lagos" underneath.
+        addressLines = new List<string>();
+        var addr = (store?.Address ?? "").Trim();
         var cityState = $"{store?.City} {store?.State}".Trim();
-        if (!string.IsNullOrWhiteSpace(cityState)) addressLines.Add(cityState);
+        var addrHasLoc =
+            (!string.IsNullOrWhiteSpace(store?.City)  && addr.Contains(store!.City,  StringComparison.OrdinalIgnoreCase)) ||
+            (!string.IsNullOrWhiteSpace(store?.State) && addr.Contains(store!.State, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(addr)) addressLines.Add(addr);
+        if (!string.IsNullOrWhiteSpace(cityState) && !addrHasLoc) addressLines.Add(cityState);
     }
     var phone = !string.IsNullOrWhiteSpace(phoneOverride) ? phoneOverride
               : !string.IsNullOrWhiteSpace(store?.Phone) ? store!.Phone : contactPhone;

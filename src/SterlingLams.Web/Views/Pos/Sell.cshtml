@@ -3099,6 +3099,10 @@
     }
     function stopAlarm() { if (alarmTimer) { clearInterval(alarmTimer); alarmTimer = null; } }
 
+    // The signed-in cashier's first name, used to personalise the spoken alert ("Judith, you have…").
+    const cashierFirst = @Html.Raw(Json.Serialize((cashierName ?? "").Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? ""));
+    const greet = cashierFirst ? cashierFirst + ', ' : '';
+
     // Speak an announcement aloud (Web Speech API). Unlocked by the same first tap as the audio.
     function speak(text) {
         try {
@@ -3153,11 +3157,11 @@
         const latest = orders[0];
         const extra = orders.length > 1 ? ' · +' + (orders.length - 1) + ' more' : '';
         alertPack('New order to pack', latest.number + (latest.customer ? ' · ' + latest.customer : '') + extra,
-            'You have a new order to be packed');
+            greet + 'you have a new order to be packed');
     }
     function remindPending(n) {
         alertPack('Orders waiting to be packed', n + (n === 1 ? ' order' : ' orders') + ' still need packing',
-            n === 1 ? 'You have an order waiting to be packed' : 'You have ' + n + ' orders waiting to be packed');
+            greet + (n === 1 ? 'you have an order waiting to be packed' : 'you have ' + n + ' orders waiting to be packed'));
     }
 
     // Background poll: keep the badge fresh and ring + pop up when a new order needs packing.
