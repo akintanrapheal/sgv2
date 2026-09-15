@@ -2915,12 +2915,15 @@
         const badge = isPickup
             ? '<span class="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-brand-50 text-brand-600">' + bag + 'Pickup</span>'
             : '<span class="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-sky-50 text-sky-600">' + truck + 'Delivery</span>';
-        const accent = isPickup ? 'border-l-brand-400' : 'border-l-sky-400';
+        const accent = o.packed ? 'border-l-emerald-400' : (isPickup ? 'border-l-brand-400' : 'border-l-sky-400');
         const where = isPickup ? 'Collect in store' : (o.place ? esc(o.place) : 'Delivery');
         const noteFlag = o.hasNote ? '<span class="text-amber-600 font-medium">note</span>' : '';
+        const packedBadge = o.packed
+            ? '<span class="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">✓ Packed</span>'
+            : '';
         return `<button type="button" class="fulfil-card w-full text-left bg-white border border-neutral-200 border-l-4 ${accent} rounded-xl p-3.5 hover:border-neutral-300 hover:shadow-sm transition" data-id="${o.id}">
             <div class="flex items-center justify-between gap-2 mb-1.5">
-                <div class="flex items-center gap-2 min-w-0">${badge}<span class="font-semibold text-neutral-900 truncate">${esc(o.orderNumber)}</span></div>
+                <div class="flex items-center gap-2 min-w-0">${badge}${packedBadge}<span class="font-semibold text-neutral-900 truncate">${esc(o.orderNumber)}</span></div>
                 <span class="text-sm font-semibold text-neutral-900 tabular-nums flex-shrink-0">${money(o.total)}</span>
             </div>
             <div class="text-sm text-neutral-700 truncate">${esc(o.customer) || 'Customer'}${o.phone ? ' · ' + esc(o.phone) : ''}</div>
@@ -2988,10 +2991,11 @@
             const placed = d.placedAt ? new Date(d.placedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
             const cust = d.customer || {};
             const isPickup = d.fulfillmentType === 'StorePickup';
-            // Context-aware action: delivery → mark packed (logistics ships); pickup → notify the customer.
+            // Two-step flow: pack first (stops the alarm), then notify (pickup) or dispatch (delivery).
             let act = null, actLabel = '';
             if (d.canPack) { act = 'pack'; actLabel = 'Mark as packed'; }
             else if (d.canNotifyPickup) { act = 'pickup'; actLabel = d.pickupNotified ? 'Resend pickup notification' : 'Send pickup-ready notification'; }
+            else if (d.canDispatch) { act = 'dispatch'; actLabel = 'Out for delivery'; }
             const packBtn = act
                 ? `<button type="button" id="fulfil-action-btn" data-id="${d.id}" data-act="${act}" class="w-full bg-brand-500 text-white rounded-lg py-3 text-sm font-semibold hover:bg-brand-600 transition-colors">${actLabel}</button>`
                 : '';
@@ -3033,8 +3037,9 @@
     }
     async function fulfilAction(id, act, btn) {
         const map = {
-            pack:   { url: '/Pos/FulfilMarkPacked', busy: 'Saving…', ok: 'Marked as packed — handed to logistics' },
-            pickup: { url: '/Pos/FulfilNotifyPickup', busy: 'Sending…', ok: 'Pickup notification sent to the customer' }
+            pack:     { url: '/Pos/FulfilMarkPacked',    busy: 'Saving…',   ok: 'Packed — alert stopped. Now notify or dispatch.' },
+            pickup:   { url: '/Pos/FulfilNotifyPickup',  busy: 'Sending…',  ok: 'Pickup notification sent to the customer' },
+            dispatch: { url: '/Pos/FulfilOutForDelivery', busy: 'Updating…', ok: 'Marked out for delivery' }
         }[act];
         if (!map) return;
         btn.disabled = true; const ot = btn.textContent; btn.textContent = map.busy;
@@ -3045,7 +3050,13 @@
                 body: JSON.stringify({ orderId: id })
             });
             const data = await res.json();
-            if (data.success) { toast(map.ok); historyCache = null; showList(); await loadList(); }
+            if (data.success) {
+                toast(map.ok);
+                historyCache = null;
+                await loadList();                 // refresh counts/badge
+                // After packing, stay on the order so the next step (notify / dispatch) is right there.
+                if (act === 'pack') { openDetail(id); } else { showList(); }
+            }
             else { btn.disabled = false; btn.textContent = ot; toast(data.message || 'Could not complete that.'); }
         } catch { btn.disabled = false; btn.textContent = ot; toast('Could not complete that.'); }
     }
@@ -3167,13 +3178,13 @@
 
     // Background poll: keep the badge fresh and ring + pop up when a new order needs packing.
     const alerted = new Set();   // order numbers already rung for → never alert the same one twice
-    let pendingToPack = 0;
+    let pendingToPack = 0;       // UNPACKED count — drives the alarm + 10-min reminder (stops once packed)
     async function poll() {
         try {
             const r = await fetch('/Pos/FulfilPoll?sinceTicks=' + encodeURIComponent(cursor));
             const d = await r.json();
-            pendingToPack = d.toPack || 0;
-            setBadge(pendingToPack + (d.awaiting || 0));
+            pendingToPack = d.unpacked || 0;                 // alarm only while orders are unpacked
+            setBadge((d.toPack || 0) + (d.awaiting || 0));   // badge = everything still needing action
             if (cursor !== '0' && d.newOrders && d.newOrders.length) {
                 // Only ring for orders we haven't already alerted on — so acting on one (which can
                 // bump its timestamp) never makes the alarm come back.
