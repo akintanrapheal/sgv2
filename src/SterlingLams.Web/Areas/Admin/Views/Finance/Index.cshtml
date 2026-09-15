@@ -5,10 +5,8 @@
     string J(object o) => JsonSerializer.Serialize(o);
     var periods = Model.ByPeriod;
     var channelTotal = Model.ByChannel.Sum(c => c.Amount);
-    var logisticsTotal = Model.LogisticsRevenue;
     string Money(decimal v) => "₦" + v.ToString("N0");
     var periodLabel = Model.Period switch { "week" => "Weekly", "month" => "Monthly", "quarter" => "Quarterly", "year" => "Yearly", _ => "Daily" };
-    var topStates = Model.ByState.Take(12).ToList();
     // ▲/▼ % chip comparing this period to the previous equal-length one.
     string Delta(decimal cur, decimal prev)
     {
@@ -32,7 +30,7 @@
 }
 
 <div class="flex items-center justify-between mb-5 gap-3">
-    <p class="text-xs text-neutral-400">Order &amp; logistics revenue, refunds, net — by period, channel, branch, cashier, state &amp; delivery speed.</p>
+    <p class="text-xs text-neutral-400">Revenue, refunds, net — by period, channel, branch and cashier.</p>
     <div class="flex items-center gap-2 shrink-0">
         <a asp-area="Admin" asp-controller="Finance" asp-action="Statement" target="_blank"
            asp-route-from="@Model.From.ToString("yyyy-MM-dd")" asp-route-to="@Model.To.ToString("yyyy-MM-dd")"
@@ -110,14 +108,10 @@
 }
 
 <!-- Revenue streams -->
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+<div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Order revenue</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.OrderRevenue)</p>
         <p class="mt-1">@Html.Raw(Delta(Model.OrderRevenue, Model.PrevOrderRevenue))</p>
-    </div>
-    <div class="bg-white border border-neutral-100 rounded-sm p-4">
-        <p class="text-xs text-neutral-400">Logistics revenue</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.LogisticsRevenue)</p>
-        <p class="mt-1">@Html.Raw(Delta(Model.LogisticsRevenue, Model.PrevLogistics))</p>
     </div>
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Total revenue</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.Gross)</p>
@@ -147,7 +141,7 @@
 
 <!-- Revenue over time -->
 <div class="mb-6">
-    <partial name="_ChartCard" model='new ChartCard { Id = "finRevenue", Title = "Revenue over time", Subtitle = $"order vs logistics · per {Model.Period}", Height = 70, Empty = !periods.Any(), EmptyText = "No sales in range." }' />
+    <partial name="_ChartCard" model='new ChartCard { Id = "finRevenue", Title = "Revenue over time", Subtitle = $"per {Model.Period}", Height = 70, Empty = !periods.Any(), EmptyText = "No sales in range." }' />
 </div>
 
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
@@ -157,65 +151,6 @@
 
 <div class="mb-6">
     <partial name="_ChartCard" model='new ChartCard { Id = "finStaff", Title = "Sales by cashier (POS)", Subtitle = "gross rung up per staff member", Height = 150, Empty = !Model.ByStaff.Any(), EmptyText = "No POS sales in range." }' />
-</div>
-
-<!-- Logistics (in-house delivery) -->
-<div class="flex items-baseline gap-2 mb-3 mt-8">
-    <h2 class="text-sm font-medium text-neutral-800">Logistics revenue</h2>
-    <span class="text-[11px] text-neutral-400">in-house delivery — @Money(Model.LogisticsRevenue) collected</span>
-</div>
-
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
-    <div>
-        <partial name="_ChartCard" model='new ChartCard { Id = "finDelType", Title = "By delivery speed", Subtitle = "Express vs Standard", Height = 150, Empty = !Model.ByDeliveryType.Any(), EmptyText = "No delivery orders in range." }' />
-        <div class="bg-white border border-neutral-100 rounded-sm overflow-hidden mt-3">
-            <table class="w-full text-sm">
-                <thead><tr class="text-xs text-neutral-400">
-                    <th class="px-4 py-2 text-left font-medium">Delivery speed</th>
-                    <th class="px-4 py-2 text-right font-medium">Orders</th>
-                    <th class="px-4 py-2 text-right font-medium">Logistics rev</th>
-                    <th class="px-4 py-2 text-right font-medium">Avg fee</th>
-                </tr></thead>
-                <tbody class="divide-y divide-neutral-100">
-                    @if (!Model.ByDeliveryType.Any()) { <tr><td colspan="4" class="px-4 py-6 text-center text-neutral-400">No delivery orders in range.</td></tr> }
-                    @foreach (var d in Model.ByDeliveryType)
-                    {
-                        <tr class="hover:bg-neutral-50">
-                            <td class="px-4 py-2.5 text-neutral-700">@d.Type</td>
-                            <td class="px-4 py-2.5 text-right text-neutral-500">@d.Count</td>
-                            <td class="px-4 py-2.5 text-right text-neutral-800">@Money(d.Logistics)</td>
-                            <td class="px-4 py-2.5 text-right text-neutral-500">@Money(d.AvgFee)</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    </div>
-    <div>
-        <partial name="_ChartCard" model='new ChartCard { Id = "finState", Title = "By state", Subtitle = "logistics revenue per destination", Height = 150, Empty = !topStates.Any(), EmptyText = "No delivery orders in range." }' />
-        <div class="bg-white border border-neutral-100 rounded-sm overflow-hidden mt-3">
-            <table class="w-full text-sm">
-                <thead><tr class="text-xs text-neutral-400">
-                    <th class="px-4 py-2 text-left font-medium">State</th>
-                    <th class="px-4 py-2 text-right font-medium">Orders</th>
-                    <th class="px-4 py-2 text-right font-medium">Logistics rev</th>
-                    <th class="px-4 py-2 text-right font-medium">Avg fee</th>
-                </tr></thead>
-                <tbody class="divide-y divide-neutral-100">
-                    @if (!Model.ByState.Any()) { <tr><td colspan="4" class="px-4 py-6 text-center text-neutral-400">No delivery orders in range.</td></tr> }
-                    @foreach (var s in Model.ByState)
-                    {
-                        <tr class="hover:bg-neutral-50">
-                            <td class="px-4 py-2.5 text-neutral-700">@s.State</td>
-                            <td class="px-4 py-2.5 text-right text-neutral-500">@s.Count</td>
-                            <td class="px-4 py-2.5 text-right text-neutral-800">@Money(s.Logistics)</td>
-                            <td class="px-4 py-2.5 text-right text-neutral-500">@Money(s.AvgFee)</td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
-    </div>
 </div>
 
 <!-- Money-in + staff tables -->
@@ -276,10 +211,9 @@
             <th class="px-4 py-2 text-right font-medium">Gross</th>
             <th class="px-4 py-2 text-right font-medium">Refunds</th>
             <th class="px-4 py-2 text-right font-medium">Net</th>
-            <th class="px-4 py-2 text-right font-medium">Logistics rev</th>
         </tr></thead>
         <tbody class="divide-y divide-neutral-100">
-            @if (!Model.ByStore.Any()) { <tr><td colspan="6" class="px-4 py-8 text-center text-neutral-400">No sales in range.</td></tr> }
+            @if (!Model.ByStore.Any()) { <tr><td colspan="5" class="px-4 py-8 text-center text-neutral-400">No sales in range.</td></tr> }
             @foreach (var s in Model.ByStore)
             {
                 <tr class="hover:bg-neutral-50">
@@ -288,7 +222,6 @@
                     <td class="px-4 py-2.5 text-right text-neutral-800">@Money(s.Gross)</td>
                     <td class="px-4 py-2.5 text-right text-red-600">@Money(s.Refunds)</td>
                     <td class="px-4 py-2.5 text-right text-neutral-800">@Money(s.Net)</td>
-                    <td class="px-4 py-2.5 text-right text-neutral-500">@Money(s.Delivery)</td>
                 </tr>
             }
         </tbody>
@@ -302,20 +235,18 @@
             <th class="px-4 py-2 text-left font-medium">Period</th>
             <th class="px-4 py-2 text-right font-medium">Orders</th>
             <th class="px-4 py-2 text-right font-medium">Order rev</th>
-            <th class="px-4 py-2 text-right font-medium">Logistics rev</th>
             <th class="px-4 py-2 text-right font-medium">Total</th>
             <th class="px-4 py-2 text-right font-medium">Refunds</th>
             <th class="px-4 py-2 text-right font-medium">Net</th>
         </tr></thead>
         <tbody class="divide-y divide-neutral-100">
-            @if (!periods.Any()) { <tr><td colspan="7" class="px-4 py-8 text-center text-neutral-400">No sales in range.</td></tr> }
+            @if (!periods.Any()) { <tr><td colspan="6" class="px-4 py-8 text-center text-neutral-400">No sales in range.</td></tr> }
             @foreach (var p in periods.OrderByDescending(x => x.Start))
             {
                 <tr class="hover:bg-neutral-50">
                     <td class="px-4 py-2.5 text-neutral-700">@p.Label</td>
                     <td class="px-4 py-2.5 text-right text-neutral-500">@p.Count</td>
                     <td class="px-4 py-2.5 text-right text-neutral-800">@Money(p.OrderRevenue)</td>
-                    <td class="px-4 py-2.5 text-right text-neutral-500">@Money(p.Logistics)</td>
                     <td class="px-4 py-2.5 text-right text-neutral-800">@Money(p.Total)</td>
                     <td class="px-4 py-2.5 text-right text-red-600">@Money(p.Refunds)</td>
                     <td class="px-4 py-2.5 text-right text-neutral-800">@Money(p.Net)</td>
@@ -367,8 +298,7 @@
         {
             <text>
             SLCharts.line('finRevenue', @Html.Raw(J(periods.Select(p => p.Label))), [
-                { label: 'Order revenue',     data: @Html.Raw(J(periods.Select(p => p.OrderRevenue))), money: true },
-                { label: 'Logistics revenue', data: @Html.Raw(J(periods.Select(p => p.Logistics))),     money: true }
+                { label: 'Order revenue', data: @Html.Raw(J(periods.Select(p => p.OrderRevenue))), money: true }
             ]);
             </text>
         }
@@ -391,20 +321,6 @@
             <text>
             SLCharts.hbar('finStaff', @Html.Raw(J(Model.ByStaff.Select(s => s.Name))),
                 @Html.Raw(J(Model.ByStaff.Select(s => s.Gross))), { money: true });
-            </text>
-        }
-        @if (Model.ByDeliveryType.Any())
-        {
-            <text>
-            SLCharts.doughnut('finDelType', @Html.Raw(J(Model.ByDeliveryType.Select(d => d.Type))),
-                @Html.Raw(J(Model.ByDeliveryType.Select(d => d.Logistics))), { money: true });
-            </text>
-        }
-        @if (topStates.Any())
-        {
-            <text>
-            SLCharts.hbar('finState', @Html.Raw(J(topStates.Select(s => s.State))),
-                @Html.Raw(J(topStates.Select(s => s.Logistics))), { money: true });
             </text>
         }
     </script>
