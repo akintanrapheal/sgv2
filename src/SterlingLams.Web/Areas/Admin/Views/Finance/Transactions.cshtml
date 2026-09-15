@@ -76,7 +76,6 @@
                 <option value="">All types</option>
                 <option value="Sale" selected="@(Model.Type == "Sale")">Sale</option>
                 <option value="Refund" selected="@(Model.Type == "Refund")">Refund</option>
-                <option value="Expense" selected="@(Model.Type == "Expense")">Expense</option>
                 <option value="Cash" selected="@(Model.Type == "Cash")">Cash in/out</option>
                 <option value="Cashup" selected="@(Model.Type == "Cashup")">Cash-up (over/short)</option>
             </select>
@@ -174,46 +173,6 @@
     </div>
 }
 
-@if (Model.CanManage)
-{
-    <details class="bg-white border border-neutral-200 rounded-md mb-4">
-        <summary class="cursor-pointer select-none px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50">+ Record an expense</summary>
-        <form method="post" asp-action="TxnAddExpense" class="p-4 border-t border-neutral-100 flex flex-wrap items-end gap-3">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="from" value="@F" /><input type="hidden" name="to" value="@T" />
-            <input type="hidden" name="storeId" value="@Model.StoreId" /><input type="hidden" name="channel" value="@Model.Channel" />
-            <input type="hidden" name="type" value="@Model.Type" /><input type="hidden" name="method" value="@Model.Method" /><input type="hidden" name="q" value="@Model.Q" />
-            <input type="hidden" name="sort" value="@Model.Sort" /><input type="hidden" name="dir" value="@Model.Dir" />
-            <div>
-                <label class="block text-[11px] text-neutral-500 mb-1">Category</label>
-                <select name="category" class="border border-neutral-300 rounded px-2.5 py-1.5 text-sm bg-white">
-                    @foreach (var c in Model.ExpenseCategories) { <option value="@c">@c</option> }
-                </select>
-            </div>
-            <div>
-                <label class="block text-[11px] text-neutral-500 mb-1">Amount (₦)</label>
-                <input type="number" name="amount" step="0.01" min="0" required class="w-32 border border-neutral-300 rounded px-2.5 py-1.5 text-sm" />
-            </div>
-            <div>
-                <label class="block text-[11px] text-neutral-500 mb-1">Date</label>
-                <input type="date" name="occurredOn" value="@DateTime.UtcNow.ToString("yyyy-MM-dd")" class="border border-neutral-300 rounded px-2.5 py-1.5 text-sm" />
-            </div>
-            <div>
-                <label class="block text-[11px] text-neutral-500 mb-1">Store (optional)</label>
-                <select name="expenseStoreId" class="border border-neutral-300 rounded px-2.5 py-1.5 text-sm bg-white">
-                    <option value="">— None —</option>
-                    @foreach (var s in Model.Stores) { <option value="@s.Id">@s.Name.Replace("Sterlin Glams ", "")</option> }
-                </select>
-            </div>
-            <div class="flex-1 min-w-[160px]">
-                <label class="block text-[11px] text-neutral-500 mb-1">Note</label>
-                <input type="text" name="note" class="w-full border border-neutral-300 rounded px-2.5 py-1.5 text-sm" />
-            </div>
-            <button type="submit" class="px-4 py-2 bg-emerald-600 text-white text-sm rounded hover:bg-emerald-700 transition-colors">Save expense</button>
-        </form>
-    </details>
-}
-
 <!-- Ledger -->
 <div class="bg-white border border-neutral-200 rounded-md overflow-hidden">
     <div class="overflow-x-auto">
@@ -283,18 +242,6 @@
                                         <button type="submit" class="text-xs px-2 py-1 rounded border border-neutral-300 text-neutral-600 hover:bg-neutral-50">Reject</button>
                                     </form>
                                 </div>
-                            }
-                            else if (r.ActionKind == "expense" && Model.CanManage)
-                            {
-                                <form method="post" asp-action="TxnDeleteExpense" class="inline" onsubmit="return confirm('Delete this expense?');">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="id" value="@r.ActionId" />
-                                    <input type="hidden" name="from" value="@F" /><input type="hidden" name="to" value="@T" />
-                                    <input type="hidden" name="storeId" value="@Model.StoreId" /><input type="hidden" name="channel" value="@Model.Channel" />
-                                    <input type="hidden" name="type" value="@Model.Type" /><input type="hidden" name="method" value="@Model.Method" /><input type="hidden" name="q" value="@Model.Q" />
-                                    <input type="hidden" name="sort" value="@Model.Sort" /><input type="hidden" name="dir" value="@Model.Dir" /><input type="hidden" name="page" value="@Model.Page" />
-                                    <button type="submit" class="text-xs text-rose-500 hover:text-rose-700">Delete</button>
-                                </form>
                             }
                         </td>
                     </tr>

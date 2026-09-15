@@ -653,7 +653,6 @@ public class FinanceController : AdminBaseController
         public List<StoreTotal> ByStore { get; set; } = new();
         public List<TypeTotal> ByType { get; set; } = new();
         public string[] Methods { get; set; } = { "Cash", "Card", "Transfer", "Paystack" };
-        public string[] ExpenseCategories { get; set; } = { "Logistics", "Rent", "Salaries", "Utilities", "Supplies", "Marketing", "Bank charges", "Other" };
     }
 
     private async Task<Dictionary<string, string>> UserNamesAsync(IEnumerable<string?> ids)
@@ -718,19 +717,6 @@ public class FinanceController : AdminBaseController
                     r.RefundMethod, -r.Amount, !pending, pending ? "Pending" : "Approved",
                     pending ? "refund-pending" : "refund", r.Id, "Order " + r.Order));
             }
-        }
-
-        // 3) Expenses (money OUT) — no channel, so hidden when a channel filter is set.
-        if ((type is "" or "Expense") && channel == "")
-        {
-            var expQ = _db.Expenses.Where(e => e.OccurredOn >= f && e.OccurredOn < t);
-            if (storeId.HasValue) expQ = expQ.Where(e => e.StoreId == storeId);
-            var exps = await expQ.Select(e => new { e.Id, e.OccurredOn, e.Category, e.Amount, e.StoreId, e.Note, e.CreatedByUserId }).ToListAsync();
-            var names = await UserNamesAsync(exps.Select(e => e.CreatedByUserId));
-            foreach (var e in exps)
-                rows.Add(new TxnRow(e.OccurredOn, "Expense", StoreLabel(e.StoreId), e.StoreId, "",
-                    e.Category, names.GetValueOrDefault(e.CreatedByUserId ?? "", "—"), "—",
-                    -e.Amount, true, "", "expense", e.Id, e.Note ?? ""));
         }
 
         // 4) Till cash in/out (Amount already signed) — no channel.
@@ -819,7 +805,7 @@ public class FinanceController : AdminBaseController
         ViewData["Title"] = "Finance — Transactions";
         var (f, t, fLocal, tLocal) = Range(from, to);
         channel = channel is "Online" or "Pos" ? channel : "";
-        type = new[] { "Sale", "Refund", "Expense", "Cash", "Cashup" }.Contains(type) ? type! : "";
+        type = new[] { "Sale", "Refund", "Cash", "Cashup" }.Contains(type) ? type! : "";
         method = new[] { "Cash", "Card", "Transfer", "Paystack" }.Contains(method) ? method! : "";
         q = (q ?? "").Trim();
         sort = new[] { "date", "amount", "type", "store" }.Contains(sort) ? sort! : "date";
@@ -890,46 +876,6 @@ public class FinanceController : AdminBaseController
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         var res = await _approvals.RejectAsync(id, userId, note);
         TempData[res.Success ? "Success" : "Error"] = res.Message;
-        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, method, q, sort, dir, page });
-    }
-
-    [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> TxnAddExpense(string category, decimal amount, DateTime? occurredOn,
-        string? note, int? expenseStoreId, string? from, string? to, int? storeId, string? channel,
-        string? type, string? method, string? q, string? sort, string? dir, int page = 1)
-    {
-        if (amount > 0)
-        {
-            _db.Expenses.Add(new Expense
-            {
-                Category = string.IsNullOrWhiteSpace(category) ? "Other" : category.Trim(),
-                Amount = amount,
-                OccurredOn = DateTime.SpecifyKind((occurredOn ?? DateTime.UtcNow).Date, DateTimeKind.Utc),
-                Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
-                StoreId = expenseStoreId,
-                CreatedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier),
-                CreatedAt = DateTime.UtcNow
-            });
-            await _db.SaveChangesAsync();
-            await LogAsync("Create", "Expense", null, $"Recorded {category} expense ₦{amount:N0}");
-            TempData["Success"] = "Expense recorded.";
-        }
-        else TempData["Error"] = "Enter an amount greater than zero.";
-        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, method, q, sort, dir, page });
-    }
-
-    [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> TxnDeleteExpense(int id, string? from, string? to, int? storeId,
-        string? channel, string? type, string? method, string? q, string? sort, string? dir, int page = 1)
-    {
-        var e = await _db.Expenses.FindAsync(id);
-        if (e != null)
-        {
-            _db.Expenses.Remove(e);
-            await _db.SaveChangesAsync();
-            await LogAsync("Delete", "Expense", id.ToString(), $"Deleted expense ₦{e.Amount:N0}");
-            TempData["Success"] = "Expense deleted.";
-        }
         return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, method, q, sort, dir, page });
     }
 
