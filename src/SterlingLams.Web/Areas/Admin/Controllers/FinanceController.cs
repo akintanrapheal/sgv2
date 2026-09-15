@@ -1172,9 +1172,10 @@ public class FinanceController : AdminBaseController
     // A daily "Z-report" close for each branch: the day's sales, the split by payment method, refunds,
     // giveaways, expenses and net — for a single Lagos day, filterable to one store.
     public record EodPayMethod(string Method, int Count, decimal Amount);
+    public record EodTillRow(string Till, int Orders, decimal Gross);
     public record EodStoreRow(int? StoreId, string Store, int Orders, decimal Gross, decimal Delivery,
         decimal Discounts, decimal Loyalty, decimal GiftCards, decimal Refunds, int RefundCount,
-        decimal Expenses, List<EodPayMethod> Methods)
+        decimal Expenses, List<EodPayMethod> Methods, List<EodTillRow> Tills)
     {
         public decimal Merchandise => Gross - Delivery;
         public decimal Net => Gross - Refunds;
@@ -1209,6 +1210,9 @@ public class FinanceController : AdminBaseController
         {
             o.Id,
             Sid = o.PickupStoreId ?? o.FulfillingStoreId,
+            Rid = o.RegisterId,
+            Till = o.Register != null ? o.Register.Name : null,
+            o.Channel,
             o.Total, o.DeliveryFee, o.DiscountAmount, o.LoyaltyDiscount, o.GiftCardAmount, o.PaymentProvider
         }).ToListAsync();
 
@@ -1258,11 +1262,17 @@ public class FinanceController : AdminBaseController
                 .GroupBy(m => m.Method)
                 .Select(g => new EodPayMethod(g.Key, g.Count(), g.Sum(x => x.Amount)))
                 .OrderByDescending(x => x.Amount).ToList();
+            // Per-till breakdown: POS orders grouped by register; online orders roll into a "Website" line.
+            var tills = os.GroupBy(o => o.Rid.HasValue
+                    ? (o.Till ?? $"Till #{o.Rid}")
+                    : (o.Channel == OrderChannel.Online ? "Website / Online" : "Unassigned"))
+                .Select(g => new EodTillRow(g.Key, g.Count(), g.Sum(o => o.Total)))
+                .OrderByDescending(x => x.Gross).ToList();
             return new EodStoreRow(sid, Name(sid), os.Count,
                 os.Sum(o => o.Total), os.Sum(o => o.DeliveryFee),
                 os.Sum(o => o.DiscountAmount), os.Sum(o => o.LoyaltyDiscount), os.Sum(o => o.GiftCardAmount),
                 refs.Sum(r => r.Amount), refs.Count,
-                expRows.Where(e => e.StoreId == sid).Sum(e => e.Amount), methods);
+                expRows.Where(e => e.StoreId == sid).Sum(e => e.Amount), methods, tills);
         }).OrderByDescending(r => r.Gross).ThenBy(r => r.Store).ToList();
 
         return View(new EndOfDayVm { Date = fLocal, StoreId = storeId, Stores = stores, Rows = rows });

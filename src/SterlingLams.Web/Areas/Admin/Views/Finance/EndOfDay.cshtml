@@ -117,6 +117,25 @@
                         </table>
                     }
                 </div>
+
+                @if (r.Tills.Any())
+                {
+                    <div class="mt-4">
+                        <p class="text-xs uppercase tracking-wide text-neutral-400 mb-1.5">By till</p>
+                        <table class="w-full text-sm">
+                            <tbody class="divide-y divide-neutral-100">
+                                @foreach (var till in r.Tills)
+                                {
+                                    <tr>
+                                        <td class="py-1.5 text-neutral-700">@till.Till</td>
+                                        <td class="py-1.5 text-right text-neutral-400 text-xs">@till.Orders order@(till.Orders == 1 ? "" : "s")</td>
+                                        <td class="py-1.5 text-right text-neutral-800">@Money(till.Gross)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
             </div>
         </div>
     }

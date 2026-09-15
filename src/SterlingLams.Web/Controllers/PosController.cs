@@ -445,8 +445,11 @@ public class PosController : Controller
         // Same branch check the sale and open-session paths make.
         if (!await _access.CanWriteAsync(User, register.StoreId))
             return Json(new { success = false, message = "You're not assigned to this branch's POS." });
-        var session = await OpenSessionAsync(register.Id);
-        if (session == null) return Json(new { success = false, message = "No open POS session." });
+        // Close EVERY open session on this till, not just one — one end-of-day close for the register,
+        // regardless of how many staff logged in and rang sales against it during the day.
+        var openSessions = await _db.TillSessions.Where(s => s.RegisterId == register.Id && s.ClosedAt == null)
+            .OrderBy(s => s.OpenedAt).ToListAsync();
+        if (openSessions.Count == 0) return Json(new { success = false, message = "No open POS session." });
 
         // Per-tender counted amounts (JSON map). Cash is mirrored to CountedCash for the Finance cash-up.
         Dictionary<string, decimal> tenders = new();
@@ -458,13 +461,31 @@ public class PosController : Controller
         foreach (var k in tenders.Keys.ToList()) tenders[k] = Math.Max(0, tenders[k]);
         var cash = tenders.TryGetValue("Cash", out var c) ? c : Math.Max(0, countedCash);
 
-        session.ClosedAt = DateTime.UtcNow;
-        session.ClosedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        session.CountedCash = cash;                        // a negative count is a typo, not a drawer
-        session.CountedTenders = tenders.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(tenders) : null;
-        session.ClosingNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        var now = DateTime.UtcNow;
+        var closedBy = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var trimmedNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+
+        // The count is entered once for the till and belongs on the primary (first-opened) session; any
+        // extra open sessions on the same till are closed too, but without a cash count (avoids double-
+        // counting in the Finance cash-up).
+        var primary = openSessions[0];
+        foreach (var os in openSessions)
+        {
+            os.ClosedAt = now;
+            os.ClosedByUserId = closedBy;
+            if (os == primary)
+            {
+                os.CountedCash = cash;                     // a negative count is a typo, not a drawer
+                os.CountedTenders = tenders.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(tenders) : null;
+                os.ClosingNote = trimmedNote;
+            }
+            else
+            {
+                os.ClosingNote = "Closed with the till end-of-day.";
+            }
+        }
         await _db.SaveChangesAsync();
-        return Json(new { success = true, sessionId = session.Id });
+        return Json(new { success = true, sessionId = primary.Id });
     }
 
     // ── Cash in / out (pay-in, pay-out, float top-up during a shift) ──────────
@@ -861,6 +882,10 @@ public class PosController : Controller
         public TillSession Session { get; set; } = null!;
         public bool Interim { get; set; }
         public string OpenedByName { get; set; } = "";
+        public string ClosedByName { get; set; } = "";
+        /// <summary>The staff at the till (current user for an open close; who closed it for a report) —
+        /// shown in the window title, like EposNow.</summary>
+        public string StaffName { get; set; } = "";
         public bool Closed => Session.ClosedAt != null;
 
         // Summary tab
@@ -966,7 +991,10 @@ public class PosController : Controller
                 g.Sum(x => x.Gross - x.DiscountAmount), 0))
             .OrderByDescending(r => r.Total).ToList();
 
-        var staffIds = sales.Select(o => o.UserId).Distinct().ToList();
+        var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        var staffIds = sales.Select(o => o.UserId)
+            .Append(session.OpenedByUserId).Append(session.ClosedByUserId ?? "").Append(currentUserId)
+            .Where(id => !string.IsNullOrEmpty(id)).Distinct().ToList();
         var staffNames = (await _db.Users.Where(u => staffIds.Contains(u.Id))
                 .Select(u => new { u.Id, u.FirstName, u.LastName, u.UserName }).ToListAsync())
             .ToDictionary(u => u.Id, u => { var n = $"{u.FirstName} {u.LastName}".Trim(); return string.IsNullOrWhiteSpace(n) ? (u.UserName ?? "—") : n; });
@@ -982,6 +1010,10 @@ public class PosController : Controller
             Session = session,
             Interim = interim,
             OpenedByName = staffNames.GetValueOrDefault(session.OpenedByUserId, "—"),
+            ClosedByName = string.IsNullOrEmpty(session.ClosedByUserId) ? "" : staffNames.GetValueOrDefault(session.ClosedByUserId!, "—"),
+            StaffName = interim
+                ? staffNames.GetValueOrDefault(currentUserId, "")
+                : staffNames.GetValueOrDefault(session.ClosedByUserId ?? session.OpenedByUserId, ""),
             Transactions = sales.Count,
             Tenders = tenders,
             Withdrawn = cashOut + cashRefunds,
