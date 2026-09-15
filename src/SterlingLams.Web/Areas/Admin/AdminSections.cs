@@ -77,7 +77,7 @@ public static class AdminSections
         ("Leakage",      "Leakage"),
         ("Liabilities",  "Customer Points"),
         ("Customers",    "Customers"),
-        ("Profit",       "Profit"),
+        ("EndOfDay",     "End of Day"),
     };
 
     /// <summary>Order the sidebar renders groups in. "" is the top, non-collapsible Overview.</summary>
