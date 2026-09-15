@@ -1060,55 +1060,6 @@ public class FinanceController : AdminBaseController
         });
     }
 
-    // ── Accounts receivable (unpaid orders, aged) ──────────────────────────────
-    public record AgingBucket(string Label, int Count, decimal Amount);
-    public record UnpaidRow(string Order, DateTime When, string Customer, decimal Amount, int AgeDays, string Status);
-
-    public class ReceivablesVm
-    {
-        public decimal TotalOwed { get; set; }
-        public int Count { get; set; }
-        public List<AgingBucket> Buckets { get; set; } = new();
-        public List<UnpaidRow> Orders { get; set; } = new();
-    }
-
-    public async Task<IActionResult> Receivables()
-    {
-        ViewData["Title"] = "Finance — Receivables";
-        var now = DateTime.UtcNow;
-
-        // Placed but unpaid, and not in a terminal (cancelled/refunded) state = money owed to us.
-        var unpaidQ = _db.Orders.Include(o => o.User)
-            .Where(o => !o.IsPaid && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded);
-
-        var raw = await unpaidQ.OrderBy(o => o.CreatedAt)
-            .Select(o => new { o.OrderNumber, o.CreatedAt, o.Total, o.Status,
-                Customer = o.User != null ? (o.User.FirstName + " " + o.User.LastName) : "Guest" })
-            .ToListAsync();
-
-        var orders = raw.Select(o => new UnpaidRow(o.OrderNumber, o.CreatedAt,
-            string.IsNullOrWhiteSpace(o.Customer?.Trim()) ? "Guest" : o.Customer!.Trim(),
-            o.Total, (int)(now - o.CreatedAt).TotalDays, o.Status.ToString())).ToList();
-
-        (string Label, Func<int, bool> In)[] defs =
-        {
-            ("0–7 days",   d => d <= 7),
-            ("8–30 days",  d => d > 7 && d <= 30),
-            ("31–60 days", d => d > 30 && d <= 60),
-            ("60+ days",   d => d > 60),
-        };
-        var buckets = defs.Select(b => new AgingBucket(b.Label,
-            orders.Count(o => b.In(o.AgeDays)), orders.Where(o => b.In(o.AgeDays)).Sum(o => o.Amount))).ToList();
-
-        return View(new ReceivablesVm
-        {
-            TotalOwed = orders.Sum(o => o.Amount),
-            Count = orders.Count,
-            Buckets = buckets,
-            Orders = orders.OrderByDescending(o => o.AgeDays).Take(100).ToList()
-        });
-    }
-
     // ── Customer finance (new vs repeat, top spenders) ─────────────────────────
     public record CustomerRow(string Id, string Name, string Email, int Orders, decimal Revenue, DateTime Last, int Points);
 
@@ -1232,52 +1183,6 @@ public class FinanceController : AdminBaseController
         });
     }
 
-    // ── Paystack settlement & gateway-fee estimate ─────────────────────────────
-    public record SettleDay(DateTime Day, int Count, decimal Gross, decimal Fee)
-    { public decimal Net => Gross - Fee; }
-
-    public class SettlementVm
-    {
-        public DateTime From { get; set; }
-        public DateTime To { get; set; }
-        public int Count { get; set; }
-        public decimal Gross { get; set; }
-        public decimal EstFees { get; set; }
-        public decimal NetSettled => Gross - EstFees;
-        public List<SettleDay> ByDay { get; set; } = new();
-    }
-
-    // Standard Paystack Nigeria pricing: 1.5% + ₦100 (₦100 waived below ₦2,500), capped at ₦2,000.
-    private static decimal PaystackFee(decimal amount)
-    {
-        var fee = amount * 0.015m + (amount >= 2500m ? 100m : 0m);
-        return Math.Min(fee, 2000m);
-    }
-
-    public async Task<IActionResult> Settlement(string? from, string? to)
-    {
-        ViewData["Title"] = "Finance — Settlement";
-        var (f, t, fLocal, tLocal) = Range(from, to);
-
-        var orders = await _db.Orders
-            .Where(o => o.IsPaid && o.Channel == OrderChannel.Online
-                     && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t)
-            .Select(o => new { o.Total, When = o.PaidAt ?? o.CreatedAt }).ToListAsync();
-
-        var byDay = orders.GroupBy(o => Services.ReportCalendar.LocalDay(o.When))
-            .Select(g => new SettleDay(g.Key, g.Count(), g.Sum(o => o.Total), g.Sum(o => PaystackFee(o.Total))))
-            .OrderByDescending(d => d.Day).ToList();
-
-        return View(new SettlementVm
-        {
-            From = fLocal, To = tLocal,
-            Count = orders.Count,
-            Gross = orders.Sum(o => o.Total),
-            EstFees = orders.Sum(o => PaystackFee(o.Total)),
-            ByDay = byDay
-        });
-    }
-
     // ── Profit & margin (needs product cost prices) ────────────────────────────
     public record ProfitRow(string Product, int Units, decimal Revenue, decimal Cost, bool HasCost)
     {
@@ -1337,86 +1242,6 @@ public class FinanceController : AdminBaseController
             RevenueAll = rows.Sum(r => r.Revenue),
             Rows = rows
         });
-    }
-
-    // ── Logistics P&L (in-house delivery revenue vs logistics costs) ───────────
-    public record ExpenseRow(int Id, DateTime On, string Category, decimal Amount, string? Note, string? Store);
-
-    public class LogisticsVm
-    {
-        public DateTime From { get; set; }
-        public DateTime To { get; set; }
-        public int? StoreId { get; set; }
-        public List<Store> Stores { get; set; } = new();
-        public decimal Revenue { get; set; }
-        public decimal Expenses { get; set; }
-        public decimal Net => Revenue - Expenses;
-        public decimal Margin => Revenue > 0 ? Net / Revenue : 0;
-        public int Deliveries { get; set; }
-        public List<ExpenseRow> Items { get; set; } = new();
-    }
-
-    public async Task<IActionResult> Logistics(string? from, string? to, int? storeId)
-    {
-        ViewData["Title"] = "Finance — Logistics P&L";
-        var (f, t, fLocal, tLocal) = Range(from, to);
-        var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
-
-        var deliveries = _db.Orders.Where(o => o.IsPaid && o.FulfillmentType == FulfillmentType.Delivery
-            && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t);
-        if (storeId.HasValue) deliveries = deliveries.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
-        var revenue = await deliveries.SumAsync(o => (decimal?)o.DeliveryFee) ?? 0;
-        var count = await deliveries.CountAsync(o => o.DeliveryFee > 0);
-
-        var expQ = _db.Expenses.Include(e => e.Store)
-            .Where(e => e.Category == "Logistics" && e.OccurredOn >= f && e.OccurredOn < t);
-        if (storeId.HasValue) expQ = expQ.Where(e => e.StoreId == storeId);
-        var expList = await expQ.OrderByDescending(e => e.OccurredOn).ThenByDescending(e => e.Id).ToListAsync();
-
-        return View(new LogisticsVm
-        {
-            From = fLocal, To = tLocal, StoreId = storeId, Stores = stores,
-            Revenue = revenue,
-            Expenses = expList.Sum(e => e.Amount),
-            Deliveries = count,
-            Items = expList.Select(e => new ExpenseRow(e.Id, e.OccurredOn, e.Category, e.Amount, e.Note, e.Store?.Name)).ToList()
-        });
-    }
-
-    [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> AddExpense(string category, decimal amount, DateTime? occurredOn,
-        string? note, int? storeId, string? from, string? to)
-    {
-        if (amount > 0)
-        {
-            _db.Expenses.Add(new Expense
-            {
-                Category = string.IsNullOrWhiteSpace(category) ? "Logistics" : category.Trim(),
-                Amount = amount,
-                OccurredOn = DateTime.SpecifyKind((occurredOn ?? DateTime.UtcNow).Date, DateTimeKind.Utc),
-                Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
-                StoreId = storeId,
-                CreatedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier),
-                CreatedAt = DateTime.UtcNow
-            });
-            await _db.SaveChangesAsync();
-            await LogAsync("Create", "Expense", null, $"Recorded {category} expense ₦{amount:N0}");
-            TempData["Success"] = "Expense recorded.";
-        }
-        return RedirectToAction(nameof(Logistics), new { from, to, storeId });
-    }
-
-    [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> DeleteExpense(int id, string? from, string? to, int? storeId)
-    {
-        var e = await _db.Expenses.FindAsync(id);
-        if (e != null)
-        {
-            _db.Expenses.Remove(e);
-            await _db.SaveChangesAsync();
-            await LogAsync("Delete", "Expense", id.ToString(), $"Deleted expense ₦{e.Amount:N0}");
-        }
-        return RedirectToAction(nameof(Logistics), new { from, to, storeId });
     }
 
     private async Task<FinanceVm> BuildAsync(string? from, string? to, int? storeId, string? channel, string? period)
