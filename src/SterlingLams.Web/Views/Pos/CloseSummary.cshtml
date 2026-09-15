@@ -1,0 +1,454 @@
+@model SterlingLams.Web.Controllers.PosController.CloseSummaryVm
+@{
+    ViewData["Title"] = "Sales & Operation";
+    var s = Model.Session;
+    var interim = Model.Interim;
+    string Money(decimal v) => (v < 0 ? "-₦" : "₦") + Math.Abs(v).ToString("N2");
+    string VarCls(decimal v) => v == 0 ? "text-neutral-500" : (v < 0 ? "text-red-600" : "text-amber-600");
+    var posBase = "/" + SterlingLams.Web.Infrastructure.StaffPaths.Pos;
+}
+
+<div class="min-h-full bg-neutral-50" id="close-root" data-interim="@interim.ToString().ToLower()" data-session="@s.Id">
+    <!-- Top bar -->
+    <div class="bg-white border-b border-neutral-200 px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3 min-w-0">
+            <a href="@posBase" class="text-neutral-400 hover:text-neutral-700 no-print" title="Back to till">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+            </a>
+            <div class="min-w-0">
+                <h1 class="text-sm font-semibold uppercase tracking-wide text-neutral-800">Sales &amp; Operation</h1>
+                <p class="text-xs text-neutral-400 truncate">@s.Register?.Name · @s.Register?.Store?.Name · @DateTime.UtcNow.ToLocalTime().ToString("dd MMM HH:mm")</p>
+            </div>
+        </div>
+        @if (Model.Closed)
+        {
+            <span class="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 no-print">Closed</span>
+        }
+    </div>
+
+    <!-- Tabs -->
+    <div class="bg-white border-b border-neutral-200 px-4 no-print">
+        <nav class="flex gap-1 overflow-x-auto text-sm" id="close-tabs">
+            @foreach (var t in new[] { "Summary", "Sales", "Refunds", "Void", "Tax", "Credit" })
+            {
+                <button type="button" data-tab="@t" class="close-tab px-4 py-3 border-b-2 border-transparent text-neutral-500 hover:text-neutral-800 transition-colors">@t</button>
+            }
+        </nav>
+    </div>
+
+    <div class="p-4 max-w-6xl mx-auto">
+        <!-- ===================== SUMMARY ===================== -->
+        <section data-panel="Summary" class="close-panel grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-4">
+            <!-- Left column -->
+            <div class="space-y-4 no-print">
+                <div class="bg-white border border-neutral-200 rounded-lg p-4">
+                    <h2 class="text-sm font-semibold text-neutral-800 mb-3">@s.Register?.Name</h2>
+                    <div class="grid grid-cols-3 gap-2 text-xs">
+                        <div><p class="text-neutral-400">Opened by</p><p class="text-neutral-800 font-medium mt-0.5">@Model.OpenedByName</p></div>
+                        <div><p class="text-neutral-400">Date</p><p class="text-neutral-800 font-medium mt-0.5">@s.OpenedAt.ToLocalTime().ToString("dd/MM/yyyy")</p></div>
+                        <div><p class="text-neutral-400">Time</p><p class="text-neutral-800 font-medium mt-0.5">@s.OpenedAt.ToLocalTime().ToString("HH:mm:ss")</p></div>
+                    </div>
+                </div>
+
+                <div class="bg-white border border-neutral-200 rounded-lg p-4">
+                    <h3 class="text-sm font-semibold text-neutral-800 mb-3">Checklist</h3>
+                    <ul class="space-y-2.5 text-sm">
+                        <li class="flex items-center gap-2 text-neutral-600">
+                            <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                            Transactions synced
+                        </li>
+                        <li class="flex items-center gap-2 text-neutral-600">
+                            <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                            No open orders
+                        </li>
+                        <li class="flex items-center justify-between gap-2">
+                            <span class="flex items-center gap-2 @(interim ? "text-amber-600" : "text-emerald-600")">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="@(interim ? "M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" : "M5 13l4 4L19 7")"/></svg>
+                                Cash up
+                            </span>
+                            @if (interim)
+                            {
+                                <button type="button" id="focus-count" class="text-xs px-3 py-1 border border-neutral-300 rounded text-neutral-600 hover:bg-neutral-50">Count</button>
+                            }
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="bg-white border border-neutral-200 rounded-lg p-4 space-y-2">
+                    <button type="button" onclick="window.print()" class="w-full flex items-center justify-center gap-2 py-2 border border-neutral-300 rounded text-sm text-neutral-700 hover:bg-neutral-50">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                        Print
+                    </button>
+                    <div class="grid grid-cols-2 gap-2">
+                        @if (interim)
+                        {
+                            <button type="button" id="add-note-btn" class="py-2 border border-neutral-300 rounded text-sm text-neutral-700 hover:bg-neutral-50">Add note</button>
+                        }
+                        <button type="button" data-goto="Sales" class="close-goto py-2 border border-neutral-300 rounded text-sm text-neutral-700 hover:bg-neutral-50">Transactions</button>
+                    </div>
+                    @if (interim)
+                    {
+                        <input id="close-note" type="text" placeholder="Closing note (optional)" class="w-full border border-neutral-200 rounded px-3 py-2 text-sm" value="@s.ClosingNote" />
+                        <button type="button" id="print-close-btn" class="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors">PRINT &amp; CLOSE</button>
+                    }
+                    else
+                    {
+                        <form asp-controller="Pos" asp-action="Logout" method="post">
+                            <button class="w-full py-2.5 bg-neutral-900 text-white rounded-lg text-sm font-semibold hover:bg-neutral-700">Sign out</button>
+                        </form>
+                    }
+                </div>
+            </div>
+
+            <!-- Right column -->
+            <div class="space-y-4">
+                <!-- Print header (shown only on paper) -->
+                <div class="hidden print:block mb-2">
+                    <h2 class="text-lg font-semibold">Sales &amp; Operation — @s.Register?.Store?.Name</h2>
+                    <p class="text-xs text-neutral-500">@s.Register?.Name · Opened by @Model.OpenedByName · @s.OpenedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")@(Model.Closed ? " · Closed " + s.ClosedAt!.Value.ToLocalTime().ToString("HH:mm") : "")</p>
+                </div>
+
+                <!-- Summary tiles -->
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <div class="bg-white border border-neutral-200 rounded-lg p-3"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Transactions</p><p class="text-lg font-light text-neutral-900 mt-1">@Model.Transactions</p></div>
+                    <div class="bg-white border border-neutral-200 rounded-lg p-3"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Counted</p><p class="text-lg font-light text-neutral-900 mt-1" id="tile-counted">@Money(Model.Counted)</p></div>
+                    <div class="bg-white border border-neutral-200 rounded-lg p-3"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Takings</p><p class="text-lg font-light text-neutral-900 mt-1">@Money(Model.Takings)</p></div>
+                    <div class="bg-white border border-neutral-200 rounded-lg p-3"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Float</p><p class="text-lg font-light text-neutral-900 mt-1">@Money(Model.OpeningFloat)</p></div>
+                    <div class="bg-white border border-neutral-200 rounded-lg p-3"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Total variance</p><p class="text-lg font-light mt-1 @VarCls(Model.Variance)" id="tile-variance">@Money(Model.Variance)</p></div>
+                </div>
+
+                <!-- Cash Up table -->
+                <div class="bg-white border border-neutral-200 rounded-lg overflow-hidden">
+                    <div class="px-4 py-3 border-b border-neutral-100"><h3 class="text-sm font-semibold text-neutral-800">Cash Up</h3></div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="text-[11px] uppercase tracking-wide text-neutral-400 border-b border-neutral-100">
+                                    <th class="px-4 py-2 text-left font-medium">Tender</th>
+                                    <th class="px-4 py-2 text-right font-medium">Counted</th>
+                                    <th class="px-4 py-2 text-right font-medium">Expected</th>
+                                    <th class="px-4 py-2 text-right font-medium">Variance</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-neutral-100">
+                                @foreach (var tn in Model.Tenders)
+                                {
+                                    <tr data-tender="@tn.Key" data-expected="@tn.Expected">
+                                        <td class="px-4 py-2.5 text-neutral-700">@tn.Label</td>
+                                        <td class="px-4 py-2.5 text-right">
+                                            @if (interim)
+                                            {
+                                                <input type="number" min="0" step="any" value="@(tn.Counted?.ToString("0.##") ?? "")" placeholder="0.00"
+                                                       class="cu-counted w-28 text-right border border-neutral-200 rounded px-2 py-1 text-sm" data-key="@tn.Key" />
+                                            }
+                                            else
+                                            {
+                                                <span>@Money(tn.Counted ?? 0)</span>
+                                            }
+                                        </td>
+                                        <td class="px-4 py-2.5 text-right text-neutral-600">@Money(tn.Expected)</td>
+                                        <td class="px-4 py-2.5 text-right cu-variance @VarCls(tn.Variance)">@Money(tn.Variance)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                            <tfoot class="border-t-2 border-neutral-200 text-sm">
+                                <tr class="font-medium">
+                                    <td class="px-4 py-2.5 text-neutral-700">Sub-Total</td>
+                                    <td class="px-4 py-2.5 text-right" id="cu-sub-counted">@Money(Model.Counted)</td>
+                                    <td class="px-4 py-2.5 text-right">@Money(Model.Takings)</td>
+                                    <td class="px-4 py-2.5 text-right @VarCls(Model.Variance)" id="cu-sub-variance">@Money(Model.Variance)</td>
+                                </tr>
+                                <tr class="text-neutral-500">
+                                    <td class="px-4 py-2 text-left">Float</td>
+                                    <td class="px-4 py-2 text-right">—</td>
+                                    <td class="px-4 py-2 text-right">@Money(Model.OpeningFloat)</td>
+                                    <td class="px-4 py-2 text-right">@Money(0)</td>
+                                </tr>
+                                <tr class="font-semibold text-neutral-900 border-t border-neutral-100">
+                                    <td class="px-4 py-2.5 text-left">Total</td>
+                                    <td class="px-4 py-2.5 text-right" id="cu-total-counted">@Money(Model.Counted)</td>
+                                    <td class="px-4 py-2.5 text-right">@Money(Model.Takings + Model.OpeningFloat)</td>
+                                    <td class="px-4 py-2.5 text-right @VarCls(Model.Variance)" id="cu-total-variance">@Money(Model.Variance)</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Float section -->
+                <div class="bg-white border border-neutral-200 rounded-lg overflow-hidden">
+                    <div class="px-4 py-3 border-b border-neutral-100"><h3 class="text-sm font-semibold text-neutral-800">Float</h3></div>
+                    <table class="w-full text-sm">
+                        <thead><tr class="text-[11px] uppercase tracking-wide text-neutral-400 border-b border-neutral-100">
+                            <th class="px-4 py-2 text-left font-medium">Cashflow</th><th class="px-4 py-2 text-right font-medium">Amount</th>
+                        </tr></thead>
+                        <tbody class="divide-y divide-neutral-100 text-neutral-600">
+                            <tr><td class="px-4 py-2">Opening balance</td><td class="px-4 py-2 text-right">@Money(Model.OpeningFloat)</td></tr>
+                            <tr><td class="px-4 py-2">Withdrawn</td><td class="px-4 py-2 text-right">@Money(Model.Withdrawn)</td></tr>
+                            <tr><td class="px-4 py-2">Deposited</td><td class="px-4 py-2 text-right">@Money(Model.Deposited)</td></tr>
+                            <tr class="font-medium text-neutral-900"><td class="px-4 py-2.5">Closing balance (expected cash)</td><td class="px-4 py-2.5 text-right">@Money(Model.ExpectedCashDrawer)</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===================== SALES ===================== -->
+        <section data-panel="Sales" class="close-panel hidden space-y-4">
+            <div class="bg-white border border-neutral-200 rounded-lg p-4">
+                <h3 class="text-sm font-semibold text-neutral-800 mb-3">Sales breakdown</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                    <div><p class="text-neutral-400 text-xs">Transactions</p><p class="text-neutral-900 mt-1">@Model.Transactions</p></div>
+                    <div><p class="text-neutral-400 text-xs">Discount</p><p class="text-neutral-900 mt-1">@Money(Model.SalesDiscount)</p></div>
+                    <div><p class="text-neutral-400 text-xs">Average</p><p class="text-neutral-900 mt-1">@Money(Model.SalesAverage)</p></div>
+                    <div><p class="text-neutral-400 text-xs">Total</p><p class="text-neutral-900 mt-1">@Money(Model.SalesTotal)</p></div>
+                </div>
+            </div>
+
+            @{
+                (string Title, List<SterlingLams.Web.Controllers.PosController.SalesGroupRow> Rows, string Col, bool Pct)[] blocks =
+                {
+                    ("Sales by product", Model.ByProduct, "Product", false),
+                    ("Sales by employee", Model.ByEmployee, "Name", true),
+                    ("Sales by category", Model.ByCategory, "Category", true),
+                };
+            }
+            @foreach (var b in blocks)
+            {
+                <div class="bg-white border border-neutral-200 rounded-lg overflow-hidden">
+                    <div class="px-4 py-3 border-b border-neutral-100"><h3 class="text-sm font-semibold text-neutral-800">@b.Title</h3></div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead><tr class="text-[11px] uppercase tracking-wide text-neutral-400 border-b border-neutral-100">
+                                <th class="px-4 py-2 text-left font-medium">@b.Col</th>
+                                <th class="px-4 py-2 text-right font-medium">Qty</th>
+                                <th class="px-4 py-2 text-right font-medium">Discount</th>
+                                <th class="px-4 py-2 text-right font-medium">Net</th>
+                                <th class="px-4 py-2 text-right font-medium">Tax</th>
+                                <th class="px-4 py-2 text-right font-medium">Total</th>
+                                @if (b.Pct) { <th class="px-4 py-2 text-right font-medium">% Total</th> }
+                            </tr></thead>
+                            <tbody class="divide-y divide-neutral-100">
+                                @if (!b.Rows.Any()) { <tr><td colspan="@(b.Pct ? 7 : 6)" class="px-4 py-8 text-center text-neutral-400">No data to show</td></tr> }
+                                @foreach (var r in b.Rows)
+                                {
+                                    <tr class="hover:bg-neutral-50">
+                                        <td class="px-4 py-2.5 text-neutral-700">@r.Name</td>
+                                        <td class="px-4 py-2.5 text-right text-neutral-500">@r.Qty</td>
+                                        <td class="px-4 py-2.5 text-right text-neutral-500">@Money(r.Discount)</td>
+                                        <td class="px-4 py-2.5 text-right text-neutral-700">@Money(r.Net)</td>
+                                        <td class="px-4 py-2.5 text-right text-neutral-500">@Money(r.Tax)</td>
+                                        <td class="px-4 py-2.5 text-right text-neutral-900">@Money(r.Total)</td>
+                                        @if (b.Pct) { <td class="px-4 py-2.5 text-right text-neutral-500">@(Model.SalesTotal > 0 ? (r.Total / Model.SalesTotal).ToString("P2") : "0%")</td> }
+                                    </tr>
+                                }
+                            </tbody>
+                            @if (b.Rows.Any())
+                            {
+                                <tfoot class="border-t-2 border-neutral-200 font-semibold text-neutral-900">
+                                    <tr>
+                                        <td class="px-4 py-2.5">Total</td>
+                                        <td class="px-4 py-2.5 text-right">@b.Rows.Sum(x => x.Qty)</td>
+                                        <td class="px-4 py-2.5 text-right">@Money(b.Rows.Sum(x => x.Discount))</td>
+                                        <td class="px-4 py-2.5 text-right">@Money(b.Rows.Sum(x => x.Net))</td>
+                                        <td class="px-4 py-2.5 text-right">@Money(b.Rows.Sum(x => x.Tax))</td>
+                                        <td class="px-4 py-2.5 text-right">@Money(b.Rows.Sum(x => x.Total))</td>
+                                        @if (b.Pct) { <td class="px-4 py-2.5 text-right">100%</td> }
+                                    </tr>
+                                </tfoot>
+                            }
+                        </table>
+                    </div>
+                </div>
+            }
+        </section>
+
+        <!-- ===================== REFUNDS ===================== -->
+        <section data-panel="Refunds" class="close-panel hidden">
+            <div class="bg-white border border-neutral-200 rounded-lg overflow-hidden">
+                <div class="px-4 py-3 border-b border-neutral-100"><h3 class="text-sm font-semibold text-neutral-800">Refund breakdown</h3></div>
+                @if (!Model.Refunds.Any())
+                {
+                    <p class="px-4 py-10 text-center text-neutral-400 text-sm">No data to show</p>
+                }
+                else
+                {
+                    <table class="w-full text-sm">
+                        <thead><tr class="text-[11px] uppercase tracking-wide text-neutral-400 border-b border-neutral-100">
+                            <th class="px-4 py-2 text-left font-medium">Refund #</th><th class="px-4 py-2 text-left font-medium">Time</th>
+                            <th class="px-4 py-2 text-left font-medium">Reason</th><th class="px-4 py-2 text-left font-medium">Method</th>
+                            <th class="px-4 py-2 text-right font-medium">Amount</th>
+                        </tr></thead>
+                        <tbody class="divide-y divide-neutral-100">
+                            @foreach (var r in Model.Refunds)
+                            {
+                                <tr class="hover:bg-neutral-50">
+                                    <td class="px-4 py-2.5 font-mono text-xs text-neutral-600">@r.Number</td>
+                                    <td class="px-4 py-2.5 text-neutral-500">@r.When.ToLocalTime().ToString("dd MMM HH:mm")</td>
+                                    <td class="px-4 py-2.5 text-neutral-600">@r.Reason</td>
+                                    <td class="px-4 py-2.5 text-neutral-600">@r.Method</td>
+                                    <td class="px-4 py-2.5 text-right text-red-600">@Money(r.Amount)</td>
+                                </tr>
+                            }
+                        </tbody>
+                        <tfoot class="border-t-2 border-neutral-200 font-semibold">
+                            <tr><td class="px-4 py-2.5" colspan="4">Total</td><td class="px-4 py-2.5 text-right text-red-600">@Money(Model.Refunds.Sum(r => r.Amount))</td></tr>
+                        </tfoot>
+                    </table>
+                }
+            </div>
+        </section>
+
+        <!-- ===================== VOID ===================== -->
+        <section data-panel="Void" class="close-panel hidden">
+            <div class="bg-white border border-neutral-200 rounded-lg overflow-hidden">
+                <div class="px-4 py-3 border-b border-neutral-100"><h3 class="text-sm font-semibold text-neutral-800">Void summary breakdown</h3></div>
+                <p class="px-4 py-10 text-center text-neutral-400 text-sm">No data to show</p>
+            </div>
+        </section>
+
+        <!-- ===================== TAX ===================== -->
+        <section data-panel="Tax" class="close-panel hidden">
+            <div class="bg-white border border-neutral-200 rounded-lg overflow-hidden">
+                <div class="px-4 py-3 border-b border-neutral-100"><h3 class="text-sm font-semibold text-neutral-800">Tax summary breakdown</h3></div>
+                @if (!Model.Taxes.Any())
+                {
+                    <p class="px-4 py-10 text-center text-neutral-400 text-sm">No data to show</p>
+                }
+                else
+                {
+                    <table class="w-full text-sm">
+                        <thead><tr class="text-[11px] uppercase tracking-wide text-neutral-400 border-b border-neutral-100">
+                            <th class="px-4 py-2 text-left font-medium">Name</th><th class="px-4 py-2 text-right font-medium">Rate</th>
+                            <th class="px-4 py-2 text-right font-medium">Qty</th><th class="px-4 py-2 text-right font-medium">Net</th>
+                            <th class="px-4 py-2 text-right font-medium">Tax</th><th class="px-4 py-2 text-right font-medium">Total</th>
+                        </tr></thead>
+                        <tbody class="divide-y divide-neutral-100">
+                            @foreach (var tx in Model.Taxes)
+                            {
+                                <tr class="hover:bg-neutral-50">
+                                    <td class="px-4 py-2.5 text-neutral-700">@tx.Name</td>
+                                    <td class="px-4 py-2.5 text-right text-neutral-500">@tx.Rate.ToString("0.00")%</td>
+                                    <td class="px-4 py-2.5 text-right text-neutral-500">@tx.Qty</td>
+                                    <td class="px-4 py-2.5 text-right text-neutral-700">@Money(tx.Net)</td>
+                                    <td class="px-4 py-2.5 text-right text-neutral-500">@Money(tx.Tax)</td>
+                                    <td class="px-4 py-2.5 text-right text-neutral-900">@Money(tx.Total)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </section>
+
+        <!-- ===================== CREDIT ===================== -->
+        <section data-panel="Credit" class="close-panel hidden">
+            <div class="bg-white border border-neutral-200 rounded-lg overflow-hidden">
+                <div class="px-4 py-3 border-b border-neutral-100"><h3 class="text-sm font-semibold text-neutral-800">Credit breakdown</h3></div>
+                <p class="px-4 py-10 text-center text-neutral-400 text-sm">No data to show</p>
+            </div>
+        </section>
+    </div>
+</div>
+
+@Html.AntiForgeryToken()
+
+<style>
+    @@media print {
+        .no-print { display: none !important; }
+        .close-panel { display: block !important; }
+        #close-root { background: #fff !important; }
+    }
+</style>
+
+<script>
+(function () {
+    var root = document.getElementById('close-root');
+    var interim = root.dataset.interim === 'true';
+    var sessionId = root.dataset.session;
+    var posBase = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(posBase));
+
+    function money(v) {
+        var n = Math.round((v + Number.EPSILON) * 100) / 100;
+        return (n < 0 ? '-₦' : '₦') + Math.abs(n).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function varCls(v) { return v === 0 ? 'text-neutral-500' : (v < 0 ? 'text-red-600' : 'text-amber-600'); }
+
+    // ── Tabs ──
+    var tabs = document.querySelectorAll('.close-tab');
+    var panels = document.querySelectorAll('.close-panel');
+    function showTab(name) {
+        tabs.forEach(function (t) {
+            var on = t.dataset.tab === name;
+            t.classList.toggle('border-neutral-900', on);
+            t.classList.toggle('text-neutral-900', on);
+            t.classList.toggle('font-medium', on);
+        });
+        panels.forEach(function (p) { p.classList.toggle('hidden', p.dataset.panel !== name); });
+    }
+    tabs.forEach(function (t) { t.addEventListener('click', function () { showTab(t.dataset.tab); }); });
+    document.querySelectorAll('.close-goto').forEach(function (b) {
+        b.addEventListener('click', function () { showTab(b.dataset.goto); });
+    });
+    showTab('Summary');
+
+    // ── Live variance while counting ──
+    function recalc() {
+        var subCounted = 0, subVar = 0;
+        document.querySelectorAll('tr[data-tender]').forEach(function (row) {
+            var input = row.querySelector('.cu-counted');
+            var expected = parseFloat(row.dataset.expected) || 0;
+            var counted = input ? (parseFloat(input.value) || 0) : (parseFloat(row.dataset.counted) || 0);
+            var v = counted - expected;
+            var cell = row.querySelector('.cu-variance');
+            if (cell) { cell.textContent = money(v); cell.className = 'px-4 py-2.5 text-right cu-variance ' + varCls(v); }
+            subCounted += counted; subVar += v;
+        });
+        function set(id, val, isVar) {
+            var el = document.getElementById(id); if (!el) return;
+            el.textContent = money(val);
+            if (isVar) el.className = el.className.replace(/text-(neutral-500|red-600|amber-600)/g, '').trim() + ' ' + varCls(val);
+        }
+        set('cu-sub-counted', subCounted); set('cu-sub-variance', subVar, true);
+        set('cu-total-counted', subCounted); set('cu-total-variance', subVar, true);
+        set('tile-counted', subCounted); set('tile-variance', subVar, true);
+    }
+    if (interim) {
+        document.querySelectorAll('.cu-counted').forEach(function (i) { i.addEventListener('input', recalc); });
+        var focusBtn = document.getElementById('focus-count');
+        if (focusBtn) focusBtn.addEventListener('click', function () {
+            var first = document.querySelector('.cu-counted'); if (first) { first.focus(); first.select(); }
+        });
+        var addNote = document.getElementById('add-note-btn');
+        if (addNote) addNote.addEventListener('click', function () { var n = document.getElementById('close-note'); if (n) n.focus(); });
+
+        // ── Print & Close ──
+        var pcBtn = document.getElementById('print-close-btn');
+        if (pcBtn) pcBtn.addEventListener('click', async function () {
+            pcBtn.disabled = true; pcBtn.textContent = 'Closing…';
+            var counted = {};
+            document.querySelectorAll('.cu-counted').forEach(function (i) { counted[i.dataset.key] = parseFloat(i.value) || 0; });
+            var note = (document.getElementById('close-note') || {}).value || '';
+            var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+            try {
+                var res = await fetch(posBase + '/CloseSession', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token },
+                    body: 'countedCash=' + (counted.Cash || 0)
+                        + '&note=' + encodeURIComponent(note)
+                        + '&counted=' + encodeURIComponent(JSON.stringify(counted))
+                });
+                var data = await res.json();
+                if (data.success) { location.href = posBase + '/CloseReport/' + data.sessionId + '?print=1'; return; }
+                alert(data.message || 'Could not close the session.');
+            } catch (e) { alert('Network problem closing the session — check your connection and try again.'); }
+            pcBtn.disabled = false; pcBtn.textContent = 'PRINT & CLOSE';
+        });
+    } else {
+        // Closed report: auto-print when arrived via Print & Close.
+        if (new URLSearchParams(location.search).get('print') === '1') {
+            setTimeout(function () { window.print(); }, 400);
+        }
+    }
+})();
+</script>
