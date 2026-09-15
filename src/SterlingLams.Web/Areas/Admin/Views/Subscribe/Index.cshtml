@@ -129,6 +129,22 @@
         </table>
     </div>
 
+    @* ── Live "Calls per store" (real internal API activity, this instance) ── *@
+    <div class="bg-white border border-neutral-200 rounded-sm p-5 mb-6" id="api-activity-card">
+        <div class="flex items-baseline justify-between gap-3 mb-1">
+            <div>
+                <h2 class="text-sm font-semibold text-neutral-800">Calls per store</h2>
+                <p class="text-[11px] text-neutral-400">Live · 5-second buckets · last 5 minutes</p>
+            </div>
+            <span class="text-lg font-semibold text-neutral-900" id="api-activity-total">0 calls</span>
+        </div>
+        <div id="api-activity-legend" class="flex flex-wrap gap-2 my-3"></div>
+        <div class="relative">
+            <canvas id="api-activity-canvas" style="width:100%;height:260px;display:block"></canvas>
+            <p id="api-activity-empty" class="absolute inset-0 flex items-center justify-center text-sm text-neutral-400 text-center px-4">Waiting for API activity — use the POS or storefront and calls will appear here live.</p>
+        </div>
+    </div>
+
     @* ── Live API usage (from Zephiel) ──────────────────────────────────── *@
     <div class="bg-white border border-neutral-200 rounded-sm p-5 mb-6" id="zeph-usage-card">
         <div class="flex items-center justify-between mb-1">
@@ -417,6 +433,81 @@
     }
     poll();
     setInterval(poll, 30000);
+})();
+</script>
+<script>
+// ── Live "Calls per store" — real internal API activity from this instance ──
+(function () {
+    var URL = '@Url.Action("ApiActivity", "Subscribe", new { area = "Admin" })';
+    var canvas = document.getElementById('api-activity-canvas');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var legendEl = document.getElementById('api-activity-legend');
+    var totalEl = document.getElementById('api-activity-total');
+    var emptyEl = document.getElementById('api-activity-empty');
+    var PALETTE = ['#2f5fe0', '#e08a00', '#12a5a5', '#c62b52', '#7a3fd0', '#0f8a5f', '#d0217a', '#5b6472'];
+    var last = null;
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+    function colorFor(i) { return PALETTE[i % PALETTE.length]; }
+
+    function draw(d) {
+        var stores = (d && d.stores) || [];
+        var n = (d && d.buckets && d.buckets.length) || 60;
+        totalEl.textContent = (d ? d.total : 0) + ((d && d.total === 1) ? ' call' : ' calls');
+        legendEl.innerHTML = stores.map(function (s, i) {
+            return '<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;border:1px solid #ececec;border-radius:999px;padding:3px 10px">'
+                + '<span style="width:10px;height:10px;border-radius:3px;background:' + colorFor(i) + '"></span>'
+                + esc(s.label) + ' <b style="font-weight:600">' + s.total + '</b></span>';
+        }).join('');
+        emptyEl.style.display = stores.length ? 'none' : '';
+
+        var dpr = window.devicePixelRatio || 1;
+        var cssW = canvas.clientWidth || 600, cssH = 260;
+        canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, cssW, cssH);
+
+        var padL = 28, padR = 10, padT = 10, padB = 22;
+        var w = cssW - padL - padR, h = cssH - padT - padB;
+        var max = 1;
+        stores.forEach(function (s) { (s.series || []).forEach(function (v) { if (v > max) max = v; }); });
+        max = Math.ceil(max * 1.15) || 1;
+
+        ctx.strokeStyle = '#eef0f2'; ctx.fillStyle = '#9aa0a6'; ctx.lineWidth = 1; ctx.font = '10px sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+        [0, 0.5, 1].forEach(function (f) {
+            var val = Math.round(max * f), y = padT + h - (h * f);
+            ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + w, y); ctx.stroke();
+            ctx.fillText(String(val), 2, y);
+        });
+        if (d && d.buckets && d.buckets.length) {
+            ctx.textBaseline = 'alphabetic';
+            var fmt = function (u) { return new Date(u * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
+            ctx.fillText(fmt(d.buckets[0]), padL, cssH - 6);
+            ctx.textAlign = 'right'; ctx.fillText(fmt(d.buckets[d.buckets.length - 1]), padL + w, cssH - 6); ctx.textAlign = 'left';
+        }
+
+        var stepX = w / (n - 1);
+        stores.forEach(function (s, i) {
+            var arr = s.series || []; if (!arr.length) return;
+            var pts = arr.map(function (v, idx) { return [padL + idx * stepX, padT + h - (h * (v / max))]; });
+            ctx.strokeStyle = colorFor(i); ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+            for (var k = 1; k < pts.length; k++) {
+                var p0 = pts[k - 1], p1 = pts[k], mx = (p0[0] + p1[0]) / 2;
+                ctx.bezierCurveTo(mx, p0[1], mx, p1[1], p1[0], p1[1]);   // gentle smoothing
+            }
+            ctx.stroke();
+        });
+    }
+    function poll() {
+        fetch(URL, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { if (d && d.ok) { last = d; draw(d); } })
+            .catch(function () { if (last) draw(last); });
+    }
+    poll();
+    setInterval(poll, 4000);
+    window.addEventListener('resize', function () { if (last) draw(last); });
 })();
 </script>
 }
