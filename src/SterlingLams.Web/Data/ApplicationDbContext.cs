@@ -72,10 +72,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<AbandonedCart> AbandonedCarts => Set<AbandonedCart>();
     public DbSet<LabelReprintEntry> LabelReprintQueue => Set<LabelReprintEntry>();
     public DbSet<TrafficHit> TrafficHits => Set<TrafficHit>();
+    public DbSet<ApiCallDaily> ApiCallDaily => Set<ApiCallDaily>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+
+        builder.Entity<ApiCallDaily>(e => e.HasIndex(x => new { x.Day, x.Label }).IsUnique());
 
         // ─── Traffic hits (Admin → Traffic analytics) ───────────────────────
         // All dashboard queries filter/group by CreatedAt; index it (+ VisitorKey for distinct counts).

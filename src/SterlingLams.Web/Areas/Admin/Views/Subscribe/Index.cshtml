@@ -145,6 +145,25 @@
         </div>
     </div>
 
+    @* ── Historical API calls (day / week / month) ──────────────────────── *@
+    <div class="bg-white border border-neutral-200 rounded-sm p-5 mb-6" id="api-history-card">
+        <div class="flex items-baseline justify-between gap-3 mb-3">
+            <div>
+                <h2 class="text-sm font-semibold text-neutral-800">API calls over time</h2>
+                <p class="text-[11px] text-neutral-400">All recorded internal calls · <span id="api-history-total">0</span> total in view</p>
+            </div>
+            <div class="flex gap-1" id="api-history-toggle">
+                <button type="button" data-g="day" class="text-xs px-3 py-1.5 rounded-full border border-brand-300 bg-brand-50 text-brand-600 font-medium">Day</button>
+                <button type="button" data-g="week" class="text-xs px-3 py-1.5 rounded-full border border-neutral-200 text-neutral-500">Week</button>
+                <button type="button" data-g="month" class="text-xs px-3 py-1.5 rounded-full border border-neutral-200 text-neutral-500">Month</button>
+            </div>
+        </div>
+        <div class="relative">
+            <canvas id="api-history-canvas" style="width:100%;height:240px;display:block"></canvas>
+            <p id="api-history-empty" class="absolute inset-0 flex items-center justify-center text-sm text-neutral-400 text-center px-4">No calls recorded yet — activity is saved every minute and will build up here.</p>
+        </div>
+    </div>
+
     @* ── Live API usage (from Zephiel) ──────────────────────────────────── *@
     <div class="bg-white border border-neutral-200 rounded-sm p-5 mb-6" id="zeph-usage-card">
         <div class="flex items-center justify-between mb-1">
@@ -507,6 +526,62 @@
     }
     poll();
     setInterval(poll, 4000);
+    window.addEventListener('resize', function () { if (last) draw(last); });
+})();
+</script>
+<script>
+// ── Historical "API calls over time" (day / week / month) ──
+(function () {
+    var URL = '@Url.Action("ApiHistory", "Subscribe", new { area = "Admin" })';
+    var canvas = document.getElementById('api-history-canvas');
+    if (!canvas) return;
+    var ctx = canvas.getContext('2d');
+    var totalEl = document.getElementById('api-history-total');
+    var emptyEl = document.getElementById('api-history-empty');
+    var toggle = document.getElementById('api-history-toggle');
+    var group = 'day', last = null;
+
+    function roundRect(c, x, y, w, h, r) { r = Math.min(r, w / 2, h); c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+
+    function draw(d) {
+        var labels = (d && d.labels) || [], counts = (d && d.counts) || [];
+        totalEl.textContent = (d ? d.total : 0).toLocaleString();
+        emptyEl.style.display = counts.length ? 'none' : '';
+        var dpr = window.devicePixelRatio || 1, cssW = canvas.clientWidth || 600, cssH = 240;
+        canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, cssW, cssH);
+        if (!counts.length) return;
+        var padL = 32, padR = 10, padT = 10, padB = 26, w = cssW - padL - padR, h = cssH - padT - padB;
+        var max = 1; counts.forEach(function (v) { if (v > max) max = v; }); max = Math.ceil(max * 1.15) || 1;
+        ctx.strokeStyle = '#eef0f2'; ctx.fillStyle = '#9aa0a6'; ctx.font = '10px sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+        [0, 0.5, 1].forEach(function (f) { var y = padT + h - (h * f); ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + w, y); ctx.stroke(); ctx.fillText(String(Math.round(max * f)), 2, y); });
+        var n = counts.length, gap = n > 1 ? Math.min(10, (w / n) * 0.25) : 6, bw = (w - (gap * (n - 1))) / n;
+        counts.forEach(function (v, i) {
+            var x = padL + i * (bw + gap), bh = h * (v / max), y = padT + h - bh;
+            ctx.fillStyle = '#c31a82'; roundRect(ctx, x, y, Math.max(1, bw), bh, 3); ctx.fill();
+        });
+        ctx.fillStyle = '#9aa0a6'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'alphabetic';
+        ctx.textAlign = 'left'; ctx.fillText(labels[0] || '', padL, cssH - 8);
+        if (n > 2) { ctx.textAlign = 'center'; ctx.fillText(labels[Math.floor(n / 2)] || '', padL + w / 2, cssH - 8); }
+        ctx.textAlign = 'right'; ctx.fillText(labels[n - 1] || '', padL + w, cssH - 8);
+    }
+    function load() {
+        fetch(URL + '?group=' + group, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { if (d && d.ok) { last = d; draw(d); } })
+            .catch(function () { if (last) draw(last); });
+    }
+    toggle.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-g]'); if (!b) return;
+        group = b.dataset.g;
+        [].forEach.call(toggle.querySelectorAll('button'), function (x) {
+            var on = x === b;
+            x.className = 'text-xs px-3 py-1.5 rounded-full border ' + (on ? 'border-brand-300 bg-brand-50 text-brand-600 font-medium' : 'border-neutral-200 text-neutral-500');
+        });
+        load();
+    });
+    load();
+    setInterval(load, 60000);
     window.addEventListener('resize', function () { if (last) draw(last); });
 })();
 </script>
