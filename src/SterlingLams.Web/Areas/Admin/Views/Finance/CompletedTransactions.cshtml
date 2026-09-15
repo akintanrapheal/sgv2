@@ -1,0 +1,171 @@
+@model SterlingLams.Web.Areas.Admin.Controllers.FinanceController.CompletedTxnVm
+@{
+    ViewData["Title"] = "Finance — Completed Transactions";
+    string Money(decimal v) => "₦" + v.ToString("N2");
+    var from = Model.From.ToString("yyyy-MM-dd");
+    var to = Model.To.ToString("yyyy-MM-dd");
+    // Current filter set, forwarded to every export link so downloads match what's on screen.
+    var routes = new Dictionary<string, string> { ["from"] = from, ["to"] = to };
+    if (Model.StoreId.HasValue) routes["storeId"] = Model.StoreId.Value.ToString();
+    if (Model.RegisterId.HasValue) routes["registerId"] = Model.RegisterId.Value.ToString();
+    if (!string.IsNullOrEmpty(Model.Channel)) routes["channel"] = Model.Channel;
+    if (!string.IsNullOrWhiteSpace(Model.Q)) routes["q"] = Model.Q;
+}
+
+<partial name="_FinanceTabs" model="@("CompletedTransactions")" />
+
+<div class="flex items-center justify-between mb-5">
+    <p class="text-xs text-neutral-400">Every completed sale — online and in-store — with staff, location, device, tender and items. Filter by location, device or type, then export.</p>
+</div>
+
+<form method="get" class="no-print bg-white border border-neutral-100 rounded-sm p-4 mb-4">
+    <div class="flex flex-wrap items-end gap-3">
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">From</label>
+            <input type="date" name="from" value="@from" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">To</label>
+            <input type="date" name="to" value="@to" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+        </div>
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">Filter by Location</label>
+            <select name="storeId" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm min-w-[180px]">
+                <option value="">All locations</option>
+                @foreach (var s in Model.Stores)
+                {
+                    <option value="@s.Id" selected="@(Model.StoreId == s.Id)">@s.Name</option>
+                }
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">Filter by Device</label>
+            <select name="registerId" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm min-w-[160px]">
+                <option value="">All devices</option>
+                @foreach (var r in Model.Registers)
+                {
+                    <option value="@r.Id" selected="@(Model.RegisterId == r.Id)">@r.Store.Name · @r.Name</option>
+                }
+            </select>
+        </div>
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">Type</label>
+            <select name="channel" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm">
+                <option value="" selected="@(Model.Channel == "")">All types</option>
+                <option value="Pos" selected="@(Model.Channel == "Pos")">POS (in-store)</option>
+                <option value="Online" selected="@(Model.Channel == "Online")">Website (online)</option>
+            </select>
+        </div>
+        <div class="flex-1 min-w-[180px]">
+            <label class="block text-xs text-neutral-500 mb-1">Search</label>
+            <input type="text" name="q" value="@Model.Q" placeholder="Order #, customer, staff, tender" class="w-full border border-neutral-200 rounded-sm px-3 py-1.5 text-sm" />
+        </div>
+        <div class="flex items-center gap-2">
+            <button class="px-4 py-1.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Apply</button>
+            <a asp-action="CompletedTransactions" class="px-3 py-1.5 text-sm text-neutral-500 hover:text-neutral-700">Reset</a>
+        </div>
+    </div>
+</form>
+
+<div class="no-print flex flex-wrap items-center justify-between gap-3 mb-4">
+    <div class="flex flex-wrap items-center gap-2">
+        <a asp-action="CompletedTransactionsCsv" asp-all-route-data="routes" class="text-xs px-3 py-1.5 border border-neutral-300 rounded-sm text-neutral-600 hover:bg-neutral-50 transition-colors">Export CSV</a>
+        <a asp-action="CompletedTransactionsExcel" asp-all-route-data="routes" class="text-xs px-3 py-1.5 border border-neutral-300 rounded-sm text-neutral-600 hover:bg-neutral-50 transition-colors">Export Excel</a>
+        <a asp-action="CompletedTransactionsWord" asp-all-route-data="routes" class="text-xs px-3 py-1.5 border border-neutral-300 rounded-sm text-neutral-600 hover:bg-neutral-50 transition-colors">Export Word</a>
+        <button type="button" onclick="window.print()" class="text-xs px-3 py-1.5 border border-neutral-300 rounded-sm text-neutral-600 hover:bg-neutral-50 transition-colors">🖨 Print</button>
+    </div>
+    <div class="text-sm text-neutral-500">
+        <span class="text-neutral-800 font-medium">@Model.Count</span> transaction@(Model.Count == 1 ? "" : "s")
+        · Total <span class="text-neutral-800 font-medium">@Money(Model.Total)</span>
+        · Discounts <span class="text-neutral-800 font-medium">@Money(Model.Discount)</span>
+    </div>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+            <thead>
+                <tr class="text-xs text-neutral-400 border-b border-neutral-100">
+                    <th class="px-3 py-2.5 text-left font-medium">Staff</th>
+                    <th class="px-3 py-2.5 text-left font-medium">Location</th>
+                    <th class="px-3 py-2.5 text-left font-medium">Device</th>
+                    <th class="px-3 py-2.5 text-left font-medium">Date/Time</th>
+                    <th class="px-3 py-2.5 text-left font-medium">Customer &amp; Type</th>
+                    <th class="px-3 py-2.5 text-right font-medium">Discount</th>
+                    <th class="px-3 py-2.5 text-left font-medium">Discount Reason</th>
+                    <th class="px-3 py-2.5 text-right font-medium">Total</th>
+                    <th class="px-3 py-2.5 text-left font-medium">Tender</th>
+                    <th class="px-3 py-2.5 text-right font-medium">Change</th>
+                    <th class="px-3 py-2.5 text-right font-medium no-print"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-100">
+                @if (!Model.Rows.Any())
+                {
+                    <tr><td colspan="11" class="px-4 py-10 text-center text-neutral-400">No completed transactions for these filters.</td></tr>
+                }
+                @foreach (var r in Model.Rows)
+                {
+                    <tr class="hover:bg-neutral-50 align-top">
+                        <td class="px-3 py-2.5 text-neutral-700">@(string.IsNullOrWhiteSpace(r.Staff) ? "—" : r.Staff)</td>
+                        <td class="px-3 py-2.5 text-neutral-600">@r.Location</td>
+                        <td class="px-3 py-2.5 text-neutral-600">@r.Device</td>
+                        <td class="px-3 py-2.5 text-neutral-500">@r.When.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")</td>
+                        <td class="px-3 py-2.5 text-neutral-700">@r.Customer</td>
+                        <td class="px-3 py-2.5 text-right text-neutral-600">@(r.Discount > 0 ? Money(r.Discount) : "—")</td>
+                        <td class="px-3 py-2.5 text-neutral-500">@r.DiscountReason</td>
+                        <td class="px-3 py-2.5 text-right text-neutral-900 font-medium">@Money(r.Total)</td>
+                        <td class="px-3 py-2.5 text-neutral-600">@r.Tender</td>
+                        <td class="px-3 py-2.5 text-right text-neutral-500">@Money(r.Change)</td>
+                        <td class="px-3 py-2.5 text-right no-print">
+                            <button type="button" onclick="document.getElementById('items-@r.Id').classList.toggle('hidden')"
+                                    class="text-xs px-2.5 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">Show items</button>
+                        </td>
+                    </tr>
+                    <tr id="items-@r.Id" class="hidden bg-neutral-50/60">
+                        <td colspan="11" class="px-6 py-3">
+                            @if (!r.Items.Any())
+                            {
+                                <span class="text-xs text-neutral-400">No line items recorded.</span>
+                            }
+                            else
+                            {
+                                <table class="w-full text-xs">
+                                    <thead>
+                                        <tr class="text-neutral-400">
+                                            <th class="py-1 text-left font-medium">Item</th>
+                                            <th class="py-1 text-left font-medium">SKU</th>
+                                            <th class="py-1 text-right font-medium">Qty</th>
+                                            <th class="py-1 text-right font-medium">Unit</th>
+                                            <th class="py-1 text-right font-medium">Line</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var it in r.Items)
+                                        {
+                                            <tr class="border-t border-neutral-100">
+                                                <td class="py-1 text-neutral-700">@it.Name@(string.IsNullOrWhiteSpace(it.Variant) ? "" : $" ({it.Variant})")</td>
+                                                <td class="py-1 text-neutral-400">@(string.IsNullOrWhiteSpace(it.Sku) ? "—" : it.Sku)</td>
+                                                <td class="py-1 text-right text-neutral-600">@it.Qty</td>
+                                                <td class="py-1 text-right text-neutral-600">@Money(it.UnitPrice)</td>
+                                                <td class="py-1 text-right text-neutral-800">@Money(it.Line)</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+    @@media print {
+        .no-print { display: none !important; }
+        aside, nav, header { display: none !important; }
+        [id^="items-"] { display: table-row !important; }
+    }
+</style>
