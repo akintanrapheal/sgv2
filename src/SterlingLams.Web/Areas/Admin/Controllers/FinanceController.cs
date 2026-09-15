@@ -80,7 +80,6 @@ public class FinanceController : AdminBaseController
     }
 
     public record NameAmount(string Label, int Count, decimal Amount);
-    public record RefundProductRow(string Product, int Qty, decimal Amount);
     public record RefundListRow(int Id, string Number, DateTime When, string Order, decimal Amount, string Method, string Reason, string Cashier, string Status);
 
     public class RefundVm
@@ -96,9 +95,7 @@ public class FinanceController : AdminBaseController
         public decimal Rate => GrossSales > 0 ? TotalRefunds / GrossSales : 0;
         public decimal Avg => RefundCount > 0 ? TotalRefunds / RefundCount : 0;
         public List<NameAmount> ByReason { get; set; } = new();
-        public List<NameAmount> ByMethod { get; set; } = new();
         public List<NameAmount> ByCashier { get; set; } = new();
-        public List<RefundProductRow> ByProduct { get; set; } = new();
         public List<RefundListRow> Recent { get; set; } = new();
         // Refund REQUESTS awaiting Finance approval — shown regardless of the date filter (they need
         // action). Nothing has been paid out or restocked for these yet.
@@ -456,11 +453,6 @@ public class FinanceController : AdminBaseController
                 .Select(g => new { g.Key, Count = g.Count(), Amt = g.Sum(r => r.Amount) }).ToListAsync())
             .Select(x => new NameAmount(string.IsNullOrWhiteSpace(x.Key) ? "Unspecified" : x.Key!.Trim(), x.Count, x.Amt))
             .OrderByDescending(x => x.Amount).ToList();
-        var byMethod = (await refq.GroupBy(r => r.RefundMethod)
-                .Select(g => new { g.Key, Count = g.Count(), Amt = g.Sum(r => r.Amount) }).ToListAsync())
-            .Select(x => new NameAmount(string.IsNullOrWhiteSpace(x.Key) ? "—" : x.Key, x.Count, x.Amt))
-            .OrderByDescending(x => x.Amount).ToList();
-
         var cashierRaw = await refq.GroupBy(r => r.CashierUserId)
             .Select(g => new { g.Key, Count = g.Count(), Amt = g.Sum(r => r.Amount) }).ToListAsync();
         var cIds = cashierRaw.Select(c => c.Key).Distinct().ToList();
@@ -474,13 +466,6 @@ public class FinanceController : AdminBaseController
         var byCashier = cashierRaw
             .Select(c => new NameAmount(string.IsNullOrWhiteSpace(c.Key) ? "—" : cNames.GetValueOrDefault(c.Key, "Unknown"), c.Count, c.Amt))
             .OrderByDescending(x => x.Amount).ToList();
-
-        var itemsQ = _db.RefundItems.Where(i => i.Refund.Status == RefundStatus.Approved && i.Refund.CreatedAt >= f && i.Refund.CreatedAt < t);
-        if (storeId.HasValue) itemsQ = itemsQ.Where(i => i.Refund.OriginalOrder.PickupStoreId == storeId || i.Refund.OriginalOrder.FulfillingStoreId == storeId);
-        var byProduct = (await itemsQ.GroupBy(i => i.ProductName)
-                .Select(g => new { g.Key, Qty = g.Sum(x => x.Quantity), Amt = g.Sum(x => x.Quantity * x.UnitPrice) })
-                .OrderByDescending(x => x.Amt).Take(15).ToListAsync())
-            .Select(x => new RefundProductRow(x.Key, x.Qty, x.Amt)).ToList();
 
         // Recent list shows EVERY refund in range — approved, rejected AND pending — so all are on record.
         var allQ = _db.Refunds.Where(r => r.CreatedAt >= f && r.CreatedAt < t);
@@ -523,7 +508,7 @@ public class FinanceController : AdminBaseController
             TotalRefunds = totals?.Amt ?? 0,
             RefundCount = totals?.Count ?? 0,
             OrdersRefunded = totals?.Orders ?? 0,
-            ByReason = byReason, ByMethod = byMethod, ByCashier = byCashier, ByProduct = byProduct, Recent = recent,
+            ByReason = byReason, ByCashier = byCashier, Recent = recent,
             Pending = pending, CanApprove = canApprove
         });
     }
@@ -1183,65 +1168,104 @@ public class FinanceController : AdminBaseController
         });
     }
 
-    // ── Profit & margin (needs product cost prices) ────────────────────────────
-    public record ProfitRow(string Product, int Units, decimal Revenue, decimal Cost, bool HasCost)
+    // ── End-of-day report (one calendar day, per store) ─────────────────────────
+    // A daily "Z-report" close for each branch: the day's sales, the split by payment method, refunds,
+    // giveaways, expenses and net — for a single Lagos day, filterable to one store.
+    public record EodPayMethod(string Method, int Count, decimal Amount);
+    public record EodStoreRow(int? StoreId, string Store, int Orders, decimal Gross, decimal Delivery,
+        decimal Discounts, decimal Loyalty, decimal GiftCards, decimal Refunds, int RefundCount,
+        decimal Expenses, List<EodPayMethod> Methods)
     {
-        public decimal Profit => Revenue - Cost;
-        public decimal Margin => Revenue > 0 ? Profit / Revenue : 0;
+        public decimal Merchandise => Gross - Delivery;
+        public decimal Net => Gross - Refunds;
     }
 
-    public class ProfitVm
+    public class EndOfDayVm
     {
-        public DateTime From { get; set; }
-        public DateTime To { get; set; }
+        public DateTime Date { get; set; }               // the Lagos day being reported
         public int? StoreId { get; set; }
         public List<Store> Stores { get; set; } = new();
-        public decimal Revenue { get; set; }          // merchandise revenue with known cost
-        public decimal Cost { get; set; }
-        public decimal RevenueAll { get; set; }        // all merchandise revenue (incl. no-cost items)
-        public decimal Profit => Revenue - Cost;
-        public decimal Margin => Revenue > 0 ? Profit / Revenue : 0;
-        public decimal Coverage => RevenueAll > 0 ? Revenue / RevenueAll : 0; // % of revenue with cost data
-        public List<ProfitRow> Rows { get; set; } = new();
+        public List<EodStoreRow> Rows { get; set; } = new();
+        public decimal Orders => Rows.Sum(r => r.Orders);
+        public decimal Gross => Rows.Sum(r => r.Gross);
+        public decimal Refunds => Rows.Sum(r => r.Refunds);
+        public decimal Expenses => Rows.Sum(r => r.Expenses);
+        public decimal Net => Rows.Sum(r => r.Net);
     }
 
-    public async Task<IActionResult> Profit(string? from, string? to, int? storeId)
+    public async Task<IActionResult> EndOfDay(string? date, int? storeId)
     {
-        ViewData["Title"] = "Finance — Profit";
-        var (f, t, fLocal, tLocal) = Range(from, to);
+        ViewData["Title"] = "Finance — End of Day";
+
+        // A single Lagos calendar day → the half-open UTC window [f, t) for that one day.
+        var day = DateTime.TryParse(date, out var pd) ? pd.Date : Services.ReportCalendar.Today;
+        var (f, t, fLocal, _) = Range(day.ToString("yyyy-MM-dd"), day.ToString("yyyy-MM-dd"));
         var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
 
-        // Paid order items in range, joined to the product's current cost price.
-        var itemsQ = _db.OrderItems.Where(i => i.Order.IsPaid
-            && (i.Order.PaidAt ?? i.Order.CreatedAt) >= f && (i.Order.PaidAt ?? i.Order.CreatedAt) < t);
-        if (storeId.HasValue) itemsQ = itemsQ.Where(i => i.Order.PickupStoreId == storeId || i.Order.FulfillingStoreId == storeId);
+        // Paid orders that day, bucketed to the selling/fulfilling branch (null = online/unassigned).
+        var paidQ = _db.Orders.Where(o => o.IsPaid && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t);
+        if (storeId.HasValue) paidQ = paidQ.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
+        var orderRows = await paidQ.Select(o => new
+        {
+            o.Id,
+            Sid = o.PickupStoreId ?? o.FulfillingStoreId,
+            o.Total, o.DeliveryFee, o.DiscountAmount, o.LoyaltyDiscount, o.GiftCardAmount, o.PaymentProvider
+        }).ToListAsync();
 
-        var grouped = await itemsQ
-            .GroupBy(i => new { i.ProductId, i.ProductName })
-            .Select(g => new
-            {
-                g.Key.ProductName,
-                Units = g.Sum(x => x.Quantity),
-                Revenue = g.Sum(x => x.Quantity * x.UnitPrice),
-                Cost = g.Sum(x => x.Quantity * (x.Product.CostPrice ?? 0m)),
-                HasCost = g.Max(x => x.Product.CostPrice) != null
-            })
+        // Payment tenders for those orders. An order with no recorded tender (e.g. some online orders)
+        // falls back to a single tender of its total under its payment provider, so methods reconcile to gross.
+        var oids = orderRows.Select(o => o.Id).ToList();
+        var payRows = await _db.OrderPayments.Where(p => oids.Contains(p.OrderId))
+            .Select(p => new { p.OrderId, p.Method, p.Amount }).ToListAsync();
+        var payByOrder = payRows.GroupBy(p => p.OrderId).ToDictionary(g => g.Key, g => g.ToList());
+
+        var contribs = new List<(int? Sid, string Method, decimal Amount)>();
+        foreach (var o in orderRows)
+        {
+            if (payByOrder.TryGetValue(o.Id, out var ps) && ps.Count > 0)
+                foreach (var p in ps)
+                    contribs.Add((o.Sid, string.IsNullOrWhiteSpace(p.Method) ? "Other" : p.Method.Trim(), p.Amount));
+            else
+                contribs.Add((o.Sid, string.IsNullOrWhiteSpace(o.PaymentProvider) ? "Other" : o.PaymentProvider!.Trim(), o.Total));
+        }
+
+        // Approved refunds that day, by branch.
+        var refq = _db.Refunds.Where(r => r.Status == RefundStatus.Approved && r.CreatedAt >= f && r.CreatedAt < t);
+        if (storeId.HasValue) refq = refq.Where(r => r.OriginalOrder.PickupStoreId == storeId || r.OriginalOrder.FulfillingStoreId == storeId);
+        var refRows = await refq
+            .Select(r => new { Sid = r.OriginalOrder.PickupStoreId ?? r.OriginalOrder.FulfillingStoreId, r.Amount })
             .ToListAsync();
 
-        var rows = grouped
-            .Select(x => new ProfitRow(x.ProductName, x.Units, x.Revenue, x.HasCost ? x.Cost : 0m, x.HasCost))
-            .OrderByDescending(r => r.Profit).ToList();
+        // Expenses recorded that day, by branch (a store-less expense sits under online/unassigned).
+        var expQ = _db.Expenses.Where(e => e.OccurredOn >= f && e.OccurredOn < t);
+        if (storeId.HasValue) expQ = expQ.Where(e => e.StoreId == storeId);
+        var expRows = await expQ.Select(e => new { e.StoreId, e.Amount }).ToListAsync();
 
-        var withCost = rows.Where(r => r.HasCost).ToList();
+        string Name(int? sid) => sid.HasValue
+            ? (stores.FirstOrDefault(s => s.Id == sid)?.Name ?? $"Store #{sid}")
+            : "Online / Unassigned";
 
-        return View(new ProfitVm
+        var sids = orderRows.Select(o => o.Sid)
+            .Concat(refRows.Select(r => r.Sid))
+            .Concat(expRows.Select(e => e.StoreId))
+            .Distinct().ToList();
+
+        var rows = sids.Select(sid =>
         {
-            From = fLocal, To = tLocal, StoreId = storeId, Stores = stores,
-            Revenue = withCost.Sum(r => r.Revenue),
-            Cost = withCost.Sum(r => r.Cost),
-            RevenueAll = rows.Sum(r => r.Revenue),
-            Rows = rows
-        });
+            var os = orderRows.Where(o => o.Sid == sid).ToList();
+            var refs = refRows.Where(r => r.Sid == sid).ToList();
+            var methods = contribs.Where(m => m.Sid == sid)
+                .GroupBy(m => m.Method)
+                .Select(g => new EodPayMethod(g.Key, g.Count(), g.Sum(x => x.Amount)))
+                .OrderByDescending(x => x.Amount).ToList();
+            return new EodStoreRow(sid, Name(sid), os.Count,
+                os.Sum(o => o.Total), os.Sum(o => o.DeliveryFee),
+                os.Sum(o => o.DiscountAmount), os.Sum(o => o.LoyaltyDiscount), os.Sum(o => o.GiftCardAmount),
+                refs.Sum(r => r.Amount), refs.Count,
+                expRows.Where(e => e.StoreId == sid).Sum(e => e.Amount), methods);
+        }).OrderByDescending(r => r.Gross).ThenBy(r => r.Store).ToList();
+
+        return View(new EndOfDayVm { Date = fLocal, StoreId = storeId, Stores = stores, Rows = rows });
     }
 
     private async Task<FinanceVm> BuildAsync(string? from, string? to, int? storeId, string? channel, string? period)
