@@ -76,11 +76,8 @@ public static class AdminSections
         ("Refunds",      "Refunds"),
         ("Leakage",      "Leakage"),
         ("Liabilities",  "Customer Points"),
-        ("Receivables",  "Receivables"),
-        ("Settlement",   "Settlement"),
         ("Customers",    "Customers"),
         ("Profit",       "Profit"),
-        ("Logistics",    "Logistics P&L"),
     };
 
     /// <summary>Order the sidebar renders groups in. "" is the top, non-collapsible Overview.</summary>
