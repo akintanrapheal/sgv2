@@ -1,6 +1,7 @@
 @model SterlingLams.Web.Controllers.PosController.CloseSummaryVm
 @{
-    ViewData["Title"] = "Sales & Operation";
+    // Window title shows the staff at the till (like EposNow), not "Sales & Operation".
+    ViewData["Title"] = string.IsNullOrWhiteSpace(Model.StaffName) ? "POS" : Model.StaffName;
     var s = Model.Session;
     var interim = Model.Interim;
     string Money(decimal v) => (v < 0 ? "-₦" : "₦") + Math.Abs(v).ToString("N2");
@@ -48,6 +49,14 @@
                         <div><p class="text-neutral-400">Date</p><p class="text-neutral-800 font-medium mt-0.5">@s.OpenedAt.ToLocalTime().ToString("dd/MM/yyyy")</p></div>
                         <div><p class="text-neutral-400">Time</p><p class="text-neutral-800 font-medium mt-0.5">@s.OpenedAt.ToLocalTime().ToString("HH:mm:ss")</p></div>
                     </div>
+                    @if (Model.Closed)
+                    {
+                        <div class="grid grid-cols-3 gap-2 text-xs mt-3 pt-3 border-t border-neutral-100">
+                            <div><p class="text-neutral-400">Closed by</p><p class="text-neutral-800 font-medium mt-0.5">@(string.IsNullOrWhiteSpace(Model.ClosedByName) ? "—" : Model.ClosedByName)</p></div>
+                            <div><p class="text-neutral-400">Date</p><p class="text-neutral-800 font-medium mt-0.5">@s.ClosedAt!.Value.ToLocalTime().ToString("dd/MM/yyyy")</p></div>
+                            <div><p class="text-neutral-400">Time</p><p class="text-neutral-800 font-medium mt-0.5">@s.ClosedAt!.Value.ToLocalTime().ToString("HH:mm:ss")</p></div>
+                        </div>
+                    }
                 </div>
 
                 <div class="bg-white border border-neutral-200 rounded-lg p-4">
