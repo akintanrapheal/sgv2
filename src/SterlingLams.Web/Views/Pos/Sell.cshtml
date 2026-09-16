@@ -559,7 +559,10 @@
 <div id="till-refund" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white rounded-xl p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div id="refund-search-state">
-            <h3 class="text-lg font-medium text-neutral-900 mb-1">Refund a sale</h3>
+            <div class="flex items-center justify-between mb-1">
+                <h3 class="text-lg font-medium text-neutral-900">Refund a sale</h3>
+                <button type="button" id="refund-history-btn" class="text-xs text-brand-600 hover:text-brand-700 font-medium">Refund history</button>
+            </div>
             <p class="text-sm text-neutral-500 mb-4">Enter the receipt number, pick what's coming back.</p>
             <div class="flex gap-2 mb-4">
                 <input id="refund-order" type="text" placeholder="POS-…"
@@ -575,7 +578,7 @@
                     <button type="button" data-method="Card" class="refund-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-2 text-sm">Card</button>
                     <button type="button" data-method="Transfer" class="refund-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-2 text-sm">Transfer</button>
                 </div>
-                <input id="refund-reason" type="text" placeholder="Reason (optional)"
+                <input id="refund-reason" type="text" placeholder="Reason (required) — Finance sees this"
                        class="w-full border border-neutral-300 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:border-brand-500" />
                 <div class="flex justify-between text-base font-medium text-neutral-900 mb-3">
                     <span>Refund total</span><span id="refund-total">₦0</span>
@@ -604,6 +607,14 @@
             </button>
             <button type="button" id="refund-done"
                     class="w-full bg-neutral-900 text-white rounded-lg py-3 text-sm hover:bg-neutral-700 transition-colors">Done</button>
+        </div>
+        <div id="refund-history-state" class="hidden">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-lg font-medium text-neutral-900">Refund history</h3>
+                <button type="button" id="refund-history-back" class="text-xs text-neutral-500 hover:text-neutral-800">← Back</button>
+            </div>
+            <p class="text-xs text-neutral-500 mb-3">Refunds raised at this branch and their approval / restock status.</p>
+            <div id="refund-history-list" class="space-y-2 max-h-[70vh] overflow-y-auto"></div>
         </div>
     </div>
 </div>
@@ -2277,7 +2288,9 @@
         lines = []; orderId = null; confirmBtn.disabled = true;
         document.getElementById('refund-order').value = '';
         document.getElementById('refund-reason').value = '';
-        successState.classList.add('hidden'); searchState.classList.remove('hidden');
+        successState.classList.add('hidden');
+        document.getElementById('refund-history-state').classList.add('hidden');
+        searchState.classList.remove('hidden');
     }
 
     // Let the Orders tab open the refund flow pre-filled with a receipt number.
@@ -2294,6 +2307,56 @@
     document.getElementById('refund-done').addEventListener('click', close);
     document.getElementById('refund-find').addEventListener('click', findOrder);
     document.getElementById('refund-order').addEventListener('keydown', e => { if (e.key === 'Enter') findOrder(); });
+
+    // ── Refund history (follow-up: approval status + inventory restock) ─────────
+    const historyState = document.getElementById('refund-history-state');
+    const historyList = document.getElementById('refund-history-list');
+    function esc2(s){ const d=document.createElement('div'); d.textContent = s==null?'':String(s); return d.innerHTML; }
+    function statusPill(s) {
+        if (s === 'Approved') return '<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">Approved</span>';
+        if (s === 'Rejected') return '<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700">Rejected</span>';
+        return '<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">Pending Finance</span>';
+    }
+    function restockLine(it) {
+        if (it.restock === 'Restocked') {
+            const ba = (it.before != null && it.after != null) ? ' · shelf ' + it.before + ' → ' + it.after : '';
+            return '<span class="text-emerald-600">Restocked ' + it.restockedQty + '/' + it.qty + ba + '</span>';
+        }
+        if (it.restock === 'WrittenOff') return '<span class="text-rose-600">Written off' + (it.restockNote ? ' (' + esc2(it.restockNote) + ')' : '') + '</span>';
+        return '<span class="text-neutral-400">Awaiting inventory</span>';
+    }
+    function refundHistoryCard(r) {
+        const when = r.when ? new Date(r.when).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+        const items = (r.items || []).map(it =>
+            '<div class="flex items-start justify-between gap-2 text-xs py-0.5">'
+            + '<span class="text-neutral-600 min-w-0">' + esc2(it.name) + (it.variant ? ' · ' + esc2(it.variant) : '') + ' ×' + it.qty + '</span>'
+            + '<span class="flex-shrink-0 text-right">' + (r.status === 'Approved' && r.restockRequested ? restockLine(it) : '') + '</span></div>').join('');
+        return '<div class="border border-neutral-200 rounded-lg p-3">'
+            + '<div class="flex items-center justify-between gap-2">'
+            +   '<span class="font-mono text-xs text-neutral-700">' + esc2(r.number) + '</span>' + statusPill(r.status)
+            + '</div>'
+            + '<div class="flex items-center justify-between gap-2 mt-0.5"><span class="text-sm text-neutral-800">' + fmt(r.amount) + ' · ' + esc2(r.method) + '</span><span class="text-[11px] text-neutral-400">' + esc2(r.orderNumber) + ' · ' + when + '</span></div>'
+            + '<div class="text-[11px] text-neutral-500 mt-0.5">Reason: ' + esc2(r.reason) + '</div>'
+            + (r.decisionNote ? '<div class="text-[11px] text-neutral-500">Finance: ' + esc2(r.decisionNote) + '</div>' : '')
+            + '<div class="mt-1.5 border-t border-neutral-100 pt-1.5">' + items + '</div>'
+            + '</div>';
+    }
+    async function openHistory() {
+        searchState.classList.add('hidden'); successState.classList.add('hidden');
+        historyState.classList.remove('hidden');
+        historyList.innerHTML = '<p class="text-center text-neutral-400 py-8 text-sm">Loading…</p>';
+        try {
+            const r = await fetch('/Pos/RefundHistory');
+            const d = await r.json();
+            const list = d.refunds || [];
+            historyList.innerHTML = list.length ? list.map(refundHistoryCard).join('')
+                : '<p class="text-center text-neutral-400 py-8 text-sm">No refunds raised at this branch yet.</p>';
+        } catch { historyList.innerHTML = '<p class="text-center text-neutral-400 py-8 text-sm">Could not load refund history.</p>'; }
+    }
+    document.getElementById('refund-history-btn').addEventListener('click', openHistory);
+    document.getElementById('refund-history-back').addEventListener('click', function () {
+        historyState.classList.add('hidden'); searchState.classList.remove('hidden');
+    });
 
     async function findOrder() {
         msgEl.textContent = '';
@@ -2343,13 +2406,15 @@
     confirmBtn.addEventListener('click', async () => {
         const items = lines.filter(l => l.qty > 0).map(l => ({ productId: l.productId, variantId: l.variantId, quantity: l.qty }));
         if (!items.length) return;
+        const reason = document.getElementById('refund-reason').value.trim();
+        if (!reason) { msgEl.textContent = 'Please enter a reason for the refund — Finance needs it to approve.'; document.getElementById('refund-reason').focus(); return; }
         confirmBtn.disabled = true; confirmBtn.textContent = 'Processing…';
         try {
             // No manager PIN — the cashier raises the refund and it goes straight to Finance for approval.
             const res = await fetch('/Pos/RefundProcess', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
-                body: JSON.stringify({ orderId, method, reason: document.getElementById('refund-reason').value, items })
+                body: JSON.stringify({ orderId, method, reason, items })
             });
             const data = await res.json();
             if (data.success) {

@@ -1105,6 +1105,10 @@ public class PosController : Controller
         var lines = (req.Items ?? new()).Where(l => l.Quantity > 0).ToList();
         if (lines.Count == 0) return Json(new { success = false, message = "Choose at least one item to return." });
 
+        // A reason is required so Finance can see why the refund is being requested.
+        if (string.IsNullOrWhiteSpace(req.Reason))
+            return Json(new { success = false, message = "Please enter a reason for the refund." });
+
         // No manager PIN at the till: a cashier raises the refund straight away and it goes to Finance
         // as a pending request. Nothing is paid out or restocked until Finance approves (2-gate
         // workflow), so the till-side approval was redundant loss-prevention.
@@ -1213,6 +1217,69 @@ public class PosController : Controller
 
         return Json(new { success = true, pending = true, refundNumber, amount, refundId = refund.Id,
             message = $"Refund of ₦{amount:N0} sent to Finance for approval. No cash has left the drawer yet." });
+    }
+
+    // Refund history for this branch — so a cashier can follow up on what they raised: the Finance
+    // status (pending / approved / rejected) and, once Inventory has acted, whether each returned unit
+    // was restocked or written off, with the on-hand before → after the restock.
+    [Authorize, HttpGet]
+    public async Task<IActionResult> RefundHistory()
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { refunds = Array.Empty<object>() });
+        var storeId = register.StoreId;
+        var regIds = await _db.Registers.Where(r => r.StoreId == storeId).Select(r => r.Id).ToListAsync();
+
+        var refunds = await _db.Refunds.Include(r => r.Items).Include(r => r.OriginalOrder)
+            .Where(r => r.RegisterId != null && regIds.Contains(r.RegisterId.Value))
+            .OrderByDescending(r => r.CreatedAt).Take(50).ToListAsync();
+
+        // Restock movements (Type Return, stock IN) carry the refund number as their reference — the
+        // BalanceAfter lets us show the shelf count before and after Inventory put the units back.
+        var nums = refunds.Select(r => r.RefundNumber).ToList();
+        var moves = (await _db.StockMovements
+                .Where(m => nums.Contains(m.Reference!) && m.Type == StockMovementType.Return && m.QuantityChange > 0)
+                .Select(m => new { m.Reference, m.ProductId, m.ProductVariantId, m.QuantityChange, m.BalanceAfter })
+                .ToListAsync())
+            .GroupBy(m => (m.Reference, m.ProductId, m.ProductVariantId))
+            .ToDictionary(g => g.Key, g => g.OrderBy(x => x.BalanceAfter).Last());
+
+        var cashierIds = refunds.Select(r => r.CashierUserId).Distinct().ToList();
+        var names = (await _db.Users.Where(u => cashierIds.Contains(u.Id))
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.UserName }).ToListAsync())
+            .ToDictionary(u => u.Id, u => { var n = $"{u.FirstName} {u.LastName}".Trim(); return string.IsNullOrWhiteSpace(n) ? (u.UserName ?? "—") : n; });
+
+        var rows = refunds.Select(r => new
+        {
+            number = r.RefundNumber,
+            when = r.CreatedAt,
+            orderNumber = r.OriginalOrder != null ? r.OriginalOrder.OrderNumber : "",
+            amount = r.Amount,
+            method = r.RefundMethod,
+            reason = string.IsNullOrWhiteSpace(r.Reason) ? "—" : r.Reason,
+            status = r.Status.ToString(),                    // PendingApproval | Approved | Rejected
+            decisionNote = r.DecisionNote,
+            restockRequested = r.RestockRequested,
+            cashier = names.GetValueOrDefault(r.CashierUserId, "—"),
+            items = r.Items.Select(i =>
+            {
+                var mv = moves.GetValueOrDefault((r.RefundNumber, i.ProductId, i.ProductVariantId));
+                return new
+                {
+                    name = i.ProductName,
+                    variant = i.VariantName,
+                    qty = i.Quantity,
+                    restock = i.RestockDecision.ToString(),   // Pending | Restocked | WrittenOff
+                    restockedQty = i.RestockedQuantity,
+                    restockNote = i.RestockNote,
+                    // On-hand before/after Inventory restocked these units (only when a restock happened).
+                    before = mv != null ? (int?)(mv.BalanceAfter - mv.QuantityChange) : null,
+                    after = mv != null ? (int?)mv.BalanceAfter : null
+                };
+            }).ToList()
+        }).ToList();
+
+        return Json(new { refunds = rows });
     }
 
     /// <summary>Printable refund/return receipt (same thermal format as a sale receipt).</summary>
