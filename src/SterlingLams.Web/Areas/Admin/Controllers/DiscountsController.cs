@@ -162,8 +162,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             code.MaxUsesPerCustomer = vm.MaxUsesPerCustomer;
             code.FirstOrderOnly    = vm.FirstOrderOnly;
             code.IsActive          = vm.IsActive;
-            code.StartsAt          = vm.StartsAt;
-            code.ExpiresAt         = vm.ExpiresAt;
+            // The date pickers post a Kind=Unspecified DateTime; Npgsql rejects that for a timestamptz
+            // column. Treat the entered value as Lagos wall-clock and store the UTC instant.
+            DateTime? ToUtc(DateTime? v) => v.HasValue
+                ? TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(v.Value, DateTimeKind.Unspecified), SterlingLams.Web.Services.ReportCalendar.Zone)
+                : (DateTime?)null;
+            code.StartsAt          = ToUtc(vm.StartsAt);
+            code.ExpiresAt         = ToUtc(vm.ExpiresAt);
 
             // Reset scope targets
             code.Categories.Clear();
