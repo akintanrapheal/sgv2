@@ -1105,15 +1105,10 @@ public class PosController : Controller
         var lines = (req.Items ?? new()).Where(l => l.Quantity > 0).ToList();
         if (lines.Count == 0) return Json(new { success = false, message = "Choose at least one item to return." });
 
-        // Manager approval for refunds (loss prevention), when enabled in POS settings.
+        // No manager PIN at the till: a cashier raises the refund straight away and it goes to Finance
+        // as a pending request. Nothing is paid out or restocked until Finance approves (2-gate
+        // workflow), so the till-side approval was redundant loss-prevention.
         string refundApprovalNote = "";
-        if (await _settings.GetBoolAsync("pos.approval_refunds", false))
-        {
-            var mgr = await ValidateManagerPinAsync(req.ManagerPin);
-            if (mgr == null)
-                return Json(new { success = false, needsApproval = "refund", message = "Manager approval required to process a refund." });
-            refundApprovalNote = $" [approved by {mgr.FullName}]";
-        }
 
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         var now = DateTime.UtcNow;
