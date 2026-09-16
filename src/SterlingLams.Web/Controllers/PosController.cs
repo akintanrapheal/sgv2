@@ -1299,6 +1299,19 @@ public class PosController : Controller
             try { await _audit.LogAsync("Login", "POS", user.Id, $"{user.FullName} signed in to POS{(reg != null ? $" ({reg.Name})" : "")}"); } catch { }
             return Json(new { success = true });
         }
+
+        // Wrong / missing PIN — record the attempt (the login page exposes cashier ids, so a bad PIN
+        // here is worth capturing; the endpoint is IP rate-limited under the "auth" policy).
+        try
+        {
+            var reg = await BoundRegisterAsync();
+            var where = reg != null ? $" ({reg.Name})" : "";
+            if (user != null)
+                await _audit.LogAsync("LoginFailed", "POS", user.Id, $"Failed POS sign-in for {user.FullName} — wrong PIN{where}", performedBy: user.FullName);
+            else
+                await _audit.LogAsync("LoginFailed", "POS", "", $"Failed POS sign-in — unknown or PIN-less cashier{where}");
+        }
+        catch { }
         return Json(new { success = false, message = "Wrong PIN." });
     }
 
