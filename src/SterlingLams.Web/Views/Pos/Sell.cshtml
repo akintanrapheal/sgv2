@@ -728,14 +728,20 @@
 
     <!-- List view (tabs + order cards) -->
     <div id="fulfil-listview" class="flex-1 flex flex-col overflow-hidden">
-        <div class="flex border-b border-neutral-100 flex-shrink-0">
-            <button type="button" id="fulfil-tab-pack" class="flex-1 py-3 text-sm font-semibold tracking-wide text-brand-600 border-b-2 border-brand-500 transition-colors">
+        <div class="flex border-b border-neutral-100 flex-shrink-0 overflow-x-auto whitespace-nowrap">
+            <button type="button" id="fulfil-tab-pack" class="flex-shrink-0 px-4 py-3 text-sm font-semibold tracking-wide text-brand-600 border-b-2 border-brand-500 transition-colors">
                 To pack <span id="fulfil-pack-count" class="ml-1 text-xs text-neutral-400"></span>
             </button>
-            <button type="button" id="fulfil-tab-transfer" class="flex-1 py-3 text-sm font-semibold tracking-wide text-neutral-400 border-b-2 border-transparent transition-colors">
-                Awaiting transfer <span id="fulfil-transfer-count" class="ml-1 text-xs text-neutral-400"></span>
+            <button type="button" id="fulfil-tab-pickups" class="flex-shrink-0 px-4 py-3 text-sm font-semibold tracking-wide text-neutral-400 border-b-2 border-transparent transition-colors">
+                Pickups <span id="fulfil-pickups-count" class="ml-1 text-xs text-neutral-400"></span>
             </button>
-            <button type="button" id="fulfil-tab-history" class="flex-1 py-3 text-sm font-semibold tracking-wide text-neutral-400 border-b-2 border-transparent transition-colors">
+            <button type="button" id="fulfil-tab-awaiting" class="flex-shrink-0 px-4 py-3 text-sm font-semibold tracking-wide text-neutral-400 border-b-2 border-transparent transition-colors">
+                Awaiting transfer <span id="fulfil-awaiting-count" class="ml-1 text-xs text-neutral-400"></span>
+            </button>
+            <button type="button" id="fulfil-tab-tosend" class="flex-shrink-0 px-4 py-3 text-sm font-semibold tracking-wide text-neutral-400 border-b-2 border-transparent transition-colors">
+                To send <span id="fulfil-tosend-count" class="ml-1 text-xs text-neutral-400"></span>
+            </button>
+            <button type="button" id="fulfil-tab-history" class="flex-shrink-0 px-4 py-3 text-sm font-semibold tracking-wide text-neutral-400 border-b-2 border-transparent transition-colors">
                 History
             </button>
         </div>
@@ -2846,11 +2852,13 @@
     const titleEl = document.getElementById('fulfil-title');
     const backBtn = document.getElementById('fulfil-back');
     const tabPack = document.getElementById('fulfil-tab-pack');
-    const tabTransfer = document.getElementById('fulfil-tab-transfer');
+    const tabPickups = document.getElementById('fulfil-tab-pickups');
+    const tabAwaiting = document.getElementById('fulfil-tab-awaiting');
+    const tabToSend = document.getElementById('fulfil-tab-tosend');
     const tabHistory = document.getElementById('fulfil-tab-history');
     const badge = document.getElementById('fulfil-badge');
-    let currentTab = 'pack';          // 'pack' | 'transfer' | 'history'
-    let cache = { toPack: [], awaitingTransfer: [] };
+    let currentTab = 'pack';          // 'pack' | 'pickups' | 'awaiting' | 'tosend' | 'history'
+    let cache = { toPack: [], pickups: [], awaitingTransfer: [], toSend: [] };
     let historyCache = null;          // lazily loaded when the History tab is opened
     let cursor = '0';                 // '0' = baseline, don't toast pre-existing orders
 
@@ -2877,10 +2885,12 @@
     }
     function setTab(tab) {
         currentTab = tab;
-        const on = 'flex-1 py-3 text-sm font-semibold tracking-wide text-brand-600 border-b-2 border-brand-500 transition-colors';
-        const off = 'flex-1 py-3 text-sm font-semibold tracking-wide text-neutral-400 border-b-2 border-transparent transition-colors';
+        const on = 'flex-shrink-0 px-4 py-3 text-sm font-semibold tracking-wide text-brand-600 border-b-2 border-brand-500 transition-colors';
+        const off = 'flex-shrink-0 px-4 py-3 text-sm font-semibold tracking-wide text-neutral-400 border-b-2 border-transparent transition-colors';
         tabPack.className = tab === 'pack' ? on : off;
-        tabTransfer.className = tab === 'transfer' ? on : off;
+        tabPickups.className = tab === 'pickups' ? on : off;
+        tabAwaiting.className = tab === 'awaiting' ? on : off;
+        tabToSend.className = tab === 'tosend' ? on : off;
         tabHistory.className = tab === 'history' ? on : off;
         if (tab === 'history') { loadHistory(); return; }
         renderList();
@@ -2930,28 +2940,91 @@
             <div class="text-[11px] text-neutral-400 mt-1 truncate">${o.itemCount} item${o.itemCount === 1 ? '' : 's'} · ${where}${noteFlag ? ' · ' + noteFlag : ''}</div>
         </button>`;
     }
+    // Awaiting transfer (incoming): shows the SOURCE store(s) and a Receive button once on the way.
+    function awaitingCard(o) {
+        const sources = (o.sources || []).map(function (s) {
+            const statusTxt = s.status === 'InTransit' ? 'On the way' : (s.status === 'PartiallyReceived' ? 'Part received' : 'Awaiting dispatch');
+            const btn = s.canReceive
+                ? '<button type="button" data-receive="' + s.transferId + '" class="ml-auto text-xs bg-emerald-600 text-white rounded px-3 py-1.5 hover:bg-emerald-700">Receive</button>'
+                : '<span class="ml-auto text-[11px] text-neutral-400">' + statusTxt + '</span>';
+            return '<div class="flex items-center gap-2 mt-1.5 text-xs">'
+                + '<span class="text-sky-600 font-medium">↧ from ' + esc(s.fromStore) + '</span>'
+                + '<span class="text-neutral-400">· ' + s.itemCount + ' item' + (s.itemCount === 1 ? '' : 's') + ' · ' + statusTxt + '</span>' + btn + '</div>';
+        }).join('');
+        return '<div class="bg-white border border-neutral-200 border-l-4 border-l-amber-400 rounded-xl p-3.5">'
+            + '<div class="flex items-center justify-between gap-2">'
+            +   '<button type="button" class="fulfil-card text-left min-w-0" data-id="' + o.id + '"><span class="font-semibold text-neutral-900">' + esc(o.orderNumber) + '</span></button>'
+            +   '<span class="text-sm font-semibold text-neutral-900 tabular-nums">' + money(o.total) + '</span>'
+            + '</div>'
+            + '<div class="text-sm text-neutral-700 truncate">' + (esc(o.customer) || 'Customer') + (o.place ? ' · ' + esc(o.place) : '') + '</div>'
+            + (sources || '<div class="text-[11px] text-neutral-400 mt-1">Transfer being arranged…</div>')
+            + '</div>';
+    }
+    // To send (outbound): pack & dispatch this branch's stock to the fulfilling branch.
+    function toSendCard(o) {
+        const items = (o.items || []).map(function (x) { return '<div class="text-xs text-neutral-500">' + esc(x) + '</div>'; }).join('');
+        return '<div class="bg-white border border-neutral-200 border-l-4 border-l-indigo-400 rounded-xl p-3.5">'
+            + '<div class="flex items-center justify-between gap-2">'
+            +   '<span class="font-semibold text-neutral-900">' + esc(o.orderNumber || o.number) + '</span>'
+            +   '<span class="text-[11px] text-neutral-400">' + o.itemCount + ' item' + (o.itemCount === 1 ? '' : 's') + '</span>'
+            + '</div>'
+            + '<div class="text-sm text-indigo-700 mt-0.5 font-medium">↥ Send to ' + esc(o.toStore) + '</div>'
+            + '<div class="mt-1.5 space-y-0.5">' + items + '</div>'
+            + '<div class="flex items-center gap-2 mt-3">'
+            +   '<button type="button" data-dispatch="' + o.transferId + '" class="flex-1 bg-brand-500 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-brand-600">Pack &amp; dispatch</button>'
+            +   (o.manifestUrl ? '<a href="' + esc(o.manifestUrl) + '" target="_blank" class="px-3 py-2.5 border border-neutral-200 text-neutral-600 rounded-lg text-xs">Manifest</a>' : '')
+            + '</div></div>';
+    }
+    async function dispatchTransfer(id, btn) {
+        if (!confirm('Pack and send this to the other store now? The stock leaves your branch.')) return;
+        btn.disabled = true; const ot = btn.textContent; btn.textContent = 'Sending…';
+        try {
+            const res = await fetch('/Pos/TransferDispatch', { method: 'POST', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token }, body: JSON.stringify({ id: id }) });
+            const d = await res.json();
+            if (d.success) { toast('Sent — on its way to the other store'); await loadList(); }
+            else { btn.disabled = false; btn.textContent = ot; toast(d.message || 'Could not send.'); }
+        } catch { btn.disabled = false; btn.textContent = ot; toast('Could not send.'); }
+    }
+    async function receiveTransfer(id, btn) {
+        if (!confirm('Receive all items from this transfer into your stock?')) return;
+        btn.disabled = true; const ot = btn.textContent; btn.textContent = 'Receiving…';
+        try {
+            const res = await fetch('/Pos/TransferReceive', { method: 'POST', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token }, body: JSON.stringify({ id: id, items: [] }) });
+            const d = await res.json();
+            if (d.success) { toast('Received into your stock'); await loadList(); }
+            else { btn.disabled = false; btn.textContent = ot; toast(d.message || 'Could not receive.'); }
+        } catch { btn.disabled = false; btn.textContent = ot; toast('Could not receive.'); }
+    }
+    function setCount(id, n) { var e = document.getElementById(id); if (e) e.textContent = n ? '(' + n + ')' : ''; }
     function renderList() {
-        const list = currentTab === 'pack' ? cache.toPack : cache.awaitingTransfer;
-        document.getElementById('fulfil-pack-count').textContent = cache.toPack.length ? '(' + cache.toPack.length + ')' : '';
-        document.getElementById('fulfil-transfer-count').textContent = cache.awaitingTransfer.length ? '(' + cache.awaitingTransfer.length + ')' : '';
-        if (!list.length) {
-            listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">' +
-                (currentTab === 'pack' ? 'No orders waiting to be packed.' : 'No orders awaiting a transfer.') + '</p>';
+        setCount('fulfil-pack-count', (cache.toPack || []).length);
+        setCount('fulfil-pickups-count', (cache.pickups || []).length);
+        setCount('fulfil-awaiting-count', (cache.awaitingTransfer || []).length);
+        setCount('fulfil-tosend-count', (cache.toSend || []).length);
+
+        if (currentTab === 'awaiting') {
+            const list = cache.awaitingTransfer || [];
+            listEl.innerHTML = list.length ? list.map(awaitingCard).join('')
+                : '<p class="text-center text-neutral-400 py-10 text-sm">Nothing awaiting a transfer.</p>';
+            listEl.querySelectorAll('.fulfil-card').forEach(b => b.addEventListener('click', () => openDetail(+b.dataset.id)));
+            listEl.querySelectorAll('[data-receive]').forEach(b => b.addEventListener('click', () => receiveTransfer(+b.dataset.receive, b)));
             return;
         }
-        if (currentTab === 'pack') {
-            // Group so the cashier sees the two jobs apart: deliveries (pack for the courier) first,
-            // then in-store pickups (customer collects).
-            const deliveries = list.filter(o => o.fulfillmentType !== 'StorePickup');
-            const pickups = list.filter(o => o.fulfillmentType === 'StorePickup');
-            const section = (label, arr) => arr.length
-                ? '<div class="flex items-center gap-2 px-0.5 pt-1 pb-0.5"><span class="text-[11px] font-semibold uppercase tracking-wide text-neutral-500">' + label + '</span>'
-                  + '<span class="text-[11px] text-neutral-300">' + arr.length + '</span></div>' + arr.map(o => orderCard(o, true)).join('')
-                : '';
-            listEl.innerHTML = section('For delivery', deliveries) + section('Store pickup', pickups);
-        } else {
-            listEl.innerHTML = list.map(o => orderCard(o, false)).join('');
+        if (currentTab === 'tosend') {
+            const list = cache.toSend || [];
+            listEl.innerHTML = list.length ? list.map(toSendCard).join('')
+                : '<p class="text-center text-neutral-400 py-10 text-sm">Nothing to send to another store.</p>';
+            listEl.querySelectorAll('[data-dispatch]').forEach(b => b.addEventListener('click', () => dispatchTransfer(+b.dataset.dispatch, b)));
+            return;
         }
+        // pack / pickups → order cards
+        const list = currentTab === 'pickups' ? (cache.pickups || []) : (cache.toPack || []);
+        if (!list.length) {
+            listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">' +
+                (currentTab === 'pickups' ? 'No pickups to prepare.' : 'No orders waiting to be packed.') + '</p>';
+            return;
+        }
+        listEl.innerHTML = list.map(o => orderCard(o, true)).join('');
         listEl.querySelectorAll('.fulfil-card').forEach(b => b.addEventListener('click', () => openDetail(+b.dataset.id)));
     }
     async function loadList() {
@@ -2959,7 +3032,7 @@
         try {
             const r = await fetch('/Pos/FulfilOrders');
             cache = await r.json();
-            setBadge((cache.toPack || []).length + (cache.awaitingTransfer || []).length);
+            setBadge((cache.toPack || []).length + (cache.pickups || []).length + (cache.awaitingTransfer || []).length + (cache.toSend || []).length);
             renderList();
         } catch { listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Could not load orders.</p>'; }
     }
@@ -3066,7 +3139,9 @@
     document.getElementById('fulfil-close').addEventListener('click', () => modal.classList.add('hidden'));
     backBtn.addEventListener('click', showList);
     tabPack.addEventListener('click', () => setTab('pack'));
-    tabTransfer.addEventListener('click', () => setTab('transfer'));
+    tabPickups.addEventListener('click', () => setTab('pickups'));
+    tabAwaiting.addEventListener('click', () => setTab('awaiting'));
+    tabToSend.addEventListener('click', () => setTab('tosend'));
     tabHistory.addEventListener('click', () => setTab('history'));
 
     // ── New-order alert: a chime + a pop-up when an order arrives to pack ──────
@@ -3098,18 +3173,22 @@
             osc.start(now + at); osc.stop(now + at + 0.6);
         });
     }
-    // Keep ringing for ~20s so a busy cashier can't miss it; stops the moment they act on the pop-up.
-    let alarmTimer = null, alarmUntil = 0;
+    // Keep ringing for ~45s so a busy cashier can't miss it; stops the moment they act on the pop-up.
+    // While it rings it re-announces the cashier by name every few seconds ("Judith, you have…").
+    let alarmTimer = null, alarmUntil = 0, alarmVoiceAt = 0, alarmPhrase = '';
     function startAlarm() {
         playChimeOnce();
-        alarmUntil = Date.now() + 20000;
+        alarmUntil = Date.now() + 45000;
+        alarmVoiceAt = Date.now() + 7000;   // first re-announcement ~7s in, then every 7s
         clearInterval(alarmTimer);
         alarmTimer = setInterval(function () {
-            if (Date.now() >= alarmUntil) { stopAlarm(); return; }
+            var now = Date.now();
+            if (now >= alarmUntil) { stopAlarm(); return; }
             playChimeOnce();
+            if (alarmPhrase && now >= alarmVoiceAt) { speak(alarmPhrase); alarmVoiceAt = now + 7000; }
         }, 1500);
     }
-    function stopAlarm() { if (alarmTimer) { clearInterval(alarmTimer); alarmTimer = null; } }
+    function stopAlarm() { if (alarmTimer) { clearInterval(alarmTimer); alarmTimer = null; } alarmPhrase = ''; }
 
     // The signed-in cashier's first name, used to personalise the spoken alert ("Judith, you have…").
     const cashierFirst = @Html.Raw(Json.Serialize((cashierName ?? "").Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? ""));
@@ -3157,9 +3236,11 @@
         popupEl.querySelector('[data-np-close]').onclick = hideOrderPopup;
         popupEl.querySelector('[data-np-dismiss]').onclick = hideOrderPopup;
     }
-    // Announce (voice) + pop up, then start ringing once the phrase has been spoken.
+    // Announce (voice) + pop up, then start ringing once the phrase has been spoken. The phrase is kept
+    // so the alarm can re-announce the cashier by name while it rings.
     function alertPack(headline, detail, phrase) {
         buzz();
+        alarmPhrase = phrase;
         speak(phrase);
         showPackPopup(headline, detail);
         clearTimeout(alarmStartTimer);
@@ -3170,6 +3251,18 @@
         const extra = orders.length > 1 ? ' · +' + (orders.length - 1) + ' more' : '';
         alertPack('New order to pack', latest.number + (latest.customer ? ' · ' + latest.customer : '') + extra,
             greet + 'you have a new order to be packed');
+    }
+    function notifyIncoming(list) {
+        const t = list[0];
+        const extra = list.length > 1 ? ' · +' + (list.length - 1) + ' more' : '';
+        alertPack('Stock on the way', t.number + (t.fromStore ? ' · from ' + t.fromStore : '') + extra,
+            greet + 'stock is on its way to your store to complete an order');
+    }
+    function notifyToSend(list) {
+        const t = list[0];
+        const extra = list.length > 1 ? ' · +' + (list.length - 1) + ' more' : '';
+        alertPack('Stock to send', t.number + (t.toStore ? ' · to ' + t.toStore : '') + extra,
+            greet + 'you have stock to pack and send to another store to complete their order');
     }
     function remindPending(n) {
         alertPack('Orders waiting to be packed', n + (n === 1 ? ' order' : ' orders') + ' still need packing',
@@ -3184,13 +3277,18 @@
             const r = await fetch('/Pos/FulfilPoll?sinceTicks=' + encodeURIComponent(cursor));
             const d = await r.json();
             pendingToPack = d.unpacked || 0;                 // alarm only while orders are unpacked
-            setBadge((d.toPack || 0) + (d.awaiting || 0));   // badge = everything still needing action
-            if (cursor !== '0' && d.newOrders && d.newOrders.length) {
-                // Only ring for orders we haven't already alerted on — so acting on one (which can
-                // bump its timestamp) never makes the alarm come back.
-                const fresh = d.newOrders.filter(o => !alerted.has(o.number));
-                fresh.forEach(o => alerted.add(o.number));
-                if (fresh.length) notifyNewOrders(fresh);
+            // Badge = everything still needing action across all four buckets.
+            setBadge((d.toPack || 0) + (d.awaiting || 0) + (d.toSend || 0));
+            if (cursor !== '0') {
+                // Ring for anything new we haven't already alerted on (keyed by order/transfer number),
+                // so acting on one never makes its alarm come back. One alarm per tick, by priority.
+                const freshOrders   = (d.newOrders   || []).filter(o => !alerted.has(o.number));
+                const freshIncoming = (d.newIncoming || []).filter(o => !alerted.has(o.number));
+                const freshToSend   = (d.newToSend   || []).filter(o => !alerted.has(o.number));
+                [freshOrders, freshIncoming, freshToSend].forEach(a => a.forEach(o => alerted.add(o.number)));
+                if (freshOrders.length) notifyNewOrders(freshOrders);
+                else if (freshToSend.length) notifyToSend(freshToSend);
+                else if (freshIncoming.length) notifyIncoming(freshIncoming);
             }
             cursor = d.latestTicks || cursor;
         } catch { /* offline — try again next tick */ }

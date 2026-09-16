@@ -1379,15 +1379,13 @@ public class PosController : Controller
     public async Task<IActionResult> FulfilOrders()
     {
         var register = await BoundRegisterAsync();
-        if (register == null) return Json(new { toPack = Array.Empty<object>(), awaitingTransfer = Array.Empty<object>() });
+        if (register == null) return Json(new { toPack = Array.Empty<object>(), pickups = Array.Empty<object>(), awaitingTransfer = Array.Empty<object>(), toSend = Array.Empty<object>() });
         var storeId = register.StoreId;
 
-        // "To pack" = paid orders this branch must physically prepare: delivery orders allocated here
-        // (Confirmed/Processing) and store-pickup orders for this branch (Confirmed/Processing/ReadyForPickup).
-        // Action list = paid online orders this branch must still act on: delivery orders allocated
-        // here until they're dispatched (Shipped), and pickup orders here until the pickup-ready email
-        // has gone out. Packed-but-not-finalised orders stay listed (their alert just stops).
-        var toPack = await _db.Orders
+        // Orders this branch must physically prepare: delivery orders allocated here (until dispatched)
+        // and store-pickup orders here (until the pickup-ready email has gone out). Packed-but-not-
+        // finalised orders stay listed (their alarm just stops).
+        var actionable = await _db.Orders
             .Where(o => o.Channel == OrderChannel.Online && o.IsPaid
                 && ((o.FulfillmentType == FulfillmentType.Delivery && o.FulfillingStoreId == storeId
                         && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing))
@@ -1413,8 +1411,13 @@ public class PosController : Controller
                 packedBy = o.PackedByName
             })
             .ToListAsync();
+        var toPack = actionable.Where(o => o.fulfillmentType != "StorePickup").ToList();
+        var pickups = actionable.Where(o => o.fulfillmentType == "StorePickup").ToList();
 
-        var awaitingTransfer = await _db.Orders
+        // Awaiting transfer (incoming): orders this branch will fulfil, still waiting on stock coming
+        // from another branch. Enriched with the SOURCE store(s) and each transfer's status so the
+        // cashier can see where it's coming from and receive it when it arrives.
+        var awaitOrders = await _db.Orders
             .Where(o => o.Channel == OrderChannel.Online && o.FulfillingStoreId == storeId
                      && o.Status == OrderStatus.AwaitingTransfer)
             .OrderBy(o => o.CreatedAt)
@@ -1424,16 +1427,54 @@ public class PosController : Controller
                 orderNumber = o.OrderNumber,
                 customer = (o.User.FirstName + " " + o.User.LastName).Trim(),
                 phone = o.User.PhoneNumber,
-                itemCount = o.Items.Sum(i => i.Quantity),
+                fulfillmentType = o.FulfillmentType.ToString(),
                 total = o.Total,
-                createdAt = o.CreatedAt,
                 place = o.DeliveryAddress != null ? (o.DeliveryAddress.City + ", " + o.DeliveryAddress.State).Trim(' ', ',') : "",
-                hasNote = o.Notes != null && o.Notes != "",
-                status = o.Status.ToString()
+                hasNote = o.Notes != null && o.Notes != ""
             })
             .ToListAsync();
+        var awaitIds = awaitOrders.Select(o => o.id).ToList();
+        var inbound = await _db.StockTransfers
+            .Where(t => t.OrderId != null && awaitIds.Contains(t.OrderId!.Value) && t.ToStoreId == storeId
+                && (t.Status == TransferStatus.Approved || t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived))
+            .Include(t => t.FromStore).Include(t => t.Items)
+            .ToListAsync();
+        var awaitingTransfer = awaitOrders.Select(o => new
+        {
+            o.id, o.orderNumber, o.customer, o.phone, o.total, o.place, o.hasNote,
+            fulfillmentType = o.fulfillmentType,
+            sources = inbound.Where(t => t.OrderId == o.id).Select(t => new
+            {
+                transferId = t.Id,
+                number = t.TransferNumber,
+                fromStore = t.FromStore!.Name,
+                status = t.Status.ToString(),
+                itemCount = t.Items.Sum(i => i.ApprovedQty ?? i.RequestedQty),
+                canReceive = t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived
+            }).ToList()
+        }).ToList();
 
-        return Json(new { toPack, awaitingTransfer });
+        // To send (outbound): order-linked transfers this branch holds the stock for and must pack &
+        // dispatch to the fulfilling branch. Auto-approved by the fulfilment engine — ready to send.
+        var outbound = await _db.StockTransfers
+            .Where(t => t.FromStoreId == storeId && t.OrderId != null && t.Status == TransferStatus.Approved)
+            .Include(t => t.ToStore).Include(t => t.Items)
+            .OrderBy(t => t.CreatedAt).ToListAsync();
+        var outOrderIds = outbound.Select(t => t.OrderId!.Value).Distinct().ToList();
+        var outOrderNums = await _db.Orders.Where(o => outOrderIds.Contains(o.Id))
+            .Select(o => new { o.Id, o.OrderNumber }).ToDictionaryAsync(o => o.Id, o => o.OrderNumber);
+        var toSend = outbound.Select(t => new
+        {
+            transferId = t.Id,
+            number = t.TransferNumber,
+            orderNumber = outOrderNums.GetValueOrDefault(t.OrderId!.Value, ""),
+            toStore = t.ToStore!.Name,
+            itemCount = t.Items.Sum(i => i.ApprovedQty ?? i.RequestedQty),
+            items = t.Items.Select(i => i.ProductName + (i.VariantName == null ? "" : " (" + i.VariantName + ")") + " ×" + (i.ApprovedQty ?? i.RequestedQty)).ToList(),
+            manifestUrl = ManifestUrl(t.Id)
+        }).ToList();
+
+        return Json(new { toPack, pickups, awaitingTransfer, toSend });
     }
 
     // Fulfilment HISTORY for this branch: orders it has already packed (delivery) or notified/collected
@@ -1488,16 +1529,25 @@ public class PosController : Controller
         var unpackedQ = toPackQ.Where(o => o.PackedAt == null);
         var awaitQ = _db.Orders.Where(o => o.Channel == OrderChannel.Online && o.FulfillingStoreId == storeId
             && o.Status == OrderStatus.AwaitingTransfer);
+        // Outbound order transfers this branch must pack & send; inbound ones already on their way here.
+        var outboundQ = _db.StockTransfers.Where(t => t.FromStoreId == storeId && t.OrderId != null && t.Status == TransferStatus.Approved);
+        var inboundInTransitQ = _db.StockTransfers.Where(t => t.ToStoreId == storeId && t.OrderId != null
+            && (t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived));
 
         var toPackCount = await toPackQ.CountAsync();
         var unpackedCount = await unpackedQ.CountAsync();
         var awaitCount = await awaitQ.CountAsync();
+        var toSendCount = await outboundQ.CountAsync();
         var latestPack = await unpackedQ.MaxAsync(o => (DateTime?)o.UpdatedAt);
         var latestAwait = await awaitQ.MaxAsync(o => (DateTime?)o.UpdatedAt);
-        var latest = new[] { latestPack, latestAwait }.Max();
+        var latestOut = await outboundQ.MaxAsync(t => (DateTime?)t.CreatedAt);
+        var latestIn = await inboundInTransitQ.MaxAsync(t => (DateTime?)t.DispatchedAt);
+        var latest = new[] { latestPack, latestAwait, latestOut, latestIn }.Max();
         var latestTicks = latest?.Ticks ?? 0L;
 
         var newOrders = new List<object>();
+        var newIncoming = new List<object>();   // stock now on its way to us to complete an order
+        var newToSend = new List<object>();      // stock we must pack & send for another branch's order
         if (sinceTicks > 0 && latestTicks > sinceTicks)
         {
             var since = new DateTime(sinceTicks, DateTimeKind.Utc);
@@ -1505,9 +1555,18 @@ public class PosController : Controller
                 .OrderByDescending(o => o.UpdatedAt).Take(5)
                 .Select(o => new { number = o.OrderNumber, customer = (o.User.FirstName + " " + o.User.LastName).Trim() })
                 .ToListAsync<object>();
+            newIncoming = await inboundInTransitQ.Where(t => t.DispatchedAt > since)
+                .OrderByDescending(t => t.DispatchedAt).Take(5)
+                .Select(t => new { number = t.TransferNumber, fromStore = t.FromStore!.Name })
+                .ToListAsync<object>();
+            newToSend = await outboundQ.Where(t => t.CreatedAt > since)
+                .OrderByDescending(t => t.CreatedAt).Take(5)
+                .Select(t => new { number = t.TransferNumber, toStore = t.ToStore!.Name })
+                .ToListAsync<object>();
         }
         // latestTicks is returned as a string: DateTime.Ticks exceeds JS's safe-integer range.
-        return Json(new { toPack = toPackCount, unpacked = unpackedCount, awaiting = awaitCount, latestTicks = latestTicks.ToString(), newOrders });
+        return Json(new { toPack = toPackCount, unpacked = unpackedCount, awaiting = awaitCount, toSend = toSendCount,
+            latestTicks = latestTicks.ToString(), newOrders, newIncoming, newToSend });
     }
 
     // Full detail for one assigned order — items (with pictures), customer, shipping address, note.
