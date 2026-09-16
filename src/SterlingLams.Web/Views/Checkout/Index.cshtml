@@ -342,10 +342,10 @@
 <!-- Delivery-timeframe agreement modal (shown when an item ships from a far branch) -->
 <div id="tf-modal" class="hidden fixed inset-0 z-[200] bg-black/50 flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-lg rounded-sm shadow-xl p-6">
-        <h3 class="font-cormorant text-2xl font-light text-neutral-900 mb-1">A note on delivery timing</h3>
-        <p class="text-sm text-neutral-500 mb-4">Some items in your bag aren't stocked at a branch near you, so they'll take a little longer to reach you:</p>
+        <h3 id="tf-title" class="font-cormorant text-2xl font-light text-neutral-900 mb-1">A note on delivery timing</h3>
+        <p id="tf-intro" class="text-sm text-neutral-500 mb-4">Some items in your bag aren't stocked at a branch near you, so they'll take a little longer to reach you:</p>
         <ul id="tf-list" class="mb-4"></ul>
-        <p class="text-xs text-neutral-400 mb-5">You can remove an item to keep only what's available nearby, or agree to the longer timeframe and continue to payment.</p>
+        <p id="tf-foot" class="text-xs text-neutral-400 mb-5">You can remove an item to keep only what's available nearby, or agree to the longer timeframe and continue to payment.</p>
         <div class="flex gap-3 justify-end">
             <button type="button" id="tf-cancel" class="px-4 py-2.5 text-xs tracking-widest uppercase border border-neutral-300 text-neutral-600 hover:border-neutral-900 transition-colors">Go back</button>
             <button type="button" id="tf-agree" class="px-4 py-2.5 text-xs tracking-widest uppercase bg-brand-500 text-white hover:bg-brand-600 transition-colors">I agree, continue</button>
@@ -573,16 +573,35 @@ function updateSummary(fee) {
         } catch { /* on error, don't block the sale */ }
 
         if (!data.delayed || data.delayed.length === 0) { ackPassed = true; modal.classList.add('hidden'); form.submit(); return; }
-        showModal(data.delayed);
+        showModal(data);
     }
 
-    function showModal(items){
+    function showModal(data){
+        const items = (data && data.delayed) || [];
+        const pickup = data && data.mode === 'pickup';
+        const store = (data && data.pickupStore) || 'your chosen store';
+        // Reword the modal for pickup vs delivery.
+        const titleEl = document.getElementById('tf-title');
+        const introEl = document.getElementById('tf-intro');
+        const footEl = document.getElementById('tf-foot');
+        if (pickup) {
+            if (titleEl) titleEl.textContent = 'A quick note about your pickup';
+            if (introEl) introEl.textContent = 'These items aren’t in stock at the ' + store + ' store yet. We’ll transfer them in for you, then let you know the moment your order is ready to collect:';
+            if (footEl) footEl.textContent = 'You can remove an item to collect only what’s ready now, or agree to the transfer time and continue to payment.';
+        } else {
+            if (titleEl) titleEl.textContent = 'A note on delivery timing';
+            if (introEl) introEl.textContent = 'Some items in your bag aren’t stocked at a branch near you, so they’ll take a little longer to reach you:';
+            if (footEl) footEl.textContent = 'You can remove an item to keep only what’s available nearby, or agree to the longer timeframe and continue to payment.';
+        }
         list.innerHTML = '';
         items.forEach(it => {
             const li = document.createElement('li');
             li.className = 'flex items-start justify-between gap-3 py-3 border-b border-neutral-100';
+            const line = pickup
+                ? 'Transfer from our ' + esc(it.sourceStore) + ' store · ready in about ' + esc(it.eta)
+                : 'Ships from our ' + esc(it.sourceStore) + ' store · allow ' + esc(it.eta);
             li.innerHTML = '<div class="min-w-0"><div class="text-sm text-neutral-800 break-words">' + esc(it.productName) + '</div>'
-                + '<div class="text-xs text-amber-600 mt-0.5">Ships from our ' + esc(it.sourceStore) + ' store · allow ' + esc(it.eta) + '</div></div>';
+                + '<div class="text-xs text-amber-600 mt-0.5">' + line + '</div></div>';
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'text-xs text-red-500 hover:text-red-700 whitespace-nowrap shrink-0';
@@ -623,7 +642,7 @@ function updateSummary(fee) {
         } catch { /* on error, don't block the sale */ }
 
         if (!data.delayed || data.delayed.length === 0) { ackPassed = true; form.submit(); return; }
-        showModal(data.delayed);
+        showModal(data);
     });
 
     document.getElementById('tf-agree')?.addEventListener('click', () => {
