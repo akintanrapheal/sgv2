@@ -241,6 +241,11 @@ public class CheckoutController : Controller
         var activeStores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
         if (activeStores.Count == 0) return result;
         var crossEta = await _settings.GetAsync("shipping.cross_branch_days", "3 - 5 working days");
+        // Inter-branch transfer timeframes for a pickup that needs stock moved to the chosen store:
+        // same state/city is quick; a different state takes the nationwide window.
+        var localEta = await _settings.GetAsync("shipping.transfer_local_eta", "24 - 48 hours");
+        var interstateEta = await _settings.GetAsync("shipping.transfer_interstate_eta", "3 - 5 working days");
+        var pickupStore = pickupStoreId.HasValue ? activeStores.FirstOrDefault(s => s.Id == pickupStoreId.Value) : null;
 
         async Task<Store?> NearestWithStockAsync(int pid, int? vid, int need)
         {
@@ -261,8 +266,14 @@ public class CheckoutController : Controller
                 if (!pickupStoreId.HasValue) continue;
                 if (await _stock.GetAvailableAsync(pid, vid, pickupStoreId.Value) >= need) continue; // ready at chosen branch
                 var src = await NearestWithStockAsync(pid, vid, need);
+                // Same state (e.g. two Lagos branches) transfers within 24–48h; a different state takes
+                // the inter-state window. Fall back to inter-state when either location is unknown.
+                var sameLocal = src != null && pickupStore != null
+                    && !string.IsNullOrWhiteSpace(src.State) && !string.IsNullOrWhiteSpace(pickupStore.State)
+                    && string.Equals(src.State, pickupStore.State, StringComparison.OrdinalIgnoreCase);
                 result.Add(new DelayedItemDto { ProductId = pid, VariantId = vid, ProductName = name,
-                    SourceStore = src?.Name.Replace("Sterlin Glams ", "") ?? "another branch", Eta = crossEta });
+                    SourceStore = src?.Name.Replace("Sterlin Glams ", "") ?? "another branch",
+                    Eta = sameLocal ? localEta : interstateEta });
             }
             else // delivery: "near" = covered by a branch inside the customer's delivery zone
             {
@@ -292,7 +303,15 @@ public class CheckoutController : Controller
         var choice = string.Equals(fulfillmentType, "StorePickup", StringComparison.OrdinalIgnoreCase)
             ? FulfillmentChoice.StorePickup : FulfillmentChoice.Delivery;
         var delayed = await ComputeDelayedItemsAsync(cart, choice, state, city, storeId);
-        return Json(new { delayed = delayed.Select(d => new { d.ProductId, d.VariantId, d.ProductName, d.SourceStore, d.Eta }) });
+        var pickupName = choice == FulfillmentChoice.StorePickup && storeId.HasValue
+            ? (await _db.Stores.Where(s => s.Id == storeId.Value).Select(s => s.Name).FirstOrDefaultAsync())?.Replace("Sterlin Glams ", "")
+            : null;
+        return Json(new
+        {
+            mode = choice == FulfillmentChoice.StorePickup ? "pickup" : "delivery",
+            pickupStore = pickupName,
+            delayed = delayed.Select(d => new { d.ProductId, d.VariantId, d.ProductName, d.SourceStore, d.Eta })
+        });
     }
 
     // Re-populate the display-only fields the checkout view needs (states, stores, pricing, totals,
