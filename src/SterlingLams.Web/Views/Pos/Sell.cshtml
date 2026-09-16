@@ -2964,12 +2964,14 @@
     function toSendCard(o) {
         const items = (o.items || []).map(function (x) { return '<div class="text-xs text-neutral-500">' + esc(x) + '</div>'; }).join('');
         return '<div class="bg-white border border-neutral-200 border-l-4 border-l-indigo-400 rounded-xl p-3.5">'
-            + '<div class="flex items-center justify-between gap-2">'
-            +   '<span class="font-semibold text-neutral-900">' + esc(o.orderNumber || o.number) + '</span>'
-            +   '<span class="text-[11px] text-neutral-400">' + o.itemCount + ' item' + (o.itemCount === 1 ? '' : 's') + '</span>'
-            + '</div>'
-            + '<div class="text-sm text-indigo-700 mt-0.5 font-medium">↥ Send to ' + esc(o.toStore) + '</div>'
-            + '<div class="mt-1.5 space-y-0.5">' + items + '</div>'
+            + '<button type="button" data-tdetail="' + o.transferId + '" class="w-full text-left">'
+            +   '<div class="flex items-center justify-between gap-2">'
+            +     '<span class="font-semibold text-neutral-900">' + esc(o.orderNumber || o.number) + '</span>'
+            +     '<span class="text-[11px] text-neutral-400">' + o.itemCount + ' item' + (o.itemCount === 1 ? '' : 's') + ' ›</span>'
+            +   '</div>'
+            +   '<div class="text-sm text-indigo-700 mt-0.5 font-medium">↥ Send to ' + esc(o.toStore) + '</div>'
+            +   '<div class="mt-1.5 space-y-0.5">' + items + '</div>'
+            + '</button>'
             + '<div class="flex items-center gap-2 mt-3">'
             +   '<button type="button" data-dispatch="' + o.transferId + '" class="flex-1 bg-brand-500 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-brand-600">Pack &amp; dispatch</button>'
             +   (o.manifestUrl ? '<a href="' + esc(o.manifestUrl) + '" target="_blank" class="px-3 py-2.5 border border-neutral-200 text-neutral-600 rounded-lg text-xs">Manifest</a>' : '')
@@ -2981,7 +2983,7 @@
         try {
             const res = await fetch('/Pos/TransferDispatch', { method: 'POST', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token }, body: JSON.stringify({ id: id }) });
             const d = await res.json();
-            if (d.success) { toast('Sent — on its way to the other store'); await loadList(); }
+            if (d.success) { toast('Sent — on its way to the other store'); showList(); await loadList(); }
             else { btn.disabled = false; btn.textContent = ot; toast(d.message || 'Could not send.'); }
         } catch { btn.disabled = false; btn.textContent = ot; toast('Could not send.'); }
     }
@@ -2991,7 +2993,7 @@
         try {
             const res = await fetch('/Pos/TransferReceive', { method: 'POST', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token }, body: JSON.stringify({ id: id, items: [] }) });
             const d = await res.json();
-            if (d.success) { toast('Received into your stock'); await loadList(); }
+            if (d.success) { toast('Received into your stock'); showList(); await loadList(); }
             else { btn.disabled = false; btn.textContent = ot; toast(d.message || 'Could not receive.'); }
         } catch { btn.disabled = false; btn.textContent = ot; toast('Could not receive.'); }
     }
@@ -3014,6 +3016,7 @@
             const list = cache.toSend || [];
             listEl.innerHTML = list.length ? list.map(toSendCard).join('')
                 : '<p class="text-center text-neutral-400 py-10 text-sm">Nothing to send to another store.</p>';
+            listEl.querySelectorAll('[data-tdetail]').forEach(b => b.addEventListener('click', () => openTransferDetail(+b.dataset.tdetail)));
             listEl.querySelectorAll('[data-dispatch]').forEach(b => b.addEventListener('click', () => dispatchTransfer(+b.dataset.dispatch, b)));
             return;
         }
@@ -3074,6 +3077,20 @@
                 : '';
             const packedNote = d.packed && d.packedBy
                 ? `<p class="text-center text-[12px] text-emerald-600">✓ Packed by ${esc(d.packedBy)}</p>` : '';
+            // Incoming stock (awaiting transfer): source store + items with photos/quantities + Receive.
+            const incomingHtml = (d.incoming && d.incoming.length) ? d.incoming.map(function (t) {
+                const rows = (t.items || []).map(function (i) {
+                    return '<div class="flex items-center gap-3 py-1.5">'
+                        + (i.image ? '<img src="' + esc(i.image) + '" alt="" class="w-11 h-11 rounded object-cover bg-neutral-100 flex-shrink-0">' : '<span class="w-11 h-11 rounded bg-neutral-100 flex-shrink-0"></span>')
+                        + '<div class="flex-1 min-w-0"><div class="text-sm text-neutral-800">' + esc(i.name) + (i.variant ? ' <span class="text-neutral-400">· ' + esc(i.variant) + '</span>' : '') + '</div></div>'
+                        + '<div class="text-sm font-semibold text-neutral-700 flex-shrink-0">×' + i.qty + '</div></div>';
+                }).join('');
+                const statusTxt = t.status === 'InTransit' ? 'On the way' : (t.status === 'PartiallyReceived' ? 'Part received' : 'Awaiting dispatch');
+                const recvBtn = t.canReceive ? '<button type="button" data-receive="' + t.transferId + '" class="w-full mt-2 bg-emerald-600 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-emerald-700">Receive into stock</button>' : '';
+                return '<div class="border border-amber-200 bg-amber-50/50 rounded-xl p-3">'
+                    + '<div class="flex items-center justify-between mb-1"><p class="text-[10px] uppercase tracking-wide text-amber-700">↧ Coming from ' + esc(t.fromStore) + '</p><span class="text-[11px] text-neutral-500">' + statusTxt + '</span></div>'
+                    + '<div class="divide-y divide-amber-100/70">' + rows + '</div>' + recvBtn + '</div>';
+            }).join('') : '';
             detailView.innerHTML = `
                 <div class="max-w-2xl mx-auto p-4 space-y-4">
                     <div class="flex items-center justify-between">
@@ -3088,6 +3105,7 @@
                         <div class="flex justify-between text-xs text-neutral-500"><span>Delivery${d.deliveryType ? ' (' + esc(d.deliveryType) + ')' : ''}</span><span>${money(d.deliveryFee)}</span></div>
                         <div class="flex justify-between text-sm font-semibold text-neutral-800 pt-1"><span>Total</span><span>${money(d.total)}</span></div>
                     </div>
+                    ${incomingHtml ? `<div class="space-y-2"><p class="text-[10px] uppercase tracking-wide text-neutral-400">Incoming stock (awaiting transfer)</p>${incomingHtml}</div>` : ''}
                     <div class="border border-neutral-200 rounded-xl p-3">
                         <p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Customer</p>
                         <p class="text-sm text-neutral-800">${esc(cust.name) || 'Customer'}</p>
@@ -3106,7 +3124,58 @@
                 </div>`;
             const pb = document.getElementById('fulfil-action-btn');
             if (pb) pb.addEventListener('click', () => fulfilAction(+pb.dataset.id, pb.dataset.act, pb));
+            detailView.querySelectorAll('[data-receive]').forEach(b => b.addEventListener('click', () => receiveTransfer(+b.dataset.receive, b)));
         } catch { detailView.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Could not load the order.</p>'; }
+    }
+
+    // Detail for an outbound "to send" transfer — items with photos + quantities, destination, and the
+    // order's delivery option (Express/Standard), with Pack & dispatch.
+    async function openTransferDetail(id) {
+        listView.classList.add('hidden');
+        detailView.classList.remove('hidden');
+        backBtn.classList.remove('hidden');
+        detailView.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Loading…</p>';
+        try {
+            const r = await fetch('/Pos/FulfilTransferDetail?id=' + id);
+            const d = await r.json();
+            if (!d.success) { detailView.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">' + esc(d.message || 'Not found.') + '</p>'; return; }
+            titleEl.textContent = d.orderNumber || d.number;
+            const items = (d.items || []).map(i => `
+                <div class="flex items-center gap-3 py-2 border-b border-neutral-100">
+                    ${i.image ? `<img src="${esc(i.image)}" alt="" class="w-12 h-12 rounded object-cover bg-neutral-100 flex-shrink-0">` : '<span class="w-12 h-12 rounded bg-neutral-100 flex-shrink-0"></span>'}
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm text-neutral-800">${esc(i.name)}${i.variant ? ' <span class="text-neutral-400">· ' + esc(i.variant) + '</span>' : ''}</div>
+                        ${(i.sku || i.barcode) ? `<div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-mono">
+                            ${i.sku ? `<span class="text-neutral-600">SKU <span class="font-semibold text-neutral-900">${esc(i.sku)}</span></span>` : ''}
+                            ${i.barcode ? `<span class="text-neutral-600">Barcode <span class="font-semibold text-neutral-900">${esc(i.barcode)}</span></span>` : ''}
+                        </div>` : ''}
+                    </div>
+                    <div class="text-sm font-semibold text-neutral-700 flex-shrink-0">×${i.qty}</div>
+                </div>`).join('');
+            const dispatchBtn = d.canDispatch
+                ? `<button type="button" id="fulfil-dispatch-btn" data-id="${d.transferId}" class="w-full bg-brand-500 text-white rounded-lg py-3 text-sm font-semibold hover:bg-brand-600 transition-colors">Pack &amp; dispatch to ${esc(d.toStore)}</button>`
+                : `<p class="text-center text-[12px] text-neutral-400">${esc(d.status)}</p>`;
+            detailView.innerHTML = `
+                <div class="max-w-2xl mx-auto p-4 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs uppercase tracking-wide text-neutral-400">Send${d.deliveryType ? ' · ' + esc(d.deliveryType) : ''} · ${esc(d.status)}</span>
+                        <span class="text-sm font-semibold text-indigo-700">↥ ${esc(d.toStore)}</span>
+                    </div>
+                    <div class="border border-neutral-200 rounded-xl p-3">
+                        <p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Items to send</p>
+                        ${items}
+                    </div>
+                    <div class="border border-neutral-200 rounded-xl p-3 flex items-center justify-between">
+                        <div><p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-0.5">Delivery option</p>
+                        <p class="text-sm text-neutral-800">${d.deliveryType ? esc(d.deliveryType) : (d.fulfillmentType === 'StorePickup' ? 'Store pickup' : 'Standard')}</p></div>
+                        ${d.manifestUrl ? `<a href="${esc(d.manifestUrl)}" target="_blank" class="text-xs text-brand-600 underline">Print manifest</a>` : ''}
+                    </div>
+                    ${d.note ? `<div class="border border-amber-200 bg-amber-50 rounded-xl p-3"><p class="text-[10px] uppercase tracking-wide text-amber-600 mb-1">Order note</p><p class="text-sm text-amber-800">${esc(d.note)}</p></div>` : ''}
+                    ${dispatchBtn}
+                </div>`;
+            const db = document.getElementById('fulfil-dispatch-btn');
+            if (db) db.addEventListener('click', () => dispatchTransfer(+db.dataset.id, db));
+        } catch { detailView.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Could not load the transfer.</p>'; }
     }
     async function fulfilAction(id, act, btn) {
         const map = {

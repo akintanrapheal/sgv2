@@ -1608,6 +1608,33 @@ public class PosController : Controller
                 barcode = !string.IsNullOrWhiteSpace(vc?.Barcode) ? vc!.Barcode : pc?.Barcode
             };
         }).ToList();
+        // Incoming stock for an order this branch is fulfilling but still awaiting from another branch:
+        // the source store(s), each transfer's status, and the exact items (with photos + quantities).
+        var incoming = new List<object>();
+        if (o.FulfillingStoreId == storeId && o.Status == OrderStatus.AwaitingTransfer)
+        {
+            var transfers = await _db.StockTransfers
+                .Where(t => t.OrderId == o.Id && t.ToStoreId == storeId
+                    && (t.Status == TransferStatus.Approved || t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived))
+                .Include(t => t.FromStore).Include(t => t.Items).ToListAsync();
+            var timgs = await PrimaryImagesAsync(transfers.SelectMany(t => t.Items).Select(i => i.ProductId).Distinct().ToList());
+            incoming = transfers.Select(t => (object)new
+            {
+                transferId = t.Id,
+                number = t.TransferNumber,
+                fromStore = t.FromStore!.Name,
+                status = t.Status.ToString(),
+                canReceive = t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived,
+                items = t.Items.Select(i => new
+                {
+                    name = i.ProductName,
+                    variant = i.VariantName,
+                    qty = i.ApprovedQty ?? i.RequestedQty,
+                    image = timgs.GetValueOrDefault(i.ProductId)
+                }).ToList()
+            }).ToList();
+        }
+
         var a = o.DeliveryAddress;
         return Json(new
         {
@@ -1616,6 +1643,7 @@ public class PosController : Controller
             orderNumber = o.OrderNumber,
             status = o.Status.ToString(),
             fulfillmentType = o.FulfillmentType.ToString(),
+            incoming,
             placedAt = o.CreatedAt,           // shown in West Africa Time on the client
             deliveryType = o.DeliveryType,    // "Express" | "Standard" | null (pickup)
             // Two-step flow for BOTH types: pack first (stops the alert), then notify pickup / dispatch.
@@ -1635,6 +1663,59 @@ public class PosController : Controller
             subtotal = o.Subtotal,
             deliveryFee = o.DeliveryFee,
             total = o.Total,
+            items
+        });
+    }
+
+    // Full detail for one outbound order transfer this branch must send — items (with pictures, SKU,
+    // barcode, quantities), the destination branch, and the order's delivery option (Express/Standard).
+    [Authorize, HttpGet]
+    public async Task<IActionResult> FulfilTransferDetail(int id)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { success = false, message = "This POS isn't set up." });
+        var t = await _db.StockTransfers.Include(x => x.Items).Include(x => x.ToStore)
+            .FirstOrDefaultAsync(x => x.Id == id && x.FromStoreId == register.StoreId && x.OrderId != null);
+        if (t == null) return Json(new { success = false, message = "Transfer not found for this branch." });
+
+        var order = await _db.Orders.Where(o => o.Id == t.OrderId)
+            .Select(o => new { o.OrderNumber, o.DeliveryType, o.FulfillmentType, o.Notes }).FirstOrDefaultAsync();
+
+        var pids = t.Items.Select(i => i.ProductId).Distinct().ToList();
+        var vids = t.Items.Where(i => i.ProductVariantId != null).Select(i => i.ProductVariantId!.Value).Distinct().ToList();
+        var imgs = await PrimaryImagesAsync(pids);
+        var prodCodes = await _db.Products.Where(p => pids.Contains(p.Id))
+            .Select(p => new { p.Id, p.Sku, p.Barcode }).ToDictionaryAsync(p => p.Id);
+        var varCodes = await _db.ProductVariants.Where(v => vids.Contains(v.Id))
+            .Select(v => new { v.Id, v.Sku, v.Barcode }).ToDictionaryAsync(v => v.Id);
+        var items = t.Items.Select(i =>
+        {
+            var pc = prodCodes.GetValueOrDefault(i.ProductId);
+            var vc = i.ProductVariantId != null ? varCodes.GetValueOrDefault(i.ProductVariantId.Value) : null;
+            return new
+            {
+                name = i.ProductName,
+                variant = i.VariantName,
+                qty = i.ApprovedQty ?? i.RequestedQty,
+                image = imgs.GetValueOrDefault(i.ProductId),
+                sku = !string.IsNullOrWhiteSpace(vc?.Sku) ? vc!.Sku : pc?.Sku,
+                barcode = !string.IsNullOrWhiteSpace(vc?.Barcode) ? vc!.Barcode : pc?.Barcode
+            };
+        }).ToList();
+
+        return Json(new
+        {
+            success = true,
+            transferId = t.Id,
+            number = t.TransferNumber,
+            orderNumber = order?.OrderNumber ?? "",
+            toStore = t.ToStore!.Name,
+            deliveryType = order?.DeliveryType,                                  // "Express" | "Standard" | null
+            fulfillmentType = order != null ? order.FulfillmentType.ToString() : "",
+            note = order?.Notes,
+            status = t.Status.ToString(),
+            canDispatch = t.Status == TransferStatus.Approved,
+            manifestUrl = ManifestUrl(t.Id),
             items
         });
     }
