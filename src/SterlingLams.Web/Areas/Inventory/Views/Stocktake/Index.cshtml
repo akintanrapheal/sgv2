@@ -70,71 +70,96 @@
 }
 else
 {
-    <div class="bg-white border border-neutral-200 rounded-md">
-        <div class="flex items-center justify-between gap-3 px-5 py-4 border-b border-neutral-100 flex-wrap">
+    <style>
+        .st-grid { display:grid; grid-template-columns: 34px minmax(200px,1.7fr) 96px 96px 110px 90px 190px 200px; align-items:center; gap:10px; }
+        .st-box { border:1px solid #d4d4d8; border-radius:8px; padding:10px 12px; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        .st-box.exp { color:#2563eb; }
+        .st-box input { width:100%; border:0; outline:0; font-size:14px; text-align:left; color:#111827; background:transparent; }
+        .st-arrow { color:#2563eb; cursor:pointer; font-size:16px; line-height:1; }
+        @@media print { .st-noprint { display:none !important; } }
+    </style>
+
+    <div id="st-app">
+        <!-- Header -->
+        <div class="flex items-center justify-between gap-3 mb-5 flex-wrap">
             <div>
-                <h1 class="text-xl font-semibold text-neutral-900">Stocktake</h1>
+                <h1 class="text-2xl font-semibold text-neutral-900">Stocktake</h1>
                 <p class="text-xs text-neutral-500 mt-0.5">@storeName.Replace("Sterlin Glams ", "")</p>
             </div>
-            <div class="flex items-center gap-2">
-                <button type="button" id="st-notes-btn" class="px-4 py-2 bg-sky-500 text-white text-xs font-medium rounded-md hover:bg-sky-600">Stocktake Notes</button>
-                <button type="button" id="st-review-btn" class="px-4 py-2 bg-emerald-600 text-white text-xs font-medium rounded-md hover:bg-emerald-700">Review Stocktake</button>
+            <div class="flex items-center gap-2 st-noprint">
+                <button type="button" id="st-notes-btn" class="px-4 py-2 bg-sky-500 text-white text-xs font-semibold uppercase tracking-wide rounded hover:bg-sky-600">Stocktake Notes</button>
+                <button type="button" id="st-review-btn" class="px-4 py-2 bg-emerald-600 text-white text-xs font-semibold uppercase tracking-wide rounded hover:bg-emerald-700">Review Stocktake</button>
             </div>
         </div>
 
-        <div id="st-notes" class="hidden px-5 pt-4">
+        <div id="st-notes" class="hidden mb-4 st-noprint">
             <textarea id="st-note" rows="2" placeholder="Stocktake notes…" class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-blue-400"></textarea>
         </div>
 
-        <div class="px-5 py-4">
-            <div class="flex items-center gap-4">
-                <div class="relative flex-1">
-                    <input id="st-search" type="text" autocomplete="off" placeholder="Scan a barcode…"
-                           class="w-full border border-neutral-300 rounded-md px-4 py-3 text-sm focus:outline-none focus:border-blue-400" />
-                    <div id="st-suggest" class="hidden absolute z-20 left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-md shadow-lg max-h-72 overflow-y-auto"></div>
-                </div>
-                <label class="flex items-center gap-2 text-sm text-neutral-600 whitespace-nowrap cursor-pointer select-none">
-                    <input type="checkbox" id="st-quick" checked class="w-4 h-4 rounded accent-blue-600" />
-                    Quick scan
-                </label>
+        <!-- Search + toggles -->
+        <div class="flex items-center gap-5 mb-4 flex-wrap st-noprint">
+            <div class="relative flex-1 min-w-[280px]">
+                <input id="st-search" type="text" autocomplete="off" placeholder="Uncheck quick scan to search manually for products"
+                       class="w-full border border-neutral-300 rounded-md px-4 py-3 text-sm focus:outline-none focus:border-blue-400" />
+                <div id="st-suggest" class="hidden absolute z-30 left-0 right-0 mt-1 bg-white border border-neutral-200 rounded-md shadow-lg max-h-72 overflow-y-auto"></div>
             </div>
+            <label class="flex items-center gap-2 text-sm text-neutral-700 whitespace-nowrap cursor-pointer select-none">
+                <input type="checkbox" id="st-quick" checked class="w-4 h-4 rounded accent-blue-600" /> Quick scan
+            </label>
+            <label class="flex items-center gap-2 text-sm text-neutral-700 whitespace-nowrap cursor-pointer select-none">
+                <input type="checkbox" id="st-decimal" class="w-4 h-4 rounded accent-blue-600" /> Show as Decimal
+            </label>
         </div>
 
-        <div class="flex items-center gap-2 px-5 pb-3 border-b border-neutral-100 flex-wrap">
-            <select id="st-reason-all" class="border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white">
+        <!-- Reason apply-all + list actions -->
+        <div class="flex items-center gap-2 mb-4 flex-wrap st-noprint">
+            <select id="st-reason-all" class="border border-neutral-200 rounded-md px-3 py-2 text-sm bg-white min-w-[180px]">
                 <option value="">Reason (required)</option>
                 @foreach (var r in reasons) { <option value="@r">@r</option> }
             </select>
-            <button type="button" id="st-apply-all" class="px-4 py-2 bg-blue-500 text-white text-xs font-medium rounded-md hover:bg-blue-600">Apply to all</button>
+            <button type="button" id="st-apply-all" class="px-4 py-2 bg-sky-500 text-white text-xs font-semibold uppercase tracking-wide rounded hover:bg-sky-600">Apply to all</button>
             <div class="ml-auto flex items-center gap-2">
-                <button type="button" id="st-clear" class="px-4 py-2 border border-neutral-200 text-neutral-600 text-xs rounded-md hover:border-neutral-400">Clear list</button>
-                <button type="button" id="st-complete" class="px-4 py-2 bg-emerald-600 text-white text-xs font-medium rounded-md hover:bg-emerald-700">Complete Stocktake</button>
+                <button type="button" id="st-print" class="px-4 py-2 border border-sky-400 text-sky-600 text-xs font-semibold uppercase tracking-wide rounded hover:bg-sky-50">Print</button>
+                <button type="button" id="st-clear" class="px-4 py-2 border border-sky-400 text-sky-600 text-xs font-semibold uppercase tracking-wide rounded hover:bg-sky-50">Clear list</button>
+                <button type="button" id="st-add" class="px-4 py-2 bg-sky-500 text-white text-xs font-semibold uppercase tracking-wide rounded hover:bg-sky-600">Add to list</button>
             </div>
         </div>
 
-        <div id="st-cards" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-3 px-5 py-4">
+        <!-- Review summary (toggle) -->
+        <div id="st-cards" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
             <div class="rounded-md bg-blue-500 text-white text-center py-3"><div class="text-[10px] uppercase tracking-wide">Showing</div><div class="text-2xl font-semibold" id="c-all">0</div><div class="text-[11px]">All items</div></div>
             <div class="rounded-md border-2 border-red-300 text-center py-3"><div class="text-[10px] uppercase tracking-wide text-red-400">Show</div><div class="text-2xl font-semibold text-red-500" id="c-disc">0</div><div class="text-[11px] text-red-500">Discrepancies</div></div>
             <div class="rounded-md border-2 border-emerald-300 text-center py-3"><div class="text-[10px] uppercase tracking-wide text-emerald-500">Show</div><div class="text-2xl font-semibold text-emerald-600" id="c-correct">0</div><div class="text-[11px] text-emerald-600">Correct</div></div>
             <div class="rounded-md border-2 border-neutral-300 text-center py-3"><div class="text-[10px] uppercase tracking-wide text-neutral-400">Show</div><div class="text-2xl font-semibold text-neutral-600" id="c-unc">0</div><div class="text-[11px] text-neutral-600">Uncounted</div></div>
         </div>
 
-        <div class="overflow-x-auto">
-            <table class="w-full text-sm min-w-[760px]">
-                <thead class="bg-neutral-50 text-neutral-500 text-xs">
-                    <tr>
-                        <th class="text-left font-semibold px-4 py-3">Product</th>
-                        <th class="text-left font-semibold px-4 py-3">Barcode</th>
-                        <th class="text-left font-semibold px-4 py-3">Category</th>
-                        <th class="text-center font-semibold px-4 py-3">Expected stock</th>
-                        <th class="text-center font-semibold px-4 py-3">Actual stock</th>
-                        <th class="px-2 py-3 w-10"></th>
-                    </tr>
-                </thead>
-                <tbody id="st-rows" class="divide-y divide-neutral-100">
-                    <tr id="st-empty"><td colspan="6" class="px-4 py-16 text-center text-neutral-400 text-sm">Search or scan a product to add it to the count.</td></tr>
-                </tbody>
-            </table>
+        <!-- Table -->
+        <div class="bg-white border border-neutral-200 rounded-md overflow-x-auto">
+            <div style="min-width:1000px">
+                <div class="st-grid px-4 py-3 border-b border-neutral-100 text-[11px] font-semibold uppercase tracking-wide text-sky-600">
+                    <div></div>
+                    <div>Product</div>
+                    <div>Barcode</div>
+                    <div>Supplier</div>
+                    <div>Category</div>
+                    <div>Brand</div>
+                    <div>Expected stock and remaining volume</div>
+                    <div>Actual stock and remaining volume</div>
+                </div>
+                <div id="st-rows">
+                    <div id="st-empty" class="px-4 py-16 text-center text-neutral-400 text-sm">Search or scan a product to add it to the count.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overwrite prompt (positioned near the clicked expected arrow) -->
+    <div id="st-overwrite" class="hidden fixed z-50 w-64 bg-white border border-neutral-200 rounded-lg shadow-xl p-4 text-center st-noprint">
+        <p class="text-sm font-semibold text-neutral-800 mb-1">Overwrite actual value</p>
+        <p class="text-xs text-neutral-500 mb-3">Transferring the expected value over will overwrite the existing actual value.</p>
+        <div class="flex items-center justify-center gap-2">
+            <button type="button" id="st-ow-cancel" class="px-4 py-1.5 border border-neutral-300 text-neutral-600 text-xs rounded hover:bg-neutral-50">Cancel</button>
+            <button type="button" id="st-ow-ok" class="px-4 py-1.5 bg-sky-500 text-white text-xs font-semibold rounded hover:bg-sky-600">Overwrite</button>
         </div>
     </div>
 }
@@ -148,15 +173,17 @@ else
     var reasons = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(reasons));
     var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
     var el = function (id) { return document.getElementById(id); };
-    var lines = {};   // "productId:variantId" → { id, variantId, name, barcode, category, expected, counted, reason }
-    var reviewing = false;
-    var quickScan = el('st-quick') ? el('st-quick').checked : true;   // scan straight into the box, no click
+    var lines = {};   // "productId:variantId" → { id, variantId, name, barcode, supplier, category, brand, expected, counted, reason }
+    var quickScan = el('st-quick') ? el('st-quick').checked : true;
+    var decimalMode = false;
     function refocusScan() { var s = el('st-search'); if (s) s.focus(); }
     function keyOf(id, variantId) { return id + ':' + (variantId != null && variantId !== '' ? variantId : ''); }
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]); }); }
+    function num(v) { var n = decimalMode ? parseFloat(v) : parseInt(v, 10); return isNaN(n) ? null : n; }
 
-    // ── Draft auto-save (resume after refresh / leaving the page) ──────────────
+    // ── Draft auto-save ────────────────────────────────────────────────────────
     var draftId = @(draftId?.ToString() ?? "null");
-    var preloaded = @Html.Raw(draftJson);            // saved working list when resuming
+    var preloaded = @Html.Raw(draftJson);
     var draftNote = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(draftNote));
     var saveTimer = null, restoring = false;
 
@@ -180,157 +207,197 @@ else
           .then(function (d) { if (d && d.success && d.draftId) draftId = d.draftId; })
           .catch(function () {});
     }
-    function scheduleSave() {
-        if (restoring) return;
-        clearTimeout(saveTimer);
-        saveTimer = setTimeout(function () { saveDraft(false); }, 1200);
-    }
+    function scheduleSave() { if (restoring) return; clearTimeout(saveTimer); saveTimer = setTimeout(function () { saveDraft(false); }, 1200); }
 
     function reasonOptions(sel) {
-        return '<option value="">Reason…</option>' + reasons.map(function (r) { return '<option value="' + r + '"' + (r === sel ? ' selected' : '') + '>' + r + '</option>'; }).join('');
+        return '<option value="">Reason (required)</option>' + reasons.map(function (r) { return '<option value="' + esc(r) + '"' + (r === sel ? ' selected' : '') + '>' + esc(r) + '</option>'; }).join('');
     }
-    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (m) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]); }); }
+    function isDiff(l) { var c = num(l.counted); return l.counted !== '' && l.counted != null && c !== l.expected; }
 
     function rowHtml(key, l) {
         var counted = (l.counted === null || l.counted === undefined) ? '' : l.counted;
-        var diff = counted !== '' && parseInt(counted, 10) !== l.expected;
-        return '<tr data-key="' + esc(key) + '">'
-            + '<td class="px-4 py-2.5 text-neutral-800">' + esc(l.name) + '</td>'
-            + '<td class="px-4 py-2.5 text-neutral-500 font-mono text-xs">' + esc(l.barcode || '—') + '</td>'
-            + '<td class="px-4 py-2.5 text-neutral-500 text-xs">' + esc(l.category || '—') + '</td>'
-            + '<td class="px-4 py-2.5 text-center text-neutral-600">' + l.expected + '</td>'
-            + '<td class="px-4 py-2.5 text-center"><input type="number" min="0" value="' + counted + '" data-counted class="w-24 text-center border border-neutral-300 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400" />'
-            + '<div data-reasonwrap class="mt-1 ' + (diff ? '' : 'hidden') + '"><select data-reason class="text-xs border border-neutral-200 rounded px-2 py-1">' + reasonOptions(l.reason) + '</select></div></td>'
-            + '<td class="px-2 py-2.5 text-right"><button type="button" data-rm class="text-neutral-400 hover:text-red-600">✕</button></td></tr>';
+        var diff = isDiff(l);
+        var step = decimalMode ? '0.01' : '1';
+        return '<div class="border-b border-neutral-100" data-key="' + esc(key) + '">'
+            + '<div class="st-grid px-4 py-3">'
+            +   '<div><button type="button" data-rm class="w-6 h-6 rounded-full border border-neutral-300 text-neutral-400 hover:text-red-600 hover:border-red-300 flex items-center justify-center text-xs">✕</button></div>'
+            +   '<div class="text-sm text-neutral-800 leading-tight">' + esc(l.name) + '</div>'
+            +   '<div class="text-xs text-neutral-500 font-mono">' + esc(l.barcode || '') + '</div>'
+            +   '<div class="text-xs text-neutral-500">' + esc(l.supplier || '') + '</div>'
+            +   '<div class="text-xs text-neutral-600">' + esc(l.category || '') + '</div>'
+            +   '<div class="text-xs text-neutral-500">' + esc(l.brand || '') + '</div>'
+            +   '<div class="st-box exp"><span class="font-medium">' + l.expected + '</span><button type="button" data-transfer title="Copy expected to actual" class="st-arrow">➔</button></div>'
+            +   '<div class="st-box"><input type="number" inputmode="' + (decimalMode ? 'decimal' : 'numeric') + '" min="0" step="' + step + '" value="' + counted + '" data-counted placeholder="0" /><span class="text-neutral-400 text-xs">✎</span></div>'
+            + '</div>'
+            + '<div class="st-grid px-4 pb-3 ' + (diff ? '' : 'hidden') + '" data-reasonline>'
+            +   '<div style="grid-column:2 / 8" class="text-right text-xs text-neutral-500 pr-2">Please select a reason for the difference</div>'
+            +   '<div style="grid-column:8"><select data-reason class="w-full text-xs border-0 border-b border-neutral-300 focus:outline-none focus:border-sky-500 py-1 bg-transparent">' + reasonOptions(l.reason) + '</select></div>'
+            + '</div>'
+            + '</div>';
     }
     function render() {
         var rows = el('st-rows'); var ids = Object.keys(lines);
-        if (!ids.length) { rows.innerHTML = '<tr id="st-empty"><td colspan="6" class="px-4 py-16 text-center text-neutral-400 text-sm">Search or scan a product to add it to the count.</td></tr>'; updateCards(); return; }
+        if (!ids.length) { rows.innerHTML = '<div id="st-empty" class="px-4 py-16 text-center text-neutral-400 text-sm">Search or scan a product to add it to the count.</div>'; updateCards(); return; }
         rows.innerHTML = ids.map(function (key) { return rowHtml(key, lines[key]); }).join('');
         updateCards();
     }
     function updateCards() {
         var ids = Object.keys(lines);
         var counted = ids.filter(function (id) { var c = lines[id].counted; return c !== '' && c !== null && c !== undefined; });
-        var disc = counted.filter(function (id) { return parseInt(lines[id].counted, 10) !== lines[id].expected; });
-        el('c-all').textContent = ids.length;
-        el('c-disc').textContent = disc.length;
-        el('c-correct').textContent = counted.length - disc.length;
-        el('c-unc').textContent = ids.length - counted.length;
+        var disc = counted.filter(function (id) { return isDiff(lines[id]); });
+        if (el('c-all')) el('c-all').textContent = ids.length;
+        if (el('c-disc')) el('c-disc').textContent = disc.length;
+        if (el('c-correct')) el('c-correct').textContent = counted.length - disc.length;
+        if (el('c-unc')) el('c-unc').textContent = ids.length - counted.length;
     }
 
-    function addLine(p) {
+    // scan=true → this came from a barcode scan: create at 1, or +1 each additional scan.
+    function addLine(p, scan) {
         var key = keyOf(p.id, p.variantId);
-        if (!lines[key]) lines[key] = { id: p.id, variantId: (p.variantId != null ? p.variantId : null),
-            name: p.name, barcode: p.barcode, category: p.category, expected: p.expected, counted: '', reason: '' };
+        if (!lines[key]) {
+            lines[key] = { id: p.id, variantId: (p.variantId != null ? p.variantId : null),
+                name: p.name, barcode: p.barcode, supplier: p.supplier || '', category: p.category, brand: p.brand || '',
+                expected: p.expected, counted: scan ? 1 : '', reason: '' };
+        } else if (scan) {
+            var cur = num(lines[key].counted); if (cur == null) cur = 0;
+            lines[key].counted = cur + 1;
+        }
         render();
-        var tr = el('st-rows').querySelector('tr[data-key="' + key + '"]');
+        var tr = el('st-rows').querySelector('[data-key="' + key + '"]');
         if (tr) {
             tr.scrollIntoView({ block: 'center' });
-            // Quick scan → keep the search box focused for the next scan; manual → focus the count field.
-            if (quickScan) refocusScan();
-            else { var i = tr.querySelector('[data-counted]'); if (i) i.focus(); }
+            if (quickScan || scan) refocusScan();
+            else { var i = tr.querySelector('[data-counted]'); if (i) { i.focus(); i.select(); } }
         }
         scheduleSave();
     }
 
+    // ── Row interactions ───────────────────────────────────────────────────────
     el('st-rows').addEventListener('input', function (e) {
         if (!e.target.hasAttribute('data-counted')) return;
-        var tr = e.target.closest('tr'); var key = tr.dataset.key;
+        var block = e.target.closest('[data-key]'); var key = block.dataset.key;
         lines[key].counted = e.target.value;
-        var diff = e.target.value !== '' && parseInt(e.target.value, 10) !== lines[key].expected;
-        tr.querySelector('[data-reasonwrap]').classList.toggle('hidden', !diff);
+        block.querySelector('[data-reasonline]').classList.toggle('hidden', !isDiff(lines[key]));
         updateCards(); scheduleSave();
     });
     el('st-rows').addEventListener('change', function (e) {
-        if (e.target.hasAttribute('data-reason')) { lines[e.target.closest('tr').dataset.key].reason = e.target.value; scheduleSave(); }
+        if (e.target.hasAttribute('data-reason')) { lines[e.target.closest('[data-key]').dataset.key].reason = e.target.value; scheduleSave(); }
     });
     el('st-rows').addEventListener('click', function (e) {
-        if (e.target.hasAttribute('data-rm')) { delete lines[e.target.closest('tr').dataset.key]; render(); scheduleSave(); }
+        var rm = e.target.closest('[data-rm]');
+        if (rm) { delete lines[rm.closest('[data-key]').dataset.key]; render(); scheduleSave(); return; }
+        var tr = e.target.closest('[data-transfer]');
+        if (tr) { openOverwrite(tr, tr.closest('[data-key]').dataset.key); }
     });
 
+    // ── Overwrite expected → actual prompt ─────────────────────────────────────
+    var owPop = el('st-overwrite'), owKey = null;
+    function openOverwrite(anchor, key) {
+        owKey = key;
+        var r = anchor.getBoundingClientRect();
+        owPop.classList.remove('hidden');
+        var top = r.bottom + 8, left = r.left + r.width / 2 - owPop.offsetWidth / 2;
+        left = Math.max(8, Math.min(left, window.innerWidth - owPop.offsetWidth - 8));
+        if (top + owPop.offsetHeight > window.innerHeight - 8) top = r.top - owPop.offsetHeight - 8;
+        owPop.style.top = top + 'px'; owPop.style.left = left + 'px';
+    }
+    function closeOverwrite() { owPop.classList.add('hidden'); owKey = null; }
+    el('st-ow-cancel').addEventListener('click', closeOverwrite);
+    el('st-ow-ok').addEventListener('click', function () {
+        if (owKey && lines[owKey]) { lines[owKey].counted = lines[owKey].expected; render(); scheduleSave(); }
+        closeOverwrite();
+    });
+    document.addEventListener('click', function (e) {
+        if (!owPop.classList.contains('hidden') && !owPop.contains(e.target) && !e.target.closest('[data-transfer]')) closeOverwrite();
+    });
+    window.addEventListener('resize', closeOverwrite);
+
+    // ── Search / scan ──────────────────────────────────────────────────────────
     var sug = el('st-suggest'); var t;
     el('st-search').addEventListener('input', function () {
         var q = this.value.trim(); clearTimeout(t);
-        // In quick-scan mode the box is for scanning (Enter → lookup); no typeahead dropdown.
         if (quickScan || q.length < 2) { sug.classList.add('hidden'); return; }
         t = setTimeout(function () {
             fetch(__invBase + '/Stocktake/StSearch?storeId=' + storeId + '&q=' + encodeURIComponent(q))
-                .then(function (r) { return r.json(); })
-                .then(function (list) { showSuggestions(list); });
+                .then(function (r) { return r.json(); }).then(showSuggestions);
         }, 200);
     });
     function showSuggestions(list) {
         if (!list || !list.length) { sug.classList.add('hidden'); return; }
         sug.innerHTML = list.map(function (p) {
             return '<button type="button" data-p="' + esc(JSON.stringify(p)) + '" class="flex items-center justify-between gap-3 w-full text-left px-4 py-2.5 text-sm hover:bg-neutral-50 border-b border-neutral-50">'
-                + '<span>' + esc(p.name) + '</span><span class="text-blue-600 text-xs">Add</span></button>';
+                + '<span>' + esc(p.name) + '</span><span class="text-sky-600 text-xs">Add</span></button>';
         }).join('');
         sug.classList.remove('hidden');
     }
     sug.addEventListener('click', function (e) {
         var b = e.target.closest('[data-p]'); if (!b) return;
         var raw = b.getAttribute('data-p').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-        addLine(JSON.parse(raw));
+        addLine(JSON.parse(raw), false);
         el('st-search').value = ''; sug.classList.add('hidden');
     });
-    el('st-search').addEventListener('keydown', function (e) {
-        if (e.key !== 'Enter') return; e.preventDefault();
-        var code = this.value.trim(); if (!code) return;
+    // Enter / Add-to-list → exact scan lookup; a repeat scan of the same code adds +1.
+    function doScan() {
+        var code = el('st-search').value.trim(); if (!code) return;
         fetch(__invBase + '/Stocktake/ScanLookup?storeId=' + storeId + '&code=' + encodeURIComponent(code))
             .then(function (r) { return r.json(); })
             .then(function (d) {
-                if (d.found) { addLine(d); el('st-search').value = ''; sug.classList.add('hidden'); return; }
-                // Variant product scanned by its product code → let the user pick the exact option.
+                if (d.found) { addLine(d, true); el('st-search').value = ''; sug.classList.add('hidden'); return; }
                 if (d.needsVariant && d.variants && d.variants.length) { showSuggestions(d.variants); return; }
-                if (d.message) { alert(d.message); el('st-search').value = ''; }
+                if (d.message) { alert(d.message); }
+                else { alert('No product matches “' + code + '”.'); }
+                el('st-search').value = '';
             });
-    });
+    }
+    el('st-search').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); doScan(); } });
+    el('st-add').addEventListener('click', doScan);
     document.addEventListener('click', function (e) { if (!sug.contains(e.target) && e.target !== el('st-search')) sug.classList.add('hidden'); });
 
-    // ── Quick scan: keep the search box focused so a scanner fires without clicking first ──
+    // ── Quick scan focus + decimal toggle ──────────────────────────────────────
     (function () {
-        var chk = el('st-quick'); if (!chk) return;
+        var chk = el('st-quick');
         function applyMode() {
             quickScan = chk.checked;
-            el('st-search').placeholder = quickScan ? 'Scan a barcode…' : 'Search for products…';
+            el('st-search').placeholder = quickScan ? 'Scan a barcode…' : 'Uncheck quick scan to search manually for products';
             if (quickScan) { sug.classList.add('hidden'); refocusScan(); }
         }
         chk.addEventListener('change', applyMode);
-        // If focus drops back to the page body (e.g. after a scan), grab it again — but never steal
-        // it from a count/reason field the user is editing.
         el('st-search').addEventListener('blur', function () {
             if (!quickScan) return;
             setTimeout(function () { var a = document.activeElement; if (!a || a === document.body) refocusScan(); }, 0);
         });
-        applyMode();   // initial placeholder + focus on load
+        applyMode();
     })();
+    el('st-decimal').addEventListener('change', function () { decimalMode = this.checked; render(); });
 
     el('st-notes-btn').addEventListener('click', function () { el('st-notes').classList.toggle('hidden'); });
-    el('st-review-btn').addEventListener('click', function () { reviewing = !reviewing; el('st-cards').classList.toggle('hidden', !reviewing); });
     if (el('st-note')) el('st-note').addEventListener('input', scheduleSave);
     el('st-apply-all').addEventListener('click', function () {
         var r = el('st-reason-all').value; if (!r) { alert('Pick a reason first.'); return; }
-        Object.keys(lines).forEach(function (pid) { if (lines[pid].counted !== '' && parseInt(lines[pid].counted, 10) !== lines[pid].expected) lines[pid].reason = r; });
+        Object.keys(lines).forEach(function (k) { if (isDiff(lines[k])) lines[k].reason = r; });
         render(); scheduleSave();
     });
     el('st-clear').addEventListener('click', function () { if (confirm('Clear the count list?')) { lines = {}; render(); scheduleSave(); } });
+    el('st-print').addEventListener('click', function () { window.print(); });
 
-    // Best-effort flush when leaving the page so the very latest edit is kept.
     window.addEventListener('pagehide', function () { if (Object.keys(lines).length) saveDraft(true); });
 
-    el('st-complete').addEventListener('click', function () {
+    // ── Review Stocktake = validate + complete ─────────────────────────────────
+    el('st-review-btn').addEventListener('click', function () {
+        el('st-cards').classList.remove('hidden'); updateCards();
         var payload = []; var missingReason = false;
         Object.keys(lines).forEach(function (key) {
             var l = lines[key];
-            if (l.counted === '' || l.counted === null) return;
-            var c = parseInt(l.counted, 10); if (isNaN(c)) return;
-            if (c !== l.expected && !l.reason) missingReason = true;
-            payload.push({ productId: l.id, variantId: (l.variantId != null ? l.variantId : null), counted: c, reason: l.reason || null });
+            if (l.counted === '' || l.counted == null) return;
+            var c = num(l.counted); if (c == null) return;
+            var ci = Math.round(c);
+            if (ci !== l.expected && !l.reason) missingReason = true;
+            payload.push({ productId: l.id, variantId: (l.variantId != null ? l.variantId : null), counted: ci, reason: l.reason || null });
         });
         if (!payload.length) { alert('Enter at least one count.'); return; }
         if (missingReason) { alert('Please select a reason for each difference.'); return; }
-        var btn = el('st-complete'); btn.disabled = true; btn.textContent = 'Completing…';
+        if (!confirm('Review complete — apply this stock take to ' + payload.length + ' item(s)?')) return;
+        var btn = el('st-review-btn'); btn.disabled = true; btn.textContent = 'Applying…';
         fetch(__invBase + '/Stocktake/Complete', {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
             body: JSON.stringify({ draftId: draftId, storeId: storeId, staffId: staffId, note: el('st-note').value, lines: payload })
@@ -338,20 +405,20 @@ else
             .then(function (r) { return r.json(); })
             .then(function (d) {
                 if (d.success) { restoring = true; window.location.href = __invBase + '/Stocktake/Details/' + d.id; }
-                else { alert(d.message || 'Could not complete.'); btn.disabled = false; btn.textContent = 'Complete Stocktake'; }
+                else { alert(d.message || 'Could not complete.'); btn.disabled = false; btn.textContent = 'Review Stocktake'; }
             })
-            .catch(function () { alert('Could not complete.'); btn.disabled = false; btn.textContent = 'Complete Stocktake'; });
+            .catch(function () { alert('Could not complete.'); btn.disabled = false; btn.textContent = 'Review Stocktake'; });
     });
 
-    // ── Resume: rebuild the working list from the saved draft ──────────────────
+    // ── Resume draft ───────────────────────────────────────────────────────────
     if (preloaded && preloaded.length) {
         restoring = true;
         preloaded.forEach(function (l) {
             if (l == null || l.id == null) return;
             var key = keyOf(l.id, l.variantId);
             lines[key] = { id: l.id, variantId: (l.variantId != null ? l.variantId : null),
-                name: l.name, barcode: l.barcode, category: l.category, expected: l.expected,
-                counted: (l.counted == null ? '' : l.counted), reason: l.reason || '' };
+                name: l.name, barcode: l.barcode, supplier: l.supplier || '', category: l.category, brand: l.brand || '',
+                expected: l.expected, counted: (l.counted == null ? '' : l.counted), reason: l.reason || '' };
         });
         render();
         if (draftNote && el('st-note')) { el('st-note').value = draftNote; el('st-notes').classList.remove('hidden'); }
