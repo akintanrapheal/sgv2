@@ -366,8 +366,10 @@ public class StocktakeController : InventoryAreaController
                 .Where(v => pageProductIds.Contains(v.ProductId) && v.IsActive)
                 .Select(v => v.ProductId).Distinct().ToListAsync())
             .ToHashSet();
+        // Only a PRODUCT-level line (no variant) on a per-option product is stranded; variant-specific
+        // lines reconcile the option directly and must not be flagged.
         ViewBag.AffectedTakeIds = takes
-            .Where(t => t.Lines.Any(l => optionProductIds.Contains(l.ProductId)))
+            .Where(t => t.Lines.Any(l => l.ProductVariantId == null && optionProductIds.Contains(l.ProductId)))
             .Select(t => t.Id).ToHashSet();
 
         ViewBag.From = fromLocal; ViewBag.To = toLocal;

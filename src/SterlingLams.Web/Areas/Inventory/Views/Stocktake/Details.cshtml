@@ -1,11 +1,12 @@
 @model SterlingLams.Web.Models.Domain.StockTake
 @{
     ViewData["Title"] = $"Stock Take {Model.Reference}";
-    // Products that keep their stock per option. This screen counted a product as one number and
-    // applied it to the product-level row, so any such line here never reached the option counts.
+    // Products that keep their stock per option. A line only "misses" the option counts when it was
+    // recorded at PRODUCT level (no ProductVariantId) on such a product — a variant-specific line
+    // (the norm now) reconciles the option directly, so it must NOT be flagged.
     var optionProductIds = ViewBag.OptionProductIds as HashSet<int> ?? new HashSet<int>();
-    var affected = Model.Lines.Where(l => optionProductIds.Contains(l.ProductId))
-                              .OrderBy(l => l.ProductName).ToList();
+    bool Stranded(SterlingLams.Web.Models.Domain.StockTakeLine l) => l.ProductVariantId == null && optionProductIds.Contains(l.ProductId);
+    var affected = Model.Lines.Where(Stranded).OrderBy(l => l.ProductName).ToList();
 }
 
 <div class="flex items-center gap-3 mb-5">
@@ -71,7 +72,7 @@
         <tbody class="divide-y divide-neutral-100">
             @foreach (var l in Model.Lines.OrderBy(x => x.ProductName))
             {
-                var perOption = optionProductIds.Contains(l.ProductId);
+                var perOption = Stranded(l);
                 <tr class="hover:bg-neutral-50 @(perOption ? "bg-amber-50/40" : "")">
                     <td class="px-4 py-2.5 text-neutral-800">
                         @l.ProductName
