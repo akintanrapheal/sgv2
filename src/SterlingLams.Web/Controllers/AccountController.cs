@@ -79,6 +79,9 @@ public class AccountController : Controller
                       ?? await _userManager.Users.FirstOrDefaultAsync(u => u.NormalizedEmail == _userManager.NormalizeEmail(model.Email));
         if (blocked != null && blocked.AccessRevoked)
         {
+            try { await _audit.LogAsync("LoginBlocked", "Account", blocked.Id,
+                $"{blocked.FullName} tried to sign in but their access is revoked", performedBy: blocked.FullName); }
+            catch { /* auditing must never block the response */ }
             ModelState.AddModelError(string.Empty, "Your access has been revoked. Please contact the administrator.");
             return View(model);
         }
@@ -117,9 +120,32 @@ public class AccountController : Controller
 
         if (result.IsLockedOut)
         {
+            try { await _audit.LogAsync("LoginLockout", "Account", blocked?.Id ?? "",
+                $"{(blocked != null ? blocked.FullName : model.Email)} locked out for 15 minutes after 5 failed sign-in attempts",
+                performedBy: blocked?.FullName ?? model.Email); }
+            catch { /* auditing must never block the response */ }
             ModelState.AddModelError("", "Too many failed attempts — your account is locked for 15 minutes. Try again later or reset your password.");
             return View(model);
         }
+
+        // Wrong password (or unknown account): record the attempt, with how many have stacked up so an
+        // owner can spot a break-in attempt building toward the 5-attempt lockout.
+        try
+        {
+            if (blocked != null)
+            {
+                var fails = await _userManager.GetAccessFailedCountAsync(blocked);
+                await _audit.LogAsync("LoginFailed", "Account", blocked.Id,
+                    $"Failed sign-in for {blocked.FullName} — wrong password (attempt {fails} of 5)",
+                    performedBy: blocked.FullName);
+            }
+            else
+            {
+                await _audit.LogAsync("LoginFailed", "Account", "",
+                    $"Failed sign-in — no account matches “{model.Email}”", performedBy: model.Email);
+            }
+        }
+        catch { /* auditing must never block the response */ }
 
         ModelState.AddModelError("", "Invalid email or password.");
         return View(model);
@@ -197,9 +223,16 @@ public class AccountController : Controller
         }
         if (result.IsLockedOut)
         {
+            try { await _audit.LogAsync("LoginLockout", "Account", user.Id,
+                $"{user.FullName} locked out for 15 minutes after failed two-factor attempts", performedBy: user.FullName); }
+            catch { }
             ModelState.AddModelError("", "Too many failed attempts — your account is locked for 15 minutes.");
             return View(model);
         }
+        try { await _audit.LogAsync("LoginFailed", "Account", user.Id,
+            $"Failed two-factor sign-in for {user.FullName} — invalid {(model.UseRecoveryCode ? "recovery code" : "authenticator code")}",
+            performedBy: user.FullName); }
+        catch { }
         ModelState.AddModelError("", model.UseRecoveryCode ? "Invalid recovery code." : "Invalid authenticator code.");
         return View(model);
     }
