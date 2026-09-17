@@ -668,6 +668,16 @@ public class FinanceController : AdminBaseController
             });
     }
 
+    // Party shown on a sale row. Online orders carry the buyer on User (not Customer), so an online
+    // order is never a "Walk-in" — show the buyer's name, or "Website order" when it's a guest with no
+    // name. POS sales use the attached walk-in Customer, or "Walk-in".
+    private static string PartyLabel(OrderChannel channel, string? customerName, string? buyerName)
+    {
+        if (channel == OrderChannel.Online)
+            return string.IsNullOrWhiteSpace(buyerName) ? "Website order" : buyerName.Trim();
+        return string.IsNullOrWhiteSpace(customerName) ? "Walk-in" : customerName.Trim();
+    }
+
     // Builds every transaction row inside the window, honouring the store/channel/type filters.
     private async Task<List<TxnRow>> BuildTxnRowsAsync(DateTime f, DateTime t, int? storeId, string channel, string type)
     {
@@ -687,11 +697,12 @@ public class FinanceController : AdminBaseController
             {
                 p.CreatedAt, p.Method, p.Amount, p.OrderId, p.Order.OrderNumber, p.Order.Channel,
                 Sid = p.Order.PickupStoreId ?? p.Order.FulfillingStoreId,
-                Cust = p.Order.Customer != null ? (p.Order.Customer.FirstName + " " + p.Order.Customer.LastName) : null
+                Cust = p.Order.Customer != null ? (p.Order.Customer.FirstName + " " + p.Order.Customer.LastName) : null,
+                Buyer = p.Order.User != null ? (p.Order.User.FirstName + " " + p.Order.User.LastName) : null
             }).ToListAsync();
             foreach (var p in pays)
                 rows.Add(new TxnRow(p.CreatedAt, "Sale", StoreLabel(p.Sid), p.Sid, p.Channel.ToString(),
-                    p.OrderNumber, string.IsNullOrWhiteSpace(p.Cust) ? "Walk-in" : p.Cust!.Trim(),
+                    p.OrderNumber, PartyLabel(p.Channel, p.Cust, p.Buyer),
                     p.Method, p.Amount, true, "", "order", p.OrderId, ""));
 
             // Online orders paid via a provider (e.g. Paystack) carry no per-tender OrderPayment rows,
@@ -707,11 +718,12 @@ public class FinanceController : AdminBaseController
             {
                 Oid = o.Id, When = o.PaidAt ?? o.CreatedAt, o.Total, o.OrderNumber, o.Channel, o.PaymentProvider,
                 Sid = o.PickupStoreId ?? o.FulfillingStoreId,
-                Cust = o.Customer != null ? (o.Customer.FirstName + " " + o.Customer.LastName) : null
+                Cust = o.Customer != null ? (o.Customer.FirstName + " " + o.Customer.LastName) : null,
+                Buyer = o.User != null ? (o.User.FirstName + " " + o.User.LastName) : null
             }).ToListAsync();
             foreach (var o in fbs)
                 rows.Add(new TxnRow(o.When, "Sale", StoreLabel(o.Sid), o.Sid, o.Channel.ToString(),
-                    o.OrderNumber, string.IsNullOrWhiteSpace(o.Cust) ? "Walk-in" : o.Cust!.Trim(),
+                    o.OrderNumber, PartyLabel(o.Channel, o.Cust, o.Buyer),
                     string.IsNullOrWhiteSpace(o.PaymentProvider) ? "Website" : o.PaymentProvider!.Trim(),
                     o.Total, true, "", "order", o.Oid, ""));
         }

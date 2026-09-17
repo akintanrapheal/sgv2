@@ -223,12 +223,37 @@ public class DeliveryZoneService
                 || city.Contains(sc, StringComparison.OrdinalIgnoreCase);
         }
 
+        // Fine sub-zone (by area) so a Lekki/Ajah-axis order prefers the Ikota branch over a mainland
+        // one, even when neither store's City string equals the customer's area. Both the customer's
+        // area (e.g. "Ikota") and the Ikota branch's own area ("Ajah") resolve to the same delivery
+        // zone ("Lekki / Ajah axis"), while Allen ("Ikeja") is "Central Mainland". Falls back cleanly
+        // (null) when an area isn't in any zone, so it never reorders unrelated states.
+        var customerSubZone = SubZoneKey(city);
+        bool SameSubZone(Models.Domain.Store s) =>
+            customerSubZone != null && SubZoneKey(s.City) == customerSubZone;
+
         return stores
             .OrderBy(s => GetRegion(s.State, north) == customerRegion ? 0 : 1) // region group first
-            .ThenBy(s => GetZone(s.State) == customerZone ? 0 : 1)
+            .ThenBy(s => GetZone(s.State) == customerZone ? 0 : 1)             // same fine state-zone
+            .ThenBy(s => SameSubZone(s) ? 0 : 1)                               // same delivery sub-zone (by area)
             .ThenBy(s => CityMatches(s) ? 0 : 1)
             .ThenBy(s => s.Id)
             .ToList();
+    }
+
+    // Resolves an area/neighbourhood (e.g. "Ikota", "Ajah", "Ikeja") to its delivery sub-zone key
+    // ("State|Zone name") using the built-in zone areas. Used only as a proximity tiebreaker, so the
+    // static defaults are fine here; returns null when the area isn't recognised.
+    private static string? SubZoneKey(string? area)
+    {
+        if (string.IsNullOrWhiteSpace(area)) return null;
+        var a = area.Trim();
+        foreach (var z in DefaultZones())
+            if (z.Areas.Any(x => x.Equals(a, StringComparison.OrdinalIgnoreCase)
+                              || x.Contains(a, StringComparison.OrdinalIgnoreCase)
+                              || a.Contains(x, StringComparison.OrdinalIgnoreCase)))
+                return z.State + "|" + z.Name;
+        return null;
     }
 
     // ── Default zones (starter grouping + prices; admin can fully edit) ────────

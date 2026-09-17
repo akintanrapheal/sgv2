@@ -96,7 +96,13 @@
         // Evenly spaced x-axis labels that always include both endpoints (no doubled-up last label
         // colliding with the previous tick). The first/last are anchored to their edges so they don't
         // overflow the viewBox and get clipped; the rest are centred on their point.
-        var n = labels.length, count = Math.min(n, 8), seen = {};
+        // Cap the number of x-axis labels to what actually fits, based on the longest label — long
+        // date labels ("Tue, 01 Sep 2026") were overrunning each other when 8 were forced in.
+        var n = labels.length, maxLen = 0;
+        for (var k = 0; k < n; k++) { var L = String(labels[k]).length; if (L > maxLen) maxLen = L; }
+        var approxPx = maxLen * 6 + 16;                 // ~6px per char at font-size 10, plus a gap
+        var fit = Math.max(2, Math.floor((x1 - x0) / approxPx));
+        var count = Math.min(n, 8, fit), seen = {};
         for (var t = 0; t < count; t++) {
             var j = count <= 1 ? 0 : Math.round(t * (n - 1) / (count - 1));
             if (seen[j]) continue;

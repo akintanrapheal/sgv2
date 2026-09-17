@@ -164,14 +164,20 @@ public class WebhooksController : ControllerBase
                 }
 
                 var wasUnpaid = !order.IsPaid;
+                var prevStatus = order.Status;
                 order.IsPaid = true;
                 order.PaidAt = DateTime.UtcNow;
                 order.Status = OrderStatus.Confirmed;
                 order.PaymentReference = reference;
                 order.PaymentProvider = "Paystack";
                 if (wasUnpaid)
+                {
                     SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
                         $"Payment via Paystack successful (Transaction Reference: {reference}).");
+                    if (prevStatus != OrderStatus.Confirmed)
+                        SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
+                            $"Order status changed from {prevStatus} to Confirmed (payment received).");
+                }
                 await _db.SaveChangesAsync();
                 if (wasUnpaid)
                 {

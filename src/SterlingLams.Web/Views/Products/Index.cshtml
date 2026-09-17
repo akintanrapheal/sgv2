@@ -53,6 +53,26 @@
 
 @section Head {
     <script type="application/ld+json" nonce="@Context.Items["csp-nonce"]">@Html.Raw(breadcrumbLd)</script>
+    @* Guarantee the desktop filter layout regardless of whether the responsive Tailwind variants
+       (lg:static, lg:translate-x-0 …) made it into the built CSS. Without this the panel keeps its
+       mobile-drawer `position:fixed` on desktop and overlays the header while scrolling. Below lg it
+       stays the slide-in drawer driven by the base classes + app.js. *@
+    <style>
+        @@media (min-width: 1024px) {
+            #filter-panel {
+                position: static !important;
+                transform: none !important;
+                inset: auto !important;
+                width: 14rem !important;
+                max-width: none !important;
+                z-index: auto !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                overflow: visible !important;
+            }
+            #filter-backdrop { display: none !important; }
+        }
+    </style>
 }
 
 <div class="max-w-7xl mx-auto px-6 py-12">
