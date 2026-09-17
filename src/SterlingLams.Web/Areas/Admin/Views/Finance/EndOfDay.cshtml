@@ -145,6 +145,8 @@
                         <div class="flex justify-between"><span class="text-neutral-500">Website amount</span><span class="text-neutral-800">@Money(ops.WebsiteAmount)</span></div>
                         <div class="flex justify-between"><span class="text-neutral-500">Packed website orders</span><span class="text-neutral-800">@ops.PackedWebsiteOrders</span></div>
                         <div class="flex justify-between"><span class="text-neutral-500">Packed website amount</span><span class="text-neutral-800">@Money(ops.PackedWebsiteAmount)</span></div>
+                        <div class="flex justify-between"><span class="text-neutral-500">Awaiting website orders</span><span class="@(ops.AwaitingWebsiteOrders > 0 ? "text-amber-600 font-medium" : "text-neutral-800")">@ops.AwaitingWebsiteOrders</span></div>
+                        <div class="flex justify-between"><span class="text-neutral-500">Awaiting website amount</span><span class="@(ops.AwaitingWebsiteAmount > 0 ? "text-amber-600 font-medium" : "text-neutral-800")">@Money(ops.AwaitingWebsiteAmount)</span></div>
                     </div>
                 </div>
 

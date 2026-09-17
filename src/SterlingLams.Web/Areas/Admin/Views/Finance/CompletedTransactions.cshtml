@@ -160,6 +160,25 @@
             </tbody>
         </table>
     </div>
+    @if (Model.Count > 0)
+    {
+        var firstRow = ((Model.Page - 1) * Model.PageSize) + 1;
+        var lastRow = Math.Min(Model.Page * Model.PageSize, Model.Count);
+        Func<int, Dictionary<string, string>> pageRoute = pg =>
+        {
+            var d = new Dictionary<string, string>(routes) { ["page"] = pg.ToString() };
+            return d;
+        };
+        <div class="no-print flex items-center justify-between px-1 py-3 text-xs text-neutral-500">
+            <span>Showing @firstRow.ToString("N0")–@lastRow.ToString("N0") of @Model.Count.ToString("N0") · page @Model.Page of @Model.TotalPages</span>
+            <div class="flex gap-2">
+                @if (Model.Page > 1)
+                { <a class="px-3 py-1.5 border border-neutral-200 rounded hover:border-neutral-400" asp-action="CompletedTransactions" asp-all-route-data="pageRoute(Model.Page - 1)">← Prev</a> }
+                @if (Model.Page < Model.TotalPages)
+                { <a class="px-3 py-1.5 border border-neutral-200 rounded hover:border-neutral-400" asp-action="CompletedTransactions" asp-all-route-data="pageRoute(Model.Page + 1)">Next →</a> }
+            </div>
+        </div>
+    }
 </div>
 
 <style>

@@ -1027,6 +1027,7 @@ public class FinanceController : AdminBaseController
         int PosSales, int TransferPayments, int CashPayments,
         int WebsiteOrders, decimal WebsiteAmount,
         int PackedWebsiteOrders, decimal PackedWebsiteAmount,
+        int AwaitingWebsiteOrders, decimal AwaitingWebsiteAmount,
         int ItemsSoldQty, decimal ItemsSoldAmount,
         decimal OpeningCash, decimal PhysicalCashCollected, decimal CashTransfer, decimal ClosingCash);
     public record EodStoreRow(int? StoreId, string Store, int Orders, decimal Gross, decimal Delivery,
@@ -1151,6 +1152,7 @@ public class FinanceController : AdminBaseController
             // Operational & cash-flow figures.
             var web = os.Where(o => o.Channel == OrderChannel.Online).ToList();
             var packedWeb = web.Where(o => o.Packed).ToList();
+            var awaitingWeb = web.Where(o => !o.Packed).ToList();
             var ccontribs = contribs.Where(m => m.Sid == sid).ToList();
             var items = itemRows.Where(i => i.Sid == sid).ToList();
             var ssns = sessions.Where(x => x.Sid == sid).ToList();
@@ -1169,6 +1171,8 @@ public class FinanceController : AdminBaseController
                 WebsiteAmount: web.Sum(o => o.Total),
                 PackedWebsiteOrders: packedWeb.Count,
                 PackedWebsiteAmount: packedWeb.Sum(o => o.Total),
+                AwaitingWebsiteOrders: awaitingWeb.Count,
+                AwaitingWebsiteAmount: awaitingWeb.Sum(o => o.Total),
                 ItemsSoldQty: items.Sum(i => i.Quantity),
                 ItemsSoldAmount: items.Sum(i => i.Line),
                 OpeningCash: openingCash,
@@ -1205,10 +1209,14 @@ public class FinanceController : AdminBaseController
         public string Q { get; set; } = "";      // search: order #, customer, staff, tender
         public List<Store> Stores { get; set; } = new();
         public List<Register> Registers { get; set; } = new();
-        public List<CtRow> Rows { get; set; } = new();
-        public int Count => Rows.Count;
-        public decimal Total => Rows.Sum(r => r.Total);
-        public decimal Discount => Rows.Sum(r => r.Discount);
+        public List<CtRow> Rows { get; set; } = new();   // current page only
+        // Totals are over the WHOLE filtered set (all pages), not just the rows on screen.
+        public int Count { get; set; }
+        public decimal Total { get; set; }
+        public decimal Discount { get; set; }
+        public int Page { get; set; } = 1;
+        public int PageSize { get; set; } = 50;
+        public int TotalPages { get; set; } = 1;
     }
 
     // Loads the completed-transaction rows for the given filters (shared by the page and every export).
@@ -1276,17 +1284,29 @@ public class FinanceController : AdminBaseController
     }
 
     public async Task<IActionResult> CompletedTransactions(string? from, string? to, int? storeId,
-        int? registerId, string? channel, string? q)
+        int? registerId, string? channel, string? q, int page = 1)
     {
         ViewData["Title"] = "Finance — Completed Transactions";
         var (rows, fLocal, tLocal) = await LoadCompletedAsync(from, to, storeId, registerId, channel, q);
+
+        // Totals cover the whole filtered set; the table shows one page at a time.
+        const int pageSize = 50;
+        var total = rows.Count;
+        var totalPages = Math.Max(1, (int)Math.Ceiling(total / (double)pageSize));
+        page = Math.Min(Math.Max(1, page), totalPages);
+        var pageRows = rows.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
         return View(new CompletedTxnVm
         {
             From = fLocal, To = tLocal, StoreId = storeId, RegisterId = registerId,
             Channel = channel is "Online" or "Pos" ? channel : "", Q = q ?? "",
             Stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync(),
             Registers = await _db.Registers.Include(r => r.Store).OrderBy(r => r.Store.Name).ThenBy(r => r.Name).ToListAsync(),
-            Rows = rows
+            Rows = pageRows,
+            Count = total,
+            Total = rows.Sum(r => r.Total),
+            Discount = rows.Sum(r => r.Discount),
+            Page = page, PageSize = pageSize, TotalPages = totalPages
         });
     }
 
