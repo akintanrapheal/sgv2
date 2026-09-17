@@ -68,7 +68,9 @@ public class OrderFulfilmentServiceTests
 
         var o = await t.Db.Orders.FindAsync(order.Id);
         Assert.Equal(abuja.Id, o!.FulfillingStoreId);
-        Assert.Equal(OrderStatus.Processing, o.Status);
+        // Pack-first fulfilment lands the order in the branch's "to pack" queue as Confirmed;
+        // the cashier packs it, then dispatches/marks ready. Nothing is auto-advanced.
+        Assert.Equal(OrderStatus.Confirmed, o.Status);
         Assert.Empty(await t.Db.StockTransfers.ToListAsync());       // Abuja had it all — no transfer
         Assert.Equal(3, t.Inv(p.Id, abuja.Id).QuantityOnHand);      // 2 sold from Abuja
         Assert.Equal(5, t.Inv(p.Id, allen.Id).QuantityOnHand);      // southern branches untouched
@@ -92,7 +94,7 @@ public class OrderFulfilmentServiceTests
 
         var o = await t.Db.Orders.FindAsync(order.Id);
         Assert.Equal(ikota.Id, o!.FulfillingStoreId);
-        Assert.Equal(OrderStatus.Processing, o.Status);
+        Assert.Equal(OrderStatus.Confirmed, o.Status);              // pack-first: lands as Confirmed
         Assert.Empty(await t.Db.StockTransfers.ToListAsync());       // whole order from one branch
         Assert.Equal(0, t.Inv(p.Id, ikota.Id).QuantityOnHand);      // 2 sold from Ikota
         Assert.Equal(1, t.Inv(p.Id, allen.Id).QuantityOnHand);      // Allen untouched
@@ -134,7 +136,9 @@ public class OrderFulfilmentServiceTests
 
         var fulfilled = await t.Db.Orders.FindAsync(order.Id);
         Assert.Equal(ikota.Id, fulfilled!.FulfillingStoreId);
-        Assert.Equal(OrderStatus.ReadyForPickup, fulfilled.Status);
+        // Pack-first: a pickup order also lands as Confirmed (to-pack); the cashier packs it, then
+        // sends the pickup-ready notice — it is not auto-marked ReadyForPickup.
+        Assert.Equal(OrderStatus.Confirmed, fulfilled.Status);
         Assert.Equal(3, t.Inv(p.Id, ikota.Id).QuantityOnHand);
         Assert.Empty(await t.Db.StockTransfers.ToListAsync());
     }
