@@ -72,6 +72,7 @@ public static class AdminSections
     {
         ("Index",        "Overview"),
         ("Transactions", "Transactions"),
+        ("Cash",         "Cash-up"),
         ("Refunds",      "Refunds"),
         ("Leakage",      "Leakage"),
         ("Liabilities",  "Customer Points"),

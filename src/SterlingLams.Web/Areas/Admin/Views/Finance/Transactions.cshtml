@@ -30,6 +30,7 @@
         "Refund" => "bg-rose-50 text-rose-700",
         "Expense" => "bg-amber-50 text-amber-700",
         "Cash" => "bg-sky-50 text-sky-700",
+        "Cash-up" => "bg-violet-50 text-violet-700",
         _ => "bg-neutral-100 text-neutral-600"
     };
     string Money2(decimal v) => (v < 0 ? "-₦" : "₦") + Math.Abs(v).ToString("N0");
@@ -76,6 +77,7 @@
                 <option value="Sale" selected="@(Model.Type == "Sale")">Sale</option>
                 <option value="Refund" selected="@(Model.Type == "Refund")">Refund</option>
                 <option value="Cash" selected="@(Model.Type == "Cash")">Cash in/out</option>
+                <option value="Cashup" selected="@(Model.Type == "Cashup")">Cash-up (over/short)</option>
             </select>
         </div>
         <div>
@@ -199,6 +201,10 @@
                         <td class="px-4 py-2.5 whitespace-nowrap">
                             <span class="text-[11px] px-1.5 py-0.5 rounded @typeBadge(r.Type)">@r.Type</span>
                             @if (r.Status == "Pending") { <span class="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 ml-1">pending</span> }
+                            else if (r.Type == "Cash-up")
+                            {
+                                <span class="text-[11px] px-1.5 py-0.5 rounded ml-1 @(r.Status == "over" ? "bg-emerald-100 text-emerald-700" : r.Status == "short" ? "bg-rose-100 text-rose-700" : "bg-neutral-100 text-neutral-500")">@r.Status</span>
+                            }
                         </td>
                         <td class="px-4 py-2.5 whitespace-nowrap text-neutral-700 text-xs">@r.Store.Replace("Sterlin Glams ", "")@(string.IsNullOrEmpty(r.Channel) ? "" : $" · {r.Channel}")</td>
                         <td class="px-4 py-2.5 whitespace-nowrap font-mono text-xs text-neutral-500">@r.Reference</td>
