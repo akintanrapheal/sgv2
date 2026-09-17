@@ -741,8 +741,8 @@ function bindProductCards(root) {
 
     // Desktop exit-intent: cursor leaves the viewport past the top edge.
     document.addEventListener('mouseout', (e) => { if (!e.relatedTarget && e.clientY <= 0) show(); });
-    // Touch / no-exit-intent fallback: after 30s on the site.
-    setTimeout(show, 30000);
+    // Touch / no-exit-intent fallback: a few seconds after landing.
+    setTimeout(show, 7000);
 
     pop.querySelectorAll('[data-welcome-close]').forEach(b => b.addEventListener('click', hide));
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.classList.contains('hidden')) hide(); });
