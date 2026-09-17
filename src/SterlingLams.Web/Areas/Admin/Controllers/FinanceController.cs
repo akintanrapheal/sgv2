@@ -56,29 +56,6 @@ public class FinanceController : AdminBaseController
     public record DeliveryTypePoint(string Type, int Count, decimal Logistics)
     { public decimal AvgFee => Count > 0 ? Logistics / Count : 0; }
 
-    // One closed till session's cash reconciliation. Expected = float + cash sales − cash refunds
-    // + cash paid in − cash paid out; variance = counted − expected (positive = over, negative = short).
-    public record CashSessionRow(int Id, DateTime Opened, DateTime? Closed, string Register, string Store,
-        string Cashier, decimal OpeningFloat, decimal CashSales, decimal CashRefunds, decimal CashIn, decimal CashOut, decimal Counted)
-    {
-        public decimal Expected => OpeningFloat + CashSales - CashRefunds + CashIn - CashOut;
-        public decimal Variance => Counted - Expected;
-    }
-
-    public class CashVm
-    {
-        public DateTime From { get; set; }
-        public DateTime To { get; set; }
-        public int? StoreId { get; set; }
-        public List<Store> Stores { get; set; } = new();
-        public List<CashSessionRow> Rows { get; set; } = new();
-        public decimal TotalCashSales => Rows.Sum(r => r.CashSales);
-        public decimal TotalExpected => Rows.Sum(r => r.Expected);
-        public decimal TotalCounted => Rows.Sum(r => r.Counted);
-        public decimal TotalVariance => Rows.Sum(r => r.Variance);
-        public int OverShortCount => Rows.Count(r => r.Variance != 0);
-    }
-
     public record NameAmount(string Label, int Count, decimal Amount);
     public record RefundListRow(int Id, string Number, DateTime When, string Order, decimal Amount, string Method, string Reason, string Cashier, string Status);
 
@@ -376,65 +353,6 @@ public class FinanceController : AdminBaseController
         return File(Services.Csv.ToBytes(sb), "text/csv", $"journal_{fLocal:yyyyMMdd}-{tLocal:yyyyMMdd}.csv");
     }
 
-    // ── Cash reconciliation ────────────────────────────────────────────────────
-    // Every closed till session's counted cash vs what the drawer should hold — surfaces
-    // over/short so finance can chase drawer discrepancies.
-    public async Task<IActionResult> Cash(string? from, string? to, int? storeId)
-    {
-        ViewData["Title"] = "Finance — Cash-up";
-        var (f, t, fLocal, tLocal) = Range(from, to);
-
-        var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
-
-        var sessQ = _db.TillSessions.Include(s => s.Register).ThenInclude(r => r.Store)
-            .Where(s => s.ClosedAt != null && s.ClosedAt >= f && s.ClosedAt < t);
-        if (storeId.HasValue) sessQ = sessQ.Where(s => s.Register.StoreId == storeId);
-        var sessions = await sessQ.OrderByDescending(s => s.ClosedAt).ToListAsync();
-        var ids = sessions.Select(s => s.Id).ToList();
-
-        // Cash figures per session, aggregated in SQL (no per-session round trips).
-        var cashSales = (await _db.OrderPayments
-                .Where(p => p.Method == "Cash" && p.Order.TillSessionId != null && ids.Contains(p.Order.TillSessionId!.Value))
-                .GroupBy(p => p.Order.TillSessionId!.Value)
-                .Select(g => new { Sid = g.Key, Amt = g.Sum(x => x.Amount) }).ToListAsync())
-            .ToDictionary(x => x.Sid, x => x.Amt);
-        var cashRefunds = (await _db.Refunds
-                .Where(r => r.Status == RefundStatus.Approved && r.RefundMethod == "Cash" && r.OriginalOrder.TillSessionId != null && ids.Contains(r.OriginalOrder.TillSessionId!.Value))
-                .GroupBy(r => r.OriginalOrder.TillSessionId!.Value)
-                .Select(g => new { Sid = g.Key, Amt = g.Sum(x => x.Amount) }).ToListAsync())
-            .ToDictionary(x => x.Sid, x => x.Amt);
-        var moves = (await _db.CashMovements
-                .Where(m => ids.Contains(m.TillSessionId))
-                .GroupBy(m => m.TillSessionId)
-                .Select(g => new
-                {
-                    Sid = g.Key,
-                    In = g.Where(x => x.Amount > 0).Sum(x => x.Amount),
-                    Out = g.Where(x => x.Amount < 0).Sum(x => x.Amount)
-                }).ToListAsync())
-            .ToDictionary(x => x.Sid, x => (x.In, x.Out));
-
-        var userIds = sessions.Select(s => s.OpenedByUserId).Distinct().ToList();
-        var names = (await _db.Users.Where(u => userIds.Contains(u.Id))
-                .Select(u => new { u.Id, u.FirstName, u.LastName, u.UserName }).ToListAsync())
-            .ToDictionary(u => u.Id, u =>
-            {
-                var n = $"{u.FirstName} {u.LastName}".Trim();
-                return string.IsNullOrWhiteSpace(n) ? (u.UserName ?? "—") : n;
-            });
-
-        var rows = sessions.Select(s =>
-        {
-            var mv = moves.GetValueOrDefault(s.Id);
-            return new CashSessionRow(s.Id, s.OpenedAt, s.ClosedAt, s.Register.Name, s.Register.Store.Name,
-                names.GetValueOrDefault(s.OpenedByUserId, "—"), s.OpeningFloat,
-                cashSales.GetValueOrDefault(s.Id), cashRefunds.GetValueOrDefault(s.Id),
-                mv.In, -mv.Out, s.CountedCash ?? 0);
-        }).ToList();
-
-        return View(new CashVm { From = fLocal, To = tLocal, StoreId = storeId, Stores = stores, Rows = rows });
-    }
-
     // ── Refund analytics ───────────────────────────────────────────────────────
     public async Task<IActionResult> Refunds(string? from, string? to, int? storeId)
     {
@@ -616,9 +534,9 @@ public class FinanceController : AdminBaseController
     }
 
     // ── Transactions ledger ────────────────────────────────────────────────────
-    // One row per money movement across ALL stores — payments, refunds, expenses and till cash
-    // in/out — with filter, search, sort, pagination, CSV export and inline actions. Amount is
-    // signed: money IN is positive, money OUT (refunds, expenses, cash-out) is negative.
+    // One row per money movement across ALL stores — payments, refunds and till cash in/out —
+    // with filter, search, sort, pagination, CSV export and inline actions. Amount is signed:
+    // money IN is positive, money OUT (refunds, cash-out) is negative.
     public record TxnRow(DateTime When, string Type, string Store, int? StoreId, string Channel,
         string Reference, string Party, string Method, decimal Amount, bool Settled, string Status,
         string ActionKind, int? ActionId, string Detail);
@@ -693,6 +611,27 @@ public class FinanceController : AdminBaseController
                 rows.Add(new TxnRow(p.CreatedAt, "Sale", StoreLabel(p.Sid), p.Sid, p.Channel.ToString(),
                     p.OrderNumber, string.IsNullOrWhiteSpace(p.Cust) ? "Walk-in" : p.Cust!.Trim(),
                     p.Method, p.Amount, true, "", "order", p.OrderId, ""));
+
+            // Online orders paid via a provider (e.g. Paystack) carry no per-tender OrderPayment rows,
+            // so the query above misses them. Fall back to one Sale row per such paid order — dated by
+            // when it was paid — so website revenue shows up in "money in" too. (Mirrors the Overview
+            // and End-of-Day fallbacks; without it the ledger showed POS takings only.)
+            var fbQ = _db.Orders.Where(o => o.IsPaid && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t
+                && !_db.OrderPayments.Any(p => p.OrderId == o.Id));
+            if (storeId.HasValue) fbQ = fbQ.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
+            if (channel == "Online") fbQ = fbQ.Where(o => o.Channel == OrderChannel.Online);
+            else if (channel == "Pos") fbQ = fbQ.Where(o => o.Channel == OrderChannel.Pos);
+            var fbs = await fbQ.Select(o => new
+            {
+                Oid = o.Id, When = o.PaidAt ?? o.CreatedAt, o.Total, o.OrderNumber, o.Channel, o.PaymentProvider,
+                Sid = o.PickupStoreId ?? o.FulfillingStoreId,
+                Cust = o.Customer != null ? (o.Customer.FirstName + " " + o.Customer.LastName) : null
+            }).ToListAsync();
+            foreach (var o in fbs)
+                rows.Add(new TxnRow(o.When, "Sale", StoreLabel(o.Sid), o.Sid, o.Channel.ToString(),
+                    o.OrderNumber, string.IsNullOrWhiteSpace(o.Cust) ? "Walk-in" : o.Cust!.Trim(),
+                    string.IsNullOrWhiteSpace(o.PaymentProvider) ? "Website" : o.PaymentProvider!.Trim(),
+                    o.Total, true, "", "order", o.Oid, ""));
         }
 
         // 2) Refunds — approved (money OUT, settled) + pending (actionable, not yet settled).
@@ -733,44 +672,6 @@ public class FinanceController : AdminBaseController
                     "Cash", m.Amount, true, "", "", null, m.Reason ?? ""));
         }
 
-        // 5) Cash-up drawer over/short — one row per closed till session (variance = counted − expected).
-        // Informational (not a money movement) so it does NOT count toward the in/out/net totals.
-        if ((type is "" or "Cashup") && channel == "")
-        {
-            var sessQ = _db.TillSessions.Include(s => s.Register)
-                .Where(s => s.ClosedAt != null && s.ClosedAt >= f && s.ClosedAt < t);
-            if (storeId.HasValue) sessQ = sessQ.Where(s => s.Register.StoreId == storeId);
-            var sessions = await sessQ.ToListAsync();
-            var sids = sessions.Select(s => s.Id).ToList();
-            if (sids.Count > 0)
-            {
-                var cashSales = (await _db.OrderPayments
-                        .Where(pp => pp.Method == "Cash" && pp.Order.TillSessionId != null && sids.Contains(pp.Order.TillSessionId!.Value))
-                        .GroupBy(pp => pp.Order.TillSessionId!.Value)
-                        .Select(g => new { Sid = g.Key, Amt = g.Sum(x => x.Amount) }).ToListAsync())
-                    .ToDictionary(x => x.Sid, x => x.Amt);
-                var cashRefunds = (await _db.Refunds
-                        .Where(rr => rr.Status == RefundStatus.Approved && rr.RefundMethod == "Cash" && rr.OriginalOrder.TillSessionId != null && sids.Contains(rr.OriginalOrder.TillSessionId!.Value))
-                        .GroupBy(rr => rr.OriginalOrder.TillSessionId!.Value)
-                        .Select(g => new { Sid = g.Key, Amt = g.Sum(x => x.Amount) }).ToListAsync())
-                    .ToDictionary(x => x.Sid, x => x.Amt);
-                var moves = (await _db.CashMovements.Where(mm => sids.Contains(mm.TillSessionId))
-                        .GroupBy(mm => mm.TillSessionId)
-                        .Select(g => new { Sid = g.Key, In = g.Where(x => x.Amount > 0).Sum(x => x.Amount), Out = g.Where(x => x.Amount < 0).Sum(x => x.Amount) }).ToListAsync())
-                    .ToDictionary(x => x.Sid, x => (x.In, x.Out));
-                var names = await UserNamesAsync(sessions.Select(s => s.OpenedByUserId));
-                foreach (var s in sessions)
-                {
-                    var mv = moves.GetValueOrDefault(s.Id);
-                    var expected = s.OpeningFloat + cashSales.GetValueOrDefault(s.Id) - cashRefunds.GetValueOrDefault(s.Id) + mv.In + mv.Out;
-                    var variance = (s.CountedCash ?? 0) - expected;
-                    var status = variance == 0 ? "balanced" : (variance > 0 ? "over" : "short");
-                    rows.Add(new TxnRow(s.ClosedAt!.Value, "Cash-up", StoreLabel(s.Register.StoreId), s.Register.StoreId, "",
-                        s.Register.Name, names.GetValueOrDefault(s.OpenedByUserId, "—"), "Drawer",
-                        variance, false, status, "", null, $"counted {(s.CountedCash ?? 0):N0} vs expected {expected:N0}"));
-                }
-            }
-        }
         return rows;
     }
 
@@ -805,7 +706,7 @@ public class FinanceController : AdminBaseController
         ViewData["Title"] = "Finance — Transactions";
         var (f, t, fLocal, tLocal) = Range(from, to);
         channel = channel is "Online" or "Pos" ? channel : "";
-        type = new[] { "Sale", "Refund", "Cash", "Cashup" }.Contains(type) ? type! : "";
+        type = new[] { "Sale", "Refund", "Cash" }.Contains(type) ? type! : "";
         method = new[] { "Cash", "Card", "Transfer", "Paystack" }.Contains(method) ? method! : "";
         q = (q ?? "").Trim();
         sort = new[] { "date", "amount", "type", "store" }.Contains(sort) ? sort! : "date";
@@ -824,7 +725,9 @@ public class FinanceController : AdminBaseController
             .Select(g => new StoreTotal(g.Key, g.Where(x => x.Amount > 0).Sum(x => x.Amount),
                 g.Where(x => x.Amount < 0).Sum(x => -x.Amount), g.Count()))
             .OrderByDescending(x => x.Net).ToList();
-        var byType = filtered.GroupBy(r => r.Type)
+        // Settled only: a pending (unapproved) refund has moved no money, so it must not pull down the
+        // Refund total here — the headline in/out already excludes it the same way.
+        var byType = filtered.Where(r => r.Settled).GroupBy(r => r.Type)
             .Select(g => new TypeTotal(g.Key, g.Sum(x => x.Amount), g.Count()))
             .OrderByDescending(x => Math.Abs(x.Net)).ToList();
 

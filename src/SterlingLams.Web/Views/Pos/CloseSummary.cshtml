@@ -5,7 +5,6 @@
     var s = Model.Session;
     var interim = Model.Interim;
     string Money(decimal v) => (v < 0 ? "-₦" : "₦") + Math.Abs(v).ToString("N2");
-    string VarCls(decimal v) => v == 0 ? "text-neutral-500" : (v < 0 ? "text-red-600" : "text-amber-600");
     var posBase = "/" + SterlingLams.Web.Infrastructure.StaffPaths.Pos;
 }
 
@@ -70,16 +69,6 @@
                             <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                             No open orders
                         </li>
-                        <li class="flex items-center justify-between gap-2">
-                            <span class="flex items-center gap-2 @(interim ? "text-amber-600" : "text-emerald-600")">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="@(interim ? "M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" : "M5 13l4 4L19 7")"/></svg>
-                                Cash up
-                            </span>
-                            @if (interim)
-                            {
-                                <button type="button" id="focus-count" class="text-xs px-3 py-1 border border-neutral-300 rounded text-neutral-600 hover:bg-neutral-50">Count</button>
-                            }
-                        </li>
                     </ul>
                 </div>
 
@@ -118,66 +107,36 @@
                 </div>
 
                 <!-- Summary tiles -->
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div class="grid grid-cols-3 gap-3">
                     <div class="bg-white border border-neutral-200 rounded-lg p-3"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Transactions</p><p class="text-lg font-light text-neutral-900 mt-1">@Model.Transactions</p></div>
-                    <div class="bg-white border border-neutral-200 rounded-lg p-3"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Counted</p><p class="text-lg font-light text-neutral-900 mt-1" id="tile-counted">@Money(Model.Counted)</p></div>
                     <div class="bg-white border border-neutral-200 rounded-lg p-3"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Takings</p><p class="text-lg font-light text-neutral-900 mt-1">@Money(Model.Takings)</p></div>
                     <div class="bg-white border border-neutral-200 rounded-lg p-3"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Float</p><p class="text-lg font-light text-neutral-900 mt-1">@Money(Model.OpeningFloat)</p></div>
-                    <div class="bg-white border border-neutral-200 rounded-lg p-3"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Total variance</p><p class="text-lg font-light mt-1 @VarCls(Model.Variance)" id="tile-variance">@Money(Model.Variance)</p></div>
                 </div>
 
-                <!-- Cash Up table -->
+                <!-- Takings by tender (from recorded transactions) -->
                 <div class="bg-white border border-neutral-200 rounded-lg overflow-hidden">
-                    <div class="px-4 py-3 border-b border-neutral-100"><h3 class="text-sm font-semibold text-neutral-800">Cash Up</h3></div>
+                    <div class="px-4 py-3 border-b border-neutral-100"><h3 class="text-sm font-semibold text-neutral-800">Takings by tender</h3></div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead>
                                 <tr class="text-[11px] uppercase tracking-wide text-neutral-400 border-b border-neutral-100">
                                     <th class="px-4 py-2 text-left font-medium">Tender</th>
-                                    <th class="px-4 py-2 text-right font-medium">Counted</th>
-                                    <th class="px-4 py-2 text-right font-medium">Expected</th>
-                                    <th class="px-4 py-2 text-right font-medium">Variance</th>
+                                    <th class="px-4 py-2 text-right font-medium">Amount</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-neutral-100">
                                 @foreach (var tn in Model.Tenders)
                                 {
-                                    <tr data-tender="@tn.Key" data-expected="@tn.Expected">
+                                    <tr>
                                         <td class="px-4 py-2.5 text-neutral-700">@tn.Label</td>
-                                        <td class="px-4 py-2.5 text-right">
-                                            @if (interim)
-                                            {
-                                                <input type="number" min="0" step="any" value="@(tn.Counted?.ToString("0.##") ?? "")" placeholder="0.00"
-                                                       class="cu-counted w-28 text-right border border-neutral-200 rounded px-2 py-1 text-sm" data-key="@tn.Key" />
-                                            }
-                                            else
-                                            {
-                                                <span>@Money(tn.Counted ?? 0)</span>
-                                            }
-                                        </td>
-                                        <td class="px-4 py-2.5 text-right text-neutral-600">@Money(tn.Expected)</td>
-                                        <td class="px-4 py-2.5 text-right cu-variance @VarCls(tn.Variance)">@Money(tn.Variance)</td>
+                                        <td class="px-4 py-2.5 text-right text-neutral-800">@Money(tn.Expected)</td>
                                     </tr>
                                 }
                             </tbody>
                             <tfoot class="border-t-2 border-neutral-200 text-sm">
-                                <tr class="font-medium">
-                                    <td class="px-4 py-2.5 text-neutral-700">Sub-Total</td>
-                                    <td class="px-4 py-2.5 text-right" id="cu-sub-counted">@Money(Model.Counted)</td>
+                                <tr class="font-semibold text-neutral-900">
+                                    <td class="px-4 py-2.5 text-left">Total takings</td>
                                     <td class="px-4 py-2.5 text-right">@Money(Model.Takings)</td>
-                                    <td class="px-4 py-2.5 text-right @VarCls(Model.Variance)" id="cu-sub-variance">@Money(Model.Variance)</td>
-                                </tr>
-                                <tr class="text-neutral-500">
-                                    <td class="px-4 py-2 text-left">Float</td>
-                                    <td class="px-4 py-2 text-right">—</td>
-                                    <td class="px-4 py-2 text-right">@Money(Model.OpeningFloat)</td>
-                                    <td class="px-4 py-2 text-right">@Money(0)</td>
-                                </tr>
-                                <tr class="font-semibold text-neutral-900 border-t border-neutral-100">
-                                    <td class="px-4 py-2.5 text-left">Total</td>
-                                    <td class="px-4 py-2.5 text-right" id="cu-total-counted">@Money(Model.Counted)</td>
-                                    <td class="px-4 py-2.5 text-right">@Money(Model.Takings + Model.OpeningFloat)</td>
-                                    <td class="px-4 py-2.5 text-right @VarCls(Model.Variance)" id="cu-total-variance">@Money(Model.Variance)</td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -401,51 +360,21 @@
     });
     showTab('Summary');
 
-    // ── Live variance while counting ──
-    function recalc() {
-        var subCounted = 0, subVar = 0;
-        document.querySelectorAll('tr[data-tender]').forEach(function (row) {
-            var input = row.querySelector('.cu-counted');
-            var expected = parseFloat(row.dataset.expected) || 0;
-            var counted = input ? (parseFloat(input.value) || 0) : (parseFloat(row.dataset.counted) || 0);
-            var v = counted - expected;
-            var cell = row.querySelector('.cu-variance');
-            if (cell) { cell.textContent = money(v); cell.className = 'px-4 py-2.5 text-right cu-variance ' + varCls(v); }
-            subCounted += counted; subVar += v;
-        });
-        function set(id, val, isVar) {
-            var el = document.getElementById(id); if (!el) return;
-            el.textContent = money(val);
-            if (isVar) el.className = el.className.replace(/text-(neutral-500|red-600|amber-600)/g, '').trim() + ' ' + varCls(val);
-        }
-        set('cu-sub-counted', subCounted); set('cu-sub-variance', subVar, true);
-        set('cu-total-counted', subCounted); set('cu-total-variance', subVar, true);
-        set('tile-counted', subCounted); set('tile-variance', subVar, true);
-    }
     if (interim) {
-        document.querySelectorAll('.cu-counted').forEach(function (i) { i.addEventListener('input', recalc); });
-        var focusBtn = document.getElementById('focus-count');
-        if (focusBtn) focusBtn.addEventListener('click', function () {
-            var first = document.querySelector('.cu-counted'); if (first) { first.focus(); first.select(); }
-        });
         var addNote = document.getElementById('add-note-btn');
         if (addNote) addNote.addEventListener('click', function () { var n = document.getElementById('close-note'); if (n) n.focus(); });
 
-        // ── Print & Close ──
+        // ── Print & Close ── (closing just ends the sessions; no drawer count)
         var pcBtn = document.getElementById('print-close-btn');
         if (pcBtn) pcBtn.addEventListener('click', async function () {
             pcBtn.disabled = true; pcBtn.textContent = 'Closing…';
-            var counted = {};
-            document.querySelectorAll('.cu-counted').forEach(function (i) { counted[i.dataset.key] = parseFloat(i.value) || 0; });
             var note = (document.getElementById('close-note') || {}).value || '';
             var token = document.querySelector('input[name="__RequestVerificationToken"]').value;
             try {
                 var res = await fetch(posBase + '/CloseSession', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token },
-                    body: 'countedCash=' + (counted.Cash || 0)
-                        + '&note=' + encodeURIComponent(note)
-                        + '&counted=' + encodeURIComponent(JSON.stringify(counted))
+                    body: 'note=' + encodeURIComponent(note)
                 });
                 var data = await res.json();
                 if (data.success) { location.href = posBase + '/CloseReport/' + data.sessionId + '?print=1'; return; }

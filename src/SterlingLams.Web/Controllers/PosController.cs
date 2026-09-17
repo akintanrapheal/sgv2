@@ -433,7 +433,7 @@ public class PosController : Controller
     }
 
     [Authorize, HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> CloseSession(decimal countedCash, string? note, string? counted)
+    public async Task<IActionResult> CloseSession(string? note)
     {
         var register = await BoundRegisterAsync();
         if (register == null) return Json(new { success = false, message = "POS not set up." });
@@ -446,38 +446,18 @@ public class PosController : Controller
             .OrderBy(s => s.OpenedAt).ToListAsync();
         if (openSessions.Count == 0) return Json(new { success = false, message = "No open POS session." });
 
-        // Per-tender counted amounts (JSON map). Cash is mirrored to CountedCash for the Finance cash-up.
-        Dictionary<string, decimal> tenders = new();
-        if (!string.IsNullOrWhiteSpace(counted))
-        {
-            try { tenders = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, decimal>>(counted!) ?? new(); }
-            catch { tenders = new(); }
-        }
-        foreach (var k in tenders.Keys.ToList()) tenders[k] = Math.Max(0, tenders[k]);
-        var cash = tenders.TryGetValue("Cash", out var c) ? c : Math.Max(0, countedCash);
-
+        // Closing just ends the day's sessions — every sale is already recorded, so there's no drawer
+        // count/cash-up step. Expected cash is computed from the recorded tenders and float movements.
         var now = DateTime.UtcNow;
         var closedBy = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var trimmedNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
 
-        // The count is entered once for the till and belongs on the primary (first-opened) session; any
-        // extra open sessions on the same till are closed too, but without a cash count (avoids double-
-        // counting in the Finance cash-up).
         var primary = openSessions[0];
         foreach (var os in openSessions)
         {
             os.ClosedAt = now;
             os.ClosedByUserId = closedBy;
-            if (os == primary)
-            {
-                os.CountedCash = cash;                     // a negative count is a typo, not a drawer
-                os.CountedTenders = tenders.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(tenders) : null;
-                os.ClosingNote = trimmedNote;
-            }
-            else
-            {
-                os.ClosingNote = "Closed with the till end-of-day.";
-            }
+            os.ClosingNote = os == primary ? trimmedNote : "Closed with the till end-of-day.";
         }
         await _db.SaveChangesAsync();
         return Json(new { success = true, sessionId = primary.Id });
@@ -862,8 +842,7 @@ public class PosController : Controller
     }
 
     // ── Close session (EposNow-style Sales & Operation summary) ─────────────────
-    public record TenderLine(string Key, string Label, decimal Expected, decimal? Counted)
-    { public decimal Variance => (Counted ?? 0) - Expected; }
+    public record TenderLine(string Key, string Label, decimal Expected);
     public record SalesGroupRow(string Name, int Qty, decimal Discount, decimal Net, decimal Tax)
     { public decimal Total => Net + Tax; }
     public record TaxGroupRow(string Name, decimal Rate, int Qty, decimal Net, decimal Tax)
@@ -887,8 +866,6 @@ public class PosController : Controller
         public int Transactions { get; set; }
         public List<TenderLine> Tenders { get; set; } = new();
         public decimal Takings => Tenders.Sum(t => t.Expected);
-        public decimal Counted => Tenders.Sum(t => t.Counted ?? 0);
-        public decimal Variance => Tenders.Sum(t => t.Variance);
         public decimal OpeningFloat => Session.OpeningFloat;
 
         // Float section
@@ -939,22 +916,14 @@ public class PosController : Controller
                 && (o.PaidAt ?? o.CreatedAt) >= session.OpenedAt && (o.PaidAt ?? o.CreatedAt) < winEnd)
             .SumAsync(o => (decimal?)o.Total) ?? 0;
 
-        // Counted-per-tender saved at close (null while the session is still open).
-        Dictionary<string, decimal> counted = new();
-        if (!interim && !string.IsNullOrWhiteSpace(session.CountedTenders))
-        {
-            try { counted = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, decimal>>(session.CountedTenders!) ?? new(); }
-            catch { counted = new(); }
-        }
-        decimal? C(string k) => interim ? null : (counted.TryGetValue(k, out var v) ? v : 0);
-
+        // Takings by tender — straight from the recorded transactions (no drawer count / cash-up).
         var tenders = new List<TenderLine>
         {
-            new("Cash",     "Cash",          SumOf("Cash"),     C("Cash")),
-            new("Card",     "Card",          SumOf("Card"),     C("Card")),
-            new("Transfer", "Bank transfer", SumOf("Transfer"), C("Transfer")),
-            new("GiftCard", "Gift card",     giftCard,          C("GiftCard")),
-            new("Website",  "Website orders", website,          C("Website")),
+            new("Cash",     "Cash",           SumOf("Cash")),
+            new("Card",     "Card",           SumOf("Card")),
+            new("Transfer", "Bank transfer",  SumOf("Transfer")),
+            new("GiftCard", "Gift card",      giftCard),
+            new("Website",  "Website orders", website),
         };
 
         // Cash drawer / float movements.

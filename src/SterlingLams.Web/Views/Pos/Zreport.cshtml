@@ -3,8 +3,6 @@
     bool interim = ViewBag.Interim ?? false;
     ViewData["Title"] = interim ? "X-Report" : "End of Day Report";
     var s = Model.Session;
-    var counted = s.CountedCash ?? 0;
-    var variance = counted - Model.ExpectedCash;
 }
 
 <div class="min-h-full flex items-center justify-center p-6">
@@ -56,14 +54,6 @@
                     <div class="flex justify-between text-red-600"><span>− Cash refunds</span><span>₦@Model.CashRefunds.ToString("N0")</span></div>
                 }
                 <div class="flex justify-between font-medium"><span>Expected in drawer</span><span>₦@Model.ExpectedCash.ToString("N0")</span></div>
-                @if (!interim)
-                {
-                    <div class="flex justify-between"><span class="text-neutral-500">Counted</span><span>₦@counted.ToString("N0")</span></div>
-                    <div class="flex justify-between font-medium @(variance == 0 ? "text-emerald-600" : "text-red-600")">
-                        <span>@(variance == 0 ? "Balanced" : variance > 0 ? "Over" : "Short")</span>
-                        <span>@(variance >= 0 ? "+" : "")₦@variance.ToString("N0")</span>
-                    </div>
-                }
             </div>
 
             @if (!string.IsNullOrEmpty(s.ClosingNote))
