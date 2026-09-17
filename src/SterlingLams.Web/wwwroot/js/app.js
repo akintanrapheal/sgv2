@@ -646,7 +646,13 @@ function bindProductCards(root) {
     const grid = document.getElementById('product-grid');
     const shownEl = document.getElementById('shown-count');
     if (btn && grid) {
-        btn.addEventListener('click', async () => {
+        const status = document.getElementById('load-more-status');
+        const sentinel = document.getElementById('load-sentinel');
+        let loading = false, done = false, io = null;
+
+        async function loadNext() {
+            if (loading || done) return;
+            loading = true;
             const url = btn.dataset.url;
             let next = parseInt(btn.dataset.next, 10);
             const totalPages = parseInt(btn.dataset.total, 10);
@@ -656,6 +662,7 @@ function bindProductCards(root) {
             const original = label ? label.textContent : '';
             btn.disabled = true;
             if (label) label.textContent = 'Loading…';
+            if (status) status.classList.remove('hidden');
             try {
                 const sep = url.indexOf('?') === -1 ? '?' : '&';
                 const res = await fetch(`${url}${sep}page=${next}&partial=cards`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
@@ -669,19 +676,45 @@ function bindProductCards(root) {
                 next += 1;
                 btn.dataset.next = next;
                 if (next > totalPages) {
+                    done = true;
+                    if (io) io.disconnect();
                     const wrap = document.getElementById('load-more-wrap');
                     (wrap || btn).remove();
                 } else {
                     btn.disabled = false;
                     if (label) label.textContent = original;
+                    // If the sentinel is still in view (tall viewport / short page), keep filling.
+                    if (io && sentinel) {
+                        const r = sentinel.getBoundingClientRect();
+                        if (r.top < (window.innerHeight || document.documentElement.clientHeight) + 600) {
+                            loading = false;
+                            return loadNext();
+                        }
+                    }
                 }
             } catch (err) {
-                console.error('View more failed', err);
+                console.error('Load more failed', err);
                 btn.disabled = false;
                 if (label) label.textContent = original;
                 showToast('Sorry, we couldn’t load more pieces. Please try again.');
+            } finally {
+                loading = false;
+                if (status && !done) status.classList.add('hidden');
             }
-        });
+        }
+
+        // Manual click still works (accessibility / no-IO fallback).
+        btn.addEventListener('click', loadNext);
+
+        // Infinite scroll: auto-load as the sentinel nears the viewport. Hide the button (via the
+        // `hidden` property, not a purgeable class) so it's pure infinite scroll where supported.
+        if ('IntersectionObserver' in window && sentinel) {
+            btn.hidden = true;
+            io = new IntersectionObserver((entries) => {
+                if (entries.some(e => e.isIntersecting)) loadNext();
+            }, { rootMargin: '600px 0px' });   // prefetch before the shopper reaches the end
+            io.observe(sentinel);
+        }
     }
     const top = document.getElementById('back-to-top');
     if (top) top.addEventListener('click', (e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); });

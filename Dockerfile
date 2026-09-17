@@ -7,6 +7,9 @@ COPY tailwind.config.js postcss.config.js ./
 COPY src/SterlingLams.Web/wwwroot/css/input.css ./src/SterlingLams.Web/wwwroot/css/input.css
 COPY src/SterlingLams.Web/Views ./src/SterlingLams.Web/Views
 COPY src/SterlingLams.Web/Areas ./src/SterlingLams.Web/Areas
+# tailwind.config.js also scans wwwroot/js — copy it so classes referenced only in JS strings
+# aren't purged from the production CSS (they were, because this stage didn't include the JS).
+COPY src/SterlingLams.Web/wwwroot/js ./src/SterlingLams.Web/wwwroot/js
 RUN npm run build:css
 
 # ── Stage 2: .NET Build ─────────────────────────────────────────────────────────
