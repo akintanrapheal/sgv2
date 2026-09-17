@@ -402,6 +402,24 @@ document.addEventListener('submit', function (e) {
     setTimeout(poll, 4000);          // first check shortly after load
     setInterval(poll, 25000);        // then every 25s
 })();
+
+// ── Auto-apply filters (admin) ──────────────────────────────────────────────
+// Any GET form here re-submits the instant a select / date / number / checkbox / radio
+// changes — no "Apply" click needed. Free-text inputs are intentionally excluded (they'd
+// submit mid-typing on blur); they still submit on Enter. Add data-no-autofilter to a form
+// to opt out.
+(function () {
+    document.addEventListener('change', function (e) {
+        var el = e.target;
+        if (!el || !el.closest) return;
+        var form = el.closest('form');
+        if (!form || form.hasAttribute('data-no-autofilter')) return;
+        if ((form.getAttribute('method') || 'get').toLowerCase() !== 'get') return;
+        if (el.matches('select, input[type="date"], input[type="number"], input[type="checkbox"], input[type="radio"]')) {
+            if (typeof form.requestSubmit === 'function') form.requestSubmit(); else form.submit();
+        }
+    });
+})();
 </script>
 </body>
 </html>

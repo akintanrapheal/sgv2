@@ -11,6 +11,7 @@ module.exports = {
       fontFamily: {
         cormorant: ['"Cormorant Garamond"', 'Georgia', 'serif'],
         inter: ['Inter', 'system-ui', 'sans-serif'],
+        lato: ['Lato', 'Arial', 'Helvetica', 'sans-serif'],
       },
       colors: {
         // Subtle warm off-white page canvas — matches the Featured Pieces section (bg-stone-50)
