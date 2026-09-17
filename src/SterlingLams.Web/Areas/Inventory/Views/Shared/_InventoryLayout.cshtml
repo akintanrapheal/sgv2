@@ -263,6 +263,23 @@
     if (window.__invToastInit) window.invToast(window.__invToastInit.msg, window.__invToastInit.type);
     try { var p = sessionStorage.getItem('invToast'); if (p) { sessionStorage.removeItem('invToast'); var o = JSON.parse(p); window.invToast(o.msg, o.type); } } catch (e) {}
 })();
+
+// ── Auto-apply filters (inventory) ──────────────────────────────────────────
+// Any GET form here re-submits the instant a select / date / number / checkbox / radio
+// changes — no "Apply" click needed. Free-text inputs are excluded (they'd submit mid-typing
+// on blur); they still submit on Enter. Add data-no-autofilter to a form to opt out.
+(function () {
+    document.addEventListener('change', function (e) {
+        var el = e.target;
+        if (!el || !el.closest) return;
+        var form = el.closest('form');
+        if (!form || form.hasAttribute('data-no-autofilter')) return;
+        if ((form.getAttribute('method') || 'get').toLowerCase() !== 'get') return;
+        if (el.matches('select, input[type="date"], input[type="number"], input[type="checkbox"], input[type="radio"]')) {
+            if (typeof form.requestSubmit === 'function') form.requestSubmit(); else form.submit();
+        }
+    });
+})();
 </script>
 </body>
 </html>
