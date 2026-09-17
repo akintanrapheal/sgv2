@@ -326,18 +326,64 @@
             <form asp-area="Admin" asp-controller="Orders" asp-action="UpdateStatus"
                   asp-route-id="@Model.Order.Id" method="post" class="space-y-3">
                 @Html.AntiForgeryToken()
-                <select name="status"
+                <select name="status" id="status-select"
                         class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400">
                     @foreach (var s in Model.AvailableStatuses)
                     {
                         <option value="@s" selected="@(Model.Order.Status.ToString() == s)">@s</option>
                     }
                 </select>
+
+                @* Confirming an UNPAID order records the money — capture how the customer paid and why,
+                   so it's on record and distinct from a Paystack auto-confirm. *@
+                @if (!Model.Order.IsPaid)
+                {
+                    <div id="manual-pay-block" class="hidden space-y-2 rounded-sm border border-amber-200 bg-amber-50 p-3">
+                        <p class="text-[11px] text-amber-700 leading-snug">This order is <span class="font-medium">unpaid</span>. Confirming records the payment as received — choose how the customer paid and add a reason.</p>
+                        <div>
+                            <label class="block text-[11px] text-neutral-500 mb-1">Payment channel</label>
+                            <select name="paymentMethod" id="manual-pay-method"
+                                    class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs bg-white focus:outline-none focus:border-neutral-400">
+                                <option value="">Select channel…</option>
+                                <option value="Cash">Cash</option>
+                                <option value="Transfer">Bank transfer</option>
+                                <option value="Card">Card / POS terminal</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] text-neutral-500 mb-1">Reason</label>
+                            <input type="text" name="confirmReason" id="manual-pay-reason"
+                                   placeholder="e.g. Paid by transfer, ref 8842 / Paid cash on pickup"
+                                   class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-neutral-400" />
+                        </div>
+                    </div>
+                }
+
                 <button type="submit"
                         class="w-full py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
                     Update Status
                 </button>
             </form>
+            @if (!Model.Order.IsPaid)
+            {
+                <script>
+                    (function () {
+                        var sel = document.getElementById('status-select');
+                        var block = document.getElementById('manual-pay-block');
+                        var method = document.getElementById('manual-pay-method');
+                        var reason = document.getElementById('manual-pay-reason');
+                        if (!sel || !block) return;
+                        function sync() {
+                            var show = sel.value === 'Confirmed';
+                            block.classList.toggle('hidden', !show);
+                            if (method) method.required = show;
+                            if (reason) reason.required = show;
+                        }
+                        sel.addEventListener('change', sync);
+                        sync();
+                    })();
+                </script>
+            }
         </div>
 
         <!-- Order notes (timeline) -->
