@@ -1,18 +1,33 @@
 @model SterlingLams.Web.Models.ViewModels.CartViewModel
 @using SterlingLams.Web.Infrastructure
-@* Slide-out mini-cart body, injected into #cart-drawer-body by app.js after add-to-cart. *@
+@inject SterlingLams.Web.Services.ISettingsService Settings
+@* Slide-out mini-cart body, injected into #cart-drawer-body by app.js after add-to-cart.
+   Colours adapt to the admin-chosen drawer background (Settings → Homepage → Cart drawer). *@
+@{
+    var cartBg = await Settings.GetAsync("cart.drawer_bg", "#111111");
+    if (string.IsNullOrWhiteSpace(cartBg)) { cartBg = "#111111"; }
+    var dark = ColorUtil.IsDark(cartBg, true);
+    var cName    = dark ? "text-white"        : "text-neutral-800";
+    var cMuted   = dark ? "text-neutral-400"  : "text-neutral-400";
+    var cSubtle  = dark ? "text-neutral-300"  : "text-neutral-500";
+    var cQtyBtn  = dark ? "text-neutral-300 hover:bg-white/10" : "text-neutral-500 hover:bg-neutral-50";
+    var cBorder  = dark ? "border-white/15"   : "border-neutral-200";
+    var cDivide  = dark ? "divide-white/10"   : "divide-neutral-100";
+    var cRemove  = dark ? "text-neutral-500 hover:text-white" : "text-neutral-300 hover:text-neutral-700";
+    var cCheckout = dark ? "bg-white text-neutral-900 hover:bg-neutral-100" : "bg-neutral-900 text-white hover:bg-black";
+}
 <div class="flex flex-col h-full">
     @if (Model.IsEmpty)
     {
         <div class="flex-1 flex flex-col items-center justify-center text-center px-6 gap-4">
-            <p class="text-neutral-400 font-light">Your bag is empty.</p>
+            <p class="@cMuted font-light">Your bag is empty.</p>
             <a asp-controller="Products" asp-action="Index"
-               class="text-xs tracking-[0.2em] uppercase text-brand-500 hover:text-brand-600 transition-colors">Continue shopping</a>
+               class="text-xs tracking-[0.2em] uppercase text-brand-500 hover:text-brand-400 transition-colors">Continue shopping</a>
         </div>
     }
     else
     {
-        <div class="flex-1 overflow-y-auto divide-y divide-neutral-100">
+        <div class="flex-1 overflow-y-auto divide-y @cDivide">
             @foreach (var item in Model.Items)
             {
                 <div class="flex items-start gap-3 p-4">
@@ -20,37 +35,37 @@
                          loading="lazy" width="60" height="60" class="w-16 h-16 object-cover bg-neutral-100 flex-shrink-0" />
                     <div class="min-w-0 flex-1">
                         <a asp-controller="Products" asp-action="Detail" asp-route-slug="@item.Slug"
-                           class="text-sm text-neutral-800 hover:text-brand-600 transition-colors block truncate">@item.ProductName</a>
+                           class="text-sm @cName hover:text-brand-500 transition-colors block truncate">@item.ProductName</a>
                         @if (!string.IsNullOrEmpty(item.VariantName))
                         {
-                            <p class="text-xs text-neutral-400">@item.VariantName</p>
+                            <p class="text-xs @cMuted">@item.VariantName</p>
                         }
-                        <p class="text-xs text-neutral-400 mt-0.5">@item.FormattedUnitPrice each</p>
+                        <p class="text-xs @cMuted mt-0.5">@item.FormattedUnitPrice each</p>
                         <div class="mt-2 flex items-center justify-between gap-2">
-                            <div class="flex items-center border border-neutral-200 rounded">
-                                <button type="button" class="mini-qty w-7 h-7 flex items-center justify-center text-neutral-500 hover:bg-neutral-50 leading-none"
+                            <div class="flex items-center border @cBorder rounded">
+                                <button type="button" class="mini-qty w-7 h-7 flex items-center justify-center @cQtyBtn leading-none"
                                         data-product-id="@item.ProductId" data-variant-id="@item.VariantId" data-delta="-1" aria-label="Decrease quantity">−</button>
-                                <span class="w-8 text-center text-sm tabular-nums">@item.Quantity</span>
-                                <button type="button" class="mini-qty w-7 h-7 flex items-center justify-center text-neutral-500 hover:bg-neutral-50 leading-none"
+                                <span class="w-8 text-center text-sm tabular-nums @cName">@item.Quantity</span>
+                                <button type="button" class="mini-qty w-7 h-7 flex items-center justify-center @cQtyBtn leading-none"
                                         data-product-id="@item.ProductId" data-variant-id="@item.VariantId" data-delta="1" aria-label="Increase quantity">+</button>
                             </div>
-                            <span class="text-sm text-brand-600">@item.FormattedLineTotal</span>
+                            <span class="text-sm text-brand-500">@item.FormattedLineTotal</span>
                         </div>
                     </div>
-                    <button type="button" class="mini-cart-remove text-neutral-300 hover:text-neutral-700 text-xl leading-none flex-shrink-0"
+                    <button type="button" class="mini-cart-remove @cRemove text-xl leading-none flex-shrink-0"
                             data-product-id="@item.ProductId" data-variant-id="@item.VariantId" aria-label="Remove @item.ProductName">&times;</button>
                 </div>
             }
         </div>
-        <div class="border-t border-neutral-200 p-5 space-y-3">
+        <div class="border-t @cBorder p-5 space-y-3">
             <div class="flex items-center justify-between text-sm">
-                <span class="uppercase tracking-[0.15em] text-neutral-500">Subtotal</span>
-                <span class="text-brand-600 font-medium text-base">@Model.FormattedSubtotal</span>
+                <span class="uppercase tracking-[0.15em] @cSubtle">Subtotal</span>
+                <span class="text-brand-500 font-medium text-base">@Model.FormattedSubtotal</span>
             </div>
             <a asp-controller="Cart" asp-action="Index"
                class="block text-center bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-3.5 hover:bg-brand-600 transition-colors">View cart</a>
             <a asp-controller="Checkout" asp-action="Index"
-               class="block text-center bg-neutral-900 text-white text-xs tracking-[0.2em] uppercase py-3.5 hover:bg-black transition-colors">Checkout</a>
+               class="block text-center @cCheckout text-xs tracking-[0.2em] uppercase py-3.5 transition-colors">Checkout</a>
         </div>
     }
 </div>

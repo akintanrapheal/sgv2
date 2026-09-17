@@ -35,6 +35,33 @@
     }, true);
 })();
 
+// ─── Broken-image fallback ────────────────────────────────────────────────
+// Any product image that fails to load (missing/404, e.g. a product with no image yet, or a
+// stale cart-drawer thumbnail) is swapped to a tasteful "Image coming soon" placeholder instead
+// of the browser's broken-image glyph. Inline styles (no purgeable class); works for images added
+// later (capture-phase listener) and for ones already broken when this runs (scan on load).
+(function () {
+    var PLACEHOLDER = '/images/no-image.svg';
+    function fix(img) {
+        if (!img || img.tagName !== 'IMG') return;
+        if (img.dataset.noFallback === '1' || img.dataset.fallbackApplied === '1') return;
+        if ((img.getAttribute('src') || '') === PLACEHOLDER) return;
+        img.dataset.fallbackApplied = '1';
+        img.src = PLACEHOLDER;
+        img.style.objectFit = 'contain';
+        img.style.background = '#f3f4f6';
+    }
+    document.addEventListener('error', function (e) {
+        if (e.target && e.target.tagName === 'IMG') fix(e.target);
+    }, true); // capture — the error event doesn't bubble
+    function scan() {
+        document.querySelectorAll('img').forEach(function (img) {
+            if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) fix(img);
+        });
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scan); else scan();
+})();
+
 // ─── Search Overlay ───────────────────────────────────────────────────────
 (function () {
     const overlay     = document.getElementById('search-overlay');
