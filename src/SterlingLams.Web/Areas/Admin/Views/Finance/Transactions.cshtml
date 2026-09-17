@@ -249,10 +249,12 @@
             </tbody>
         </table>
     </div>
-    @if (Model.TotalPages > 1)
+    @if (Model.Total > 0)
     {
+        var firstRow = ((Model.Page - 1) * Model.PageSize) + 1;
+        var lastRow = Math.Min(Model.Page * Model.PageSize, Model.Total);
         <div class="flex items-center justify-between px-4 py-3 border-t border-neutral-100 text-xs text-neutral-500">
-            <span>Page @Model.Page of @Model.TotalPages · @Model.Total.ToString("N0") transaction(s)</span>
+            <span>Showing @firstRow.ToString("N0")–@lastRow.ToString("N0") of @Model.Total.ToString("N0") · page @Model.Page of @Model.TotalPages</span>
             <div class="flex gap-2">
                 @if (Model.Page > 1)
                 { <a class="px-3 py-1.5 border border-neutral-200 rounded hover:border-neutral-400" asp-action="Transactions" asp-all-route-data="rp(new { page = Model.Page - 1 })">← Prev</a> }
