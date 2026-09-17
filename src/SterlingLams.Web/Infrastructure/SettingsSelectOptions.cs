@@ -23,6 +23,14 @@ public static class SettingsSelectOptions
                 ("flip",      "Flip (3D)"),
                 ("none",      "Static (no motion)"),
             },
+            ["cart.icon_style"] = new[]
+            {
+                ("trolley-solid",   "Trolley — solid"),
+                ("trolley-outline", "Trolley — outline"),
+                ("bag-solid",       "Bag — solid"),
+                ("bag",             "Bag — outline"),
+                ("basket",          "Basket — outline"),
+            },
         };
 
     public static (string Value, string Label)[] For(string key) =>

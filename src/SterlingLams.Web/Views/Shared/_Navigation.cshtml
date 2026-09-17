@@ -12,6 +12,19 @@
 
     // Top-bar mega-menu grouping lives in StoreMenu so the shop-page sidebar accordion stays in sync.
     var megaMenu = SterlingLams.Web.Infrastructure.StoreMenu.Entries;
+
+    // Cart icon: admin-chosen style + whether it sits in a filled pink button or stands alone.
+    var cartStyle = SterlingLams.Web.Infrastructure.SettingsSelectOptions.Coerce("cart.icon_style",
+        await SettingsService.GetAsync("cart.icon_style", "trolley-solid"));
+    var cartPink = await SettingsService.GetBoolAsync("cart.icon_pink_button", true);
+    string CartSvg(string style) => style switch
+    {
+        "trolley-outline" => "<svg class=\"w-5 h-5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-.534 1.872-1.683 1.872-2.946 0-1.66-1.34-3-3-3H6.272M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z\"/></svg>",
+        "bag" => "<svg class=\"w-5 h-5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z\"/></svg>",
+        "bag-solid" => "<svg class=\"w-5 h-5\" fill=\"currentColor\" viewBox=\"0 0 24 24\"><path fill-rule=\"evenodd\" d=\"M7.5 6v.75H5.513c-.96 0-1.764.724-1.865 1.679l-1.263 12A1.875 1.875 0 004.25 22.5h15.5a1.875 1.875 0 001.865-2.071l-1.263-12a1.875 1.875 0 00-1.865-1.679H16.5V6a4.5 4.5 0 10-9 0zM12 3a3 3 0 00-3 3v.75h6V6a3 3 0 00-3-3zm-3 8.25a3 3 0 106 0v-.75a.75.75 0 011.5 0v.75a4.5 4.5 0 11-9 0v-.75a.75.75 0 011.5 0v.75z\" clip-rule=\"evenodd\"/></svg>",
+        "basket" => "<svg class=\"w-5 h-5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" viewBox=\"0 0 24 24\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5.25 8.25h13.5l-1.153 9.226a2.25 2.25 0 01-2.233 1.974H8.636a2.25 2.25 0 01-2.233-1.974L5.25 8.25zM9 8.25 12 3.75l3 4.5M9.75 11.25v4.5M14.25 11.25v4.5\"/></svg>",
+        _ => "<svg class=\"w-5 h-5\" fill=\"currentColor\" viewBox=\"0 0 24 24\"><path d=\"M2.25 2.25a.75.75 0 000 1.5h1.386c.17 0 .318.114.362.278l2.558 9.592a3.752 3.752 0 00-2.806 3.63c0 .414.336.75.75.75h15.75a.75.75 0 000-1.5H5.378A2.25 2.25 0 017.5 15h11.218a.75.75 0 00.674-.421 60.358 60.358 0 002.96-7.228.75.75 0 00-.525-.965A60.864 60.864 0 005.68 4.509l-.232-.867A1.875 1.875 0 003.636 2.25H2.25zM3.75 20.25a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM16.5 20.25a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z\"/></svg>",
+    };
 }
 
 <header class="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-neutral-100">
@@ -85,15 +98,25 @@
                 </a>
             </div>
 
-            <!-- Cart — pink button with a trolley icon, matching the old sterlinglams.com -->
-            <a id="cart-link" asp-controller="Cart" asp-action="Index" aria-label="Shopping bag"
-               class="relative inline-flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors">
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M2.25 2.25a.75.75 0 000 1.5h1.386c.17 0 .318.114.362.278l2.558 9.592a3.752 3.752 0 00-2.806 3.63c0 .414.336.75.75.75h15.75a.75.75 0 000-1.5H5.378A2.25 2.25 0 017.5 15h11.218a.75.75 0 00.674-.421 60.358 60.358 0 002.96-7.228.75.75 0 00-.525-.965A60.864 60.864 0 005.68 4.509l-.232-.867A1.875 1.875 0 003.636 2.25H2.25zM3.75 20.25a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM16.5 20.25a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z"/>
-                </svg>
-                <span id="cart-badge"
-                      class="hidden absolute -top-1.5 -right-1.5 bg-white text-brand-600 ring-1 ring-brand-200 text-[10px] font-semibold w-4 h-4 rounded-full flex items-center justify-center shadow-sm"></span>
-            </a>
+            <!-- Cart — style + pink-button toggle chosen in Admin → Settings → Homepage -->
+            @if (cartPink)
+            {
+                <a id="cart-link" asp-controller="Cart" asp-action="Index" aria-label="Shopping bag"
+                   class="relative inline-flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors">
+                    @Html.Raw(CartSvg(cartStyle))
+                    <span id="cart-badge"
+                          class="hidden absolute -top-1.5 -right-1.5 bg-white text-brand-600 ring-1 ring-brand-200 text-[10px] font-semibold w-4 h-4 rounded-full flex items-center justify-center shadow-sm"></span>
+                </a>
+            }
+            else
+            {
+                <a id="cart-link" asp-controller="Cart" asp-action="Index" aria-label="Shopping bag"
+                   class="relative text-neutral-600 hover:text-brand-500 transition-colors">
+                    @Html.Raw(CartSvg(cartStyle))
+                    <span id="cart-badge"
+                          class="hidden absolute -top-1.5 -right-1.5 bg-brand-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center"></span>
+                </a>
+            }
         </div>
     </div>
 
