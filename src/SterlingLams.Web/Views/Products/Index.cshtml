@@ -287,14 +287,24 @@
                     <partial name="_ProductCards" model="Model.Products" />
                 </div>
 
-                <!-- Progressive "View more" (appends the next page in place) + Back to top -->
+                <!-- Infinite scroll: the next page auto-loads as you approach the bottom (JS observes
+                     the sentinel below). The button is a no-JS / fallback trigger only. + Back to top -->
                 <div class="mt-16 flex flex-col items-center gap-8">
                     <p class="text-sm text-neutral-500">
                         Showing 1–<span id="shown-count">@shownNow</span> of @Model.TotalCount
                     </p>
                     @if (Model.Page < Model.TotalPages)
                     {
-                        <div id="load-more-wrap" class="w-full max-w-xl">
+                        <div id="load-more-wrap" class="w-full max-w-xl flex flex-col items-center gap-4">
+                            <!-- Sentinel: when it nears the viewport, the next page loads automatically. -->
+                            <div id="load-sentinel" aria-hidden="true" class="h-px w-full"></div>
+                            <div id="load-more-status" class="hidden flex items-center gap-2 text-xs tracking-[0.2em] uppercase text-neutral-400">
+                                <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="3"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v3a5 5 0 00-5 5H4z"></path>
+                                </svg>
+                                Loading more pieces…
+                            </div>
                             <button type="button" id="load-more-btn"
                                     data-url="@loadMoreBaseUrl" data-next="@(Model.Page + 1)" data-total="@Model.TotalPages"
                                     data-count="@Model.TotalCount" data-size="@Model.PageSize"
