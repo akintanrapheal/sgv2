@@ -726,14 +726,20 @@ public class CheckoutController : Controller
         if (order != null)
         {
             var wasUnpaid = !order.IsPaid;
+            var prevStatus = order.Status;
             order.IsPaid = true;
             order.PaidAt = DateTime.UtcNow;
             order.Status = OrderStatus.Confirmed;
             order.PaymentReference = refToVerify;
             order.PaymentProvider = _payment.ProviderName;
             if (wasUnpaid)
+            {
                 SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
                     $"Payment via {_payment.ProviderName} successful (Transaction Reference: {refToVerify}).");
+                if (prevStatus != OrderStatus.Confirmed)
+                    SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
+                        $"Order status changed from {prevStatus} to Confirmed (payment received).");
+            }
             await _db.SaveChangesAsync();
             // Payment landed → close this buyer's abandoned-cart snapshot so they get no more
             // "you left something in your bag" reminders for a bag they've already paid for.

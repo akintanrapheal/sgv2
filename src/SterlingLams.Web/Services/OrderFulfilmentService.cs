@@ -331,7 +331,11 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                     // notice (pickup) or dispatches for delivery. Nothing is auto-marked ready.
                     order.Status = OrderStatus.Confirmed;
                     order.UpdatedAt = now;   // marks the moment it entered the branch's pack queue (POS alert)
-                    OrderNotes.AddSystem(_db, order.Id, $"Order status changed from {prevStatus} to {order.Status} (fulfilled from {fulfilStore.Name}).");
+                    // Payment already moved it Pending→Confirmed, so this is usually a no-op status-wise —
+                    // don't log a confusing "Confirmed to Confirmed"; just record where it's fulfilled from.
+                    OrderNotes.AddSystem(_db, order.Id, prevStatus == order.Status
+                        ? $"Fulfilled from {fulfilStore.Name} — added to its pack queue."
+                        : $"Order status changed from {prevStatus} to {order.Status} (fulfilled from {fulfilStore.Name}).");
                     await _db.SaveChangesAsync();
                     await tx.CommitAsync();
                     shipNow = true; fulfilStoreForEmail = fulfilStore;
