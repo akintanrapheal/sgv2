@@ -270,9 +270,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return View("PrintDoc", order);
         }
 
+        // Payment channels a staffer can record when confirming an unpaid order out of band
+        // (i.e. money received off the gateway). Paystack isn't here — that path auto-confirms.
+        private static readonly string[] ManualPayChannels = { "Cash", "Transfer", "Card" };
+
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> UpdateStatus(int id, string status)
+        public async Task<IActionResult> UpdateStatus(int id, string status, string? paymentMethod, string? confirmReason)
         {
             var order = await _db.Orders.FindAsync(id);
             if (order == null) return NotFound();
@@ -287,8 +291,25 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     return RedirectToAction(nameof(Detail), new { id });
                 }
 
+                // Manually confirming an UNPAID order records the money as received, so make the staffer
+                // say how it was paid and why — it's kept on the order and tells this apart from a
+                // Paystack auto-confirm.
+                if (newStatus == OrderStatus.Confirmed && !order.IsPaid)
+                {
+                    if (string.IsNullOrWhiteSpace(paymentMethod) || !ManualPayChannels.Contains(paymentMethod))
+                    {
+                        TempData["Error"] = "Choose how the customer paid (Cash, Transfer or Card) before confirming an unpaid order.";
+                        return RedirectToAction(nameof(Detail), new { id });
+                    }
+                    if (string.IsNullOrWhiteSpace(confirmReason))
+                    {
+                        TempData["Error"] = "Enter a reason before confirming an unpaid order — it's kept on the order's record.";
+                        return RedirectToAction(nameof(Detail), new { id });
+                    }
+                }
+
                 var staff = await CurrentStaffNameAsync();
-                var outcome = await ApplyStatusAsync(order, newStatus, staff);
+                var outcome = await ApplyStatusAsync(order, newStatus, staff, paymentMethod, confirmReason);
 
                 if (outcome == StatusOutcome.SoldOut)
                     TempData["Error"] = $"Order {order.OrderNumber} can't be confirmed — an item is out of stock. It was cancelled.";
@@ -308,21 +329,29 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         /// on its own, so a bulk run that is interrupted leaves the orders it already handled correct.
         /// Callers must reject <see cref="OrderStatus.Refunded"/> first — refunds run through RefundOrder.
         /// </summary>
-        private async Task<StatusOutcome> ApplyStatusAsync(Order order, OrderStatus newStatus, string staff)
+        private async Task<StatusOutcome> ApplyStatusAsync(Order order, OrderStatus newStatus, string staff,
+            string? paymentMethod = null, string? confirmReason = null)
         {
             var old = order.Status;
 
-            // Confirming an as-yet-unpaid order means the money has arrived out of band — typically a
-            // direct bank transfer the shop received and is now confirming. Mark it paid so it reconciles
-            // in Finance and can be fulfilled, and record a Transfer tender for the full total. Saved
+            // Confirming an as-yet-unpaid order means the money has arrived out of band — a transfer the
+            // shop received, cash/card on pickup, etc. Mark it paid so it reconciles in Finance and can be
+            // fulfilled, and record the tender under the channel the staffer chose (defaults to Transfer
+            // for the bulk action, which can't prompt). The reason + channel are kept on the timeline and
+            // audit log so this is clearly a STAFF confirmation, not a Paystack auto-confirm. Saved
             // immediately so it survives the reload after fulfilment below.
             if (newStatus == OrderStatus.Confirmed && !order.IsPaid)
             {
+                var channel = string.IsNullOrWhiteSpace(paymentMethod) ? "Transfer" : paymentMethod.Trim();
+                var reason = string.IsNullOrWhiteSpace(confirmReason) ? "" : $" Reason: {confirmReason.Trim()}";
                 order.IsPaid = true;
                 order.PaidAt = DateTime.UtcNow;
-                _db.OrderPayments.Add(new OrderPayment { OrderId = order.Id, Method = "Transfer", Amount = order.Total });
-                OrderNotes.AddSystem(_db, order.Id, $"Payment marked received (Transfer, ₦{order.Total:N0}) by {staff} on confirmation.");
+                order.PaymentProvider = $"Manual ({channel})";
+                _db.OrderPayments.Add(new OrderPayment { OrderId = order.Id, Method = channel, Amount = order.Total });
+                OrderNotes.AddSystem(_db, order.Id, $"Payment confirmed manually by {staff} — {channel}, ₦{order.Total:N0}.{reason}");
                 await _db.SaveChangesAsync();
+                await LogAsync("Payment", "Order", order.Id.ToString(),
+                    $"Manual payment confirm for {order.OrderNumber}: {channel}, ₦{order.Total:N0} by {staff}.{reason}");
             }
 
             // Deduct stock when staff move an online order forward for the first time (e.g. they
