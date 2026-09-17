@@ -5,7 +5,6 @@
     var popupHeadline = await Settings.GetAsync("popup.headline", $"Get {popupPct}% off your first order");
     var popupSubtext = await Settings.GetAsync("popup.subtext", "Join our list for early access to new pieces and exclusive offers.");
     var popupLogoUrl = await Settings.GetAsync("general.logo_url");
-    var popupLogoSrc = string.IsNullOrWhiteSpace(popupLogoUrl) ? "/images/sg-logo.png" : popupLogoUrl;
 }
 @* Exit-intent / welcome popup. Hidden by default; app.js decides when to show (once per browser),
    posts to /Home/WelcomeOffer, and swaps in the success view with the minted coupon. No inline JS
@@ -19,10 +18,17 @@
                     class="absolute top-3 right-3 text-neutral-400 hover:text-neutral-800 text-2xl leading-none">&times;</button>
 
             <div data-welcome-form>
-                @* Brand logo (built-in when none uploaded); falls back to the text wordmark if it fails. *@
-                <img src="@popupLogoSrc" alt="Sterlin Glams" class="h-10 w-auto mx-auto mb-4"
-                     onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />
-                <p class="text-xs tracking-[0.3em] uppercase text-brand-500 mb-3 text-center" style="display:none">Sterlin Glams</p>
+                @* Brand mark. A custom uploaded logo renders large; otherwise a big, dark wordmark so
+                   the whole "Sterlin Glams" name reads clearly on the white card (the default pink logo
+                   image showed faintly). No inline onerror — the storefront CSP is nonce-strict. *@
+                @if (!string.IsNullOrWhiteSpace(popupLogoUrl))
+                {
+                    <img src="@popupLogoUrl" alt="Sterlin Glams" class="h-20 w-auto mx-auto mb-5" />
+                }
+                else
+                {
+                    <p class="font-cormorant text-4xl font-normal tracking-[0.12em] uppercase text-neutral-900 text-center mb-5 leading-none">Sterlin Glams</p>
+                }
                 <h2 class="font-cormorant text-3xl font-light text-neutral-900 text-center mb-2 leading-tight">@popupHeadline</h2>
                 <p class="text-sm text-neutral-500 text-center mb-6">@popupSubtext</p>
                 <form data-welcome-submit class="space-y-3">
