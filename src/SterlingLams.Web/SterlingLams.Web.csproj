@@ -25,36 +25,36 @@
     <!-- Entity Framework Core (PostgreSQL) -->
     <PackageReference Include="CloudinaryDotNet" Version="1.29.3" />
     <PackageReference Include="QRCoder" Version="1.8.0" />
-    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
     <PackageReference Include="HtmlSanitizer" Version="9.2.1039" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.11">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.12">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
 
     <!-- ASP.NET Core Identity -->
-    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.12" />
 
     <!-- Data Protection key storage in the DB (survives redeploys/cold starts on ephemeral hosts) -->
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.12" />
 
     <!-- Authentication (cookie auth ships in the ASP.NET Core shared framework — no package needed) -->
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.11" />
-    <PackageReference Include="Sentry.AspNetCore" Version="6.10.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.12" />
+    <PackageReference Include="Sentry.AspNetCore" Version="6.11.0" />
 
     <!-- Stripe -->
-    <PackageReference Include="Stripe.net" Version="52.4.1" />
+    <PackageReference Include="Stripe.net" Version="52.4.2" />
 
     <!-- HTTP Client (IHttpClientFactory) + JSON both ship in the .NET 10 shared framework —
          no explicit PackageReference needed (removing them clears NU1510 on net10). -->
 
     <!-- Caching -->
-    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="10.0.12" />
 
     <!-- Logging -->
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
