@@ -72,7 +72,12 @@ public class RolesController : AdminBaseController
             var sections = (await _perms.GetRoleSectionsAsync(name))
                 .Select(key => { var i = key.IndexOf(':'); return i < 0 ? key : key[..i]; })
                 .Distinct()
-                .Select(baseKey => AdminSections.All.FirstOrDefault(s => s.Key == baseKey)?.Label ?? baseKey)
+                // Inventory per-tab grants ("Inv.*") are managed in the Inventory System's own Roles
+                // editor — keep them out of this Admin summary; show the umbrella under a friendly name.
+                .Where(baseKey => !SterlingLams.Web.Areas.Inventory.InventorySections.IsPerTabKey(baseKey))
+                .Select(baseKey => baseKey == SterlingLams.Web.Areas.Inventory.InventorySections.Umbrella
+                    ? "Inventory System"
+                    : AdminSections.All.FirstOrDefault(s => s.Key == baseKey)?.Label ?? baseKey)
                 .ToList();
 
             rows.Add(new AdminRoleRow
@@ -194,7 +199,13 @@ public class RolesController : AdminBaseController
             await LogAsync("Update", "Role", null, $"Renamed role '{vm.OriginalName}' to '{name}'");
         }
 
-        await _perms.SetRoleSectionsAsync(name, sections ?? new List<string>());
+        // The Admin editor owns every grant EXCEPT the Inventory System's per-tab keys ("Inv.*"), which
+        // are managed inside the Inventory System's own Roles screen. Preserve those so saving here
+        // doesn't wipe a role's inventory-tab grants. (The "InventorySystem" umbrella IS submitted here.)
+        var keptInvTabs = (await _perms.GetRoleSectionsAsync(name))
+            .Where(SterlingLams.Web.Areas.Inventory.InventorySections.IsPerTabKey);
+        var toSave = (sections ?? new List<string>()).Concat(keptInvTabs);
+        await _perms.SetRoleSectionsAsync(name, toSave);
         await LogAsync("Update", "Role", null,
             $"Set '{name}' permissions: {(sections?.Any() == true ? string.Join(", ", sections) : "none")}");
 

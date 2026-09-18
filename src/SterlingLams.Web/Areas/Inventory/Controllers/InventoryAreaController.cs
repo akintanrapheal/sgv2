@@ -74,13 +74,49 @@ public abstract class InventoryAreaController : Controller
 
     public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        // ── Access control (Inventory section: view to read, manage to write) ───────────────
+        // ── Access control (per-tab: view to read, manage to write) ────────────────────────
+        // A role gets into the Inventory System one of two ways:
+        //   • the umbrella grant ("InventorySystem", or the legacy Admin "Inventory" section) → all tabs
+        //   • a per-tab grant ("Inv.Pos", "Inv.Sales", …) → just that tab
+        // Full admins and the legacy "Inventory" role keep full access. Each request is checked against
+        // the tab its controller belongs to (Overview has no tab — open to anyone who can enter at all).
         var perms = HttpContext.RequestServices.GetRequiredService<IPermissionService>();
-        // Full admins and the legacy Inventory role always have full (manage) access.
-        var canManage = SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User)
-                        || User.IsInRole("Inventory")
-                        || await Infrastructure.DbRead.RetryAsync(() => perms.CanManageAsync(User, "Inventory"));
-        var canView = canManage || await Infrastructure.DbRead.RetryAsync(() => perms.CanAccessAsync(User, "Inventory"));
+
+        bool full = SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User) || User.IsInRole("Inventory");
+        // Umbrella = new "InventorySystem" grant OR the legacy Admin "Inventory" section (kept working so
+        // no existing role loses access on deploy).
+        bool sysManage = full
+            || await Infrastructure.DbRead.RetryAsync(() => perms.CanManageAsync(User, InventorySections.Umbrella))
+            || await Infrastructure.DbRead.RetryAsync(() => perms.CanManageAsync(User, "Inventory"));
+        bool sysView = sysManage
+            || await Infrastructure.DbRead.RetryAsync(() => perms.CanAccessAsync(User, InventorySections.Umbrella))
+            || await Infrastructure.DbRead.RetryAsync(() => perms.CanAccessAsync(User, "Inventory"));
+
+        // Tabs this user may VIEW — drives both the entry check and the sidebar. Umbrella → every tab.
+        var allowedTabs = new HashSet<string>(StringComparer.Ordinal);
+        if (sysView)
+            foreach (var sec in InventorySections.All) allowedTabs.Add(sec.Key);
+        else
+            foreach (var sec in InventorySections.All)
+                if (await Infrastructure.DbRead.RetryAsync(() => perms.CanAccessAsync(User, sec.Key)))
+                    allowedTabs.Add(sec.Key);
+
+        var controller = (context.RouteData.Values["controller"] as string) ?? "";
+        var tab = InventorySections.TabForController(controller);
+
+        bool canView, canManage;
+        if (tab == null)
+        {
+            // Overview / untabbed pages: open to anyone who can see any part of the system.
+            canView = sysView || allowedTabs.Count > 0;
+            canManage = sysManage;
+        }
+        else
+        {
+            canView = allowedTabs.Contains(tab);
+            canManage = sysManage || await Infrastructure.DbRead.RetryAsync(() => perms.CanManageAsync(User, tab));
+        }
+
         if (!canView)
         {
             context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
@@ -96,6 +132,8 @@ public abstract class InventoryAreaController : Controller
             return;
         }
         ViewData["CanManageInventory"] = canManage;
+        ViewData["InvHasSystem"] = sysView;                 // full-system access → sidebar shows all tabs
+        ViewData["InvAllowedTabs"] = allowedTabs;           // otherwise only these tabs are shown
 
         // Nav-badge counts — wrapped in the transient read-retry so a brief Render-DB connection blip
         // on this every-request filter degrades to a retry instead of 500-ing the whole Inventory area.
