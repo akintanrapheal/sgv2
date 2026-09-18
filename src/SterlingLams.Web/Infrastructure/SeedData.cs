@@ -124,8 +124,8 @@ public static class SeedData
                     Email           = "abuja@sterlinglams.com",
                     OpeningHours    = "Mon-Sat: 8am-8pm, Sun: 12pm-8pm",
                     IsActive        = true,
-                    Latitude        = 9.0563,
-                    Longitude       = 7.4985
+                    Latitude        = 9.1026388,
+                    Longitude       = 7.4048336
                 },
                 new Store
                 {
@@ -138,8 +138,8 @@ public static class SeedData
                     Email           = "allen@sterlinglams.com",
                     OpeningHours    = "Mon-Sat: 8am-8pm, Sun: 12pm-8pm",
                     IsActive        = true,
-                    Latitude        = 6.6085,
-                    Longitude       = 3.3521
+                    Latitude        = 6.6013173,
+                    Longitude       = 3.3520921
                 },
                 new Store
                 {
@@ -152,8 +152,22 @@ public static class SeedData
                     Email           = "ikota@sterlinglams.com",
                     OpeningHours    = "Mon-Sat: 8am-8pm, Sun: 12pm-8pm",
                     IsActive        = true,
-                    Latitude        = 6.4369,
-                    Longitude       = 3.5676
+                    Latitude        = 6.4653347,
+                    Longitude       = 3.5574654
+                },
+                new Store
+                {
+                    Name            = "Sterlin Glams Ibadan",
+                    Slug            = "sterlin-glams-ibadan",
+                    Address         = "Town Planning Complex, by Sumal Foods, Ring Road (by MKO Abiola Way), Ibadan, Oyo State",
+                    City            = "Ibadan",
+                    State           = "Oyo",
+                    Phone           = "+234 810 301 6803",
+                    Email           = "ibadan@sterlinglams.com",
+                    OpeningHours    = "Mon-Sat: 8am-8pm, Sun: 1pm-8pm",
+                    IsActive        = true,
+                    Latitude        = 7.3695679,
+                    Longitude       = 3.8598124
                 }
             };
 
@@ -168,6 +182,9 @@ public static class SeedData
 
             await db.SaveChangesAsync();
 
+            // One-time correction of existing store coordinates (prod was seeded with approximate pins).
+            await FixStoreCoordinatesAsync(db, logger);
+
             // â”€â”€â”€ Dummy Products â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             await SeedProductsAsync(db, logger);
 
@@ -178,6 +195,43 @@ public static class SeedData
             logger.LogError(ex, "An error occurred while seeding the database.");
             throw;
         }
+    }
+
+    /// <summary>
+    /// One-time correction of store map coordinates. The branches were originally seeded (and created in
+    /// prod) with approximate coordinates, so "Get Directions" landed near — but not on — each shop. This
+    /// sets the exact coordinates the owner supplied from each branch's Google Maps pin, matched by the
+    /// city keyword in the store name. Guarded by a marker setting so it runs exactly ONCE and never
+    /// overrides coordinates a staffer later edits in Admin → Stores.
+    /// </summary>
+    private static async Task FixStoreCoordinatesAsync(ApplicationDbContext db, ILogger logger)
+    {
+        const string marker = "stores.coords_corrected_v1";
+        if (await db.SiteSettings.AnyAsync(s => s.Key == marker)) return; // already applied
+
+        // city keyword (found in the store name) → exact (latitude, longitude) from the branch's Maps pin
+        var exact = new (string Keyword, double Lat, double Lng)[]
+        {
+            ("Ikota",  6.4653347, 3.5574654),
+            ("Allen",  6.6013173, 3.3520921),
+            ("Abuja",  9.1026388, 7.4048336),
+            ("Ibadan", 7.3695679, 3.8598124),
+        };
+
+        var stores = await db.Stores.ToListAsync();
+        foreach (var (keyword, lat, lng) in exact)
+        {
+            var store = stores.FirstOrDefault(s =>
+                !string.IsNullOrEmpty(s.Name) && s.Name.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+            if (store == null) continue;
+            store.Latitude = lat;
+            store.Longitude = lng;
+            logger.LogInformation("Corrected coordinates for store: {Store}", store.Name);
+        }
+
+        // Drop the marker so this never runs again (Group "System" keeps it out of the Settings UI).
+        db.SiteSettings.Add(new SiteSetting { Key = marker, Value = "1", Group = "System", Label = "Store coordinates corrected", Type = "text" });
+        await db.SaveChangesAsync();
     }
 
     private static async Task SeedProductsAsync(ApplicationDbContext db, ILogger logger)
