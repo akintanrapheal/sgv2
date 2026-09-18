@@ -228,9 +228,12 @@ else
         <a data-auth="in" asp-controller="Account" asp-action="Profile" class="hidden py-3.5 text-sm tracking-[0.15em] uppercase text-neutral-700">My Account</a>
         <a data-auth="out" asp-controller="Account" asp-action="Login" class="py-3.5 text-sm tracking-[0.15em] uppercase text-neutral-700">Sign In</a>
     </div>
-
-    <partial name="_ContactPanel" />
 </header>
+
+@* The contact panel MUST live OUTSIDE <header>: the header uses backdrop-blur (backdrop-filter), which
+   makes it the containing block for position:fixed descendants — trapping the slide-over inside the short
+   header instead of filling the viewport. Rendered here, its position:fixed resolves against the viewport. *@
+<partial name="_ContactPanel" />
 
 <!-- Search Overlay -->
 <div id="search-overlay" class="hidden fixed inset-0 z-[200]" role="dialog" aria-modal="true" aria-label="Search">
