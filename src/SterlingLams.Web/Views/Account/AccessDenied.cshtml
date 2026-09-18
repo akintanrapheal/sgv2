@@ -4,7 +4,11 @@
 
 <div class="max-w-xl mx-auto px-6 py-32 text-center">
     <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-4">Access denied</p>
-    <h1 class="font-cormorant text-4xl font-light text-neutral-900 mb-6">You don't have permission to view this page</h1>
-    <p class="text-sm text-neutral-400 font-light mb-10">Please sign in with an authorised account.</p>
-    <a asp-controller="Account" asp-action="Login" class="btn-primary">Sign In</a>
+    <h1 class="font-cormorant text-4xl font-light text-neutral-900 mb-6">You don't have access to this area</h1>
+    <p class="text-sm text-neutral-500 font-light mb-2">Your account hasn't been given access to this part of the backend.</p>
+    <p class="text-sm text-neutral-400 font-light mb-10">If you think this is a mistake, please contact the administrator to request access.</p>
+    <div class="flex items-center justify-center gap-3">
+        <a href="/" class="text-xs tracking-[0.2em] uppercase text-neutral-500 hover:text-neutral-900 border border-neutral-200 rounded-sm px-4 py-2.5 transition-colors">Back to store</a>
+        <a asp-controller="Account" asp-action="Login" class="btn-primary">Sign in as someone else</a>
+    </div>
 </div>

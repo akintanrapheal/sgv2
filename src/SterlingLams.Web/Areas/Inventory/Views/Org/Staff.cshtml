@@ -3,6 +3,8 @@
     ViewData["Title"] = "Staff & roles";
     var canManageOrg = ViewData["CanManageOrg"] as bool? == true; // Owner is view-only here
     var roleCounts = ViewBag.RoleCounts as Dictionary<string, int> ?? new();
+    var isOwner = ViewBag.IsOwner as bool? == true;               // only the owner can change roles/permissions
+    var allRoles = ViewBag.AllRoles as List<string> ?? new();
     string RoleBadge(string r) => r switch
     {
         "Admin" => "bg-red-50 text-red-700", "Manager" => "bg-indigo-50 text-indigo-700",
@@ -13,8 +15,15 @@
 
 <div class="flex items-center justify-between mb-4">
     <h1 class="font-cormorant text-2xl font-light text-neutral-900">Staff &amp; roles</h1>
-    <a asp-area="Admin" asp-controller="Users" asp-action="Index" target="_blank"
-       class="text-xs text-neutral-500 hover:text-neutral-800 border border-neutral-200 rounded-sm px-3 py-1.5">Manage in Website Admin ↗</a>
+    <div class="flex items-center gap-2">
+        @if (isOwner)
+        {
+            <a asp-area="Inventory" asp-controller="Org" asp-action="Roles"
+               class="text-xs text-white bg-neutral-900 hover:bg-neutral-700 rounded-sm px-3 py-1.5 transition-colors">Roles &amp; permissions</a>
+        }
+        <a asp-area="Admin" asp-controller="Users" asp-action="Index" target="_blank"
+           class="text-xs text-neutral-500 hover:text-neutral-800 border border-neutral-200 rounded-sm px-3 py-1.5">Manage in Website Admin ↗</a>
+    </div>
 </div>
 
 @if (TempData["Success"] != null)
@@ -63,6 +72,20 @@
                             @foreach (var r in s.Roles)
                             {
                                 <span class="px-2 py-0.5 rounded-sm text-[11px] mr-1 @RoleBadge(r)">@r</span>
+                            }
+                            @if (isOwner && allRoles.Any())
+                            {
+                                <form asp-area="Inventory" asp-controller="Org" asp-action="SetStaffRole" method="post" class="mt-2 flex items-center gap-1" data-no-autofilter>
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="userId" value="@s.Id" />
+                                    <select name="role" class="border border-neutral-200 rounded-sm px-2 py-1 text-[11px] bg-white">
+                                        @foreach (var role in allRoles)
+                                        {
+                                            <option value="@role" selected="@(s.Roles.Contains(role))">@role</option>
+                                        }
+                                    </select>
+                                    <button type="submit" class="text-[11px] text-neutral-600 hover:text-neutral-900 border border-neutral-200 rounded-sm px-2 py-1">Set</button>
+                                </form>
                             }
                         </td>
                         <td class="px-4 py-3 whitespace-nowrap">

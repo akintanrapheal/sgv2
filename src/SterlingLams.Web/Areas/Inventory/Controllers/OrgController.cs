@@ -13,15 +13,24 @@ public class OrgController : InventoryAreaController
 {
     private readonly ApplicationDbContext _db;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly RoleManager<IdentityRole> _roleManager;
+    private readonly SterlingLams.Web.Services.IPermissionService _perms;
     private const int PageSize = 40;
-    public OrgController(ApplicationDbContext db, UserManager<ApplicationUser> userManager)
+    public OrgController(ApplicationDbContext db, UserManager<ApplicationUser> userManager,
+        RoleManager<IdentityRole> roleManager, SterlingLams.Web.Services.IPermissionService perms)
     {
         _db = db;
         _userManager = userManager;
+        _roleManager = roleManager;
+        _perms = perms;
     }
 
     /// <summary>Managers of the Inventory admin (staff/registers/branches). Owner is view-only here.</summary>
     private bool CanManageOrg => User.IsInRole("Admin") || User.IsInRole("Developer") || User.IsInRole("Inventory");
+
+    // Backend roles that can never be renamed/deleted (code references them by name); their PERMISSIONS
+    // are still editable by the owner. "Customer" is a storefront role, never managed here.
+    private static readonly string[] LockedRoles = { "Admin", "Owner", "Developer", "Customer" };
 
     // Owner is view-only in the Inventory Administration — block every write.
     public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
@@ -29,7 +38,12 @@ public class OrgController : InventoryAreaController
         ViewData["CanManageOrg"] = CanManageOrg; // let views hide management controls from Owner
         var m = context.HttpContext.Request.Method;
         var isWrite = m == "POST" || m == "PUT" || m == "DELETE" || m == "PATCH";
-        if (isWrite && !CanManageOrg)
+        // The owner (super admin) can manage roles/permissions here even though they're otherwise
+        // view-only in Inventory Administration — those actions self-check IsOwner.
+        var action = (context.RouteData.Values["action"] as string) ?? "";
+        var ownerRoleAction = (action == "SaveRolePermissions" || action == "SetStaffRole")
+            && SterlingLams.Web.Areas.Admin.AdminSections.IsSuperAdmin(User);
+        if (isWrite && !CanManageOrg && !ownerRoleAction)
         {
             context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
             return;
@@ -192,7 +206,71 @@ public class OrgController : InventoryAreaController
         }).OrderBy(c => c.Name).ToList();
         ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
 
+        // Backend roles a staffer can be assigned (excludes the storefront "Customer" role). Only the
+        // owner (super admin) may change roles / edit permissions from here.
+        ViewBag.AllRoles = (await _roleManager.Roles.Select(r => r.Name).ToListAsync())
+            .Where(n => !string.IsNullOrEmpty(n) && !string.Equals(n, "Customer", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n).ToList();
+        ViewBag.IsOwner = SterlingLams.Web.Areas.Admin.AdminSections.IsSuperAdmin(User);
+
         return View(staff);
+    }
+
+    // ── Roles & permissions (owner-only) ──────────────────────────────────────
+    // Lets the owner grant/deny each backend section per role, and assign a staffer's role, right here
+    // in the Inventory System (mirrors Website Admin → Roles & Permissions). Owner-gated because role
+    // changes are a privilege-escalation path.
+    private bool IsOwner => SterlingLams.Web.Areas.Admin.AdminSections.IsSuperAdmin(User);
+
+    public async Task<IActionResult> Roles()
+    {
+        if (!IsOwner) return RedirectToAction("AccessDenied", "Account", new { area = "" });
+        ViewData["Title"] = "Roles & permissions";
+        var roles = (await _roleManager.Roles.Select(r => r.Name).ToListAsync())
+            .Where(n => !string.IsNullOrEmpty(n) && !string.Equals(n, "Customer", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(n => n).ToList();
+        var grants = new Dictionary<string, HashSet<string>>();
+        foreach (var r in roles) grants[r!] = await _perms.GetRoleSectionsAsync(r!);
+        ViewBag.Grants = grants;
+        ViewBag.LockedRoles = LockedRoles;
+        return View(roles);
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveRolePermissions(string roleName, List<string> sections)
+    {
+        if (!IsOwner) return RedirectToAction("AccessDenied", "Account", new { area = "" });
+        roleName = (roleName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(roleName) || string.Equals(roleName, "Customer", StringComparison.OrdinalIgnoreCase)
+            || !await _roleManager.RoleExistsAsync(roleName))
+        { TempData["Error"] = "That role can't be edited."; return RedirectToAction(nameof(Roles)); }
+
+        await _perms.SetRoleSectionsAsync(roleName, sections ?? new List<string>());
+        _perms.ClearCache();
+        TempData["Success"] = $"Permissions updated for “{roleName}”.";
+        return RedirectToAction(nameof(Roles));
+    }
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetStaffRole(string userId, string role)
+    {
+        if (!IsOwner) return RedirectToAction("AccessDenied", "Account", new { area = "" });
+        role = (role ?? "").Trim();
+        var user = await _userManager.FindByIdAsync(userId ?? "");
+        if (user == null) { TempData["Error"] = "Staff member not found."; return RedirectToAction(nameof(Staff)); }
+        // Never let anyone change the owner account's role (it protects itself elsewhere too).
+        if (SterlingLams.Web.Areas.Admin.AdminSections.IsOwnerEmail(user.Email))
+        { TempData["Error"] = "The owner account's role can't be changed."; return RedirectToAction(nameof(Staff)); }
+        if (string.IsNullOrWhiteSpace(role) || string.Equals(role, "Customer", StringComparison.OrdinalIgnoreCase)
+            || !await _roleManager.RoleExistsAsync(role))
+        { TempData["Error"] = "Pick a valid role."; return RedirectToAction(nameof(Staff)); }
+
+        // Replace their backend roles with the single chosen one (keeps the storefront Customer role if held).
+        var current = (await _userManager.GetRolesAsync(user)).Where(r => !string.Equals(r, "Customer", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (current.Count > 0) await _userManager.RemoveFromRolesAsync(user, current);
+        await _userManager.AddToRoleAsync(user, role);
+        TempData["Success"] = $"{(user.FirstName + " " + user.LastName).Trim()} is now “{role}”.";
+        return RedirectToAction(nameof(Staff));
     }
 
     // ── Cashier (POS-login) management ────────────────────────────────────────
