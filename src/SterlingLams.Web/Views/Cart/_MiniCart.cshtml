@@ -19,8 +19,15 @@
 <div class="flex flex-col h-full">
     @if (Model.IsEmpty)
     {
-        <div class="flex-1 flex flex-col items-center justify-center text-center px-6 gap-4">
-            <p class="@cMuted font-light">Your bag is empty.</p>
+        <div class="flex-1 flex flex-col items-center justify-center text-center px-6 gap-5">
+            <p class="@cMuted font-light">Your shopping cart is empty.</p>
+            @if (User.Identity?.IsAuthenticated != true)
+            {
+                <a asp-controller="Account" asp-action="Login"
+                   class="block w-full max-w-xs border @cBorder @cName text-xs tracking-[0.2em] uppercase py-3.5 hover:bg-brand-500 hover:text-white hover:border-brand-500 transition-colors">
+                    Sign in or create an account
+                </a>
+            }
             <a asp-controller="Products" asp-action="Index"
                class="text-xs tracking-[0.2em] uppercase text-brand-500 hover:text-brand-400 transition-colors">Continue shopping</a>
         </div>

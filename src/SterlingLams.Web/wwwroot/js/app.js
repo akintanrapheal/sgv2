@@ -934,9 +934,40 @@ function bindProductCards(root) {
         } catch (err) {}
     });
 
-    // The header bag icon opens the drawer instead of navigating (falls back to /cart if JS fails).
+    // The header cart icon opens the slide-out drawer (falls back to /cart if JS fails).
     var cartLink = document.getElementById('cart-link');
     if (cartLink) cartLink.addEventListener('click', function (e) { e.preventDefault(); window.SGCart.open(); });
+})();
+
+// ─── Contact Us panel (bell icon → slide-over from the right) ───────────────
+(function () {
+    var panel = document.getElementById('contact-panel');
+    var toggle = document.getElementById('contact-toggle');
+    if (!panel || !toggle) return;
+    var inner = document.getElementById('contact-panel-inner');
+    var backdrop = document.getElementById('contact-backdrop');
+    var closeBtn = document.getElementById('contact-close');
+    var isOpen = false;
+    function open() {
+        panel.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+        requestAnimationFrame(function () {
+            if (inner) inner.classList.remove('translate-x-full');
+            if (backdrop) backdrop.classList.remove('opacity-0');
+        });
+        isOpen = true;
+    }
+    function close() {
+        if (inner) inner.classList.add('translate-x-full');
+        if (backdrop) backdrop.classList.add('opacity-0');
+        document.body.style.overflow = '';
+        setTimeout(function () { panel.classList.add('hidden'); }, 300);
+        isOpen = false;
+    }
+    toggle.addEventListener('click', open);
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    if (backdrop) backdrop.addEventListener('click', close);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && isOpen) close(); });
 })();
 
 // ─── Mobile filter panel (the product-listing sidebar as a slide-in drawer) ──
