@@ -1,0 +1,79 @@
+@model List<string>
+@{
+    ViewData["Title"] = "Roles & permissions";
+    var grants = ViewBag.Grants as Dictionary<string, HashSet<string>> ?? new();
+    var locked = (ViewBag.LockedRoles as string[]) ?? System.Array.Empty<string>();
+    var sections = SterlingLams.Web.Areas.Admin.AdminSections.All;
+    var settingsGroups = SterlingLams.Web.Areas.Admin.AdminSections.SettingsGroups;
+}
+
+<div class="flex items-center justify-between mb-2">
+    <h1 class="font-cormorant text-3xl font-light">Roles &amp; permissions</h1>
+    <a asp-controller="Org" asp-action="Staff" class="text-sm text-neutral-500 hover:text-neutral-900">← Staff &amp; roles</a>
+</div>
+<p class="text-xs text-neutral-400 mb-6">Tick which backend areas each role can open (View) and change (Manage). The owner account always has full access. Built-in roles can't be renamed here, but their permissions are editable.</p>
+
+@if (TempData["Success"] != null)
+{ <div class="mb-4 rounded-sm bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm px-4 py-2.5">@TempData["Success"]</div> }
+@if (TempData["Error"] != null)
+{ <div class="mb-4 rounded-sm bg-rose-50 border border-rose-200 text-rose-700 text-sm px-4 py-2.5">@TempData["Error"]</div> }
+
+<div class="space-y-4">
+    @foreach (var role in Model)
+    {
+        var g = grants.TryGetValue(role, out var set) ? set : new HashSet<string>();
+        var isFull = string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(role, "Owner", StringComparison.OrdinalIgnoreCase)
+                     || string.Equals(role, "Developer", StringComparison.OrdinalIgnoreCase);
+        <details class="bg-white border border-neutral-200 rounded-sm" @(Model.Count == 1 ? "open" : "")>
+            <summary class="cursor-pointer list-none flex items-center justify-between px-5 py-3.5 select-none">
+                <span class="flex items-center gap-2">
+                    <span class="font-medium text-neutral-800">@role</span>
+                    @if (locked.Contains(role)) { <span class="text-[10px] uppercase tracking-wide text-neutral-400 border border-neutral-200 rounded px-1.5 py-0.5">Built-in</span> }
+                    @if (isFull) { <span class="text-[10px] uppercase tracking-wide text-amber-600 border border-amber-200 rounded px-1.5 py-0.5">Full access by default</span> }
+                </span>
+                <span class="text-xs text-neutral-400">@g.Select(k => { var i = k.IndexOf(':'); return i < 0 ? k : k[..i]; }).Distinct().Count() areas</span>
+            </summary>
+            <form asp-controller="Org" asp-action="SaveRolePermissions" method="post" class="border-t border-neutral-100 px-5 py-4">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="roleName" value="@role" />
+                <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-2.5">
+                    @foreach (var sec in sections)
+                    {
+                        var viewOn = g.Contains(sec.Key) || g.Contains(sec.Key + ":manage");
+                        var manageOn = g.Contains(sec.Key + ":manage");
+                        <div class="flex items-center justify-between border-b border-neutral-50 pb-2">
+                            <span class="text-sm text-neutral-700">@sec.Label</span>
+                            <span class="flex items-center gap-3 text-xs">
+                                <label class="flex items-center gap-1 text-neutral-500">
+                                    <input type="checkbox" name="sections" value="@sec.Key" @(viewOn ? "checked" : "") /> View
+                                </label>
+                                <label class="flex items-center gap-1 text-neutral-500">
+                                    <input type="checkbox" name="sections" value="@(sec.Key):manage" @(manageOn ? "checked" : "") /> Manage
+                                </label>
+                            </span>
+                        </div>
+                    }
+                </div>
+                <div class="mt-4 pt-3 border-t border-neutral-100">
+                    <p class="text-xs uppercase tracking-wide text-neutral-400 mb-2">Settings groups</p>
+                    <div class="flex flex-wrap gap-x-6 gap-y-2 text-xs">
+                        <label class="flex items-center gap-1 text-neutral-600">
+                            <input type="checkbox" name="sections" value="Settings:manage" @(g.Contains("Settings:manage") ? "checked" : "") /> All settings
+                        </label>
+                        @foreach (var grp in settingsGroups)
+                        {
+                            <label class="flex items-center gap-1 text-neutral-500">
+                                <input type="checkbox" name="sections" value="Settings:@grp" @(g.Contains("Settings:" + grp) ? "checked" : "") /> @grp
+                            </label>
+                        }
+                    </div>
+                </div>
+                <div class="mt-4 flex items-center gap-3">
+                    <button type="submit" class="px-4 py-2 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Save @role</button>
+                    @if (isFull) { <span class="text-[11px] text-neutral-400">Note: Admin/Owner/Developer currently bypass these grants system-wide; contact the developer to make this role fully permission-driven.</span> }
+                </div>
+            </form>
+        </details>
+    }
+</div>
