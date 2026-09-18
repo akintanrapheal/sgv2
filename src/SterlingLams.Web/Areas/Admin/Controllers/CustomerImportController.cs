@@ -70,9 +70,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             int wouldCreate = 0, created = 0, skippedExisting = 0, skippedStaff = 0,
                 skippedNoEmail = 0, skippedNoHash = 0, failed = 0, withAddress = 0;
             var samples = new List<object>();
+            var rowNum = 0;
 
             foreach (var r in rows)
             {
+                rowNum++;   // 1-based row position, used for logging instead of the customer's email (PII)
                 string G(params string[] keys)
                 {
                     foreach (var k in keys)
@@ -121,8 +123,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 if (!res.Succeeded)
                 {
                     failed++;
-                    _log.LogWarning("Customer import: create failed for {Email}: {Errors}",
-                        email, string.Join("; ", res.Errors.Select(e => e.Description)));
+                    // Don't log the customer's email (PII). The row number lets the admin find the
+                    // failing record in their file without writing personal data to the logs.
+                    _log.LogWarning("Customer import: create failed for row {Row}: {Errors}",
+                        rowNum, string.Join("; ", res.Errors.Select(e => e.Description)));
                     continue;
                 }
 
