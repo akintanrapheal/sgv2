@@ -41,7 +41,7 @@
 
                 @if (store.Latitude.HasValue && store.Longitude.HasValue)
                 {
-                    <a href="https://maps.google.com/?q=@store.Latitude,@store.Longitude"
+                    <a href="https://www.google.com/maps/dir/?api=1&destination=@store.Latitude,@store.Longitude"
                        target="_blank" rel="noopener"
                        class="mt-4 block text-xs tracking-widest uppercase border border-neutral-300 text-center py-2 hover:border-neutral-900 transition-colors">
                         Get Directions
