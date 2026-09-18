@@ -245,9 +245,14 @@ public class OrgController : InventoryAreaController
             || !await _roleManager.RoleExistsAsync(roleName))
         { TempData["Error"] = "That role can't be edited."; return RedirectToAction(nameof(Roles)); }
 
-        await _perms.SetRoleSectionsAsync(roleName, sections ?? new List<string>());
+        // This editor ONLY manages the Inventory System's per-tab keys ("Inv.*"). Keep every other grant
+        // the role has (Website Admin sections, settings, the "InventorySystem" umbrella) untouched, and
+        // replace just the per-tab set with what was submitted.
+        var submitted = (sections ?? new List<string>()).Where(InventorySections.IsPerTabKey);
+        var keptOther = (await _perms.GetRoleSectionsAsync(roleName)).Where(k => !InventorySections.IsPerTabKey(k));
+        await _perms.SetRoleSectionsAsync(roleName, submitted.Concat(keptOther));
         _perms.ClearCache();
-        TempData["Success"] = $"Permissions updated for “{roleName}”.";
+        TempData["Success"] = $"Inventory permissions updated for “{roleName}”.";
         return RedirectToAction(nameof(Roles));
     }
 

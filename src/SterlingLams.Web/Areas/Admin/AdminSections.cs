@@ -191,10 +191,12 @@ public static class AdminSections
     {
         if (string.IsNullOrWhiteSpace(key)) return false;
         var i = key.IndexOf(':');
-        if (i < 0) return IsValidSection(key);
+        // No suffix: an Admin section, or an Inventory-System key (umbrella / per-tab). Inventory keys
+        // use a dot ("Inv.Pos") so they never clash with this colon-separated grammar.
+        if (i < 0) return IsValidSection(key) || Inventory.InventorySections.IsValidKey(key);
         var baseKey = key[..i];
         var sub = key[(i + 1)..];
         if (baseKey == "Settings") return sub == "manage" || SettingsGroups.Contains(sub);
-        return sub == "manage" && IsValidSection(baseKey);
+        return sub == "manage" && (IsValidSection(baseKey) || Inventory.InventorySections.IsValidKey(baseKey));
     }
 }

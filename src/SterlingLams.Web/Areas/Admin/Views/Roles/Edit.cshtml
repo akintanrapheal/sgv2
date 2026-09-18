@@ -101,6 +101,36 @@
             </p>
         </div>
 
+        <!-- Inventory System (the separate POS / stock backend) -->
+        @{
+            var invViewOn = Model.SelectedSections.Contains("InventorySystem") || Model.SelectedSections.Contains("InventorySystem:manage");
+            var invManageOn = Model.SelectedSections.Contains("InventorySystem:manage");
+        }
+        <div class="bg-white rounded-sm border border-neutral-100 p-6">
+            <h2 class="text-sm font-medium text-neutral-800 mb-1">Inventory System</h2>
+            <p class="text-xs text-neutral-400 mb-4">
+                The separate POS / stock backend (Point of Sale, Sales, CRM, Inventory, Reports, Administration).
+                Granting this gives access to <strong>every</strong> Inventory System tab. To grant only some tabs,
+                leave this off and set them per-tab inside <strong>Inventory System → Roles &amp; permissions</strong>.
+            </p>
+            <div class="flex items-center justify-between px-3 py-2.5 border border-neutral-200 rounded-sm">
+                <span class="flex items-center gap-2.5 min-w-0">
+                    <svg class="w-4 h-4 text-neutral-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+                    <span class="text-sm text-neutral-700 truncate">Full Inventory System access</span>
+                </span>
+                <span class="flex items-center gap-4 flex-shrink-0">
+                    <label class="flex items-center gap-1.5 text-xs text-neutral-500 cursor-pointer">
+                        <input type="checkbox" name="sections" value="InventorySystem" data-key="InventorySystem"
+                               class="perm-view rounded border-neutral-300 accent-neutral-900" @(invViewOn ? "checked" : "") /> View
+                    </label>
+                    <label class="flex items-center gap-1.5 text-xs text-neutral-500 cursor-pointer">
+                        <input type="checkbox" name="sections" value="InventorySystem:manage" data-key="InventorySystem"
+                               class="perm-manage rounded border-neutral-300 accent-neutral-900" @(invManageOn ? "checked" : "") /> Manage
+                    </label>
+                </span>
+            </div>
+        </div>
+
         <div class="flex gap-3">
             <button type="submit"
                     class="px-6 py-2.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">
