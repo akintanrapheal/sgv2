@@ -327,6 +327,15 @@ async function addToBag(productId, variantId, qty, btn) {
         const data = res.ok ? await res.json().catch(() => null) : null;
         if (data && data.success) {
             updateCartBadge(data.cartCount);
+            // Funnel step: add-to-cart is an AJAX action (no navigation), so autocapture can't see it.
+            if (window.posthog) {
+                window.posthog.capture('add_to_cart', {
+                    product_id: productId,
+                    variant_id: variantId || null,
+                    quantity: Number(qty) || 1,
+                    cart_count: data.cartCount
+                });
+            }
             if (window.SGCart) { window.SGCart.open(); } else { showToast('Added to bag'); }
             return true;
         }
