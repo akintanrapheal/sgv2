@@ -41,11 +41,28 @@ public class ZephielClient : IZephielClient
 {
     private const string DefaultBaseUrl = "https://www.zephiel.com";
 
-    // When Zephiel rate-limits us (429) or errors, we back off for this long instead of hammering the
-    // gateway on every order/POS sale (which just produces a stream of 429s in the logs). Shared across
-    // the transient ZephielClient instances via the singleton IMemoryCache.
+    // When Zephiel rate-limits us (429) or errors, we pause the usage pings briefly instead of hammering
+    // the gateway on every order/POS sale (which just produces a stream of 429s). We honour Zephiel's own
+    // Retry-After when it sends one, otherwise pause for DefaultCooldown — kept SHORT so we resume
+    // counting as soon as the limit clears and the figures stay accurate. Shared across the transient
+    // ZephielClient instances via the singleton IMemoryCache.
     private const string CooldownKey = "zephiel:notify:cooldown";
-    private static readonly TimeSpan CooldownWindow = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan DefaultCooldown = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan MinCooldown = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan MaxCooldown = TimeSpan.FromMinutes(15);
+
+    /// <summary>The gateway's requested pause from a Retry-After header (seconds or HTTP-date), clamped
+    /// to a sane range; null when the header is absent/unparseable so the caller uses its default.</summary>
+    private static TimeSpan? RetryAfter(HttpResponseMessage resp)
+    {
+        var ra = resp.Headers.RetryAfter;
+        if (ra == null) return null;
+        var span = ra.Delta ?? (ra.Date is { } date ? date - DateTimeOffset.UtcNow : (TimeSpan?)null);
+        if (span == null) return null;
+        if (span < MinCooldown) return MinCooldown;
+        if (span > MaxCooldown) return MaxCooldown;
+        return span;
+    }
 
     private readonly HttpClient _http;
     private readonly ISettingsService _settings;
@@ -135,20 +152,21 @@ public class ZephielClient : IZephielClient
             req.Content = new StringContent(body, Encoding.UTF8, "application/json");
 
             using var resp = await _http.SendAsync(req, ct);   // best-effort; the response is intentionally ignored
-            // Rate-limited or server error → back off so we stop spamming the gateway (and the logs).
+            // Rate-limited or server error → pause briefly so we stop spamming the gateway (and the logs),
+            // honouring Zephiel's Retry-After when present. Short by default so counting resumes quickly.
             if ((int)resp.StatusCode == 429 || (int)resp.StatusCode >= 500)
             {
-                if (_cache.TryGetValue(CooldownKey, out _) == false)
-                    _log.LogInformation("Zephiel returned {Status}; pausing usage pings for {Minutes} min",
-                        (int)resp.StatusCode, CooldownWindow.TotalMinutes);
-                _cache.Set(CooldownKey, true, CooldownWindow);
+                var pause = RetryAfter(resp) ?? DefaultCooldown;
+                _log.LogInformation("Zephiel returned {Status}; pausing usage pings for {Seconds}s",
+                    (int)resp.StatusCode, (int)pause.TotalSeconds);
+                _cache.Set(CooldownKey, true, pause);
             }
         }
         catch (Exception ex)
         {
-            // Never surface to the caller — this is decorative telemetry, not a dependency. Back off on a
-            // transient failure too, so a flaky/absent Zephiel doesn't get pinged on every request.
-            _cache.Set(CooldownKey, true, CooldownWindow);
+            // Never surface to the caller — this is decorative telemetry, not a dependency. Pause briefly on
+            // a transient failure too, so a flaky/absent Zephiel doesn't get pinged on every request.
+            _cache.Set(CooldownKey, true, DefaultCooldown);
             _log.LogDebug(ex, "Zephiel notify skipped (store {StoreId})", storeId);
         }
     }
