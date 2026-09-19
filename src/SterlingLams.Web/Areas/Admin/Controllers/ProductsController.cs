@@ -73,6 +73,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .Include(p => p.Category)
                 .Include(p => p.Images)          // ← images for thumbnails
                 .Include(p => p.Variants)        // ← for the variant-count badge
+                // Two collection Includes (Images + Variants) — split into separate queries so the DB
+                // doesn't return an Images×Variants cartesian product per product (EF SingleQuery warning).
+                .AsSplitQuery()
                 .AsQueryable();
 
             // ── Filters ──────────────────────────────────────────────────────
@@ -234,6 +237,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var product = await _db.Products
                 .Include(p => p.Images)
                 .Include(p => p.Variants).ThenInclude(v => v.AttributeValues).ThenInclude(av => av.Attribute)
+                // Images + Variants are two separate collections — split so the DB doesn't build a
+                // cartesian product of them (EF SingleQuery warning).
+                .AsSplitQuery()
                 .FirstOrDefaultAsync(p => p.Id == id);
             if (product == null) return NotFound();
 
