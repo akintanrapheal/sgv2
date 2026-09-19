@@ -52,6 +52,17 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<IZephielClient, ZephielClient>(c => c.Timeout = TimeSpan.FromSeconds(30));
         services.AddHttpClient<ICloudflareAnalytics, CloudflareAnalyticsService>(c => c.Timeout = TimeSpan.FromSeconds(15));
 
+        // PostHog reverse proxy (/ingest → PostHog EU/US). Passes bytes straight through, so
+        // decompression is OFF (we forward Content-Encoding as-is) and redirects are not auto-followed.
+        // Longer timeout tolerates session-replay uploads.
+        services.AddHttpClient("posthog", c => c.Timeout = TimeSpan.FromSeconds(30))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                AutomaticDecompression = System.Net.DecompressionMethods.None,
+                AllowAutoRedirect = false,
+                UseCookies = false,
+            });
+
         // ─── Store-level authorization (writes-only) ──────────────────────────
         services.AddScoped<IStoreAccessService, StoreAccessService>();
 

@@ -396,5 +396,12 @@ public static class SettingsSeedData
         new() { Key = "zephiel.api_slug",    Group = "Zephiel", Label = "Zephiel API slug",        Type = "text",    Value = "multistore", Description = "The Zephiel Multistore API listing slug that SG's calls are metered against.", SortOrder = 4 },
         new() { Key = "zephiel.account_key", Group = "Zephiel", Label = "Zephiel Account Key",     Type = "secret",  Value = "", Description = "SG's master account key on Zephiel, used to auto-provision a per-store API key. Stored encrypted.", SortOrder = 2 },
         new() { Key = "zephiel.store_keys",  Group = "Zephiel", Label = "Per-store keys (JSON)",   Type = "secret",  Value = "{}", Description = "Auto-managed map of SG store id → Zephiel per-store API key. Filled automatically when a store is provisioned; you normally never edit this.", SortOrder = 3 },
+
+        // ── PostHog product analytics (Admin → Integrations) ─────────────────
+        // Loads on the public storefront only, proxied through /ingest so the strict CSP is untouched.
+        // The project API key is PUBLIC by design (it ships in the page); it is not a secret to protect.
+        new() { Key = "posthog.enabled",         Group = "PostHog", Label = "Enable PostHog",        Type = "boolean", Value = "false", Description = "Master switch. When off, no analytics snippet is loaded and nothing is tracked.", SortOrder = 0 },
+        new() { Key = "posthog.project_api_key", Group = "PostHog", Label = "Project API Key",       Type = "text",    Value = "", Description = "PostHog project API key (phc_…). Public by design — it is embedded in the storefront page.", SortOrder = 1 },
+        new() { Key = "posthog.region",          Group = "PostHog", Label = "Region",                Type = "text",    Value = "eu", Description = "Data region: 'eu' (default) or 'us'. Determines where events are stored.", SortOrder = 2 },
     };
 }

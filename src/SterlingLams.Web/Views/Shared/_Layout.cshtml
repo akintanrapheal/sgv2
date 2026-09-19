@@ -99,6 +99,9 @@
 
     @await RenderSectionAsync("Styles", required: false)
     @await RenderSectionAsync("Head", required: false)
+
+    @* PostHog product analytics (storefront only; no-op unless enabled in Admin → Integrations) *@
+    <partial name="_PostHogSnippet" />
 </head>
 <body class="bg-canvas text-neutral-900 font-inter antialiased">
 
