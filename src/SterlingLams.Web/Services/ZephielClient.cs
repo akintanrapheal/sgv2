@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace SterlingLams.Web.Services;
 
@@ -40,17 +41,26 @@ public class ZephielClient : IZephielClient
 {
     private const string DefaultBaseUrl = "https://www.zephiel.com";
 
+    // When Zephiel rate-limits us (429) or errors, we back off for this long instead of hammering the
+    // gateway on every order/POS sale (which just produces a stream of 429s in the logs). Shared across
+    // the transient ZephielClient instances via the singleton IMemoryCache.
+    private const string CooldownKey = "zephiel:notify:cooldown";
+    private static readonly TimeSpan CooldownWindow = TimeSpan.FromMinutes(15);
+
     private readonly HttpClient _http;
     private readonly ISettingsService _settings;
     private readonly IConfiguration _config;
     private readonly ILogger<ZephielClient> _log;
+    private readonly IMemoryCache _cache;
 
-    public ZephielClient(HttpClient http, ISettingsService settings, IConfiguration config, ILogger<ZephielClient> log)
+    public ZephielClient(HttpClient http, ISettingsService settings, IConfiguration config,
+        ILogger<ZephielClient> log, IMemoryCache cache)
     {
         _http = http;
         _settings = settings;
         _config = config;
         _log = log;
+        _cache = cache;
     }
 
     // Settings-first with config fallback (mirrors WhatsAppService), so keys can be entered in the
@@ -108,6 +118,7 @@ public class ZephielClient : IZephielClient
         try
         {
             if (!await _settings.GetBoolAsync("zephiel.enabled", false)) return;   // cheap gate — nothing leaves SG when off
+            if (_cache.TryGetValue(CooldownKey, out _)) return;                    // backing off after a recent 429/error
 
             var keys = await StoreKeysAsync();
             if (!keys.TryGetValue(storeId.ToString(), out var storeKey) || string.IsNullOrWhiteSpace(storeKey))
@@ -124,10 +135,20 @@ public class ZephielClient : IZephielClient
             req.Content = new StringContent(body, Encoding.UTF8, "application/json");
 
             using var resp = await _http.SendAsync(req, ct);   // best-effort; the response is intentionally ignored
+            // Rate-limited or server error → back off so we stop spamming the gateway (and the logs).
+            if ((int)resp.StatusCode == 429 || (int)resp.StatusCode >= 500)
+            {
+                if (_cache.TryGetValue(CooldownKey, out _) == false)
+                    _log.LogInformation("Zephiel returned {Status}; pausing usage pings for {Minutes} min",
+                        (int)resp.StatusCode, CooldownWindow.TotalMinutes);
+                _cache.Set(CooldownKey, true, CooldownWindow);
+            }
         }
         catch (Exception ex)
         {
-            // Never surface to the caller — this is decorative telemetry, not a dependency.
+            // Never surface to the caller — this is decorative telemetry, not a dependency. Back off on a
+            // transient failure too, so a flaky/absent Zephiel doesn't get pinged on every request.
+            _cache.Set(CooldownKey, true, CooldownWindow);
             _log.LogDebug(ex, "Zephiel notify skipped (store {StoreId})", storeId);
         }
     }
