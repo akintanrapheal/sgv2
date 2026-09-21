@@ -839,12 +839,23 @@ public class FinanceController : AdminBaseController
         var (f, t, fLocal, tLocal) = Range(from, to);
         channel = channel is "Online" or "Pos" ? channel : "";
         type = new[] { "Sale", "Refund", "Cash", "Cashup" }.Contains(type) ? type! : "";
-        method = new[] { "Cash", "Card", "Transfer", "Paystack" }.Contains(method) ? method! : "";
+        var methodRaw = (method ?? "").Trim();   // validated against the methods actually present, below
         q = (q ?? "").Trim();
         sort = new[] { "date", "amount", "type", "store" }.Contains(sort) ? sort! : "date";
         dir = dir == "asc" ? "asc" : "desc";
 
         var all = await BuildTxnRowsAsync(f, t, storeId, channel, type);
+
+        // Payment methods actually present in the current view (POS tenders AND website/online payments
+        // like "Website", "Paystack", provider or "Manual (…)" names). Deriving the options from the data
+        // — instead of a fixed POS list — means every method, including website payments, is a valid and
+        // sum-able filter. (A fixed {Cash,Card,Transfer,Paystack} list silently dropped website payments.)
+        var availableMethods = all.Where(r => !string.IsNullOrWhiteSpace(r.Method))
+            .Select(r => r.Method.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(m => m, StringComparer.OrdinalIgnoreCase).ToArray();
+        method = availableMethods.Contains(methodRaw, StringComparer.OrdinalIgnoreCase) ? methodRaw : "";
+
         var filtered = ApplyTxnFilterSort(all, q, method, sort, dir).ToList();
 
         // Totals over the whole filtered set (settled movements only — excludes cash-up variance).
@@ -889,7 +900,8 @@ public class FinanceController : AdminBaseController
             Presets = BuildPresets(), Rows = pageRows,
             SumIn = sumIn, SumOut = sumOut, ByStore = byStore, ByType = byType,
             PendingRefunds = filtered.Count(r => r.ActionKind == "refund-pending"),
-            CanManage = await perms.CanManageAsync(User, "Finance")
+            CanManage = await perms.CanManageAsync(User, "Finance"),
+            Methods = availableMethods.Length > 0 ? availableMethods : new[] { "Cash", "Card", "Transfer", "Paystack" }
         });
     }
 
