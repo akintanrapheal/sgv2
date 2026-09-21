@@ -831,6 +831,81 @@ public class ReportsController : InventoryAreaController
         return View(rows.Skip((page - 1) * Size).Take(Size).ToList());
     }
 
+    // ── Order processing sheet ──────────────────────────────────────────────────
+    // One row per paid online order: who it's for, where it goes, who packed/processed it, at which
+    // branch, its status and when it was processed. Filter by date + branch. CSV export; times in WAT.
+    // Uses the same paid-order + Lagos-calendar basis as Finance so the figures agree.
+    public record OrderProcRow(string OrderNumber, DateTime Placed, string Customer, string? Phone,
+        string Address, string Type, string Store, string? ProcessedBy, DateTime? ProcessedOn,
+        string Status, decimal Total);
+
+    private async Task<List<OrderProcRow>> OrderProcRowsAsync(DateTime f, DateTime t, int? storeId)
+    {
+        var stores = await _db.Stores.ToDictionaryAsync(s => s.Id, s => s.Name);
+        var q = _db.Orders.Where(o => o.Channel == OrderChannel.Online && o.IsPaid
+            && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t);
+        if (storeId.HasValue) q = q.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
+
+        var raw = await q.OrderByDescending(o => o.PaidAt ?? o.CreatedAt).Take(3000)
+            .Select(o => new
+            {
+                o.OrderNumber,
+                Placed = o.PaidAt ?? o.CreatedAt,
+                Customer = (o.User.FirstName + " " + o.User.LastName).Trim(),
+                Phone = o.User.PhoneNumber,
+                o.FulfillmentType, o.PickupStoreId, o.FulfillingStoreId,
+                Addr = o.DeliveryAddress, o.PackedByName, o.PackedAt, o.PickupReadyEmailedAt, o.Status, o.Total
+            }).ToListAsync();
+
+        string StoreOf(int? id) => id.HasValue && stores.TryGetValue(id.Value, out var n) ? n.Replace("Sterlin Glams ", "") : "—";
+
+        return raw.Select(o =>
+        {
+            var pickup = o.FulfillmentType == FulfillmentType.StorePickup;
+            var addr = pickup
+                ? "Store pickup" + (o.PickupStoreId.HasValue ? " · " + StoreOf(o.PickupStoreId) : "")
+                : (o.Addr != null
+                    ? string.Join(", ", new[] { o.Addr.Line1, o.Addr.Line2, o.Addr.City, o.Addr.State }.Where(x => !string.IsNullOrWhiteSpace(x)))
+                    : "");
+            var processedOn = pickup ? o.PickupReadyEmailedAt : o.PackedAt;
+            return new OrderProcRow(
+                o.OrderNumber,
+                Services.ReportCalendar.ToLocal(o.Placed),
+                string.IsNullOrWhiteSpace(o.Customer) ? "Customer" : o.Customer,
+                o.Phone, addr,
+                pickup ? "Store pickup" : "Delivery",
+                StoreOf(pickup ? o.PickupStoreId : o.FulfillingStoreId),
+                o.PackedByName,
+                processedOn.HasValue ? Services.ReportCalendar.ToLocal(processedOn.Value) : (DateTime?)null,
+                o.Status.ToString(), o.Total);
+        }).ToList();
+    }
+
+    public async Task<IActionResult> OrderProcessing(DateTime? from = null, DateTime? to = null, int? storeId = null)
+    {
+        ViewData["Title"] = "Order processing";
+        var (f, t, fLocal, tLocal) = SalesRange(from, to);
+        ViewBag.From = fLocal; ViewBag.To = tLocal; ViewBag.StoreId = storeId;
+        ViewBag.Stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
+        return View(await OrderProcRowsAsync(f, t, storeId));
+    }
+
+    public async Task<IActionResult> OrderProcessingCsv(DateTime? from = null, DateTime? to = null, int? storeId = null)
+    {
+        var (f, t, _, _) = SalesRange(from, to);
+        var rows = await OrderProcRowsAsync(f, t, storeId);
+        var sb = new StringBuilder();
+        sb.AppendLine("Order,Placed (WAT),Customer,Phone,Address,Type,Store,Processed by,Processed on (WAT),Status,Total (NGN)");
+        foreach (var r in rows)
+            sb.Append(Csv(r.OrderNumber)).Append(',').Append(Csv(r.Placed.ToString("yyyy-MM-dd HH:mm"))).Append(',')
+              .Append(Csv(r.Customer)).Append(',').Append(Csv(r.Phone)).Append(',').Append(Csv(r.Address)).Append(',')
+              .Append(Csv(r.Type)).Append(',').Append(Csv(r.Store)).Append(',').Append(Csv(r.ProcessedBy)).Append(',')
+              .Append(Csv(r.ProcessedOn?.ToString("yyyy-MM-dd HH:mm"))).Append(',').Append(Csv(r.Status)).Append(',')
+              .Append(r.Total.ToString("0")).AppendLine();
+        await LogAsync("Export", "Order", null, $"Exported order-processing report ({rows.Count} order(s))");
+        return CsvFile(sb, "order-processing");
+    }
+
     private static string Csv(string? s) => "\"" + (s ?? "").Replace("\"", "\"\"") + "\"";
     private FileContentResult CsvFile(StringBuilder sb, string name)
     {
