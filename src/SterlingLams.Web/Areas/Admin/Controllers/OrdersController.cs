@@ -393,6 +393,15 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             // (covers the post-transfer "ready" moment + manual confirmation). Idempotent + guarded.
             await _logistics.PushOrderAsync(order.Id);
 
+            // On dispatch of a delivery order, email the logistics team the "new delivery to fulfil"
+            // notice (configurable logistics.notify_email). Only on a real transition to Shipped.
+            if (old != order.Status && order.Status == OrderStatus.Shipped
+                && order.FulfillmentType == FulfillmentType.Delivery)
+            {
+                var logiUrl = Url.Action("Detail", "Orders", new { area = "Admin", id = order.Id }, Request.Scheme);
+                await _fulfilment.NotifyLogisticsDispatchAsync(order.Id, logiUrl);
+            }
+
             // Keep the customer posted as their order reaches each milestone. Only on a real
             // transition (old != new) so re-saving the same status never re-sends. Subjects and
             // intros for these emails are editable in the Email Customizer.

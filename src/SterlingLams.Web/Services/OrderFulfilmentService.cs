@@ -34,6 +34,12 @@ public interface IOrderFulfilmentService
     /// transfers are now in, commits the sale at the fulfilling branch and marks the order ready
     /// to dispatch. Idempotent; no-op until every transfer is received.</summary>
     Task FinalizeAwaitingOrderAsync(int orderId);
+
+    /// <summary>Emails the logistics team a "new delivery to fulfil" notice when a delivery order is
+    /// dispatched — recipient is the configurable <c>logistics.notify_email</c> (blank = off). Carries
+    /// the customer, phone, delivery address, delivery type, items and an order link. Best-effort;
+    /// never throws. <paramref name="orderUrl"/> is the absolute order link built by the caller.</summary>
+    Task NotifyLogisticsDispatchAsync(int orderId, string? orderUrl);
 }
 
 public class OrderFulfilmentService : IOrderFulfilmentService
@@ -591,6 +597,61 @@ public class OrderFulfilmentService : IOrderFulfilmentService
             + OrderEmailTemplate.AddressBlock(isPickup ? "Pickup" : "Shipping address", shipLines)
             + OrderEmailTemplate.AddressBlock("Customer", custLines);
         await SendBranchAsync(fulfilStore.Email, Fill(subjT), html);
+    }
+
+    // Logistics handoff: when a packed delivery order is dispatched, email the logistics team all they
+    // need to deliver it. Recipient is configurable (logistics.notify_email; blank = off).
+    public async Task NotifyLogisticsDispatchAsync(int orderId, string? orderUrl)
+    {
+        try
+        {
+            var to = (await _settings.GetAsync("logistics.notify_email", "")).Trim();
+            if (to.Length == 0) return;   // logistics emails turned off
+
+            var order = await _db.Orders
+                .Include(o => o.Items)
+                .Include(o => o.DeliveryAddress)
+                .Include(o => o.User)
+                .FirstOrDefaultAsync(o => o.Id == orderId);
+            if (order == null || order.FulfillmentType != FulfillmentType.Delivery) return;
+
+            var storeName = order.FulfillingStoreId.HasValue
+                ? await _db.Stores.Where(s => s.Id == order.FulfillingStoreId).Select(s => s.Name).FirstOrDefaultAsync()
+                : null;
+            var branch = (storeName ?? "").Replace("Sterlin Glams ", "");
+
+            var pids = order.Items.Select(i => i.ProductId).Distinct().ToList();
+            var imgs = (await _db.ProductImages.Where(im => pids.Contains(im.ProductId))
+                    .GroupBy(im => im.ProductId)
+                    .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
+                    .ToListAsync())
+                .ToDictionary(x => x.Pid, x => x.Url);
+            var items = order.Items.Select(i => (
+                i.VariantName == null ? i.ProductName : $"{i.ProductName} ({i.VariantName})",
+                i.Quantity, HttpImg(imgs.GetValueOrDefault(i.ProductId))));
+
+            var addr = order.DeliveryAddress;
+            var custName = string.IsNullOrWhiteSpace(addr?.FullName) ? order.User?.FullName : addr!.FullName;
+            var shipLines = new List<string?>
+            {
+                custName,
+                addr == null ? null : addr.Line1 + (string.IsNullOrWhiteSpace(addr.Line2) ? "" : ", " + addr.Line2),
+                addr == null ? null : $"{addr.City}, {addr.State}".Trim(' ', ','),
+                addr?.Phone,
+            };
+            var deliveryType = string.IsNullOrWhiteSpace(order.DeliveryType) ? "Standard" : order.DeliveryType!.Trim();
+
+            var html = $"<h2 style=\"font-size:18px;margin:0 0 12px;\">New delivery to fulfil — Order {System.Net.WebUtility.HtmlEncode(order.OrderNumber)}</h2>"
+                + $"<p style=\"color:#44403c;\">A packed order has been dispatched from <strong>{System.Net.WebUtility.HtmlEncode(branch)}</strong> and is ready for delivery.</p>"
+                + $"<p style=\"color:#44403c;\">Delivery type: <strong>{System.Net.WebUtility.HtmlEncode(deliveryType)}</strong> &middot; Order total: <strong>&#8358;{order.Total:N0}</strong></p>"
+                + $"<div style=\"margin:14px 0;\">{ItemRows(items)}</div>"
+                + OrderEmailTemplate.AddressBlock("Deliver to", shipLines)
+                + (string.IsNullOrWhiteSpace(orderUrl) ? ""
+                    : $"<p style=\"margin-top:16px;\"><a href=\"{System.Net.WebUtility.HtmlEncode(orderUrl)}\" style=\"color:#be185d;text-decoration:none;font-weight:600;\">View the full order &rarr;</a></p>");
+
+            await _email.SendAsync(to, $"New delivery to fulfil — {order.OrderNumber}", html);
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Logistics dispatch email failed for order {OrderId}", orderId); }
     }
 
     // Cancel + refund a paid order whose item sold out before its payment landed (the "first to
