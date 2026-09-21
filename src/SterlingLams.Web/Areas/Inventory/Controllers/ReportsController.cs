@@ -11,7 +11,52 @@ public class ReportsController : InventoryAreaController
     private readonly ApplicationDbContext _db;
     public ReportsController(ApplicationDbContext db) => _db = db;
 
-    public IActionResult Index() => RedirectToAction(nameof(Reorder));
+    public IActionResult Index() => RedirectToAction(nameof(Dashboard));
+
+    // ── Reports overview dashboard ───────────────────────────────────────────────
+    // Interactive landing: headline KPIs + a daily-revenue chart + top items, every tile a drill-through
+    // to the detailed report (with the same date range carried through). Sales figures use the same
+    // paid-order + Lagos-calendar basis as the other reports and Finance.
+    public async Task<IActionResult> Dashboard(DateTime? from = null, DateTime? to = null)
+    {
+        ViewData["Title"] = "Reports overview";
+        var (f, t, fLocal, tLocal) = SalesRange(from, to);
+        var orders = PaidOrders(f, t);
+
+        var count = await orders.CountAsync();
+        var revenue = await orders.SumAsync(o => (decimal?)o.Total) ?? 0;
+        var units = await _db.OrderItems.Where(oi => orders.Any(o => o.Id == oi.OrderId)).SumAsync(oi => (int?)oi.Quantity) ?? 0;
+
+        // Daily revenue by Lagos day (in memory — the tz conversion can't run in SQL), ascending for the chart.
+        var daily = (await orders.Select(o => new { When = o.PaidAt ?? o.CreatedAt, o.Total }).ToListAsync())
+            .GroupBy(o => Services.ReportCalendar.LocalDay(o.When))
+            .Select(g => new DailySalesRow { Day = g.Key, Orders = g.Count(), Revenue = g.Sum(x => x.Total) })
+            .OrderBy(x => x.Day).ToList();
+
+        var topItems = await _db.OrderItems.Where(oi => orders.Any(o => o.Id == oi.OrderId))
+            .GroupBy(oi => oi.ProductName)
+            .Select(g => new TopItemRow { Name = g.Key, Units = g.Sum(x => x.Quantity), Revenue = g.Sum(x => x.UnitPrice * x.Quantity) })
+            .OrderByDescending(x => x.Units).Take(6).ToListAsync();
+
+        // Ops KPIs (not date-bound): products at/below their low-stock threshold, and paid online orders
+        // still waiting to be packed.
+        var lowStock = await Infrastructure.DbRead.RetryAsync(() => _db.Products
+            .Where(p => p.IsActive && p.LowStockThreshold > 0
+                && (_db.StoreInventories.Where(si => si.ProductId == p.Id).Sum(si => (int?)si.QuantityOnHand) ?? 0) <= p.LowStockThreshold)
+            .CountAsync());
+        var toFulfil = await _db.Orders.CountAsync(o => o.Channel == OrderChannel.Online && o.IsPaid && o.PackedAt == null
+            && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded
+            && o.Status != OrderStatus.Delivered && o.Status != OrderStatus.Collected);
+
+        ViewBag.From = fLocal; ViewBag.To = tLocal;
+        return View(new ReportsDashboardVm
+        {
+            Orders = count, Revenue = revenue, Units = units,
+            Average = count > 0 ? revenue / count : 0,
+            LowStock = lowStock, ToFulfil = toFulfil,
+            Daily = daily, TopItems = topItems
+        });
+    }
 
     // ── Reorder report: products at/below their low-stock threshold ──────────────
     public async Task<IActionResult> Reorder(int? categoryId = null)
@@ -989,6 +1034,18 @@ public class PaymentMethodVm
     public int TotalTx { get; set; }
 }
 public class DailySalesRow { public DateTime Day { get; set; } public int Orders { get; set; } public decimal Revenue { get; set; } }
+public class TopItemRow { public string Name { get; set; } = ""; public int Units { get; set; } public decimal Revenue { get; set; } }
+public class ReportsDashboardVm
+{
+    public int Orders { get; set; }
+    public decimal Revenue { get; set; }
+    public int Units { get; set; }
+    public decimal Average { get; set; }
+    public int LowStock { get; set; }
+    public int ToFulfil { get; set; }
+    public List<DailySalesRow> Daily { get; set; } = new();
+    public List<TopItemRow> TopItems { get; set; } = new();
+}
 public class SalesSummaryVm
 {
     public int Orders { get; set; }
