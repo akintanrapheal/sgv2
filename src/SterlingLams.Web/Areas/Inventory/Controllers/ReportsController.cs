@@ -26,6 +26,10 @@ public class ReportsController : InventoryAreaController
         var count = await orders.CountAsync();
         var revenue = await orders.SumAsync(o => (decimal?)o.Total) ?? 0;
         var units = await _db.OrderItems.Where(oi => orders.Any(o => o.Id == oi.OrderId)).SumAsync(oi => (int?)oi.Quantity) ?? 0;
+        // Refunds on the SAME basis Finance uses (approved refunds raised in the window), so gross sales,
+        // refunds and net here reconcile exactly with the Finance dashboard for the same dates.
+        var refunds = await _db.Refunds.Where(r => r.Status == RefundStatus.Approved && r.CreatedAt >= f && r.CreatedAt < t)
+            .SumAsync(r => (decimal?)r.Amount) ?? 0;
 
         // Daily revenue by Lagos day (in memory — the tz conversion can't run in SQL), ascending for the chart.
         var daily = (await orders.Select(o => new { When = o.PaidAt ?? o.CreatedAt, o.Total }).ToListAsync())
@@ -53,6 +57,7 @@ public class ReportsController : InventoryAreaController
         {
             Orders = count, Revenue = revenue, Units = units,
             Average = count > 0 ? revenue / count : 0,
+            Refunds = refunds, Net = revenue - refunds,
             LowStock = lowStock, ToFulfil = toFulfil,
             Daily = daily, TopItems = topItems
         });
@@ -1041,6 +1046,8 @@ public class ReportsDashboardVm
     public decimal Revenue { get; set; }
     public int Units { get; set; }
     public decimal Average { get; set; }
+    public decimal Refunds { get; set; }
+    public decimal Net { get; set; }
     public int LowStock { get; set; }
     public int ToFulfil { get; set; }
     public List<DailySalesRow> Daily { get; set; } = new();

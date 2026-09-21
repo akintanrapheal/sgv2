@@ -25,6 +25,25 @@
     <span class="text-[11px] text-neutral-400 self-center ml-1">@from.ToString("dd MMM") – @to.ToString("dd MMM yyyy") · click any tile to drill in</span>
 </form>
 
+<!-- Reconciliation strip — same basis as the Finance dashboard (paid orders + approved refunds, Lagos day) -->
+<div class="bg-white border border-neutral-100 rounded-sm p-4 mb-5">
+    <div class="grid grid-cols-3 divide-x divide-neutral-100 text-center">
+        <div class="px-2">
+            <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Gross sales</div>
+            <div class="text-xl font-light text-neutral-900">₦@Model.Revenue.ToString("N0")</div>
+        </div>
+        <div class="px-2">
+            <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Refunds</div>
+            <div class="text-xl font-light @(Model.Refunds > 0 ? "text-red-600" : "text-neutral-900")">@(Model.Refunds > 0 ? "−" : "")₦@Model.Refunds.ToString("N0")</div>
+        </div>
+        <div class="px-2">
+            <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Net revenue</div>
+            <div class="text-xl font-light text-emerald-700">₦@Model.Net.ToString("N0")</div>
+        </div>
+    </div>
+    <p class="text-[11px] text-neutral-400 mt-3 text-center">Same basis as the Finance dashboard (paid orders + approved refunds, Lagos day) — these reconcile with Finance for the same dates.</p>
+</div>
+
 <!-- KPI tiles — each drills through to the detailed report for the same date range -->
 <div class="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-5">
     <a asp-action="Summary" asp-all-route-data="rd" class="@tile">
