@@ -1,0 +1,86 @@
+@model List<SterlingLams.Web.Areas.Inventory.Controllers.ReportsController.OrderProcRow>
+@using SterlingLams.Web.Models.Domain
+@{
+    ViewData["Title"] = "Order processing";
+    var stores = ViewBag.Stores as List<Store> ?? new();
+    int? storeId = ViewBag.StoreId;
+    DateTime from = ViewBag.From; DateTime to = ViewBag.To;
+    var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+    string Badge(string s) => s switch
+    {
+        "Delivered" or "Collected" => "bg-emerald-50 text-emerald-700",
+        "Shipped" => "bg-blue-50 text-blue-700",
+        "ReadyForPickup" => "bg-teal-50 text-teal-700",
+        "Processing" => "bg-amber-50 text-amber-700",
+        "Confirmed" => "bg-indigo-50 text-indigo-700",
+        "Cancelled" or "Refunded" => "bg-red-50 text-red-700",
+        _ => "bg-neutral-100 text-neutral-600"
+    };
+    Dictionary<string, string> filterData() => new()
+    {
+        ["from"] = from.ToString("yyyy-MM-dd"),
+        ["to"] = to.ToString("yyyy-MM-dd"),
+        ["storeId"] = storeId?.ToString() ?? ""
+    };
+}
+
+@await Html.PartialAsync("_ReportTabs", "OrderProcessing")
+
+<form method="get" class="flex flex-wrap items-end gap-2 mb-4">
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">From</label>
+        <input type="date" name="from" value="@from.ToString("yyyy-MM-dd")" class="@selectCls" /></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">To</label>
+        <input type="date" name="to" value="@to.ToString("yyyy-MM-dd")" class="@selectCls" /></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Branch</label>
+        <select name="storeId" class="@selectCls">
+            <option value="">All branches</option>
+            @foreach (var s in stores)
+            {
+                <option value="@s.Id" selected="@(storeId == s.Id)">@s.Name.Replace("Sterlin Glams ", "")</option>
+            }
+        </select></div>
+    <button type="submit" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700">Filter</button>
+    <a asp-action="OrderProcessingCsv" asp-all-route-data="filterData()"
+       class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:border-neutral-500">Download CSV</a>
+</form>
+
+<p class="text-xs text-neutral-400 mb-2">@Model.Count order(s) · @from.ToString("dd MMM") – @to.ToString("dd MMM yyyy")</p>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[960px]">
+        <thead>
+            <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
+                <th class="text-left px-4 py-3 font-medium">Order</th>
+                <th class="text-left px-4 py-3 font-medium">Placed</th>
+                <th class="text-left px-4 py-3 font-medium">Customer</th>
+                <th class="text-left px-4 py-3 font-medium">Phone</th>
+                <th class="text-left px-4 py-3 font-medium">Address</th>
+                <th class="text-left px-4 py-3 font-medium">Type</th>
+                <th class="text-left px-4 py-3 font-medium">Store</th>
+                <th class="text-left px-4 py-3 font-medium">Processed by</th>
+                <th class="text-left px-4 py-3 font-medium">Processed on</th>
+                <th class="text-left px-4 py-3 font-medium">Status</th>
+                <th class="text-right px-4 py-3 font-medium">Total</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (!Model.Any()) { <tr><td colspan="11" class="px-4 py-12 text-center text-neutral-400">No orders for these filters.</td></tr> }
+            @foreach (var o in Model)
+            {
+                <tr class="hover:bg-neutral-50 align-top">
+                    <td class="px-4 py-2.5 text-xs font-medium text-neutral-800 whitespace-nowrap">@o.OrderNumber</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-500 whitespace-nowrap">@o.Placed.ToString("dd MMM yyyy HH:mm")</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-700">@o.Customer</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-600 whitespace-nowrap">@(string.IsNullOrWhiteSpace(o.Phone) ? "—" : o.Phone)</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-500 max-w-[240px]">@(string.IsNullOrWhiteSpace(o.Address) ? "—" : o.Address)</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-600 whitespace-nowrap">@o.Type</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-600 whitespace-nowrap">@o.Store</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-600 whitespace-nowrap">@(string.IsNullOrWhiteSpace(o.ProcessedBy) ? "—" : o.ProcessedBy)</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-500 whitespace-nowrap">@(o.ProcessedOn.HasValue ? o.ProcessedOn.Value.ToString("dd MMM HH:mm") : "—")</td>
+                    <td class="px-4 py-2.5"><span class="text-[10px] px-2 py-0.5 rounded-full @Badge(o.Status)">@o.Status</span></td>
+                    <td class="px-4 py-2.5 text-right text-xs font-medium text-neutral-800 whitespace-nowrap">₦@o.Total.ToString("N0")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
