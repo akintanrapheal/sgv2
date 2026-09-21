@@ -15,7 +15,7 @@ public class IntegrationsController : AdminBaseController
     // A previously granted "Integrations" permission can no longer open this screen either.
     protected override string? Section => null;
 
-    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp" };
+    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog" };
     private static readonly string[] Providers = { "paystack", "stripe", "flutterwave" };
 
     private readonly ISettingsService _settings;
@@ -91,6 +91,10 @@ public class IntegrationsController : AdminBaseController
             WaTplReadyForPickup  = Plain("whatsapp.template.ready_for_pickup", null),
             WaTplShipped         = Plain("whatsapp.template.shipped", null),
             WaTplDelivered       = Plain("whatsapp.template.delivered", null),
+
+            PhEnabled    = await _settings.GetBoolAsync("posthog.enabled", false),
+            PhProjectKey = Plain("posthog.project_api_key", null),
+            PhRegion     = string.IsNullOrWhiteSpace(Plain("posthog.region", null)) ? "eu" : Plain("posthog.region", null).ToLowerInvariant(),
 
             BaseUrl = baseUrl,
         };
@@ -191,6 +195,11 @@ public class IntegrationsViewModel
     public string WaTplReadyForPickup { get; set; } = "";
     public string WaTplShipped { get; set; } = "";
     public string WaTplDelivered { get; set; } = "";
+
+    // PostHog (product analytics). Project key is public by design, so it's shown in full.
+    public bool PhEnabled { get; set; }
+    public string PhProjectKey { get; set; } = "";
+    public string PhRegion { get; set; } = "eu";
 
     public string BaseUrl { get; set; } = "";
 }
