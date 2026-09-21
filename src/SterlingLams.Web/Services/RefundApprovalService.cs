@@ -219,6 +219,9 @@ public class RefundApprovalService : IRefundApprovalService
         if (refund.RestockRequested)
             await NotifyRestockAsync(refund);
 
+        // 6) Tell whoever raised the refund that it was approved.
+        await NotifyRefundRaiserAsync(refund, approved: true, note);
+
         return new RefundApprovalResult
         {
             Success = true,
@@ -284,7 +287,36 @@ public class RefundApprovalService : IRefundApprovalService
         }
         catch { }
 
+        // Tell whoever raised the refund that it was rejected.
+        await NotifyRefundRaiserAsync(refund, approved: false, note);
+
         return new RefundApprovalResult { Success = true, Message = $"Refund {refund.RefundNumber} rejected — nothing paid out." };
+    }
+
+    // Tell whoever RAISED the refund (the CS / in-store team member) that Finance has decided on it,
+    // so they don't have to keep checking. Best-effort — never blocks or fails the decision.
+    private async Task NotifyRefundRaiserAsync(Refund refund, bool approved, string? note)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(refund.CashierUserId)) return;   // no known raiser (e.g. system-raised)
+            var u = await _db.Users.Where(x => x.Id == refund.CashierUserId)
+                .Select(x => new { x.Email, x.FirstName, x.LastName }).FirstOrDefaultAsync();
+            if (u == null || string.IsNullOrWhiteSpace(u.Email)) return;
+
+            var orderNo = await _db.Orders.Where(o => o.Id == refund.OriginalOrderId)
+                .Select(o => o.OrderNumber).FirstOrDefaultAsync();
+            var decision = approved ? "approved" : "rejected";
+            var colour = approved ? "#047857" : "#b91c1c";
+            var html = $"<h2 style=\"font-size:18px;margin:0 0 12px;\">Refund {System.Net.WebUtility.HtmlEncode(refund.RefundNumber)} {decision}</h2>"
+                + $"<p style=\"color:#44403c;\">The refund you raised{(string.IsNullOrWhiteSpace(orderNo) ? "" : $" for order {System.Net.WebUtility.HtmlEncode(orderNo)}")} — <strong>&#8358;{refund.Amount:N0}</strong> — has been <strong style=\"color:{colour};\">{decision}</strong> by Finance.</p>"
+                + (string.IsNullOrWhiteSpace(note) ? "" : $"<p style=\"color:#44403c;\">Note from Finance: {System.Net.WebUtility.HtmlEncode(note)}</p>")
+                + (approved
+                    ? "<p style=\"color:#44403c;\">You can now process the refund to the customer.</p>"
+                    : "<p style=\"color:#44403c;\">No money has been paid out.</p>");
+            await _email.SendAsync(u.Email!, $"Refund {refund.RefundNumber} {decision}", html);
+        }
+        catch (Exception ex) { _log.LogError(ex, "Refund raiser notification failed for {RefundNumber}", refund.RefundNumber); }
     }
 
     private static RefundApprovalResult Fail(string msg) => new() { Success = false, Message = msg };
