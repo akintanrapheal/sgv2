@@ -1,0 +1,119 @@
+@model SterlingLams.Web.Areas.Inventory.Controllers.ReportsDashboardVm
+@{
+    ViewData["Title"] = "Reports overview";
+    DateTime from = ViewBag.From; DateTime to = ViewBag.To;
+    var rd = new Dictionary<string, string> { ["from"] = from.ToString("yyyy-MM-dd"), ["to"] = to.ToString("yyyy-MM-dd") };
+    var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+    var tile = "block bg-white border border-neutral-100 rounded-sm p-4 hover:border-emerald-300 hover:shadow-sm transition group";
+
+    // Inline SVG daily-revenue chart (no JS / CSP-safe). Bars scaled to the peak day.
+    var days = Model.Daily;
+    decimal peak = days.Count > 0 ? days.Max(d => d.Revenue) : 0;
+    const int chartW = 720, chartH = 140, padB = 18;
+    double barSlot = days.Count > 0 ? (double)chartW / days.Count : chartW;
+    double barW = Math.Min(28, Math.Max(3, barSlot * 0.7));
+}
+
+@await Html.PartialAsync("_ReportTabs", "Dashboard")
+
+<form method="get" class="flex flex-wrap items-end gap-2 mb-4">
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">From</label>
+        <input type="date" name="from" value="@from.ToString("yyyy-MM-dd")" class="@selectCls" /></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">To</label>
+        <input type="date" name="to" value="@to.ToString("yyyy-MM-dd")" class="@selectCls" /></div>
+    <button type="submit" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700">Apply</button>
+    <span class="text-[11px] text-neutral-400 self-center ml-1">@from.ToString("dd MMM") – @to.ToString("dd MMM yyyy") · click any tile to drill in</span>
+</form>
+
+<!-- KPI tiles — each drills through to the detailed report for the same date range -->
+<div class="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-5">
+    <a asp-action="Summary" asp-all-route-data="rd" class="@tile">
+        <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Revenue</div>
+        <div class="text-2xl font-light text-neutral-900">₦@Model.Revenue.ToString("N0")</div>
+        <div class="text-[11px] text-emerald-600 mt-1 group-hover:underline">Sales summary →</div>
+    </a>
+    <a asp-action="OrderProcessing" asp-all-route-data="rd" class="@tile">
+        <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Orders</div>
+        <div class="text-2xl font-light text-neutral-900">@Model.Orders.ToString("N0")</div>
+        <div class="text-[11px] text-emerald-600 mt-1 group-hover:underline">Order processing →</div>
+    </a>
+    <a asp-action="SalesByItem" asp-all-route-data="rd" class="@tile">
+        <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Items sold</div>
+        <div class="text-2xl font-light text-neutral-900">@Model.Units.ToString("N0")</div>
+        <div class="text-[11px] text-emerald-600 mt-1 group-hover:underline">Sales by item →</div>
+    </a>
+    <a asp-action="Summary" asp-all-route-data="rd" class="@tile">
+        <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Avg order value</div>
+        <div class="text-2xl font-light text-neutral-900">₦@Model.Average.ToString("N0")</div>
+        <div class="text-[11px] text-emerald-600 mt-1 group-hover:underline">Sales summary →</div>
+    </a>
+    <a asp-action="Warnings" class="@tile">
+        <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Low-stock items</div>
+        <div class="text-2xl font-light @(Model.LowStock > 0 ? "text-amber-600" : "text-neutral-900")">@Model.LowStock.ToString("N0")</div>
+        <div class="text-[11px] text-emerald-600 mt-1 group-hover:underline">Stock warnings →</div>
+    </a>
+    <a asp-action="OrderProcessing" asp-all-route-data="rd" class="@tile">
+        <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Orders to fulfil</div>
+        <div class="text-2xl font-light @(Model.ToFulfil > 0 ? "text-blue-600" : "text-neutral-900")">@Model.ToFulfil.ToString("N0")</div>
+        <div class="text-[11px] text-emerald-600 mt-1 group-hover:underline">Order processing →</div>
+    </a>
+</div>
+
+<div class="grid lg:grid-cols-3 gap-5">
+    <!-- Daily revenue chart -->
+    <div class="lg:col-span-2 bg-white border border-neutral-100 rounded-sm p-5">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-medium text-neutral-800">Revenue by day</h2>
+            <a asp-action="Summary" asp-all-route-data="rd" class="text-[11px] text-emerald-600 hover:underline">Full summary →</a>
+        </div>
+        @if (days.Count == 0)
+        {
+            <p class="text-sm text-neutral-400 py-10 text-center">No sales in this range.</p>
+        }
+        else
+        {
+            <svg viewBox="0 0 @chartW @chartH" preserveAspectRatio="none" class="w-full" style="height:160px;" role="img" aria-label="Revenue by day">
+                @for (int i = 0; i < days.Count; i++)
+                {
+                    var d = days[i];
+                    double h = peak > 0 ? (double)(d.Revenue / peak) * (chartH - padB) : 0;
+                    double x = i * barSlot + (barSlot - barW) / 2;
+                    double y = (chartH - padB) - h;
+                    <rect x="@x.ToString("0.#")" y="@y.ToString("0.#")" width="@barW.ToString("0.#")" height="@h.ToString("0.#")" rx="1.5" fill="#059669" opacity="0.85">
+                        <title>@d.Day.ToString("ddd dd MMM"): ₦@d.Revenue.ToString("N0") · @d.Orders order(s)</title>
+                    </rect>
+                }
+                <line x1="0" y1="@(chartH - padB)" x2="@chartW" y2="@(chartH - padB)" stroke="#e5e7eb" stroke-width="1" />
+            </svg>
+            <div class="flex justify-between text-[10px] text-neutral-400 mt-1">
+                <span>@days.First().Day.ToString("dd MMM")</span>
+                <span>Peak day: ₦@peak.ToString("N0")</span>
+                <span>@days.Last().Day.ToString("dd MMM")</span>
+            </div>
+        }
+    </div>
+
+    <!-- Top items -->
+    <div class="bg-white border border-neutral-100 rounded-sm p-5">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-medium text-neutral-800">Top items</h2>
+            <a asp-action="SalesByItem" asp-all-route-data="rd" class="text-[11px] text-emerald-600 hover:underline">All items →</a>
+        </div>
+        @if (Model.TopItems.Count == 0)
+        {
+            <p class="text-sm text-neutral-400 py-8 text-center">No items sold.</p>
+        }
+        else
+        {
+            <ul class="divide-y divide-neutral-50">
+                @foreach (var it in Model.TopItems)
+                {
+                    <li class="flex items-center justify-between py-2">
+                        <span class="text-xs text-neutral-700 truncate pr-2">@it.Name</span>
+                        <span class="text-xs text-neutral-500 whitespace-nowrap">@it.Units.ToString("N0") · ₦@it.Revenue.ToString("N0")</span>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+</div>
