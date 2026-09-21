@@ -35,6 +35,7 @@ public class CheckoutController : Controller
     private readonly SterlingLams.Web.Services.IAuditService _audit;
     private readonly SterlingLams.Web.Services.IOrderNumberService _orderNumbers;
     private readonly SterlingLams.Web.Services.IZephielClient _zephiel;
+    private readonly SterlingLams.Web.Services.IPostHogClient _posthog;
     private readonly IDataProtector _confirmTokenProtector;
 
     public CheckoutController(
@@ -57,7 +58,8 @@ public class CheckoutController : Controller
         SterlingLams.Web.Services.IAuditService audit,
         SterlingLams.Web.Services.IOrderNumberService orderNumbers,
         IDataProtectionProvider dataProtection,
-        SterlingLams.Web.Services.IZephielClient zephiel)
+        SterlingLams.Web.Services.IZephielClient zephiel,
+        SterlingLams.Web.Services.IPostHogClient posthog)
     {
         _db = db;
         _payment = payment;
@@ -78,6 +80,7 @@ public class CheckoutController : Controller
         _audit = audit;
         _orderNumbers = orderNumbers;
         _zephiel = zephiel;
+        _posthog = posthog;
         _confirmTokenProtector = dataProtection.CreateProtector("Checkout.Confirmation.v1");
     }
 
@@ -749,6 +752,13 @@ public class CheckoutController : Controller
             {
                 try { await _audit.LogAsync("Payment", "Order", order.Id.ToString(), $"Payment received for {order.OrderNumber} — ₦{order.Total:N0} ({_payment.ProviderName})"); } catch { }
                 _ = _whatsapp.NotifyOrderAsync(order.Id, SterlingLams.Web.Services.WhatsAppOrderEvent.PaymentReceived);
+                // Authoritative funnel completion (guarded by wasUnpaid, so it fires once across the
+                // return + webhook paths — whichever flips the order to paid first).
+                await _posthog.CaptureAsync(order.UserId ?? $"order_{order.OrderNumber}", "order_paid", new
+                {
+                    value = order.Total, currency = "NGN", order_number = order.OrderNumber,
+                    payment_provider = _payment.ProviderName, channel = "online",
+                });
             }
 
             // Commit stock first-come-first-served. If an item sold out before this payment

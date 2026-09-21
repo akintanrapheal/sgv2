@@ -63,6 +63,9 @@ public static class ServiceCollectionExtensions
                 UseCookies = false,
             });
 
+        // Server-side PostHog capture (authoritative order_paid / refund events). Best-effort.
+        services.AddHttpClient<IPostHogClient, PostHogClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
+
         // ─── Store-level authorization (writes-only) ──────────────────────────
         services.AddScoped<IStoreAccessService, StoreAccessService>();
 

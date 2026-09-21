@@ -43,9 +43,9 @@ public class SiteController : Controller
         var authed = User.Identity?.IsAuthenticated == true;
         var wishlistCount = 0;
         int[] wishlistProductIds = System.Array.Empty<int>();
+        var userId = authed ? (User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty) : string.Empty;
         if (authed)
         {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? string.Empty;
             if (!string.IsNullOrEmpty(userId))
             {
                 // The product cards on output-cached pages render with empty hearts; the client
@@ -71,7 +71,10 @@ public class SiteController : Controller
             cartCount,
             wishlistCount,
             wishlistProductIds,
-            antiforgeryToken = tokens.RequestToken
+            antiforgeryToken = tokens.RequestToken,
+            // Stable analytics id for signed-in shoppers, so PostHog links their browser session to the
+            // server-side "order_paid"/"refund" events (both keyed on the user id). Null for guests.
+            analyticsId = string.IsNullOrEmpty(userId) ? null : userId
         });
     }
 }
