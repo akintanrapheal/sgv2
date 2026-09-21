@@ -32,6 +32,7 @@ public class PosController : Controller
     private readonly SterlingLams.Web.Services.ITransferWorkflowService _transfers;
     private readonly SterlingLams.Web.Services.IManifestTokenService _manifestTokens;
     private readonly SterlingLams.Web.Services.IZephielClient _zephiel;
+    private readonly SterlingLams.Web.Services.IOrderFulfilmentService _fulfilment;
 
     public PosController(ApplicationDbContext db, IStockService stock,
         SignInManager<ApplicationUser> signIn, IPasswordHasher<ApplicationUser> hasher,
@@ -45,7 +46,8 @@ public class PosController : Controller
         SterlingLams.Web.Services.IOrderNumberService orderNumbers,
         SterlingLams.Web.Services.ITransferWorkflowService transfers,
         SterlingLams.Web.Services.IManifestTokenService manifestTokens,
-        SterlingLams.Web.Services.IZephielClient zephiel)
+        SterlingLams.Web.Services.IZephielClient zephiel,
+        SterlingLams.Web.Services.IOrderFulfilmentService fulfilment)
     {
         _db = db;
         _stock = stock;
@@ -62,6 +64,7 @@ public class PosController : Controller
         _transfers = transfers;
         _manifestTokens = manifestTokens;
         _zephiel = zephiel;
+        _fulfilment = fulfilment;
     }
 
     // Primary product image (small POS thumbnail) per product id — for transfer line rows.
@@ -1841,6 +1844,9 @@ public class PosController : Controller
         await SendPosStatusEmailAsync(o.Id, "order_shipped", "Your order is on its way",
             "Good news {name} — your order {order} is on its way to you.");
         _ = _whatsapp.NotifyOrderAsync(o.Id, WhatsAppOrderEvent.Shipped);
+        // Hand off to the logistics team (configurable logistics.notify_email) so they can deliver it.
+        var orderUrl = Url.Action("Detail", "Orders", new { area = "Admin", id = o.Id }, Request.Scheme);
+        await _fulfilment.NotifyLogisticsDispatchAsync(o.Id, orderUrl);
         try { await _audit.LogAsync("Update", "Order", o.Id.ToString(), $"POS dispatched {o.OrderNumber} for delivery from {register.Store?.Name}"); } catch { }
         return Json(new { success = true });
     }
