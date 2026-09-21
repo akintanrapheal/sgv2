@@ -49,13 +49,15 @@ public class RefundApprovalService : IRefundApprovalService
     private readonly ISettingsService _settings;
     private readonly ILogger<RefundApprovalService> _log;
 
+    private readonly IPostHogClient _posthog;
+
     public RefundApprovalService(ApplicationDbContext db, IStockService stock, ILoyaltyService loyalty,
         IGiftCardService giftCards, IPaymentService payment, IAuditService audit,
-        IEmailService email, ISettingsService settings, ILogger<RefundApprovalService> log)
+        IEmailService email, ISettingsService settings, IPostHogClient posthog, ILogger<RefundApprovalService> log)
     {
         _email = email; _settings = settings;
         _db = db; _stock = stock; _loyalty = loyalty; _giftCards = giftCards;
-        _payment = payment; _audit = audit; _log = log;
+        _payment = payment; _audit = audit; _posthog = posthog; _log = log;
     }
 
     public Task<int> PendingCountAsync() =>
@@ -205,6 +207,13 @@ public class RefundApprovalService : IRefundApprovalService
                 + (gatewayNote.Length > 0 ? $" — {gatewayNote}" : ""), performedBy: approverUserId);
         }
         catch { }
+
+        // Authoritative refund event for analytics (best-effort; never throws).
+        await _posthog.CaptureAsync(order.UserId ?? $"order_{order.OrderNumber}", "refund", new
+        {
+            value = refund.Amount, currency = "NGN", refund_number = refund.RefundNumber,
+            order_number = order.OrderNumber, full_refund = refund.WasFullRefund,
+        });
 
         // 5) Tell the branch that returned items are waiting in the restock queue (best-effort).
         if (refund.RestockRequested)

@@ -202,6 +202,11 @@ const SiteHeader = (function () {
         document.querySelectorAll('[data-auth="in"]').forEach(el => el.classList.toggle('hidden', !authed));
         document.querySelectorAll('[data-auth="out"]').forEach(el => el.classList.toggle('hidden', authed));
 
+        // Tie this browser to the server-side order_paid/refund events (same person id) when signed in.
+        if (state.analyticsId && window.posthog) {
+            try { window.posthog.identify(String(state.analyticsId)); } catch (e) { /* analytics never breaks the page */ }
+        }
+
         // Fill in the saved-to-wishlist hearts on product cards.
         const ids = new Set((state.wishlistProductIds || []).map(String));
         document.querySelectorAll('.wishlist-toggle').forEach(btn => {

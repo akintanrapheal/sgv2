@@ -23,6 +23,7 @@ public class WebhooksController : ControllerBase
 
     private readonly SterlingLams.Web.Services.IAuditService _audit;
     private readonly SterlingLams.Web.Services.IWhatsAppService _whatsapp;
+    private readonly SterlingLams.Web.Services.IPostHogClient _posthog;
 
     public WebhooksController(
         ApplicationDbContext db,
@@ -34,6 +35,7 @@ public class WebhooksController : ControllerBase
         ISubscriptionPaymentService subPay,
         SterlingLams.Web.Services.IAuditService audit,
         SterlingLams.Web.Services.IWhatsAppService whatsapp,
+        SterlingLams.Web.Services.IPostHogClient posthog,
         ILogger<WebhooksController> logger)
     {
         _db = db;
@@ -45,6 +47,7 @@ public class WebhooksController : ControllerBase
         _subPay = subPay;
         _audit = audit;
         _whatsapp = whatsapp;
+        _posthog = posthog;
         _logger = logger;
     }
 
@@ -183,6 +186,12 @@ public class WebhooksController : ControllerBase
                 {
                     try { await _audit.LogAsync("Payment", "Order", order.Id.ToString(), $"Payment received for {order.OrderNumber} — ₦{order.Total:N0} (Paystack)"); } catch { }
                     _ = _whatsapp.NotifyOrderAsync(order.Id, SterlingLams.Web.Services.WhatsAppOrderEvent.PaymentReceived);
+                    // Authoritative funnel completion — fires whether or not the shopper returned to the site.
+                    await _posthog.CaptureAsync(order.UserId ?? $"order_{order.OrderNumber}", "order_paid", new
+                    {
+                        value = order.Total, currency = "NGN", order_number = order.OrderNumber,
+                        payment_provider = "Paystack", channel = "online",
+                    });
                 }
 
                 // Deduct stock through the in-house ledger. Idempotent, so it's safe whether the
