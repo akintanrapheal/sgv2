@@ -38,8 +38,8 @@ public class ReportsController : InventoryAreaController
             .OrderBy(x => x.Day).ToList();
 
         var topItems = await _db.OrderItems.Where(oi => orders.Any(o => o.Id == oi.OrderId))
-            .GroupBy(oi => oi.ProductName)
-            .Select(g => new TopItemRow { Name = g.Key, Units = g.Sum(x => x.Quantity), Revenue = g.Sum(x => x.UnitPrice * x.Quantity) })
+            .GroupBy(oi => oi.ProductId)
+            .Select(g => new TopItemRow { ProductId = g.Key, Name = g.Max(x => x.ProductName) ?? "", Units = g.Sum(x => x.Quantity), Revenue = g.Sum(x => x.UnitPrice * x.Quantity) })
             .OrderByDescending(x => x.Units).Take(6).ToListAsync();
 
         // Ops KPIs (not date-bound): products at/below their low-stock threshold, and paid online orders
@@ -310,6 +310,7 @@ public class ReportsController : InventoryAreaController
             var n = names.FirstOrDefault(x => x.Id == a.UserId);
             return new SalesByStaffRow
             {
+                UserId = a.UserId,
                 Staff = n == null ? "—" : (!string.IsNullOrWhiteSpace(n.Name) ? n.Name : n.Email ?? "—"),
                 Transactions = a.Tx,
                 Sales = a.Sales,
@@ -324,6 +325,52 @@ public class ReportsController : InventoryAreaController
             TotalSales = rows.Sum(r => r.Sales),
             TotalTx = rows.Sum(r => r.Transactions)
         });
+    }
+
+    // ── Staff drill-through: one cashier's POS sales in the window ───────────────────────────────
+    public record StaffSaleRow(int OrderId, string OrderNumber, DateTime When, string Store, string Customer,
+        int Items, decimal Discount, decimal Total, string Tender);
+
+    public async Task<IActionResult> StaffSales(string userId, DateTime? from = null, DateTime? to = null)
+    {
+        var (f, t, fLocal, tLocal) = SalesRange(from, to);
+        var staff = await _db.Users.Where(u => u.Id == userId)
+            .Select(u => new { Name = ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim(), u.Email }).FirstOrDefaultAsync();
+        if (staff == null) return NotFound();
+        var staffLabel = string.IsNullOrWhiteSpace(staff.Name) ? (staff.Email ?? "Staff") : staff.Name;
+        ViewData["Title"] = $"Sales — {staffLabel}";
+
+        var stores = await _db.Stores.ToDictionaryAsync(s => s.Id, s => s.Name);
+        string StoreOf(int? id) => id.HasValue && stores.TryGetValue(id.Value, out var n) ? n.Replace("Sterlin Glams ", "") : "—";
+
+        var raw = await _db.Orders
+            .Where(o => o.IsPaid && o.Channel == OrderChannel.Pos && o.UserId == userId
+                     && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t)
+            .OrderByDescending(o => o.PaidAt ?? o.CreatedAt)
+            .Select(o => new
+            {
+                o.Id, o.OrderNumber, When = o.PaidAt ?? o.CreatedAt,
+                Sid = o.PickupStoreId ?? o.FulfillingStoreId,
+                Cust = o.Customer != null ? (o.Customer.FirstName + " " + o.Customer.LastName) : null,
+                Items = o.Items.Sum(i => i.Quantity),
+                o.DiscountAmount, o.Total, o.PaymentProvider
+            }).ToListAsync();
+
+        var oids = raw.Select(x => x.Id).ToList();
+        var tenders = (await _db.OrderPayments.Where(p => oids.Contains(p.OrderId))
+                .Select(p => new { p.OrderId, p.Method }).ToListAsync())
+            .GroupBy(p => p.OrderId)
+            .ToDictionary(g => g.Key, g => string.Join(" + ",
+                g.Select(x => string.IsNullOrWhiteSpace(x.Method) ? "Other" : x.Method.Trim()).Distinct()));
+
+        var rows = raw.Select(x => new StaffSaleRow(x.Id, x.OrderNumber, Services.ReportCalendar.ToLocal(x.When),
+            StoreOf(x.Sid), string.IsNullOrWhiteSpace(x.Cust) ? "Walk-in" : x.Cust!.Trim(),
+            x.Items, x.DiscountAmount, x.Total,
+            tenders.GetValueOrDefault(x.Id) ?? (string.IsNullOrWhiteSpace(x.PaymentProvider) ? "—" : x.PaymentProvider!.Trim()))).ToList();
+
+        ViewBag.From = fLocal; ViewBag.To = tLocal; ViewBag.StaffName = staffLabel;
+        ViewBag.TotalSales = rows.Sum(r => r.Total); ViewBag.TotalTx = rows.Count;
+        return View(rows);
     }
 
     // ── Payment-method breakdown across all channels, over a date range. ────────────────────────
@@ -402,17 +449,77 @@ public class ReportsController : InventoryAreaController
         ViewData["Title"] = "Sales by item";
         var (f, t, fLocal, tLocal) = SalesRange(from, to);
         var orders = PaidOrders(f, t);
+        // Group by product id so each row can drill through to that product's sales; carry the name too.
         var rows = await _db.OrderItems.Where(oi => orders.Any(o => o.Id == oi.OrderId))
-            .GroupBy(oi => oi.ProductName)
+            .GroupBy(oi => oi.ProductId)
             .Select(g => new NameValueRow
             {
-                Name = g.Key,
+                ProductId = g.Key,
+                Name = g.Max(x => x.ProductName) ?? "",
                 Units = g.Sum(x => x.Quantity),
                 Revenue = g.Sum(x => (x.Quantity * x.UnitPrice) - x.DiscountAmount)
             })
             .OrderByDescending(x => x.Revenue).Take(200).ToListAsync();
         ViewBag.From = fLocal; ViewBag.To = tLocal; ViewBag.Heading = "Product"; ViewBag.Title = "Sales by item"; ViewBag.Active = "SalesByItem";
         return View("SalesBreakdown", rows);
+    }
+
+    // ── Item drill-through: every sale of one product, with buyer, POS staff and website packer ──
+    public record ItemSaleRow(int OrderId, string OrderNumber, DateTime When, string Channel, string Store,
+        string? BuyerId, string Buyer, string? BuyerEmail, string Staff, string Packer, int Qty, decimal LineTotal);
+
+    public async Task<IActionResult> ItemSales(int productId, DateTime? from = null, DateTime? to = null)
+    {
+        var (f, t, fLocal, tLocal) = SalesRange(from, to);
+        var product = await _db.Products.Where(p => p.Id == productId)
+            .Select(p => new { p.Id, p.Name, p.Sku }).FirstOrDefaultAsync();
+        if (product == null) return NotFound();
+        ViewData["Title"] = $"Sales — {product.Name}";
+
+        var stores = await _db.Stores.ToDictionaryAsync(s => s.Id, s => s.Name);
+        string StoreOf(int? id) => id.HasValue && stores.TryGetValue(id.Value, out var n) ? n.Replace("Sterlin Glams ", "") : "—";
+
+        var orders = PaidOrders(f, t);
+        var raw = await _db.OrderItems
+            .Where(oi => oi.ProductId == productId && orders.Any(o => o.Id == oi.OrderId))
+            .OrderByDescending(oi => oi.Order.PaidAt ?? oi.Order.CreatedAt)
+            .Select(oi => new
+            {
+                oi.OrderId, oi.Quantity, oi.UnitPrice, oi.DiscountAmount,
+                When = oi.Order.PaidAt ?? oi.Order.CreatedAt,
+                oi.Order.OrderNumber, oi.Order.Channel,
+                Sid = oi.Order.PickupStoreId ?? oi.Order.FulfillingStoreId,
+                StaffId = oi.Order.Channel == OrderChannel.Pos ? oi.Order.UserId : null,  // POS cashier
+                BuyerId = oi.Order.Channel == OrderChannel.Online ? oi.Order.UserId : oi.Order.CustomerUserId,
+                PosCust = oi.Order.Customer != null ? (oi.Order.Customer.FirstName + " " + oi.Order.Customer.LastName) : null,
+                OnlineBuyer = oi.Order.User != null ? (oi.Order.User.FirstName + " " + oi.Order.User.LastName) : null,
+                OnlineEmail = oi.Order.User != null ? oi.Order.User.Email : null,
+                AddrName = oi.Order.DeliveryAddress != null ? oi.Order.DeliveryAddress.FullName : null,
+                Packer = oi.Order.PackedByName
+            }).ToListAsync();
+
+        var staffIds = raw.Where(x => !string.IsNullOrEmpty(x.StaffId)).Select(x => x.StaffId!).Distinct().ToList();
+        var staffMap = (await _db.Users.Where(u => staffIds.Contains(u.Id))
+                .Select(u => new { u.Id, Name = ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim(), u.Email }).ToListAsync())
+            .ToDictionary(u => u.Id, u => string.IsNullOrWhiteSpace(u.Name) ? (u.Email ?? "—") : u.Name);
+
+        var rows = raw.Select(x =>
+        {
+            var pos = x.Channel == OrderChannel.Pos;
+            var buyer = (pos ? x.PosCust : (x.OnlineBuyer ?? x.AddrName))?.Trim();
+            if (string.IsNullOrWhiteSpace(buyer)) buyer = pos ? "Walk-in" : "Website customer";
+            var staff = string.IsNullOrEmpty(x.StaffId) ? "—" : staffMap.GetValueOrDefault(x.StaffId!, "—");
+            var packer = string.IsNullOrWhiteSpace(x.Packer) ? "—" : x.Packer!.Trim();
+            return new ItemSaleRow(x.OrderId, x.OrderNumber, Services.ReportCalendar.ToLocal(x.When),
+                pos ? "In-store" : "Website", StoreOf(x.Sid),
+                string.IsNullOrEmpty(x.BuyerId) ? null : x.BuyerId, buyer!, pos ? null : x.OnlineEmail,
+                staff, packer, x.Quantity, x.Quantity * x.UnitPrice - x.DiscountAmount);
+        }).ToList();
+
+        ViewBag.From = fLocal; ViewBag.To = tLocal;
+        ViewBag.ProductName = product.Name; ViewBag.Sku = product.Sku; ViewBag.ProductId = productId;
+        ViewBag.TotalUnits = rows.Sum(r => r.Qty); ViewBag.TotalRevenue = rows.Sum(r => r.LineTotal);
+        return View(rows);
     }
 
     // ── Sales by category ───────────────────────────────────────────────────────────────────────
@@ -458,6 +565,7 @@ public class ReportsController : InventoryAreaController
             var n = g.Key == null ? null : names.FirstOrDefault(x => x.Id == g.Key);
             return new NameValueRow
             {
+                CustomerId = g.Key,
                 Name = g.Key == null ? "Walk-in / guest"
                      : (n == null ? "—" : (!string.IsNullOrWhiteSpace(n.Name) ? n.Name : n.Email ?? "—")),
                 Units = g.Orders,
@@ -1013,6 +1121,7 @@ public class ShrinkageVm
 }
 public class SalesByStaffRow
 {
+    public string? UserId { get; set; }
     public string Staff { get; set; } = "";
     public int Transactions { get; set; }
     public decimal Sales { get; set; }
@@ -1039,7 +1148,7 @@ public class PaymentMethodVm
     public int TotalTx { get; set; }
 }
 public class DailySalesRow { public DateTime Day { get; set; } public int Orders { get; set; } public decimal Revenue { get; set; } }
-public class TopItemRow { public string Name { get; set; } = ""; public int Units { get; set; } public decimal Revenue { get; set; } }
+public class TopItemRow { public int ProductId { get; set; } public string Name { get; set; } = ""; public int Units { get; set; } public decimal Revenue { get; set; } }
 public class ReportsDashboardVm
 {
     public int Orders { get; set; }
@@ -1061,7 +1170,7 @@ public class SalesSummaryVm
     public decimal Average { get; set; }
     public List<DailySalesRow> Daily { get; set; } = new();
 }
-public class NameValueRow { public string Name { get; set; } = ""; public int Units { get; set; } public decimal Revenue { get; set; } }
+public class NameValueRow { public string Name { get; set; } = ""; public int Units { get; set; } public decimal Revenue { get; set; } public int? ProductId { get; set; } public string? CustomerId { get; set; } }
 public class ExpiringRow
 {
     public string Product { get; set; } = "";

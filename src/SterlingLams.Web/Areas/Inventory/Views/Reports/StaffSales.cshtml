@@ -1,0 +1,69 @@
+@model List<SterlingLams.Web.Areas.Inventory.Controllers.ReportsController.StaffSaleRow>
+@{
+    var staffName = (string)ViewBag.StaffName;
+    DateTime from = ViewBag.From; DateTime to = ViewBag.To;
+    decimal totalSales = ViewBag.TotalSales; int totalTx = ViewBag.TotalTx;
+    var inCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
+}
+
+@await Html.PartialAsync("_ReportTabs", "Sales")
+
+<div class="flex items-center gap-2 mb-1">
+    <a asp-action="Sales" asp-route-from="@from.ToString("yyyy-MM-dd")" asp-route-to="@to.ToString("yyyy-MM-dd")"
+       class="text-xs text-neutral-400 hover:text-neutral-700">← Sales by staff</a>
+</div>
+<h1 class="font-cormorant text-2xl font-light text-neutral-900">@staffName</h1>
+<p class="text-xs text-neutral-400 mb-4">In-store (POS) sales · @from.ToString("dd MMM") – @to.ToString("dd MMM yyyy")</p>
+
+<div class="grid grid-cols-2 gap-3 mb-4">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Transactions</div>
+        <div class="text-2xl font-light text-neutral-900">@totalTx.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Sales</div>
+        <div class="text-2xl font-light text-emerald-700">₦@totalSales.ToString("N0")</div>
+    </div>
+</div>
+
+<form method="get" class="flex flex-wrap items-end gap-2 mb-4">
+    <input type="hidden" name="userId" value="@Context.Request.Query["userId"]" />
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">From</label>
+        <input type="date" name="from" value="@from.ToString("yyyy-MM-dd")" class="@inCls" /></div>
+    <div><label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">To</label>
+        <input type="date" name="to" value="@to.ToString("yyyy-MM-dd")" class="@inCls" /></div>
+    <button type="submit" class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700">Filter</button>
+</form>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[720px]">
+        <thead>
+            <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
+                <th class="text-left px-4 py-3 font-medium">Order</th>
+                <th class="text-left px-4 py-3 font-medium">Date</th>
+                <th class="text-left px-4 py-3 font-medium">Store</th>
+                <th class="text-left px-4 py-3 font-medium">Customer</th>
+                <th class="text-right px-4 py-3 font-medium">Items</th>
+                <th class="text-right px-4 py-3 font-medium">Discount</th>
+                <th class="text-left px-4 py-3 font-medium">Tender</th>
+                <th class="text-right px-4 py-3 font-medium">Total</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (!Model.Any()) { <tr><td colspan="8" class="px-4 py-12 text-center text-neutral-400">No POS sales by this staff member in the selected period.</td></tr> }
+            @foreach (var r in Model)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-2.5 text-xs font-medium text-neutral-800 whitespace-nowrap">@r.OrderNumber</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-500 whitespace-nowrap">@r.When.ToString("dd MMM yy HH:mm")</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-600 whitespace-nowrap">@r.Store</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-600">@r.Customer</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-neutral-700">@r.Items</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-neutral-500">@(r.Discount > 0 ? "₦" + r.Discount.ToString("N0") : "—")</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-600 whitespace-nowrap">@r.Tender</td>
+                    <td class="px-4 py-2.5 text-right text-xs font-medium text-neutral-800 whitespace-nowrap">₦@r.Total.ToString("N0")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
