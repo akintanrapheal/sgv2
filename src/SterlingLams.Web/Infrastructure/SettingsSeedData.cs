@@ -47,6 +47,16 @@ public static class SettingsSeedData
         if (heroImg != null && heroImg.Type == "url")
             heroImg.Type = "image";
 
+        // Admin-notification email is now a LIST (comma-separated). Flip the old single-email input to a
+        // text box + update its label/help so several addresses can be entered; the value is untouched.
+        var adminEmail = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "notifications.admin_email");
+        if (adminEmail != null && adminEmail.Type == "email")
+        {
+            adminEmail.Type = "text";
+            adminEmail.Label = "Admin Email(s)";
+            adminEmail.Description = "Receives new order and low stock alerts. Add several by separating them with commas.";
+        }
+
         // Receipt logo re-based from height-in-px to width-in-mm. Convert the old default (76px) to the
         // new 45mm (4.5cm) width; leave any other admin-set value alone.
         var rcLogo = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "pos.receipt_logo_height");
@@ -145,7 +155,7 @@ public static class SettingsSeedData
         new() { Key = "logistics.notify_email",            Group = "Shipping", Label = "Logistics dispatch email",           Type = "email",   Value = "sterlinglamslogistics@gmail.com", Description = "Where the 'new delivery to fulfil' email is sent when a delivery order is dispatched. Leave blank to turn logistics emails off.", SortOrder = 8 },
 
         // ── Notifications ─────────────────────────────────────────────────────
-        new() { Key = "notifications.admin_email",     Group = "Notifications", Label = "Admin Email",                    Type = "email",   Value = "rapheal@sterlinglamslogistics.com", Description = "Receives new order and low stock alerts.",         SortOrder = 1 },
+        new() { Key = "notifications.admin_email",     Group = "Notifications", Label = "Admin Email(s)",                 Type = "text",    Value = "rapheal@sterlinglamslogistics.com", Description = "Receives new order and low stock alerts. Add several by separating them with commas.", SortOrder = 1 },
         new() { Key = "notifications.new_order",       Group = "Notifications", Label = "New Order Alerts",               Type = "boolean", Value = "true",  Description = "Send email to admin when a new order is placed.",          SortOrder = 2 },
         new() { Key = "notifications.low_stock",       Group = "Notifications", Label = "Low Stock Alerts",               Type = "boolean", Value = "true",  Description = "Send email to admin when stock falls below threshold.",     SortOrder = 3 },
         new() { Key = "notifications.low_stock_every_days", Group = "Notifications", Label = "Low Stock Alert Frequency (days)", Type = "number", Value = "1", Description = "Send the low-stock digest at most once every N days (1 = daily, 3 = every 3 days, 7 = weekly). Only applies when Low Stock Alerts is on.", SortOrder = 3 },

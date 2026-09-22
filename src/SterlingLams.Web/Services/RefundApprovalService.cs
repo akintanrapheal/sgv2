@@ -259,8 +259,9 @@ public class RefundApprovalService : IRefundApprovalService
             var subject = Fill(subjT);
             if (!string.IsNullOrWhiteSpace(store?.Email)) await _email.SendAsync(store!.Email!, subject, html);
             var admin = await _settings.GetAsync("notifications.admin_email", "");
-            if (!string.IsNullOrWhiteSpace(admin) && !string.Equals(admin, store?.Email, StringComparison.OrdinalIgnoreCase))
-                await _email.SendAsync(admin, "[copy] " + subject, html);
+            foreach (var addr in SterlingLams.Web.Infrastructure.EmailRecipients.Split(admin))
+                if (!string.Equals(addr, store?.Email, StringComparison.OrdinalIgnoreCase))
+                    await _email.SendAsync(addr, "[copy] " + subject, html);
         }
         catch (Exception ex) { _log.LogError(ex, "Restock-notify email failed for {RefundNumber}", refund.RefundNumber); }
     }

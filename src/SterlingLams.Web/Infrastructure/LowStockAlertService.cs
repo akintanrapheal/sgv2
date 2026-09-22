@@ -125,13 +125,13 @@ public class LowStockAlertService : BackgroundService
         var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
         var anySent = false;
 
-        // 1) Admin digest — every branch, to the configured admin email (as before).
-        if (!string.IsNullOrWhiteSpace(adminEmail))
+        // 1) Admin digest — every branch, to each configured admin email (comma-separated list).
+        foreach (var addr in EmailRecipients.Split(adminEmail))
         {
-            if (await email.SendAsync(adminEmail, BuildSubject(items), BuildBody(items), ct: ct))
+            if (await email.SendAsync(addr, BuildSubject(items), BuildBody(items), ct: ct))
             {
                 anySent = true;
-                _logger.LogInformation("Low-stock admin digest sent ({Count} item(s)).", items.Count);
+                _logger.LogInformation("Low-stock admin digest sent to {Addr} ({Count} item(s)).", addr, items.Count);
             }
         }
 
