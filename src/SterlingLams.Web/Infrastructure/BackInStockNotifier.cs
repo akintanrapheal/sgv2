@@ -89,10 +89,27 @@ public class BackInStockNotifier : BackgroundService
             var absImg = string.IsNullOrWhiteSpace(rawImg) ? null
                 : (rawImg.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? rawImg
                    : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + rawImg.TrimStart('/')));
-            var thumb = SterlingLams.Web.Services.OrderEmailTemplate.Thumb(absImg);
+
+            // Prominent product image (Cloudinary-resized where possible), clickable straight through to
+            // the product page when we have a link.
+            var imageBlock = "";
+            if (!string.IsNullOrWhiteSpace(absImg))
+            {
+                var big = Img.Cld(absImg, 480, 480) ?? absImg;
+                var imgTag = $@"<img src=""{big}"" alt=""{name}"" width=""260"" style=""width:260px;max-width:100%;height:auto;border:1px solid #eee;border-radius:4px;"" />";
+                imageBlock = link != null
+                    ? $@"<p style=""margin:8px 0 18px;""><a href=""{link}"">{imgTag}</a></p>"
+                    : $@"<p style=""margin:8px 0 18px;"">{imgTag}</p>";
+            }
+            // The product name links to the exact product too.
+            var nameHtml = link != null
+                ? $@"<a href=""{link}"" style=""color:#0a0a0a;text-decoration:underline;""><strong>{name}</strong></a>"
+                : $"<strong>{name}</strong>";
+
             var body = $@"
                 <h2 style=""font-size:18px;margin:0 0 12px;"">{System.Net.WebUtility.HtmlEncode(subject)}</h2>
-                <p style=""vertical-align:middle;"">{thumb}<strong>{name}</strong> is back in stock.</p>
+                {imageBlock}
+                <p>{nameHtml} is back in stock.</p>
                 <p>{System.Net.WebUtility.HtmlEncode(intro)}</p>
                 {cta}";
 
