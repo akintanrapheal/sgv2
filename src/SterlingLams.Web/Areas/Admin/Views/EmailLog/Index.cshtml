@@ -2,19 +2,20 @@
 @{
     ViewData["Title"] = "Email Log";
     var status = (string)ViewBag.Status;
+    var channel = (string)ViewBag.Channel;
     var q = (string)ViewBag.Q;
+    var from = (string)ViewBag.From;
+    var to = (string)ViewBag.To;
     int page = ViewBag.Page, totalPages = ViewBag.TotalPages, total = ViewBag.Total;
-    string TabCls(string s) => s == status
-        ? "bg-neutral-900 text-white"
-        : "border border-neutral-200 text-neutral-600 hover:border-neutral-400";
+    var sel = "border border-neutral-200 rounded-sm px-3 py-1.5 text-sm bg-white focus:outline-none focus:border-neutral-400";
 }
 
 <div class="flex items-center justify-between mb-1">
     <h1 class="text-lg font-medium text-neutral-800">Email Log</h1>
 </div>
-<p class="text-xs text-neutral-400 mb-6">Every email the system attempted to send, with its result. Shows the SMTP-level outcome (accepted / failed).</p>
+<p class="text-xs text-neutral-400 mb-6">Every email the system attempted to send, with its result and — where the recipient's mail client loads images — whether it was opened. Delivery is the SMTP-level outcome (accepted / failed); opens are a best-effort signal (image-blocking clients won't register, some clients pre-fetch).</p>
 
-<div class="grid grid-cols-3 gap-4 mb-6">
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Total logged</p><p class="text-xl font-light text-neutral-900 mt-1">@total</p>
     </div>
@@ -22,20 +23,47 @@
         <p class="text-xs text-neutral-400">Sent</p><p class="text-xl font-light text-emerald-600 mt-1">@ViewBag.SentCount</p>
     </div>
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <p class="text-xs text-neutral-400">Opened</p><p class="text-xl font-light text-blue-600 mt-1">@ViewBag.OpenedCount</p>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
         <p class="text-xs text-neutral-400">Failed</p><p class="text-xl font-light mt-1 @((int)ViewBag.FailedCount > 0 ? "text-red-600" : "text-neutral-900")">@ViewBag.FailedCount</p>
     </div>
 </div>
 
-<form method="get" class="flex flex-wrap items-center gap-2 mb-5">
-    <div class="flex gap-1.5">
-        <a asp-action="Index" asp-route-q="@q" class="px-3 py-1.5 text-xs rounded-sm @TabCls("")">All</a>
-        <a asp-action="Index" asp-route-status="sent" asp-route-q="@q" class="px-3 py-1.5 text-xs rounded-sm @TabCls("sent")">Sent</a>
-        <a asp-action="Index" asp-route-status="failed" asp-route-q="@q" class="px-3 py-1.5 text-xs rounded-sm @TabCls("failed")">Failed</a>
+<form method="get" class="flex flex-wrap items-end gap-2 mb-5">
+    <div>
+        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Status</label>
+        <select name="status" class="@sel">
+            <option value="" selected="@(status == "")">All</option>
+            <option value="sent" selected="@(status == "sent")">Sent</option>
+            <option value="opened" selected="@(status == "opened")">Opened</option>
+            <option value="unopened" selected="@(status == "unopened")">Sent · not opened</option>
+            <option value="failed" selected="@(status == "failed")">Failed</option>
+        </select>
     </div>
-    <input type="hidden" name="status" value="@status" />
-    <input type="text" name="q" value="@q" placeholder="Search recipient or subject…"
-           class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm w-72" />
-    <button class="px-4 py-1.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Search</button>
+    <div>
+        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Channel</label>
+        <select name="channel" class="@sel">
+            <option value="" selected="@(channel == "")">All</option>
+            <option value="smtp" selected="@(channel == "smtp")">SMTP (sent)</option>
+            <option value="pickup" selected="@(channel == "pickup")">Pickup (dev)</option>
+            <option value="skipped" selected="@(channel == "skipped")">Skipped (no SMTP)</option>
+        </select>
+    </div>
+    <div>
+        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">From</label>
+        <input type="date" name="from" value="@from" class="@sel" />
+    </div>
+    <div>
+        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">To</label>
+        <input type="date" name="to" value="@to" class="@sel" />
+    </div>
+    <div class="flex-1 min-w-[200px]">
+        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Search</label>
+        <input type="text" name="q" value="@q" placeholder="Recipient, name or subject…" class="@sel w-full" />
+    </div>
+    <button class="px-4 py-1.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Apply</button>
+    <a asp-action="Index" class="px-4 py-1.5 border border-neutral-200 text-neutral-600 text-sm rounded-sm hover:border-neutral-400 transition-colors">Clear</a>
 </form>
 
 <div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
@@ -47,9 +75,10 @@
                 <th class="px-4 py-2.5 text-left font-medium">Subject</th>
                 <th class="px-4 py-2.5 text-left font-medium">Channel</th>
                 <th class="px-4 py-2.5 text-left font-medium">Status</th>
+                <th class="px-4 py-2.5 text-left font-medium">Opened</th>
             </tr></thead>
             <tbody class="divide-y divide-neutral-100">
-                @if (!Model.Any()) { <tr><td colspan="5" class="px-4 py-10 text-center text-neutral-400">No emails logged yet.</td></tr> }
+                @if (!Model.Any()) { <tr><td colspan="6" class="px-4 py-10 text-center text-neutral-400">No emails match these filters.</td></tr> }
                 @foreach (var e in Model)
                 {
                     <tr class="hover:bg-neutral-50 @(!e.Sent ? "bg-red-50/40" : "")">
@@ -69,6 +98,17 @@
                                 {
                                     <span class="text-neutral-400 text-xs ml-1">— @e.Error</span>
                                 }
+                            }
+                        </td>
+                        <td class="px-4 py-2.5">
+                            @if (e.OpenedAt.HasValue)
+                            {
+                                <span class="text-blue-600" title="@e.OpenedAt.Value.ToLocalTime().ToString("dd MMM yy HH:mm")">● Opened @e.OpenedAt.Value.ToLocalTime().ToString("dd MMM HH:mm")</span>
+                                @if (e.OpenCount > 1) { <span class="text-neutral-400 text-xs ml-1">(@e.OpenCount×)</span> }
+                            }
+                            else if (e.Sent && e.Channel == "smtp")
+                            {
+                                <span class="text-neutral-300">—</span>
                             }
                         </td>
                     </tr>

@@ -2,76 +2,45 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Data;
-using SterlingLams.Web.Services.Marketing;
 
 namespace SterlingLams.Web.Controllers;
 
 /// <summary>
-/// Self-hosted email open/click tracking. A 1×1 pixel records opens; wrapped links record a click
-/// then redirect on. Both keyed to a data-protected campaign-recipient token, counted once each.
+/// Email open-tracking pixel. Each sent email embeds a 1×1 image at <c>/e/o/{trackId}.png</c>; when the
+/// recipient's mail client loads it, we stamp the matching <see cref="Models.Domain.EmailLog"/> row as
+/// opened. Public + anonymous (the request comes from the mail client, not a signed-in session) and
+/// always returns the pixel, even if the token is unknown, so it never shows a broken image.
 /// </summary>
 [AllowAnonymous]
 public class EmailTrackController : Controller
 {
+    // A 43-byte transparent 1×1 GIF.
+    private static readonly byte[] Pixel =
+        Convert.FromBase64String("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
+
     private readonly ApplicationDbContext _db;
-    private readonly IMarketingService _marketing;
-    public EmailTrackController(ApplicationDbContext db, IMarketingService marketing)
-    {
-        _db = db;
-        _marketing = marketing;
-    }
+    public EmailTrackController(ApplicationDbContext db) => _db = db;
 
-    // 1×1 transparent GIF.
-    private static readonly byte[] Pixel = Convert.FromBase64String(
-        "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7");
-
-    [HttpGet("/e/o/{token}")]
-    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    [HttpGet("/e/o/{token}.png")]
     public async Task<IActionResult> Open(string token)
     {
-        await RecordOpenAsync(token);
-        Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
-        return File(Pixel, "image/gif");
-    }
-
-    [HttpGet("/e/c/{token}")]
-    public async Task<IActionResult> Click(string token, string? u)
-    {
-        var rid = _marketing.ReadTrackToken(token);
-        if (rid is int id)
+        if (Guid.TryParse(token, out var id))
         {
-            var r = await _db.CampaignRecipients.FirstOrDefaultAsync(x => x.Id == id);
-            if (r != null)
+            try
             {
-                var now = DateTime.UtcNow;
-                var changed = false;
-                if (r.ClickedAt == null) { r.ClickedAt = now; await BumpAsync(r.CampaignId, click: true); changed = true; }
-                if (r.OpenedAt == null) { r.OpenedAt = now; await BumpAsync(r.CampaignId, click: false); changed = true; }
-                if (changed) await _db.SaveChangesAsync();
+                var row = await _db.EmailLogs.FirstOrDefaultAsync(e => e.TrackId == id);
+                if (row != null)
+                {
+                    row.OpenedAt ??= DateTime.UtcNow;   // first open wins
+                    row.OpenCount++;
+                    await _db.SaveChangesAsync();
+                }
             }
+            catch { /* tracking must never fail the pixel */ }
         }
-        // Only follow absolute http(s) targets; anything else goes home.
-        if (!string.IsNullOrWhiteSpace(u) && Uri.TryCreate(u, UriKind.Absolute, out var dest)
-            && (dest.Scheme == Uri.UriSchemeHttp || dest.Scheme == Uri.UriSchemeHttps))
-            return Redirect(u);
-        return RedirectToAction("Index", "Home");
-    }
-
-    private async Task RecordOpenAsync(string token)
-    {
-        var rid = _marketing.ReadTrackToken(token);
-        if (rid is not int id) return;
-        var r = await _db.CampaignRecipients.FirstOrDefaultAsync(x => x.Id == id);
-        if (r == null || r.OpenedAt != null) return;
-        r.OpenedAt = DateTime.UtcNow;
-        await BumpAsync(r.CampaignId, click: false);
-        await _db.SaveChangesAsync();
-    }
-
-    private async Task BumpAsync(int campaignId, bool click)
-    {
-        var c = await _db.Campaigns.FirstOrDefaultAsync(x => x.Id == campaignId);
-        if (c == null) return;
-        if (click) c.ClickCount++; else c.OpenCount++;
+        // Never let a mail client cache the pixel, so repeat opens are counted.
+        Response.Headers.CacheControl = "no-store, no-cache, must-revalidate, private";
+        Response.Headers.Pragma = "no-cache";
+        return File(Pixel, "image/gif");
     }
 }

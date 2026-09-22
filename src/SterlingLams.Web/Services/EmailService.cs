@@ -62,7 +62,7 @@ public class SmtpEmailService : IEmailService
 
     // Records the send attempt to the EmailLog for the admin "Email log". Uses its own DbContext scope
     // so it never touches the caller's transaction, and never throws (email must not break on a log error).
-    private async Task LogEmailAsync(string toEmail, string? toName, string subject, bool sent, string? error, string channel)
+    private async Task LogEmailAsync(string toEmail, string? toName, string subject, bool sent, string? error, string channel, Guid? trackId = null)
     {
         try
         {
@@ -76,11 +76,22 @@ public class SmtpEmailService : IEmailService
                 Sent = sent,
                 Error = error == null ? null : (error.Length > 500 ? error[..500] : error),
                 Channel = channel,
+                TrackId = trackId,
                 CreatedAt = DateTime.UtcNow
             });
             await db.SaveChangesAsync();
         }
         catch { /* best-effort — never break a send because logging failed */ }
+    }
+
+    /// <summary>1×1 transparent tracking pixel that pings our open-tracking endpoint when the email is
+    /// opened. Needs an absolute URL (App:BaseUrl) — returns null when that isn't configured, so no
+    /// broken image is embedded.</summary>
+    private string? PixelHtml(Guid trackId)
+    {
+        var baseUrl = (_config["App:BaseUrl"] ?? "").TrimEnd('/');
+        if (string.IsNullOrEmpty(baseUrl)) return null;
+        return $@"<img src=""{baseUrl}/e/o/{trackId:N}.png"" width=""1"" height=""1"" alt="""" style=""display:none;max-height:0;overflow:hidden;"" />";
     }
 
     /// <summary>Admin-customizable email branding (Settings → Emails), resolved per send.</summary>
@@ -161,13 +172,16 @@ public class SmtpEmailService : IEmailService
             return pickedUp;
         }
 
+        // Track this send so opens can be tied back to its Email-log row.
+        var trackId = Guid.NewGuid();
+        var pixel = PixelHtml(trackId);
         try
         {
             using var msg = new MailMessage
             {
                 From = new MailAddress(smtp.FromAddress, brand.FromName),
                 Subject = subject,
-                Body = Wrap(subject, innerHtml, brand),
+                Body = Wrap(subject, innerHtml + (pixel ?? ""), brand),
                 IsBodyHtml = true,
             };
             msg.To.Add(new MailAddress(toEmail, toName ?? toEmail));
@@ -181,13 +195,13 @@ public class SmtpEmailService : IEmailService
             };
             await client.SendMailAsync(msg, ct);
             _log.LogInformation("Email sent to {To}: \"{Subject}\"", SterlingLams.Web.Infrastructure.LogRedact.Email(toEmail), subject);
-            await LogEmailAsync(toEmail, toName, subject, true, null, "smtp");
+            await LogEmailAsync(toEmail, toName, subject, true, null, "smtp", trackId);
             return true;
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Failed to send email to {To}: \"{Subject}\"", SterlingLams.Web.Infrastructure.LogRedact.Email(toEmail), subject);
-            await LogEmailAsync(toEmail, toName, subject, false, ex.Message, "smtp");
+            await LogEmailAsync(toEmail, toName, subject, false, ex.Message, "smtp", trackId);
             return false;
         }
     }
