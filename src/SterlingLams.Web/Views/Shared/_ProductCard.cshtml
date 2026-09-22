@@ -52,9 +52,11 @@
         }
         else if (cardLowThreshold > 0 && Model.TotalStock > 0 && Model.TotalStock <= cardLowThreshold)
         {
+            @* Listing only flags that stock is low — the exact remaining count (which is the available,
+               not raw, quantity) is shown on the product page, so the two never disagree. *@
             <span class="absolute bottom-3 left-3 inline-flex items-center gap-1.5 bg-white/90 backdrop-blur text-amber-700 text-[10px] tracking-wide uppercase px-2.5 py-1 rounded-full shadow-sm">
                 <span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                Only @Model.TotalStock left
+                Low stock
             </span>
         }
 
