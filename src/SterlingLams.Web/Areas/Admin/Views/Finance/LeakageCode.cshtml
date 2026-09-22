@@ -1,0 +1,74 @@
+@model List<SterlingLams.Web.Areas.Admin.Controllers.FinanceController.LeakageCodeRow>
+@{
+    var code = (string)ViewBag.Code;
+    DateTime from = ViewBag.From; DateTime to = ViewBag.To;
+    int? storeId = ViewBag.StoreId;
+    decimal totalDiscount = ViewBag.TotalDiscount; decimal totalRevenue = ViewBag.TotalRevenue;
+    string Money(decimal v) => "₦" + v.ToString("N0");
+}
+
+<partial name="_FinanceTabs" model="@("Leakage")" />
+
+<div class="flex items-center gap-2 mb-1">
+    <a asp-action="Leakage" asp-route-from="@from.ToString("yyyy-MM-dd")" asp-route-to="@to.ToString("yyyy-MM-dd")" asp-route-storeId="@storeId"
+       class="text-xs text-neutral-400 hover:text-neutral-700">← Liabilities</a>
+</div>
+<h1 class="font-cormorant text-2xl font-light text-neutral-900">Discount code <span class="font-mono text-xl">@code</span></h1>
+<p class="text-xs text-neutral-400 mb-4">@from.ToString("dd MMM") – @to.ToString("dd MMM yyyy")</p>
+
+<div class="grid grid-cols-3 gap-3 mb-4">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Times used</div>
+        <div class="text-2xl font-light text-neutral-900">@Model.Count.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Given away</div>
+        <div class="text-2xl font-light text-amber-600">@Money(totalDiscount)</div>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+        <div class="text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Revenue on these orders</div>
+        <div class="text-2xl font-light text-emerald-700">@Money(totalRevenue)</div>
+    </div>
+</div>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[720px]">
+        <thead>
+            <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
+                <th class="text-left px-4 py-3 font-medium">Order</th>
+                <th class="text-left px-4 py-3 font-medium">Date</th>
+                <th class="text-left px-4 py-3 font-medium">Channel</th>
+                <th class="text-left px-4 py-3 font-medium">Store</th>
+                <th class="text-left px-4 py-3 font-medium">Customer</th>
+                <th class="text-right px-4 py-3 font-medium">Discount</th>
+                <th class="text-right px-4 py-3 font-medium">Order total</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (!Model.Any()) { <tr><td colspan="7" class="px-4 py-12 text-center text-neutral-400">No orders used this code in the selected period.</td></tr> }
+            @foreach (var r in Model)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-2.5 text-xs font-medium text-neutral-800 whitespace-nowrap">@r.OrderNumber</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-500 whitespace-nowrap">@r.When.ToString("dd MMM yy HH:mm")</td>
+                    <td class="px-4 py-2.5 text-xs">
+                        <span class="text-[10px] px-2 py-0.5 rounded-full @(r.Channel == "In-store" ? "bg-indigo-50 text-indigo-700" : "bg-blue-50 text-blue-700")">@r.Channel</span>
+                    </td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-600 whitespace-nowrap">@r.Store</td>
+                    <td class="px-4 py-2.5 text-xs">
+                        @if (!string.IsNullOrEmpty(r.BuyerId))
+                        {
+                            <a asp-action="Customer" asp-route-id="@r.BuyerId" class="text-emerald-700 hover:underline">@r.Buyer</a>
+                        }
+                        else
+                        {
+                            <span class="text-neutral-600">@r.Buyer</span>
+                        }
+                    </td>
+                    <td class="px-4 py-2.5 text-right text-xs text-amber-600">@Money(r.Discount)</td>
+                    <td class="px-4 py-2.5 text-right text-xs font-medium text-neutral-800 whitespace-nowrap">@Money(r.Total)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

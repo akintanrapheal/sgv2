@@ -74,7 +74,7 @@ public static class AdminSections
         ("Transactions", "Transactions"),
         ("Cash",         "Cash-up"),
         ("Refunds",      "Refunds"),
-        ("Leakage",      "Leakage"),
+        ("Leakage",      "Liabilities"),
         ("Liabilities",  "Customer Points"),
         ("Customers",    "Customers"),
         ("EndOfDay",     "End of Day"),

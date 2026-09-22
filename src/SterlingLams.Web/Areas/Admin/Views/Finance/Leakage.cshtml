@@ -1,7 +1,7 @@
 @using System.Text.Json
 @model SterlingLams.Web.Areas.Admin.Controllers.FinanceController.LeakageVm
 @{
-    ViewData["Title"] = "Finance — Leakage";
+    ViewData["Title"] = "Finance — Liabilities";
     string J(object o) => JsonSerializer.Serialize(o);
     string Money(decimal v) => "₦" + v.ToString("N0");
     var splitLabels = new[] { "Discounts", "Loyalty", "Gift cards" };
@@ -68,7 +68,11 @@
                 @foreach (var c in Model.ByCode)
                 {
                     <tr class="hover:bg-neutral-50">
-                        <td class="px-4 py-2.5 text-neutral-700 font-mono text-xs">@c.Label</td>
+                        <td class="px-4 py-2.5 font-mono text-xs">
+                            <a asp-action="LeakageCode" asp-route-code="@c.Label"
+                               asp-route-from="@Model.From.ToString("yyyy-MM-dd")" asp-route-to="@Model.To.ToString("yyyy-MM-dd")"
+                               asp-route-storeId="@Model.StoreId" class="text-emerald-700 hover:underline">@c.Label</a>
+                        </td>
                         <td class="px-4 py-2.5 text-right text-neutral-500">@c.Count</td>
                         <td class="px-4 py-2.5 text-right text-neutral-800">@Money(c.Amount)</td>
                     </tr>
