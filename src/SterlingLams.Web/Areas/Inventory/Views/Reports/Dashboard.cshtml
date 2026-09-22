@@ -128,7 +128,8 @@
                 @foreach (var it in Model.TopItems)
                 {
                     <li class="flex items-center justify-between py-2">
-                        <span class="text-xs text-neutral-700 truncate pr-2">@it.Name</span>
+                        <a asp-action="ItemSales" asp-route-productId="@it.ProductId" asp-all-route-data="rd"
+                           class="text-xs text-emerald-700 hover:underline truncate pr-2">@it.Name</a>
                         <span class="text-xs text-neutral-500 whitespace-nowrap">@it.Units.ToString("N0") · ₦@it.Revenue.ToString("N0")</span>
                     </li>
                 }
