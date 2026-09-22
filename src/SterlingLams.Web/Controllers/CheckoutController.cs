@@ -939,7 +939,8 @@ public class CheckoutController : Controller
                     var adminSubjectT = await _settings.GetAsync("email.new_order_admin.subject", "New order {order}");
                     var adminSubject = adminSubjectT.Replace("{order}", order.OrderNumber) + $" — ₦{order.Total:N0}";
                     var adminBody = await BuildAdminOrderAlertAsync(order, customerEmail);
-                    await _email.SendAsync(adminEmail, adminSubject, adminBody, ct: HttpContext.RequestAborted);
+                    foreach (var addr in SterlingLams.Web.Infrastructure.EmailRecipients.Split(adminEmail))
+                        await _email.SendAsync(addr, adminSubject, adminBody, ct: HttpContext.RequestAborted);
                 }
             }
         }

@@ -532,8 +532,9 @@ public class OrderFulfilmentService : IOrderFulfilmentService
         {
             if (!string.IsNullOrWhiteSpace(toEmail)) await _email.SendAsync(toEmail!, subject, html);
             var admin = await _settings.GetAsync("notifications.admin_email", "");
-            if (!string.IsNullOrWhiteSpace(admin) && !string.Equals(admin, toEmail, StringComparison.OrdinalIgnoreCase))
-                await _email.SendAsync(admin, "[copy] " + subject, html);
+            foreach (var addr in Infrastructure.EmailRecipients.Split(admin))
+                if (!string.Equals(addr, toEmail, StringComparison.OrdinalIgnoreCase))
+                    await _email.SendAsync(addr, "[copy] " + subject, html);
         }
         catch (Exception ex) { _logger.LogError(ex, "Branch fulfilment email failed: {Subject}", subject); }
     }

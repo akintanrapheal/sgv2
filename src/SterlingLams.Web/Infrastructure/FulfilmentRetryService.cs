@@ -92,7 +92,8 @@ public class FulfilmentRetryService : BackgroundService
                     <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""margin:16px 0;font-size:14px;"">{rows}</table>";
                 try
                 {
-                    await email.SendAsync(adminEmail, $"⚠ {needAlert.Count} paid order(s) need fulfilment", body, ct: ct);
+                    foreach (var addr in EmailRecipients.Split(adminEmail))
+                        await email.SendAsync(addr, $"⚠ {needAlert.Count} paid order(s) need fulfilment", body, ct: ct);
                 }
                 catch (Exception ex)
                 {
