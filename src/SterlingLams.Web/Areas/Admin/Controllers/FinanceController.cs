@@ -938,6 +938,47 @@ public class FinanceController : AdminBaseController
         });
     }
 
+    // ── Leakage drill-through: the orders that used one discount code ────────────
+    public record LeakageCodeRow(int OrderId, string OrderNumber, DateTime When, string Channel, string Store,
+        string? BuyerId, string Buyer, decimal Discount, decimal Total);
+
+    public async Task<IActionResult> LeakageCode(string code, string? from, string? to, int? storeId)
+    {
+        code = (code ?? "").Trim();
+        ViewData["Title"] = $"Finance — {code}";
+        var (f, t, fLocal, tLocal) = Range(from, to);
+        var stores = await _db.Stores.ToDictionaryAsync(s => s.Id, s => s.Name);
+        string StoreOf(int? id) => id.HasValue && stores.TryGetValue(id.Value, out var n) ? n.Replace("Sterlin Glams ", "") : "Online / unassigned";
+
+        var raw = await PaidOrders(f, t, storeId, "")
+            .Where(o => o.DiscountCode == code && o.DiscountAmount > 0)
+            .OrderByDescending(o => o.PaidAt ?? o.CreatedAt)
+            .Select(o => new
+            {
+                o.Id, o.OrderNumber, When = o.PaidAt ?? o.CreatedAt, o.Channel,
+                Sid = o.PickupStoreId ?? o.FulfillingStoreId,
+                BuyerId = o.Channel == OrderChannel.Online ? o.UserId : o.CustomerUserId,
+                Cust = o.Customer != null ? (o.Customer.FirstName + " " + o.Customer.LastName) : null,
+                Buyer = o.User != null ? (o.User.FirstName + " " + o.User.LastName) : null,
+                Addr = o.DeliveryAddress != null ? o.DeliveryAddress.FullName : null,
+                o.DiscountAmount, o.Total
+            }).ToListAsync();
+
+        var rows = raw.Select(x =>
+        {
+            var pos = x.Channel == OrderChannel.Pos;
+            var buyer = (pos ? x.Cust : (x.Buyer ?? x.Addr))?.Trim();
+            if (string.IsNullOrWhiteSpace(buyer)) buyer = pos ? "Walk-in" : "Website customer";
+            return new LeakageCodeRow(x.Id, x.OrderNumber, Services.ReportCalendar.ToLocal(x.When),
+                pos ? "In-store" : "Website", StoreOf(x.Sid),
+                string.IsNullOrEmpty(x.BuyerId) ? null : x.BuyerId, buyer!, x.DiscountAmount, x.Total);
+        }).ToList();
+
+        ViewBag.Code = code; ViewBag.From = fLocal; ViewBag.To = tLocal; ViewBag.StoreId = storeId;
+        ViewBag.TotalDiscount = rows.Sum(r => r.Discount); ViewBag.TotalRevenue = rows.Sum(r => r.Total);
+        return View(rows);
+    }
+
     // ── Outstanding liabilities (money we owe customers) ───────────────────────
     public record GiftCardRow(string Code, decimal Initial, decimal Balance, DateTime? Expires, string? Recipient);
     public record CustPointRow(string Id, string Name, string Email, int Points);
