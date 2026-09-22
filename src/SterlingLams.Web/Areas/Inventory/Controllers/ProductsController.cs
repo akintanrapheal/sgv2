@@ -246,20 +246,34 @@ public class ProductsController : InventoryAreaController
             }
         }
 
-        foreach (var v in variants)
-        {
-            if (intended.TryGetValue(v.Id, out var bc)) v.Barcode = bc;
-            if (intendedPrice.TryGetValue(v.Id, out var pr)) v.Price = pr;   // blank = follow base
-            if (intendedPos.TryGetValue(v.Id, out var pos)) v.PosPrice = pos; // blank = POS uses normal price
-        }
-
+        // Two-phase write so SWAPPING barcodes between two variants of this product works. The unique
+        // barcode index is checked per UPDATE statement, so setting one variant to a value a sibling
+        // still holds fails mid-batch. Phase 1 clears the barcodes that are changing; phase 2 sets the
+        // new ones — by then the old value is gone, so no transient clash. Wrapped in a transaction so
+        // a genuine conflict rolls back cleanly. (Genuine duplicates are already caught above.)
+        using var tx = await _db.Database.BeginTransactionAsync();
         try
         {
+            // Phase 1: null out the barcode on every variant whose barcode is actually changing.
+            foreach (var v in variants)
+                if (intended.TryGetValue(v.Id, out var bc) && v.Barcode != bc)
+                    v.Barcode = null;
             await _db.SaveChangesAsync();
+
+            // Phase 2: apply the intended barcodes + prices.
+            foreach (var v in variants)
+            {
+                if (intended.TryGetValue(v.Id, out var bc)) v.Barcode = bc;
+                if (intendedPrice.TryGetValue(v.Id, out var pr)) v.Price = pr;   // blank = follow base
+                if (intendedPos.TryGetValue(v.Id, out var pos)) v.PosPrice = pos; // blank = POS uses normal price
+            }
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
         }
         catch (DbUpdateException)
         {
-            // Safety net for a race or an in-place swap of two barcodes in one save.
+            await tx.RollbackAsync();
+            // Safety net for a genuine race with another save.
             TempData["Error"] = "That barcode is already in use — please check the barcodes and try again.";
             return RedirectToAction(nameof(Edit), new { id = productId });
         }
