@@ -766,44 +766,9 @@ public class FinanceController : AdminBaseController
                     "Cash", m.Amount, true, "", "", null, m.Reason ?? ""));
         }
 
-        // 5) Cash-up drawer over/short — one row per closed till session (variance = counted − expected).
-        // Informational (not a money movement) so it does NOT count toward the in/out/net totals.
-        if ((type is "" or "Cashup") && channel == "")
-        {
-            var sessQ = _db.TillSessions.Include(s => s.Register)
-                .Where(s => s.ClosedAt != null && s.ClosedAt >= f && s.ClosedAt < t);
-            if (storeId.HasValue) sessQ = sessQ.Where(s => s.Register.StoreId == storeId);
-            var sessions = await sessQ.ToListAsync();
-            var sids = sessions.Select(s => s.Id).ToList();
-            if (sids.Count > 0)
-            {
-                var cashSales = (await _db.OrderPayments
-                        .Where(pp => pp.Method == "Cash" && pp.Order.TillSessionId != null && sids.Contains(pp.Order.TillSessionId!.Value))
-                        .GroupBy(pp => pp.Order.TillSessionId!.Value)
-                        .Select(g => new { Sid = g.Key, Amt = g.Sum(x => x.Amount) }).ToListAsync())
-                    .ToDictionary(x => x.Sid, x => x.Amt);
-                var cashRefunds = (await _db.Refunds
-                        .Where(rr => rr.Status == RefundStatus.Approved && rr.RefundMethod == "Cash" && rr.OriginalOrder.TillSessionId != null && sids.Contains(rr.OriginalOrder.TillSessionId!.Value))
-                        .GroupBy(rr => rr.OriginalOrder.TillSessionId!.Value)
-                        .Select(g => new { Sid = g.Key, Amt = g.Sum(x => x.Amount) }).ToListAsync())
-                    .ToDictionary(x => x.Sid, x => x.Amt);
-                var moves = (await _db.CashMovements.Where(mm => sids.Contains(mm.TillSessionId))
-                        .GroupBy(mm => mm.TillSessionId)
-                        .Select(g => new { Sid = g.Key, In = g.Where(x => x.Amount > 0).Sum(x => x.Amount), Out = g.Where(x => x.Amount < 0).Sum(x => x.Amount) }).ToListAsync())
-                    .ToDictionary(x => x.Sid, x => (x.In, x.Out));
-                var names = await UserNamesAsync(sessions.Select(s => s.OpenedByUserId));
-                foreach (var s in sessions)
-                {
-                    var mv = moves.GetValueOrDefault(s.Id);
-                    var expected = s.OpeningFloat + cashSales.GetValueOrDefault(s.Id) - cashRefunds.GetValueOrDefault(s.Id) + mv.In + mv.Out;
-                    var variance = (s.CountedCash ?? 0) - expected;
-                    var status = variance == 0 ? "balanced" : (variance > 0 ? "over" : "short");
-                    rows.Add(new TxnRow(s.ClosedAt!.Value, "Cash-up", StoreLabel(s.Register.StoreId), s.Register.StoreId, "",
-                        s.Register.Name, names.GetValueOrDefault(s.OpenedByUserId, "—"), "Drawer",
-                        variance, false, status, "", null, $"counted {(s.CountedCash ?? 0):N0} vs expected {expected:N0}"));
-                }
-            }
-        }
+        // Cash-up drawer over/short is intentionally NOT listed here — it lives on its own Cash-up page
+        // (Finance → Cash-up), which has the full per-session counted-vs-expected breakdown. Keeping it
+        // out of this ledger stops it cluttering the transaction list.
         return rows;
     }
 
@@ -838,7 +803,7 @@ public class FinanceController : AdminBaseController
         ViewData["Title"] = "Finance — Transactions";
         var (f, t, fLocal, tLocal) = Range(from, to);
         channel = channel is "Online" or "Pos" ? channel : "";
-        type = new[] { "Sale", "Refund", "Cash", "Cashup" }.Contains(type) ? type! : "";
+        type = new[] { "Sale", "Refund", "Cash" }.Contains(type) ? type! : "";
         var methodRaw = (method ?? "").Trim();   // validated against the methods actually present, below
         q = (q ?? "").Trim();
         sort = new[] { "date", "amount", "type", "store" }.Contains(sort) ? sort! : "date";
