@@ -70,7 +70,8 @@
                     <td class="px-4 py-2.5 text-xs">
                         @if (!string.IsNullOrEmpty(r.BuyerId))
                         {
-                            <a asp-area="Admin" asp-controller="Finance" asp-action="Customer" asp-route-id="@r.BuyerId"
+                            <a asp-action="CustomerSales" asp-route-userId="@r.BuyerId"
+                               asp-route-from="@from.ToString("yyyy-MM-dd")" asp-route-to="@to.ToString("yyyy-MM-dd")"
                                class="text-emerald-700 hover:underline">@r.Buyer</a>
                         }
                         else

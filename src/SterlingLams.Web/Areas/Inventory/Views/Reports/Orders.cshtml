@@ -1,0 +1,63 @@
+@model List<SterlingLams.Web.Areas.Inventory.Controllers.ReportsController.OrderDrillRow>
+@{
+    var heading = (string)ViewBag.Heading;
+    DateTime from = ViewBag.From; DateTime to = ViewBag.To;
+    decimal totalRevenue = ViewBag.TotalRevenue;
+}
+
+@await Html.PartialAsync("_ReportTabs", "Summary")
+
+<div class="flex items-center gap-2 mb-1">
+    <a asp-action="Summary" asp-route-from="@from.ToString("yyyy-MM-dd")" asp-route-to="@to.ToString("yyyy-MM-dd")"
+       class="text-xs text-neutral-400 hover:text-neutral-700">← Sales summary</a>
+</div>
+<h1 class="font-cormorant text-2xl font-light text-neutral-900">@heading</h1>
+<p class="text-xs text-neutral-400 mb-4">@Model.Count order(s) · ₦@totalRevenue.ToString("N0") · @from.ToString("dd MMM") – @to.ToString("dd MMM yyyy")</p>
+
+<div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
+    <table class="w-full text-sm min-w-[900px]">
+        <thead>
+            <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
+                <th class="text-left px-4 py-3 font-medium">Order</th>
+                <th class="text-left px-4 py-3 font-medium">Date</th>
+                <th class="text-left px-4 py-3 font-medium">Channel</th>
+                <th class="text-left px-4 py-3 font-medium">Store</th>
+                <th class="text-left px-4 py-3 font-medium">Customer</th>
+                <th class="text-left px-4 py-3 font-medium">Sold by (staff)</th>
+                <th class="text-left px-4 py-3 font-medium">Packed by</th>
+                <th class="text-right px-4 py-3 font-medium">Items</th>
+                <th class="text-right px-4 py-3 font-medium">Total</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-neutral-50">
+            @if (!Model.Any()) { <tr><td colspan="9" class="px-4 py-12 text-center text-neutral-400">No orders match.</td></tr> }
+            @foreach (var r in Model)
+            {
+                <tr class="hover:bg-neutral-50">
+                    <td class="px-4 py-2.5 text-xs font-medium text-neutral-800 whitespace-nowrap">@r.OrderNumber</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-500 whitespace-nowrap">@r.When.ToString("dd MMM yy HH:mm")</td>
+                    <td class="px-4 py-2.5 text-xs">
+                        <span class="text-[10px] px-2 py-0.5 rounded-full @(r.Channel == "In-store" ? "bg-indigo-50 text-indigo-700" : "bg-blue-50 text-blue-700")">@r.Channel</span>
+                    </td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-600 whitespace-nowrap">@r.Store</td>
+                    <td class="px-4 py-2.5 text-xs">
+                        @if (!string.IsNullOrEmpty(r.BuyerId))
+                        {
+                            <a asp-action="CustomerSales" asp-route-userId="@r.BuyerId"
+                               asp-route-from="@from.ToString("yyyy-MM-dd")" asp-route-to="@to.ToString("yyyy-MM-dd")"
+                               class="text-emerald-700 hover:underline">@r.Buyer</a>
+                        }
+                        else
+                        {
+                            <span class="text-neutral-600">@r.Buyer</span>
+                        }
+                    </td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-600 whitespace-nowrap">@r.Staff</td>
+                    <td class="px-4 py-2.5 text-xs text-neutral-600 whitespace-nowrap">@r.Packer</td>
+                    <td class="px-4 py-2.5 text-right text-xs text-neutral-700">@r.Items</td>
+                    <td class="px-4 py-2.5 text-right text-xs font-medium text-neutral-800 whitespace-nowrap">₦@r.Total.ToString("N0")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

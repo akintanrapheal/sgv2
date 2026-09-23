@@ -373,6 +373,99 @@ public class ReportsController : InventoryAreaController
         return View(rows);
     }
 
+    // ── Customer drill-through (Inventory's own page — never sends staff to the Finance area) ──
+    public record CustomerOrderRow(int OrderId, string OrderNumber, DateTime When, string Channel, string Store, int Items, decimal Total);
+
+    public async Task<IActionResult> CustomerSales(string userId, DateTime? from = null, DateTime? to = null)
+    {
+        var (f, t, fLocal, tLocal) = SalesRange(from, to);
+        var u = await _db.Users.Where(x => x.Id == userId)
+            .Select(x => new { Name = ((x.FirstName ?? "") + " " + (x.LastName ?? "")).Trim(), x.Email, x.PhoneNumber }).FirstOrDefaultAsync();
+        if (u == null) return NotFound();
+        var label = string.IsNullOrWhiteSpace(u.Name) ? (u.Email ?? "Customer") : u.Name;
+        ViewData["Title"] = $"Customer — {label}";
+
+        var stores = await _db.Stores.ToDictionaryAsync(s => s.Id, s => s.Name);
+        string StoreOf(int? id) => id.HasValue && stores.TryGetValue(id.Value, out var n) ? n.Replace("Sterlin Glams ", "") : "—";
+
+        // Orders where they are the online buyer (UserId) or the attached POS customer (CustomerUserId).
+        var raw = await _db.Orders
+            .Where(o => o.IsPaid && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t
+                     && ((o.Channel == OrderChannel.Online && o.UserId == userId) || o.CustomerUserId == userId))
+            .OrderByDescending(o => o.PaidAt ?? o.CreatedAt)
+            .Select(o => new
+            {
+                o.Id, o.OrderNumber, When = o.PaidAt ?? o.CreatedAt, o.Channel,
+                Sid = o.PickupStoreId ?? o.FulfillingStoreId, Items = o.Items.Sum(i => i.Quantity), o.Total
+            }).ToListAsync();
+
+        var rows = raw.Select(x => new CustomerOrderRow(x.Id, x.OrderNumber, Services.ReportCalendar.ToLocal(x.When),
+            x.Channel == OrderChannel.Pos ? "In-store" : "Website", StoreOf(x.Sid), x.Items, x.Total)).ToList();
+
+        ViewBag.From = fLocal; ViewBag.To = tLocal; ViewBag.CustName = label; ViewBag.Email = u.Email; ViewBag.Phone = u.PhoneNumber;
+        ViewBag.TotalSpent = rows.Sum(r => r.Total); ViewBag.OrderCount = rows.Count;
+        return View(rows);
+    }
+
+    // ── Generic order drill-through: the orders behind a day, a payment method or a discount code ──
+    public record OrderDrillRow(int OrderId, string OrderNumber, DateTime When, string Channel, string Store,
+        string? BuyerId, string Buyer, string Staff, string Packer, int Items, decimal Total);
+
+    public async Task<IActionResult> Orders(DateTime? from = null, DateTime? to = null,
+        string? method = null, string? discount = null, int? categoryId = null)
+    {
+        var (f, t, fLocal, tLocal) = SalesRange(from, to);
+        var q = PaidOrders(f, t);
+        if (!string.IsNullOrWhiteSpace(discount)) q = q.Where(o => o.DiscountCode == discount);
+        if (categoryId.HasValue) q = q.Where(o => o.Items.Any(i => i.Product.CategoryId == categoryId));
+        if (!string.IsNullOrWhiteSpace(method))
+        {
+            var m = method;
+            q = q.Where(o => _db.OrderPayments.Any(p => p.OrderId == o.Id && p.Method == m)
+                          || (!_db.OrderPayments.Any(p => p.OrderId == o.Id) && o.PaymentProvider == m));
+        }
+
+        var stores = await _db.Stores.ToDictionaryAsync(s => s.Id, s => s.Name);
+        string StoreOf(int? id) => id.HasValue && stores.TryGetValue(id.Value, out var n) ? n.Replace("Sterlin Glams ", "") : "—";
+
+        var rawList = await q.OrderByDescending(o => o.PaidAt ?? o.CreatedAt).Take(1000).Select(o => new
+        {
+            o.Id, o.OrderNumber, When = o.PaidAt ?? o.CreatedAt, o.Channel,
+            Sid = o.PickupStoreId ?? o.FulfillingStoreId,
+            StaffId = o.Channel == OrderChannel.Pos ? o.UserId : null,
+            BuyerId = o.Channel == OrderChannel.Online ? o.UserId : o.CustomerUserId,
+            Cust = o.Customer != null ? (o.Customer.FirstName + " " + o.Customer.LastName) : null,
+            Buyer = o.User != null ? (o.User.FirstName + " " + o.User.LastName) : null,
+            Addr = o.DeliveryAddress != null ? o.DeliveryAddress.FullName : null,
+            Packer = o.PackedByName, Items = o.Items.Sum(i => i.Quantity), o.Total
+        }).ToListAsync();
+
+        var staffIds = rawList.Where(x => !string.IsNullOrEmpty(x.StaffId)).Select(x => x.StaffId!).Distinct().ToList();
+        var staffMap = (await _db.Users.Where(u => staffIds.Contains(u.Id))
+                .Select(u => new { u.Id, Name = ((u.FirstName ?? "") + " " + (u.LastName ?? "")).Trim(), u.Email }).ToListAsync())
+            .ToDictionary(u => u.Id, u => string.IsNullOrWhiteSpace(u.Name) ? (u.Email ?? "—") : u.Name);
+
+        var rows = rawList.Select(x =>
+        {
+            var pos = x.Channel == OrderChannel.Pos;
+            var buyer = (pos ? x.Cust : (x.Buyer ?? x.Addr))?.Trim();
+            if (string.IsNullOrWhiteSpace(buyer)) buyer = pos ? "Walk-in" : "Website customer";
+            return new OrderDrillRow(x.Id, x.OrderNumber, Services.ReportCalendar.ToLocal(x.When),
+                pos ? "In-store" : "Website", StoreOf(x.Sid),
+                string.IsNullOrEmpty(x.BuyerId) ? null : x.BuyerId, buyer!,
+                string.IsNullOrEmpty(x.StaffId) ? "—" : staffMap.GetValueOrDefault(x.StaffId!, "—"),
+                string.IsNullOrWhiteSpace(x.Packer) ? "—" : x.Packer!.Trim(), x.Items, x.Total);
+        }).ToList();
+
+        var heading = !string.IsNullOrWhiteSpace(discount) ? $"Discount code “{discount}”"
+            : !string.IsNullOrWhiteSpace(method) ? $"{method} payments"
+            : categoryId.HasValue ? "Category orders"
+            : $"Orders on {fLocal:ddd, dd MMM yyyy}";
+        ViewBag.From = fLocal; ViewBag.To = tLocal; ViewBag.Heading = heading;
+        ViewBag.TotalRevenue = rows.Sum(r => r.Total);
+        return View(rows);
+    }
+
     // ── Payment-method breakdown across all channels, over a date range. ────────────────────────
     public async Task<IActionResult> Payments(DateTime? from = null, DateTime? to = null)
     {
@@ -444,13 +537,15 @@ public class ReportsController : InventoryAreaController
     }
 
     // ── Sales by item ───────────────────────────────────────────────────────────────────────────
-    public async Task<IActionResult> SalesByItem(DateTime? from = null, DateTime? to = null)
+    public async Task<IActionResult> SalesByItem(DateTime? from = null, DateTime? to = null, int? categoryId = null)
     {
         ViewData["Title"] = "Sales by item";
         var (f, t, fLocal, tLocal) = SalesRange(from, to);
         var orders = PaidOrders(f, t);
+        var itemsQ = _db.OrderItems.Where(oi => orders.Any(o => o.Id == oi.OrderId));
+        if (categoryId.HasValue) itemsQ = itemsQ.Where(oi => oi.Product.CategoryId == categoryId);
         // Group by product id so each row can drill through to that product's sales; carry the name too.
-        var rows = await _db.OrderItems.Where(oi => orders.Any(o => o.Id == oi.OrderId))
+        var rows = await itemsQ
             .GroupBy(oi => oi.ProductId)
             .Select(g => new NameValueRow
             {
@@ -529,10 +624,11 @@ public class ReportsController : InventoryAreaController
         var (f, t, fLocal, tLocal) = SalesRange(from, to);
         var orders = PaidOrders(f, t);
         var rows = await _db.OrderItems.Where(oi => orders.Any(o => o.Id == oi.OrderId))
-            .GroupBy(oi => oi.Product.Category != null ? oi.Product.Category.Name : "Uncategorised")
+            .GroupBy(oi => new { Id = (int?)oi.Product.CategoryId, Name = oi.Product.Category != null ? oi.Product.Category.Name : "Uncategorised" })
             .Select(g => new NameValueRow
             {
-                Name = g.Key,
+                CategoryId = g.Key.Id,
+                Name = g.Key.Name,
                 Units = g.Sum(x => x.Quantity),
                 Revenue = g.Sum(x => (x.Quantity * x.UnitPrice) - x.DiscountAmount)
             })
@@ -584,7 +680,7 @@ public class ReportsController : InventoryAreaController
         var rows = await PaidOrders(f, t)
             .Where(o => o.DiscountAmount > 0 && o.DiscountCode != null)
             .GroupBy(o => o.DiscountCode!)
-            .Select(g => new NameValueRow { Name = g.Key, Units = g.Count(), Revenue = g.Sum(x => x.DiscountAmount) })
+            .Select(g => new NameValueRow { Name = g.Key, DiscountCode = g.Key, Units = g.Count(), Revenue = g.Sum(x => x.DiscountAmount) })
             .OrderByDescending(x => x.Revenue).ToListAsync();
         ViewBag.From = fLocal; ViewBag.To = tLocal;
         ViewBag.Heading = "Discount code"; ViewBag.UnitsLabel = "Orders"; ViewBag.RevenueLabel = "Discount given";
@@ -1170,7 +1266,7 @@ public class SalesSummaryVm
     public decimal Average { get; set; }
     public List<DailySalesRow> Daily { get; set; } = new();
 }
-public class NameValueRow { public string Name { get; set; } = ""; public int Units { get; set; } public decimal Revenue { get; set; } public int? ProductId { get; set; } public string? CustomerId { get; set; } }
+public class NameValueRow { public string Name { get; set; } = ""; public int Units { get; set; } public decimal Revenue { get; set; } public int? ProductId { get; set; } public string? CustomerId { get; set; } public int? CategoryId { get; set; } public string? DiscountCode { get; set; } }
 public class ExpiringRow
 {
     public string Product { get; set; } = "";

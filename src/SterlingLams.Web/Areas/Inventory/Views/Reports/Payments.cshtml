@@ -56,7 +56,11 @@
                 @foreach (var r in Model.Rows)
                 {
                     <tr class="hover:bg-neutral-50">
-                        <td class="px-4 py-3 text-neutral-700">@r.Method</td>
+                        <td class="px-4 py-3">
+                            <a asp-action="Orders" asp-route-method="@r.Method"
+                               asp-route-from="@from.ToString("yyyy-MM-dd")" asp-route-to="@to.ToString("yyyy-MM-dd")"
+                               class="text-emerald-700 hover:underline">@r.Method</a>
+                        </td>
                         <td class="px-4 py-3 text-right text-neutral-500">@r.Transactions.ToString("N0")</td>
                         <td class="px-4 py-3 text-right text-neutral-500">₦@r.Pos.ToString("N0")</td>
                         <td class="px-4 py-3 text-right text-neutral-500">₦@r.Online.ToString("N0")</td>
