@@ -11,7 +11,7 @@
         {
             ["from"] = F, ["to"] = T, ["storeId"] = Model.StoreId?.ToString() ?? "",
             ["channel"] = Model.Channel ?? "", ["type"] = Model.Type ?? "", ["method"] = Model.Method ?? "",
-            ["q"] = Model.Q ?? "", ["sort"] = Model.Sort ?? "", ["dir"] = Model.Dir ?? "", ["page"] = Model.Page.ToString()
+            ["q"] = Model.Q ?? "", ["cashier"] = Model.Cashier ?? "", ["sort"] = Model.Sort ?? "", ["dir"] = Model.Dir ?? "", ["page"] = Model.Page.ToString()
         };
         foreach (var p in ov.GetType().GetProperties()) d[p.Name] = p.GetValue(ov)?.ToString() ?? "";
         return d;
@@ -93,6 +93,7 @@
         </div>
         <input type="hidden" name="sort" value="@Model.Sort" />
         <input type="hidden" name="dir" value="@Model.Dir" />
+        <input type="hidden" name="cashier" value="@Model.Cashier" />
         <button type="submit" class="px-4 py-2 bg-neutral-900 text-white text-sm rounded hover:bg-neutral-700 transition-colors">Apply</button>
         <a class="px-4 py-2 border border-neutral-300 text-neutral-700 text-sm rounded hover:bg-neutral-50 transition-colors"
            asp-action="Transactions" asp-all-route-data='rp(new { format = "csv" })'>Export CSV</a>
@@ -105,6 +106,15 @@
         }
     </div>
 </form>
+
+@if (!string.IsNullOrEmpty(Model.Cashier))
+{
+    <div class="mb-4 flex items-center gap-2 text-xs">
+        <span class="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">Cashier: @Model.CashierName</span>
+        <a asp-action="Transactions" asp-all-route-data='rp(new { cashier = "", page = 1 })'
+           class="text-neutral-400 hover:text-neutral-700">✕ clear</a>
+    </div>
+}
 
 <!-- Summary chips -->
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
@@ -228,6 +238,7 @@
                                         <input type="hidden" name="from" value="@F" /><input type="hidden" name="to" value="@T" />
                                         <input type="hidden" name="storeId" value="@Model.StoreId" /><input type="hidden" name="channel" value="@Model.Channel" />
                                         <input type="hidden" name="type" value="@Model.Type" /><input type="hidden" name="method" value="@Model.Method" /><input type="hidden" name="q" value="@Model.Q" />
+                                        <input type="hidden" name="cashier" value="@Model.Cashier" />
                                         <input type="hidden" name="sort" value="@Model.Sort" /><input type="hidden" name="dir" value="@Model.Dir" /><input type="hidden" name="page" value="@Model.Page" />
                                         <button type="submit" class="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700">Approve</button>
                                     </form>
@@ -237,6 +248,7 @@
                                         <input type="hidden" name="from" value="@F" /><input type="hidden" name="to" value="@T" />
                                         <input type="hidden" name="storeId" value="@Model.StoreId" /><input type="hidden" name="channel" value="@Model.Channel" />
                                         <input type="hidden" name="type" value="@Model.Type" /><input type="hidden" name="method" value="@Model.Method" /><input type="hidden" name="q" value="@Model.Q" />
+                                        <input type="hidden" name="cashier" value="@Model.Cashier" />
                                         <input type="hidden" name="sort" value="@Model.Sort" /><input type="hidden" name="dir" value="@Model.Dir" /><input type="hidden" name="page" value="@Model.Page" />
                                         <button type="submit" class="text-xs px-2 py-1 rounded border border-neutral-300 text-neutral-600 hover:bg-neutral-50">Reject</button>
                                     </form>

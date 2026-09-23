@@ -7,6 +7,18 @@
     var channelTotal = Model.ByChannel.Sum(c => c.Amount);
     string Money(decimal v) => "₦" + v.ToString("N0");
     var periodLabel = Model.Period switch { "week" => "Weekly", "month" => "Monthly", "quarter" => "Quarterly", "year" => "Yearly", _ => "Daily" };
+    // Inclusive end date of a period bucket (for the drill-through into the Transactions ledger).
+    DateTime PeriodEnd(DateTime start) => Model.Period switch
+    {
+        "week" => start.AddDays(6),
+        "month" => start.AddMonths(1).AddDays(-1),
+        "quarter" => start.AddMonths(3).AddDays(-1),
+        "year" => start.AddMonths(12).AddDays(-1),
+        _ => start
+    };
+    string curFrom = Model.From.ToString("yyyy-MM-dd");
+    string curTo = Model.To.ToString("yyyy-MM-dd");
+    var drillCls = "text-emerald-700 hover:underline";
     // ▲/▼ % chip comparing this period to the previous equal-length one.
     string Delta(decimal cur, decimal prev)
     {
@@ -30,7 +42,7 @@
 }
 
 <div class="flex items-center justify-between mb-5 gap-3">
-    <p class="text-xs text-neutral-400">Revenue, refunds, net — by period, channel, branch and cashier.</p>
+    <p class="text-xs text-neutral-400">Revenue, refunds, net — by period, channel, branch and cashier. Click any row to drill into the transactions behind it.</p>
     <div class="flex items-center gap-2 shrink-0">
         <a asp-area="Admin" asp-controller="Finance" asp-action="Statement" target="_blank"
            asp-route-from="@Model.From.ToString("yyyy-MM-dd")" asp-route-to="@Model.To.ToString("yyyy-MM-dd")"
@@ -169,7 +181,10 @@
                 @foreach (var c in Model.ByChannel)
                 {
                     <tr class="hover:bg-neutral-50">
-                        <td class="px-4 py-2.5 text-neutral-700">@c.Channel</td>
+                        <td class="px-4 py-2.5">
+                            <a asp-action="Transactions" asp-route-method="@c.Channel" asp-route-from="@curFrom" asp-route-to="@curTo"
+                               asp-route-storeId="@Model.StoreId" asp-route-channel="@Model.Channel" class="@drillCls">@c.Channel</a>
+                        </td>
                         <td class="px-4 py-2.5 text-right text-neutral-800">@Money(c.Amount)</td>
                         <td class="px-4 py-2.5 text-right text-neutral-500">@c.Count</td>
                         <td class="px-4 py-2.5 text-right text-neutral-500">@((channelTotal > 0 ? c.Amount / channelTotal * 100 : 0).ToString("0.#"))%</td>
@@ -192,7 +207,14 @@
                 @foreach (var s in Model.ByStaff)
                 {
                     <tr class="hover:bg-neutral-50">
-                        <td class="px-4 py-2.5 text-neutral-700">@s.Name</td>
+                        <td class="px-4 py-2.5">
+                            @if (!string.IsNullOrEmpty(s.UserId))
+                            {
+                                <a asp-action="Transactions" asp-route-cashier="@s.UserId" asp-route-from="@curFrom" asp-route-to="@curTo"
+                                   asp-route-storeId="@Model.StoreId" class="@drillCls">@s.Name</a>
+                            }
+                            else { <span class="text-neutral-700">@s.Name</span> }
+                        </td>
                         <td class="px-4 py-2.5 text-right text-neutral-500">@s.Count</td>
                         <td class="px-4 py-2.5 text-right text-neutral-800">@Money(s.Gross)</td>
                     </tr>
@@ -217,7 +239,10 @@
             @foreach (var s in Model.ByStore)
             {
                 <tr class="hover:bg-neutral-50">
-                    <td class="px-4 py-2.5 text-neutral-700">@s.Label</td>
+                    <td class="px-4 py-2.5">
+                        <a asp-action="Transactions" asp-route-storeId="@s.StoreId" asp-route-from="@curFrom" asp-route-to="@curTo"
+                           asp-route-channel="@Model.Channel" class="@drillCls">@s.Label</a>
+                    </td>
                     <td class="px-4 py-2.5 text-right text-neutral-500">@s.Count</td>
                     <td class="px-4 py-2.5 text-right text-neutral-800">@Money(s.Gross)</td>
                     <td class="px-4 py-2.5 text-right text-red-600">@Money(s.Refunds)</td>
@@ -244,7 +269,10 @@
             @foreach (var p in periods.OrderByDescending(x => x.Start))
             {
                 <tr class="hover:bg-neutral-50">
-                    <td class="px-4 py-2.5 text-neutral-700">@p.Label</td>
+                    <td class="px-4 py-2.5">
+                        <a asp-action="Transactions" asp-route-from="@p.Start.ToString("yyyy-MM-dd")" asp-route-to="@PeriodEnd(p.Start).ToString("yyyy-MM-dd")"
+                           asp-route-storeId="@Model.StoreId" asp-route-channel="@Model.Channel" class="@drillCls">@p.Label</a>
+                    </td>
                     <td class="px-4 py-2.5 text-right text-neutral-500">@p.Count</td>
                     <td class="px-4 py-2.5 text-right text-neutral-800">@Money(p.OrderRevenue)</td>
                     <td class="px-4 py-2.5 text-right text-neutral-800">@Money(p.Total)</td>

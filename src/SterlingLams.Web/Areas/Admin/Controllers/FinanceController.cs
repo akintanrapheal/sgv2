@@ -48,9 +48,9 @@ public class FinanceController : AdminBaseController
     { public decimal Total => OrderRevenue + Logistics; public decimal Net => Total - Refunds; }
     public record PeriodPoint(string Label, DateTime Start, int Count, decimal OrderRevenue, decimal Logistics, decimal Refunds)
     { public decimal Total => OrderRevenue + Logistics; public decimal Net => Total - Refunds; }
-    public record StorePoint(string Label, int Count, decimal Gross, decimal Refunds, decimal Delivery)
+    public record StorePoint(string Label, int? StoreId, int Count, decimal Gross, decimal Refunds, decimal Delivery)
     { public decimal Net => Gross - Refunds; }
-    public record StaffPoint(string Name, int Count, decimal Gross);
+    public record StaffPoint(string Name, int Count, decimal Gross, string UserId);
     public record StatePoint(string State, int Count, decimal Logistics)
     { public decimal AvgFee => Count > 0 ? Logistics / Count : 0; }
     public record DeliveryTypePoint(string Type, int Count, decimal Logistics)
@@ -636,6 +636,10 @@ public class FinanceController : AdminBaseController
         public string Type { get; set; } = "";
         public string Method { get; set; } = "";
         public string Q { get; set; } = "";
+        // Cashier drill-through (from the dashboard "Sales by cashier" table): filters the ledger to
+        // one staff member's POS sales, their refunds and their till cash movements.
+        public string Cashier { get; set; } = "";
+        public string CashierName { get; set; } = "";
         public string Sort { get; set; } = "date";
         public string Dir { get; set; } = "desc";
         public int Page { get; set; } = 1;
@@ -679,8 +683,9 @@ public class FinanceController : AdminBaseController
     }
 
     // Builds every transaction row inside the window, honouring the store/channel/type filters.
-    private async Task<List<TxnRow>> BuildTxnRowsAsync(DateTime f, DateTime t, int? storeId, string channel, string type)
+    private async Task<List<TxnRow>> BuildTxnRowsAsync(DateTime f, DateTime t, int? storeId, string channel, string type, string? cashier = null)
     {
+        var hasCashier = !string.IsNullOrEmpty(cashier);
         var stores = (await _db.Stores.Select(s => new { s.Id, s.Name }).ToListAsync())
             .ToDictionary(s => s.Id, s => s.Name);
         string StoreLabel(int? id) => id.HasValue && stores.TryGetValue(id.Value, out var n) ? n : "—";
@@ -693,6 +698,8 @@ public class FinanceController : AdminBaseController
             if (storeId.HasValue) payQ = payQ.Where(p => p.Order.PickupStoreId == storeId || p.Order.FulfillingStoreId == storeId);
             if (channel == "Online") payQ = payQ.Where(p => p.Order.Channel == OrderChannel.Online);
             else if (channel == "Pos") payQ = payQ.Where(p => p.Order.Channel == OrderChannel.Pos);
+            // Cashier drill: a cashier only has POS sales (Order.UserId is the cashier on a POS sale).
+            if (hasCashier) payQ = payQ.Where(p => p.Order.Channel == OrderChannel.Pos && p.Order.UserId == cashier);
             var pays = await payQ.Select(p => new
             {
                 p.CreatedAt, p.Method, p.Amount, p.OrderId, p.Order.OrderNumber, p.Order.Channel,
@@ -714,6 +721,8 @@ public class FinanceController : AdminBaseController
             if (storeId.HasValue) fbQ = fbQ.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
             if (channel == "Online") fbQ = fbQ.Where(o => o.Channel == OrderChannel.Online);
             else if (channel == "Pos") fbQ = fbQ.Where(o => o.Channel == OrderChannel.Pos);
+            // Cashier drill: only their POS sales that carry no tender rows (legacy) — online has no cashier.
+            if (hasCashier) fbQ = fbQ.Where(o => o.Channel == OrderChannel.Pos && o.UserId == cashier);
             var fbs = await fbQ.Select(o => new
             {
                 Oid = o.Id, When = o.PaidAt ?? o.CreatedAt, o.Total, o.OrderNumber, o.Channel, o.PaymentProvider,
@@ -736,6 +745,7 @@ public class FinanceController : AdminBaseController
             if (storeId.HasValue) refQ = refQ.Where(r => r.OriginalOrder.PickupStoreId == storeId || r.OriginalOrder.FulfillingStoreId == storeId);
             if (channel == "Online") refQ = refQ.Where(r => r.OriginalOrder.Channel == OrderChannel.Online);
             else if (channel == "Pos") refQ = refQ.Where(r => r.OriginalOrder.Channel == OrderChannel.Pos);
+            if (hasCashier) refQ = refQ.Where(r => r.CashierUserId == cashier);
             var refs = await refQ.Select(r => new
             {
                 r.Id, r.CreatedAt, r.RefundMethod, r.Amount, r.RefundNumber, r.Status, r.Reason, r.OriginalOrderId,
@@ -757,6 +767,7 @@ public class FinanceController : AdminBaseController
         {
             var cmQ = _db.CashMovements.Where(m => m.CreatedAt >= f && m.CreatedAt < t);
             if (storeId.HasValue) cmQ = cmQ.Where(m => m.TillSession.Register.StoreId == storeId);
+            if (hasCashier) cmQ = cmQ.Where(m => m.UserId == cashier);
             var cms = await cmQ.Select(m => new { m.Id, m.CreatedAt, m.Amount, m.Reason, m.UserId,
                 Sid = (int?)m.TillSession.Register.StoreId }).ToListAsync();
             var names = await UserNamesAsync(cms.Select(m => m.UserId));
@@ -798,7 +809,7 @@ public class FinanceController : AdminBaseController
     }
 
     public async Task<IActionResult> Transactions(string? from, string? to, int? storeId, string? channel,
-        string? type, string? method, string? q, string? sort, string? dir, int page = 1, string? format = null)
+        string? type, string? method, string? q, string? cashier, string? sort, string? dir, int page = 1, string? format = null)
     {
         ViewData["Title"] = "Finance — Transactions";
         var (f, t, fLocal, tLocal) = Range(from, to);
@@ -806,10 +817,11 @@ public class FinanceController : AdminBaseController
         type = new[] { "Sale", "Refund", "Cash" }.Contains(type) ? type! : "";
         var methodRaw = (method ?? "").Trim();   // validated against the methods actually present, below
         q = (q ?? "").Trim();
+        cashier = (cashier ?? "").Trim();
         sort = new[] { "date", "amount", "type", "store" }.Contains(sort) ? sort! : "date";
         dir = dir == "asc" ? "asc" : "desc";
 
-        var all = await BuildTxnRowsAsync(f, t, storeId, channel, type);
+        var all = await BuildTxnRowsAsync(f, t, storeId, channel, type, cashier);
 
         // Payment methods actually present in the current view (POS tenders AND website/online payments
         // like "Website", "Paystack", provider or "Manual (…)" names). Deriving the options from the data
@@ -857,9 +869,12 @@ public class FinanceController : AdminBaseController
         var pageRows = filtered.Skip((page - 1) * pageSize).Take(pageSize).ToList();
 
         var perms = HttpContext.RequestServices.GetRequiredService<SterlingLams.Web.Services.IPermissionService>();
+        var cashierName = string.IsNullOrEmpty(cashier) ? "" : (await UserNamesAsync(new[] { cashier })).GetValueOrDefault(cashier, "this cashier");
+
         return View(new TxnVm
         {
             From = fLocal, To = tLocal, StoreId = storeId, Channel = channel, Type = type, Method = method, Q = q,
+            Cashier = cashier, CashierName = cashierName,
             Sort = sort, Dir = dir, Page = page, PageSize = pageSize, Total = total, TotalPages = totalPages,
             Stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync(),
             Presets = BuildPresets(), Rows = pageRows,
@@ -873,22 +888,22 @@ public class FinanceController : AdminBaseController
     // Inline actions from the Transactions ledger — redirect back to it keeping the current filters.
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> TxnApproveRefund(int id, string? note, string? from, string? to,
-        int? storeId, string? channel, string? type, string? method, string? q, string? sort, string? dir, int page = 1)
+        int? storeId, string? channel, string? type, string? method, string? q, string? cashier, string? sort, string? dir, int page = 1)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         var res = await _approvals.ApproveAsync(id, userId, note);
         TempData[res.Success ? "Success" : "Error"] = res.Message;
-        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, method, q, sort, dir, page });
+        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, method, q, cashier, sort, dir, page });
     }
 
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> TxnRejectRefund(int id, string? note, string? from, string? to,
-        int? storeId, string? channel, string? type, string? method, string? q, string? sort, string? dir, int page = 1)
+        int? storeId, string? channel, string? type, string? method, string? q, string? cashier, string? sort, string? dir, int page = 1)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
         var res = await _approvals.RejectAsync(id, userId, note);
         TempData[res.Success ? "Success" : "Error"] = res.Message;
-        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, method, q, sort, dir, page });
+        return RedirectToAction(nameof(Transactions), new { from, to, storeId, channel, type, method, q, cashier, sort, dir, page });
     }
 
     // ── Discount & giveaway leakage ────────────────────────────────────────────
@@ -1588,12 +1603,12 @@ public class FinanceController : AdminBaseController
             id.HasValue && storeName.ContainsKey(id.Value) ? storeName[id.Value] : "Online / unassigned";
 
         var byStore = grossByStore.Select(x => new StorePoint(
-                StoreLabel(x.StoreId), x.Count, x.Gross, refStoreMap.GetValueOrDefault(x.StoreId ?? -1, 0), x.Delivery))
+                StoreLabel(x.StoreId), x.StoreId, x.Count, x.Gross, refStoreMap.GetValueOrDefault(x.StoreId ?? -1, 0), x.Delivery))
             .ToList();
         // A branch can have refunds in the window without any sales in it (the by-day table already
         // handles that case). Without this its refunds appeared in the headline but nowhere here.
         foreach (var r in refByStore.Where(r => grossByStore.All(g => g.StoreId != r.StoreId)))
-            byStore.Add(new StorePoint(StoreLabel(r.StoreId), 0, 0, r.Refunds, 0));
+            byStore.Add(new StorePoint(StoreLabel(r.StoreId), r.StoreId, 0, 0, r.Refunds, 0));
         byStore = byStore.OrderByDescending(s => s.Gross).ThenByDescending(s => s.Refunds).ToList();
 
         // By cashier — POS only (on a POS sale Order.UserId is the cashier).
@@ -1609,7 +1624,7 @@ public class FinanceController : AdminBaseController
             return string.IsNullOrWhiteSpace(n) ? (u.UserName ?? "—") : n;
         });
         var byStaff = staffRaw
-            .Select(s => new StaffPoint(nameMap.GetValueOrDefault(s.UserId, "Unknown"), s.Count, s.Gross))
+            .Select(s => new StaffPoint(nameMap.GetValueOrDefault(s.UserId, "Unknown"), s.Count, s.Gross, s.UserId ?? ""))
             .OrderByDescending(s => s.Gross).ToList();
 
         // Logistics revenue (in-house delivery) broken down by destination state and by
