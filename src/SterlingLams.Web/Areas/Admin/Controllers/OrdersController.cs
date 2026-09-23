@@ -122,10 +122,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             if (paid == "paid") query = query.Where(o => o.IsPaid);
             else if (paid == "unpaid") query = query.Where(o => !o.IsPaid);
 
+            // Lagos dates → UTC instants (CreatedAt is stored UTC). Passing a bare .Date here has
+            // Kind=Unspecified, which Npgsql refuses to write to a 'timestamp with time zone' column.
             if (DateTime.TryParse(from, out var fromDate))
-                query = query.Where(o => o.CreatedAt >= fromDate.Date);
+                query = query.Where(o => o.CreatedAt >= SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(fromDate));
             if (DateTime.TryParse(to, out var toDate))
-                query = query.Where(o => o.CreatedAt < toDate.Date.AddDays(1));
+                query = query.Where(o => o.CreatedAt < SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(toDate.AddDays(1)));
 
             if (!string.IsNullOrWhiteSpace(q))
                 query = query.Where(MatchesSearch(q));
@@ -948,10 +950,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             if (paid == "paid") query = query.Where(o => o.IsPaid);
             else if (paid == "unpaid") query = query.Where(o => !o.IsPaid);
 
+            // Lagos dates → UTC instants (CreatedAt is stored UTC). Passing a bare .Date here has
+            // Kind=Unspecified, which Npgsql refuses to write to a 'timestamp with time zone' column.
             if (DateTime.TryParse(from, out var fromDate))
-                query = query.Where(o => o.CreatedAt >= fromDate.Date);
+                query = query.Where(o => o.CreatedAt >= SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(fromDate));
             if (DateTime.TryParse(to, out var toDate))
-                query = query.Where(o => o.CreatedAt < toDate.Date.AddDays(1));
+                query = query.Where(o => o.CreatedAt < SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(toDate.AddDays(1)));
 
             if (!string.IsNullOrWhiteSpace(q))
                 query = query.Where(MatchesSearch(q));
