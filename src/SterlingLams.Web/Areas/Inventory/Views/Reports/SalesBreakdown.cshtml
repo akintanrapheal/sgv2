@@ -51,16 +51,22 @@
                     var pct = maxRev > 0 ? (double)(r.Revenue / maxRev) * 100 : 0;
                     <tr class="hover:bg-neutral-50">
                         <td class="px-4 py-2.5 text-neutral-700">
+                            @{ var dr = new Dictionary<string, string> { ["from"] = from.ToString("yyyy-MM-dd"), ["to"] = to.ToString("yyyy-MM-dd") }; }
                             @if (r.ProductId.HasValue)
                             {
-                                <a asp-action="ItemSales" asp-route-productId="@r.ProductId"
-                                   asp-route-from="@from.ToString("yyyy-MM-dd")" asp-route-to="@to.ToString("yyyy-MM-dd")"
-                                   class="text-emerald-700 hover:underline">@r.Name</a>
+                                <a asp-action="ItemSales" asp-route-productId="@r.ProductId" asp-all-route-data="dr" class="text-emerald-700 hover:underline">@r.Name</a>
                             }
                             else if (!string.IsNullOrEmpty(r.CustomerId))
                             {
-                                <a asp-area="Admin" asp-controller="Finance" asp-action="Customer" asp-route-id="@r.CustomerId"
-                                   class="text-emerald-700 hover:underline">@r.Name</a>
+                                <a asp-action="CustomerSales" asp-route-userId="@r.CustomerId" asp-all-route-data="dr" class="text-emerald-700 hover:underline">@r.Name</a>
+                            }
+                            else if (r.CategoryId.HasValue)
+                            {
+                                <a asp-action="SalesByItem" asp-route-categoryId="@r.CategoryId" asp-all-route-data="dr" class="text-emerald-700 hover:underline">@r.Name</a>
+                            }
+                            else if (!string.IsNullOrEmpty(r.DiscountCode))
+                            {
+                                <a asp-action="Orders" asp-route-discount="@r.DiscountCode" asp-all-route-data="dr" class="text-emerald-700 hover:underline">@r.Name</a>
                             }
                             else
                             {
