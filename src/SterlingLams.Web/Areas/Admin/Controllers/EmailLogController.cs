@@ -63,4 +63,18 @@ public class EmailLogController : AdminBaseController
         ViewBag.OpenedCount = await _db.EmailLogs.CountAsync(e => e.OpenedAt != null);
         return View(items);
     }
+
+    // One email's full record — recipient, status, the exact failure reason, open info, and the
+    // rendered HTML that was sent (so staff can see exactly what went out).
+    public async Task<IActionResult> Detail(int id)
+    {
+        var e = await _db.EmailLogs.FirstOrDefaultAsync(x => x.Id == id);
+        if (e == null) return NotFound();
+        ViewData["Title"] = $"Email — {e.Subject}";
+        // Strip the open-tracking pixel from the preview so viewing the log doesn't register a fake open.
+        ViewBag.PreviewHtml = string.IsNullOrEmpty(e.BodyHtml) ? null
+            : System.Text.RegularExpressions.Regex.Replace(e.BodyHtml, @"<img[^>]*/e/o/[^>]*>", "",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        return View(e);
+    }
 }

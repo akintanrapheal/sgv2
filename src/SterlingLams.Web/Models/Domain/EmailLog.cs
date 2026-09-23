@@ -19,6 +19,10 @@ public class EmailLog
     /// <summary>Failure reason when <see cref="Sent"/> is false.</summary>
     public string? Error { get; set; }
 
+    /// <summary>The full rendered HTML that was sent (branded shell + content), so the admin can open a
+    /// log row and see exactly what the recipient got. Null for skipped/pre-capture rows. Capped on write.</summary>
+    public string? BodyHtml { get; set; }
+
     /// <summary>"smtp" (real send), "pickup" (dev disk fallback), or "skipped" (SMTP not configured).</summary>
     public string Channel { get; set; } = "smtp";
 

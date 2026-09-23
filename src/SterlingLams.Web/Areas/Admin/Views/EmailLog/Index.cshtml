@@ -15,19 +15,24 @@
 </div>
 <p class="text-xs text-neutral-400 mb-6">Every email the system attempted to send, with its result and — where the recipient's mail client loads images — whether it was opened. Delivery is the SMTP-level outcome (accepted / failed); opens are a best-effort signal (image-blocking clients won't register, some clients pre-fetch).</p>
 
+@{
+    // Cards act as status shortcuts, keeping the current channel/date/search filters.
+    string cardCls(string s) => "block bg-white border rounded-sm p-4 transition-colors hover:border-neutral-400 "
+        + (status == s ? "border-neutral-800" : "border-neutral-100");
+}
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+    <a asp-action="Index" asp-route-status="" asp-route-channel="@channel" asp-route-from="@from" asp-route-to="@to" asp-route-q="@q" class="@cardCls("")">
         <p class="text-xs text-neutral-400">Total logged</p><p class="text-xl font-light text-neutral-900 mt-1">@total</p>
-    </div>
-    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+    </a>
+    <a asp-action="Index" asp-route-status="sent" asp-route-channel="@channel" asp-route-from="@from" asp-route-to="@to" asp-route-q="@q" class="@cardCls("sent")">
         <p class="text-xs text-neutral-400">Sent</p><p class="text-xl font-light text-emerald-600 mt-1">@ViewBag.SentCount</p>
-    </div>
-    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+    </a>
+    <a asp-action="Index" asp-route-status="opened" asp-route-channel="@channel" asp-route-from="@from" asp-route-to="@to" asp-route-q="@q" class="@cardCls("opened")">
         <p class="text-xs text-neutral-400">Opened</p><p class="text-xl font-light text-blue-600 mt-1">@ViewBag.OpenedCount</p>
-    </div>
-    <div class="bg-white border border-neutral-100 rounded-sm p-4">
+    </a>
+    <a asp-action="Index" asp-route-status="failed" asp-route-channel="@channel" asp-route-from="@from" asp-route-to="@to" asp-route-q="@q" class="@cardCls("failed")">
         <p class="text-xs text-neutral-400">Failed</p><p class="text-xl font-light mt-1 @((int)ViewBag.FailedCount > 0 ? "text-red-600" : "text-neutral-900")">@ViewBag.FailedCount</p>
-    </div>
+    </a>
 </div>
 
 <form method="get" class="flex flex-wrap items-end gap-2 mb-5">
@@ -76,12 +81,14 @@
                 <th class="px-4 py-2.5 text-left font-medium">Channel</th>
                 <th class="px-4 py-2.5 text-left font-medium">Status</th>
                 <th class="px-4 py-2.5 text-left font-medium">Opened</th>
+                <th class="px-4 py-2.5 text-left font-medium"></th>
             </tr></thead>
             <tbody class="divide-y divide-neutral-100">
-                @if (!Model.Any()) { <tr><td colspan="6" class="px-4 py-10 text-center text-neutral-400">No emails match these filters.</td></tr> }
+                @if (!Model.Any()) { <tr><td colspan="7" class="px-4 py-10 text-center text-neutral-400">No emails match these filters.</td></tr> }
                 @foreach (var e in Model)
                 {
-                    <tr class="hover:bg-neutral-50 @(!e.Sent ? "bg-red-50/40" : "")">
+                    <tr class="hover:bg-neutral-50 cursor-pointer @(!e.Sent ? "bg-red-50/40" : "")"
+                        onclick="location.href='@Url.Action("Detail", new { id = e.Id })'">
                         <td class="px-4 py-2.5 text-neutral-500">@e.CreatedAt.ToLocalTime().ToString("dd MMM yy HH:mm")</td>
                         <td class="px-4 py-2.5 text-neutral-700">@e.ToEmail@(string.IsNullOrWhiteSpace(e.ToName) ? "" : $" ({e.ToName})")</td>
                         <td class="px-4 py-2.5 text-neutral-600 max-w-xs truncate" title="@e.Subject">@e.Subject</td>
@@ -110,6 +117,9 @@
                             {
                                 <span class="text-neutral-300">—</span>
                             }
+                        </td>
+                        <td class="px-4 py-2.5 text-right">
+                            <a asp-action="Detail" asp-route-id="@e.Id" class="text-xs text-emerald-700 hover:underline" onclick="event.stopPropagation();">View →</a>
                         </td>
                     </tr>
                 }

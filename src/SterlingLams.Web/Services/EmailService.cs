@@ -62,12 +62,15 @@ public class SmtpEmailService : IEmailService
 
     // Records the send attempt to the EmailLog for the admin "Email log". Uses its own DbContext scope
     // so it never touches the caller's transaction, and never throws (email must not break on a log error).
-    private async Task LogEmailAsync(string toEmail, string? toName, string subject, bool sent, string? error, string channel, Guid? trackId = null)
+    private async Task LogEmailAsync(string toEmail, string? toName, string subject, bool sent, string? error, string channel, Guid? trackId = null, string? bodyHtml = null)
     {
         try
         {
             using var scope = _scopeFactory.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            // Cap the stored body so a runaway email can't bloat the log row (branded HTML emails are
+            // a few KB; 200 KB is a generous ceiling).
+            const int MaxBody = 200_000;
             db.EmailLogs.Add(new EmailLog
             {
                 ToEmail = toEmail,
@@ -75,6 +78,7 @@ public class SmtpEmailService : IEmailService
                 Subject = subject.Length > 300 ? subject[..300] : subject,
                 Sent = sent,
                 Error = error == null ? null : (error.Length > 500 ? error[..500] : error),
+                BodyHtml = string.IsNullOrEmpty(bodyHtml) ? null : (bodyHtml.Length > MaxBody ? bodyHtml[..MaxBody] : bodyHtml),
                 Channel = channel,
                 TrackId = trackId,
                 CreatedAt = DateTime.UtcNow
@@ -168,20 +172,22 @@ public class SmtpEmailService : IEmailService
             }
 
             var pickedUp = await WriteToPickupAsync(pickupDir, toEmail, toName, subject, innerHtml, brand);
-            await LogEmailAsync(toEmail, toName, subject, pickedUp, pickedUp ? null : "Failed to write to the pickup folder.", "pickup");
+            await LogEmailAsync(toEmail, toName, subject, pickedUp, pickedUp ? null : "Failed to write to the pickup folder.", "pickup",
+                bodyHtml: Wrap(subject, innerHtml, brand));
             return pickedUp;
         }
 
         // Track this send so opens can be tied back to its Email-log row.
         var trackId = Guid.NewGuid();
         var pixel = PixelHtml(trackId);
+        var body = Wrap(subject, innerHtml + (pixel ?? ""), brand);
         try
         {
             using var msg = new MailMessage
             {
                 From = new MailAddress(smtp.FromAddress, brand.FromName),
                 Subject = subject,
-                Body = Wrap(subject, innerHtml + (pixel ?? ""), brand),
+                Body = body,
                 IsBodyHtml = true,
             };
             msg.To.Add(new MailAddress(toEmail, toName ?? toEmail));
@@ -195,13 +201,13 @@ public class SmtpEmailService : IEmailService
             };
             await client.SendMailAsync(msg, ct);
             _log.LogInformation("Email sent to {To}: \"{Subject}\"", SterlingLams.Web.Infrastructure.LogRedact.Email(toEmail), subject);
-            await LogEmailAsync(toEmail, toName, subject, true, null, "smtp", trackId);
+            await LogEmailAsync(toEmail, toName, subject, true, null, "smtp", trackId, body);
             return true;
         }
         catch (Exception ex)
         {
             _log.LogError(ex, "Failed to send email to {To}: \"{Subject}\"", SterlingLams.Web.Infrastructure.LogRedact.Email(toEmail), subject);
-            await LogEmailAsync(toEmail, toName, subject, false, ex.Message, "smtp", trackId);
+            await LogEmailAsync(toEmail, toName, subject, false, ex.Message, "smtp", trackId, body);
             return false;
         }
     }
