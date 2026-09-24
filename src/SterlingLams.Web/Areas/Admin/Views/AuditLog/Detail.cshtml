@@ -1,0 +1,61 @@
+@model SterlingLams.Web.Models.Domain.AuditLog
+@{
+    ViewData["Title"] = "Audit entry";
+    var entityName = ViewBag.EntityName as string;
+    var performerName = ViewBag.PerformerName as string;
+    var performer = string.IsNullOrWhiteSpace(performerName) ? Model.PerformedBy : performerName;
+    var badge = Model.Action switch
+    {
+        "Delete" => "bg-red-50 text-red-700",
+        "Create" => "bg-emerald-50 text-emerald-700",
+        "Export" => "bg-violet-50 text-violet-700",
+        "Import" => "bg-amber-50 text-amber-700",
+        "Login"  => "bg-neutral-100 text-neutral-600",
+        _        => "bg-blue-50 text-blue-700"
+    };
+}
+
+<div class="max-w-3xl">
+    <div class="flex items-center gap-2 mb-1">
+        <a asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← Audit log</a>
+    </div>
+    <div class="flex items-center gap-3 mb-1">
+        <h1 class="text-lg font-medium text-neutral-800">@Model.Action</h1>
+        <span class="text-[10px] px-2 py-0.5 rounded-full @badge">@Model.Action</span>
+    </div>
+    <p class="text-xs text-neutral-400 mb-6">@Model.CreatedAt.ToLocalTime().ToString("dddd, dd MMM yyyy 'at' HH:mm:ss")</p>
+
+    <div class="bg-white border border-neutral-100 rounded-sm divide-y divide-neutral-50">
+        <div class="grid grid-cols-3 gap-4 px-5 py-3">
+            <span class="text-xs text-neutral-400">Performed by</span>
+            <span class="col-span-2 text-sm text-neutral-800">@performer</span>
+        </div>
+        <div class="grid grid-cols-3 gap-4 px-5 py-3">
+            <span class="text-xs text-neutral-400">Entity</span>
+            <span class="col-span-2 text-sm text-neutral-800">
+                @Model.EntityType
+                @if (!string.IsNullOrEmpty(entityName)) { <span class="text-neutral-500">· @entityName</span> }
+                @if (!string.IsNullOrEmpty(Model.EntityId)) { <span class="block text-[11px] text-neutral-400 font-mono mt-0.5">@Model.EntityId</span> }
+            </span>
+        </div>
+        <div class="grid grid-cols-3 gap-4 px-5 py-3">
+            <span class="text-xs text-neutral-400">Description</span>
+            <span class="col-span-2 text-sm text-neutral-700 whitespace-pre-wrap break-words">@Model.Description</span>
+        </div>
+        @if (!string.IsNullOrEmpty(Model.Changes))
+        {
+            <div class="grid grid-cols-3 gap-4 px-5 py-3">
+                <span class="text-xs text-neutral-400">What changed</span>
+                <pre class="col-span-2 text-[12px] text-neutral-600 bg-neutral-50 border border-neutral-100 rounded-sm px-3 py-2 whitespace-pre-wrap font-sans">@Model.Changes</pre>
+            </div>
+        }
+        <div class="grid grid-cols-3 gap-4 px-5 py-3">
+            <span class="text-xs text-neutral-400">IP address</span>
+            <span class="col-span-2 text-sm text-neutral-600 font-mono">@(string.IsNullOrEmpty(Model.IpAddress) ? "—" : Model.IpAddress)</span>
+        </div>
+        <div class="grid grid-cols-3 gap-4 px-5 py-3">
+            <span class="text-xs text-neutral-400">Time (WAT)</span>
+            <span class="col-span-2 text-sm text-neutral-600">@Model.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
+        </div>
+    </div>
+</div>

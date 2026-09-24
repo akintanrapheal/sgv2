@@ -76,7 +76,12 @@ public class AuditService : IAuditService
     public async Task LogAsync(string action, string entityType, string? entityId, string description, string? changes = null, string? performedBy = null)
     {
         var ctx  = _http.HttpContext;
-        var user = string.IsNullOrWhiteSpace(performedBy) ? await ResolvePerformerAsync(ctx) : performedBy.Trim();
+        // Attribute to the staff member's NAME. When a caller passes performedBy (e.g. a background/
+        // service action passing a user id), resolve an id/email to the person's name so the log never
+        // shows a raw GUID; fall back to the signed-in user.
+        var user = string.IsNullOrWhiteSpace(performedBy)
+            ? await ResolvePerformerAsync(ctx)
+            : await NormalizePerformerAsync(performedBy.Trim());
         var ip   = GetClientIp(ctx);
 
         _db.AuditLogs.Add(new AuditLog
@@ -92,6 +97,19 @@ public class AuditService : IAuditService
         });
 
         await _db.SaveChangesAsync();
+    }
+
+    /// <summary>Turns a caller-supplied performer into a display name: a user id or email that matches a
+    /// user becomes their "First Last" (else username); anything else (e.g. "API System") is kept as-is.</summary>
+    private async Task<string> NormalizePerformerAsync(string performer)
+    {
+        var u = await _db.Users
+            .Where(x => x.Id == performer || x.Email == performer || x.UserName == performer)
+            .Select(x => new { x.FirstName, x.LastName, x.UserName })
+            .FirstOrDefaultAsync();
+        if (u == null) return performer;   // not a user (system/label) — leave it
+        var name = $"{u.FirstName} {u.LastName}".Trim();
+        return string.IsNullOrWhiteSpace(name) ? (u.UserName ?? performer) : name;
     }
 
     /// <summary>The staff member's display name (First Last) when signed in, else their username,

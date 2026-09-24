@@ -98,19 +98,28 @@
                         "Login"  => "bg-neutral-100 text-neutral-600",
                         _        => "bg-blue-50 text-blue-700"
                     };
-                    <tr class="hover:bg-neutral-50 transition-colors">
-                        @if (isOwner) { <td class="px-4 py-3"><input type="checkbox" name="ids" value="@log.Id" class="row-check align-middle cursor-pointer" /></td> }
+                    <tr class="hover:bg-neutral-50 transition-colors cursor-pointer"
+                        onclick="location.href='@Url.Action("Detail", new { id = log.Id })'">
+                        @if (isOwner) { <td class="px-4 py-3"><input type="checkbox" name="ids" value="@log.Id" class="row-check align-middle cursor-pointer" onclick="event.stopPropagation();" /></td> }
                         <td class="px-6 py-3 text-xs text-neutral-400 whitespace-nowrap">@log.CreatedAt.ToLocalTime().ToString("dd MMM yy HH:mm")</td>
                         <td class="px-6 py-3"><span class="text-[10px] px-2 py-0.5 rounded-full @badge">@log.Action</span></td>
                         <td class="px-6 py-3 text-xs text-neutral-500 whitespace-nowrap">
                             <span>@log.EntityType</span>
-                            @if (!string.IsNullOrEmpty(log.EntityId)) { <span class="text-neutral-400"> #@log.EntityId</span> }
+                            @if (!string.IsNullOrEmpty(log.EntityName))
+                            {
+                                <span class="text-neutral-700"> · @log.EntityName</span>
+                            }
+                            else if (!string.IsNullOrEmpty(log.EntityId))
+                            {
+                                var shortId = log.EntityId.Length > 12 ? log.EntityId[..8] + "…" : log.EntityId;
+                                <span class="text-neutral-400" title="@log.EntityId"> #@shortId</span>
+                            }
                         </td>
                         <td class="px-6 py-3 text-xs text-neutral-600">
                             @log.Description
                             @if (!string.IsNullOrEmpty(log.Changes))
                             {
-                                <details class="mt-1">
+                                <details class="mt-1" onclick="event.stopPropagation();">
                                     <summary class="text-[10px] text-brand-500 cursor-pointer select-none">what changed</summary>
                                     <pre class="mt-1 text-[11px] text-neutral-500 bg-neutral-50 border border-neutral-100 rounded-sm px-2 py-1 whitespace-pre-wrap font-sans">@log.Changes</pre>
                                 </details>
