@@ -38,7 +38,7 @@ public class LoyaltyService : ILoyaltyService
     private readonly ISettingsService _settings;
     private readonly ILogger<LoyaltyService> _logger;
 
-    private const decimal DefaultNairaPerPoint = 100m;
+    private const decimal DefaultNairaPerPoint = 40m; // ₦40 per point = ₦25 per ₦1,000 spent = 2.5% (point = ₦1)
 
     public LoyaltyService(ApplicationDbContext db, ISettingsService settings, ILogger<LoyaltyService> logger)
     {
