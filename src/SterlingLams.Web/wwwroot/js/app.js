@@ -341,6 +341,19 @@ async function addToBag(productId, variantId, qty, btn) {
                     cart_count: data.cartCount
                 });
             }
+            // GA4 enhanced-ecommerce add_to_cart (parity with the old site's tag).
+            if (window.gtag) {
+                window.gtag('event', 'add_to_cart', {
+                    currency: 'NGN',
+                    value: (Number(data.price) || 0) * (Number(qty) || 1),
+                    items: [{
+                        item_id: String(productId),
+                        item_name: data.name || undefined,
+                        price: Number(data.price) || undefined,
+                        quantity: Number(qty) || 1
+                    }]
+                });
+            }
             if (window.SGCart) { window.SGCart.open(); } else { showToast('Added to bag'); }
             return true;
         }
