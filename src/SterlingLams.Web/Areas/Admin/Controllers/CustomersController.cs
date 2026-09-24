@@ -233,6 +233,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 TotalSpend = await theirOrders.Where(o => o.IsPaid).SumAsync(o => (decimal?)o.Total) ?? 0,
                 RecentOrders = orders,
                 Tags = user.Tags,
+                ImportedTransactions = user.TotalTransactions,
+                LastTransactionAt = user.LastTransactionAt,
                 LoyaltyBalance = await _loyalty.GetBalanceAsync(id),
                 LoyaltyEntries = await _db.PointsLedgerEntries
                     .Where(p => p.Account.UserId == id)

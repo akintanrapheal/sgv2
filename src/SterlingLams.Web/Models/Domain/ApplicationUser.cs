@@ -34,6 +34,14 @@ public class ApplicationUser : IdentityUser
     /// <summary>The customer's own refer-a-friend code (generated on first use). Unique.</summary>
     public string? ReferralCode { get; set; }
 
+    /// <summary>Lifetime number of purchases, imported from the old POS (EposNow) at migration. Null =
+    /// never imported; native orders placed since aren't rolled into this figure.</summary>
+    public int? TotalTransactions { get; set; }
+
+    /// <summary>Date of the customer's most recent purchase, imported from the old POS (EposNow).
+    /// Null = unknown / never imported.</summary>
+    public DateTime? LastTransactionAt { get; set; }
+
     public string FullName => $"{FirstName} {LastName}".Trim();
 
     public ICollection<Order> Orders { get; set; } = new List<Order>();

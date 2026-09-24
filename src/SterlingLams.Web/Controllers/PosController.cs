@@ -2060,7 +2060,9 @@ public class PosController : Controller
             email = u.Email,
             line1 = addr?.Line1,
             city = addr?.City,
-            state = addr?.State
+            state = addr?.State,
+            totalTransactions = u.TotalTransactions,
+            lastTransactionAt = u.LastTransactionAt
         });
     }
 

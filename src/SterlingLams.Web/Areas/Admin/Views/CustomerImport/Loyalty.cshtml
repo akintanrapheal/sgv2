@@ -1,0 +1,120 @@
+@{
+    ViewData["Title"] = "Import EposNow Customers";
+}
+
+@Html.AntiForgeryToken()
+
+<div class="max-w-3xl">
+    <div class="flex items-center gap-2 mb-1">
+        <a asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← Import Customers</a>
+    </div>
+    <h1 class="text-xl font-semibold text-neutral-900">Import EposNow Customers</h1>
+    <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
+        Bring the old in-store (EposNow) customers over and reconcile them against the customers you already
+        have (WordPress imports, website and POS) so nobody is duplicated. Matching is by <strong>phone, then
+        email</strong>. For a customer who already exists, only <strong>blank</strong> name/phone/email fields
+        are filled — existing data is never overwritten — and their <strong>points</strong>, total
+        transactions and last-transaction date are recorded. New contacts are created as phone-first
+        accounts (no login), the same as a POS quick-add.
+        Upload the cleaned <strong>eposnow_customers_clean.csv</strong>.
+        <strong>Preview first</strong> — nothing is written until you click Import.
+    </p>
+
+    <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
+        <label class="block text-xs text-neutral-500 mb-1">Cleaned EposNow CSV</label>
+        <input id="lo-file" type="file" accept=".csv,text/csv"
+               class="block w-full text-sm text-neutral-700 file:mr-3 file:py-2 file:px-4 file:rounded-sm file:border-0 file:bg-neutral-900 file:text-white file:text-xs file:cursor-pointer border border-neutral-200 rounded-sm" />
+        <div class="flex items-center gap-2 mt-4">
+            <button type="button" id="lo-preview" class="px-5 py-2 border border-neutral-300 text-neutral-700 text-sm rounded-md hover:border-neutral-500">Preview</button>
+            <button type="button" id="lo-apply" class="px-6 py-2 bg-neutral-900 text-white text-sm font-medium rounded-md hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed" disabled>Import</button>
+            <span id="lo-status" class="text-sm text-neutral-500"></span>
+        </div>
+    </div>
+
+    <div id="lo-results" class="hidden mt-6"></div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    var fileEl = document.getElementById('lo-file');
+    var previewBtn = document.getElementById('lo-preview');
+    var applyBtn = document.getElementById('lo-apply');
+    var statusEl = document.getElementById('lo-status');
+    var results = document.getElementById('lo-results');
+    var token = document.querySelector('input[name="__RequestVerificationToken"]');
+    var base = (window.__adminBase || '') + '/CustomerImport/';
+    var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+    var num = function (n) { return (n == null ? 0 : n).toLocaleString(); };
+
+    fileEl.addEventListener('change', function () { applyBtn.disabled = true; results.classList.add('hidden'); statusEl.textContent = ''; });
+
+    function stat(label, val, tone) {
+        return '<div class="border border-neutral-200 rounded-md px-3 py-2">'
+            + '<div class="text-xl font-semibold ' + (tone || 'text-neutral-900') + '">' + val + '</div>'
+            + '<div class="text-[11px] uppercase tracking-wide text-neutral-400">' + label + '</div></div>';
+    }
+
+    function render(d) {
+        var grid = '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">'
+            + stat(d.applied ? 'Created' : 'Will create', num(d.applied ? d.created : d.wouldCreate), 'text-emerald-600')
+            + stat(d.applied ? 'Updated' : 'Will update', num(d.applied ? d.updated : d.wouldUpdate), 'text-blue-600')
+            + stat(d.applied ? 'Points credited (accts)' : 'Will credit points', num(d.applied ? d.credited : d.pointCredits))
+            + stat('Total points', num(d.totalPoints))
+            + stat('No contact (skipped)', num(d.skippedNoContact))
+            + stat('Rows in file', num(d.totalRows))
+            + '</div>';
+
+        var sample = '';
+        if (d.samples && d.samples.length) {
+            sample = '<h3 class="text-sm font-semibold text-neutral-700 mt-6 mb-2">Sample (first rows)</h3>'
+                + '<div class="overflow-x-auto"><table class="w-full text-sm border border-neutral-200 rounded-md">'
+                + '<thead><tr class="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500">'
+                + '<th class="px-3 py-2">Action</th><th class="px-3 py-2">Name</th><th class="px-3 py-2">Phone</th><th class="px-3 py-2">Email</th><th class="px-3 py-2 text-right">Points</th></tr></thead><tbody>'
+                + d.samples.map(function (s) {
+                    var badge = s.action === 'create'
+                        ? '<span class="text-[11px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">create</span>'
+                        : '<span class="text-[11px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">update</span>';
+                    return '<tr class="border-t border-neutral-100"><td class="px-3 py-2">' + badge + '</td>'
+                        + '<td class="px-3 py-2">' + esc(s.name) + '</td>'
+                        + '<td class="px-3 py-2">' + esc(s.phone) + '</td>'
+                        + '<td class="px-3 py-2">' + esc(s.email) + '</td>'
+                        + '<td class="px-3 py-2 text-right">' + num(s.points) + '</td></tr>';
+                }).join('') + '</tbody></table></div>';
+        }
+        results.innerHTML = grid + sample;
+        results.classList.remove('hidden');
+    }
+
+    function run(url, applying) {
+        if (!fileEl.files || !fileEl.files.length) { statusEl.textContent = 'Choose a CSV file first.'; return; }
+        var fd = new FormData();
+        fd.append('file', fileEl.files[0]);
+        fd.append('__RequestVerificationToken', token ? token.value : '');
+        statusEl.textContent = applying ? 'Importing… (tens of thousands of rows can take a couple of minutes)' : 'Reading…';
+        previewBtn.disabled = true; applyBtn.disabled = true;
+        fetch(url, { method: 'POST', body: fd, headers: { 'RequestVerificationToken': token ? token.value : '' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                previewBtn.disabled = false;
+                if (!d.ok) { statusEl.textContent = d.error || 'Failed.'; return; }
+                render(d);
+                if (applying) {
+                    statusEl.textContent = 'Done — created ' + num(d.created) + ', updated ' + num(d.updated) + '.';
+                    applyBtn.disabled = true;
+                } else {
+                    statusEl.textContent = (d.wouldCreate + d.wouldUpdate).toLocaleString() + ' customer(s) ready.';
+                    applyBtn.disabled = (d.wouldCreate + d.wouldUpdate) === 0;
+                }
+            })
+            .catch(function () { previewBtn.disabled = false; statusEl.textContent = 'Request failed.'; });
+    }
+
+    previewBtn.addEventListener('click', function () { run(base + 'PreviewLoyalty', false); });
+    applyBtn.addEventListener('click', function () {
+        if (!confirm('Import these EposNow customers into the live site? Existing customers are updated (blanks filled + points), new ones are created. This cannot be bulk-undone.')) return;
+        run(base + 'ApplyLoyalty', true);
+    });
+})();
+</script>
+}
