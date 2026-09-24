@@ -428,5 +428,14 @@ public static class SettingsSeedData
         new() { Key = "posthog.enabled",         Group = "PostHog", Label = "Enable PostHog",        Type = "boolean", Value = "false", Description = "Master switch. When off, no analytics snippet is loaded and nothing is tracked.", SortOrder = 0 },
         new() { Key = "posthog.project_api_key", Group = "PostHog", Label = "Project API Key",       Type = "text",    Value = "", Description = "PostHog project API key (phc_…). Public by design — it is embedded in the storefront page.", SortOrder = 1 },
         new() { Key = "posthog.region",          Group = "PostHog", Label = "Region",                Type = "text",    Value = "eu", Description = "Data region: 'eu' (default) or 'us'. Determines where events are stored.", SortOrder = 2 },
+
+        // ── Google Analytics 4 (Admin → Integrations + Admin → Google Analytics) ─────────────
+        // Measurement ID loads the gtag.js tag on the storefront (traffic/behaviour/SEO tracking).
+        // Property ID + a read-only service-account key let the console pull GA reports via the Data API.
+        new() { Key = "ga.enabled",              Group = "Google Analytics", Label = "Enable Google Analytics", Type = "boolean", Value = "false", Description = "Master switch for the GA4 tag on the storefront and the in-console reports.", SortOrder = 0 },
+        new() { Key = "ga.measurement_id",       Group = "Google Analytics", Label = "Measurement ID",          Type = "text",    Value = "", Description = "GA4 web-stream measurement ID, e.g. G-XXXXXXXXXX. Loads Google's gtag.js on the storefront.", SortOrder = 1 },
+        new() { Key = "ga.ads_conversion_id",    Group = "Google Analytics", Label = "Google Ads Conversion ID (optional)", Type = "text", Value = "", Description = "Google Ads tag ID, e.g. AW-XXXXXXXXX. Fires alongside GA4 through the same tag for ad conversion tracking. Leave blank if not running Google Ads.", SortOrder = 2 },
+        new() { Key = "ga.property_id",          Group = "Google Analytics", Label = "GA4 Property ID",         Type = "text",    Value = "", Description = "Numeric GA4 property id (GA Admin → Property Settings) — used to pull reports into the console.", SortOrder = 2 },
+        new() { Key = "ga.service_account_json",  Group = "Google Analytics", Label = "Service Account Key (JSON)", Type = "secret", Value = "", Description = "A Google service-account key JSON with the Analytics Data API enabled and Viewer access to the property. Stored encrypted; used only to read reports.", SortOrder = 3 },
     };
 }

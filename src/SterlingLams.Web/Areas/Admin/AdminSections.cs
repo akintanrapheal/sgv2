@@ -49,6 +49,7 @@ public static class AdminSections
         // section whose children are FinanceTabs below (all actions on FinanceController).
         new("Finance",    "Finance",    "Finance",    "M11 3.055A9.001 9.001 0 1020.945 13H11V3.055zM20.488 9A9.004 9.004 0 0012 3.512V9h8.488z", "Reports"),
         new("Traffic",    "Traffic",    "Traffic",    "M3 3v18h18M7 14l3-3 3 3 5-6", "Reports"),
+        new("GoogleAnalytics", "Google Analytics", "GoogleAnalytics", "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6", "Reports"),
 
         // ── Settings & administration ─────────────────────────────────────────
         new("Stores",     "Stores",     "Stores",     "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z", "Settings"),
