@@ -77,6 +77,7 @@ public class DeliveryZonesController : AdminBaseController
                 Name         = z.Name.Trim(),
                 StandardFee  = Math.Max(0, z.StandardFee),
                 ExpressFee   = Math.Max(0, z.ExpressFee),
+                SameDayFee   = Math.Max(0, z.SameDayFee),
                 StandardDays = string.IsNullOrWhiteSpace(z.StandardDays) ? "2 - 4 working days" : z.StandardDays.Trim(),
                 ExpressDays  = string.IsNullOrWhiteSpace(z.ExpressDays)  ? "24 - 48 hours"     : z.ExpressDays.Trim(),
                 Areas        = (z.Areas ?? new())
