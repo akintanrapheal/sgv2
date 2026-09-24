@@ -462,7 +462,7 @@ public class AccountController : Controller
             EmailConfirmed = user.EmailConfirmed,
             LoyaltyPoints = await _loyalty.GetBalanceAsync(user.Id),
             LoyaltyEnabled = await _settings.GetBoolAsync("loyalty.enabled", true),
-            LoyaltyNairaPerPoint = (int)await _settings.GetDecimalAsync("loyalty.naira_per_point", 100m),
+            LoyaltyNairaPerPoint = (int)await _settings.GetDecimalAsync("loyalty.naira_per_point", 40m),
             RecentOrders = orders,
             Addresses   = addresses
         };

@@ -67,6 +67,11 @@ public static class SettingsSeedData
         var finMarker = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "seed.finance_granted_to_operations");
         if (finMarker != null && finMarker.Type != "hidden") finMarker.Type = "hidden";
 
+        // Loyalty earn rate scaled to 2.5% (₦25 per ₦1,000 spent) = 1 point per ₦40, with a point
+        // worth ₦1. Only bumps the untouched old default (₦100 = 1%); a custom admin value is left alone.
+        var nairaPerPoint = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "loyalty.naira_per_point");
+        if (nairaPerPoint != null && nairaPerPoint.Value == "100") nairaPerPoint.Value = "40";
+
         // Rebrand the cancelled-order email to reassure the customer (refund window + customer-care
         // follow-up). Only replaces the OLD default so any admin customisation is preserved; idempotent.
         var cancelIntro = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "email.order_cancelled.intro");
@@ -220,7 +225,7 @@ public static class SettingsSeedData
 
         // ── Loyalty ───────────────────────────────────────────────────────────
         new() { Key = "loyalty.enabled",         Group = "Loyalty", Label = "Enable Loyalty Points",     Type = "boolean", Value = "true", Description = "Award points to customers on completed orders.",                         SortOrder = 1 },
-        new() { Key = "loyalty.naira_per_point",  Group = "Loyalty", Label = "Naira per Point (₦)",       Type = "number",  Value = "100",  Description = "How much a customer spends to earn 1 point (e.g. 100 = 1 point per ₦100).", SortOrder = 2 },
+        new() { Key = "loyalty.naira_per_point",  Group = "Loyalty", Label = "Naira per Point (₦)",       Type = "number",  Value = "40",   Description = "How much a customer spends to earn 1 point (e.g. 40 = 1 point per ₦40 → ₦25 per ₦1,000, i.e. 2.5% back when a point is worth ₦1).", SortOrder = 2 },
         new() { Key = "loyalty.point_value",        Group = "Loyalty", Label = "Point Value on Redemption (₦)",          Type = "number",  Value = "1",    Description = "₦ discount per point when redeemed at checkout (e.g. 1 = 1 point is worth ₦1).", SortOrder = 3 },
         new() { Key = "loyalty.redemption_enabled", Group = "Loyalty", Label = "Allow Redeeming Points at Checkout",     Type = "boolean", Value = "true", Description = "Let signed-in customers apply their points for a discount at checkout.",        SortOrder = 4 },
 
