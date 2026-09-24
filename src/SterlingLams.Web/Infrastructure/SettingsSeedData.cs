@@ -72,6 +72,15 @@ public static class SettingsSeedData
         var nairaPerPoint = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "loyalty.naira_per_point");
         if (nairaPerPoint != null && nairaPerPoint.Value == "100") nairaPerPoint.Value = "40";
 
+        // A point is worth ₦1 on redemption. The 2.5% reward is already in the EARN rate (₦40/point),
+        // so a ₦2.5 redemption value stacked on top (6.25% back) and inflated every "worth" figure.
+        // Reset the old ₦2.5 value to ₦1; leave ₦1 or any other deliberate value alone.
+        var pointValue = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "loyalty.point_value");
+        if (pointValue != null
+            && decimal.TryParse(pointValue.Value, System.Globalization.NumberStyles.Any,
+                   System.Globalization.CultureInfo.InvariantCulture, out var pv) && pv == 2.5m)
+            pointValue.Value = "1";
+
         // Rebrand the cancelled-order email to reassure the customer (refund window + customer-care
         // follow-up). Only replaces the OLD default so any admin customisation is preserved; idempotent.
         var cancelIntro = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "email.order_cancelled.intro");
