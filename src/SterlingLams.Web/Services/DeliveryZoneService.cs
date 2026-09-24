@@ -29,6 +29,9 @@ public class DeliveryZoneDef
     public string Name { get; set; } = "";
     public decimal StandardFee { get; set; }
     public decimal ExpressFee { get; set; }
+    /// <summary>Per-zone same-day delivery fee (Lagos &amp; Abuja only). 0 = same-day not offered for this
+    /// zone, even when same-day is globally enabled.</summary>
+    public decimal SameDayFee { get; set; }
     public string StandardDays { get; set; } = "2 - 4 working days";
     public string ExpressDays { get; set; } = "24 - 48 hours";
     public List<string> Areas { get; set; } = new();
@@ -170,32 +173,66 @@ public class DeliveryZoneService
     // ── Options for a state + (optional) area ─────────────────────────────────
     public async Task<List<DeliveryOption>> GetOptionsAsync(string state, string? area = null)
     {
+        var stdOn = await _settings.GetBoolAsync("shipping.standard_enabled", true);
+        var expOn = await _settings.GetBoolAsync("shipping.express_enabled", true);
         var zone = ResolveZone(await GetZonesAsync(), state, area);
         if (zone != null)
         {
-            return new List<DeliveryOption>
-            {
-                new() { Type = "Express",  Label = "Express Delivery",  Fee = zone.ExpressFee,  Timeframe = zone.ExpressDays  },
-                new() { Type = "Standard", Label = "Standard Delivery", Fee = zone.StandardFee, Timeframe = zone.StandardDays },
-            };
+            var list = new List<DeliveryOption>();
+            if (expOn) list.Add(new() { Type = "Express",  Label = "Express Delivery",  Fee = zone.ExpressFee,  Timeframe = zone.ExpressDays  });
+            if (stdOn) list.Add(new() { Type = "Standard", Label = "Standard Delivery", Fee = zone.StandardFee, Timeframe = zone.StandardDays });
+            return list;
         }
 
         var natFee  = await _settings.GetDecimalAsync("shipping.national_standard_fee", 7500);
         var natDays = await _settings.GetAsync("shipping.national_standard_days", "2 - 5 working days");
-        return new List<DeliveryOption>
-        {
-            new() { Type = "Standard", Label = "Standard Delivery", Fee = natFee, Timeframe = natDays },
-        };
+        var national = new List<DeliveryOption>();
+        if (stdOn) national.Add(new() { Type = "Standard", Label = "Standard Delivery", Fee = natFee, Timeframe = natDays });
+        return national;
     }
 
     // ── Calculate fee from state + area + type (server-side, at order placement) ─
     public async Task<decimal> CalculateFeeAsync(string state, string? area, string deliveryType)
     {
+        // Same-day uses the resolved distance zone's own same-day fee (like Express/Standard).
+        if (string.Equals(deliveryType, "SameDay", StringComparison.OrdinalIgnoreCase))
+            return ResolveZone(await GetZonesAsync(), state, area)?.SameDayFee ?? 0m;
+
         var options = await GetOptionsAsync(state, area);
         var match = options.FirstOrDefault(o => o.Type.Equals(deliveryType, StringComparison.OrdinalIgnoreCase))
                  ?? options.First();
         return match.Fee;
     }
+
+    // ── Same-day delivery (Lagos & Abuja) ────────────────────────────────────────
+    /// <summary>Admin-tunable same-day config (Admin → Settings → Shipping): the on/off switch, the daily
+    /// selection window and the timeframe label. The FEE is per delivery zone (DeliveryZoneDef.SameDayFee),
+    /// edited on the Delivery Zones page — same as Standard/Express.</summary>
+    public sealed record SameDayConfig(bool Enabled, string Start, string End, string Timeframe)
+    {
+        /// <summary>Is the current Nigeria-time (WAT) moment inside the daily selection window?
+        /// Handles a window that wraps past midnight (e.g. 22:00 → 06:00).</summary>
+        public bool WindowOpenNow()
+        {
+            var now = ReportCalendar.ToLocal(DateTime.UtcNow).TimeOfDay;
+            var s = TimeSpan.TryParse(Start, out var ss) ? ss : new TimeSpan(1, 0, 0);
+            var e = TimeSpan.TryParse(End, out var ee) ? ee : new TimeSpan(13, 0, 0);
+            return e > s ? (now >= s && now < e) : (now >= s || now < e);
+        }
+        /// <summary>Friendly window for display, e.g. "1:00 AM – 1:00 PM".</summary>
+        public string WindowLabel => $"{Fmt(Start)} – {Fmt(End)}";
+        private static string Fmt(string hhmm) => TimeSpan.TryParse(hhmm, out var t) ? DateTime.Today.Add(t).ToString("h:mm tt") : hhmm;
+    }
+
+    public async Task<SameDayConfig> GetSameDayAsync() => new(
+        await _settings.GetBoolAsync("shipping.sameday_enabled", false),
+        await _settings.GetAsync("shipping.sameday_start", "01:00"),
+        await _settings.GetAsync("shipping.sameday_end", "13:00"),
+        await _settings.GetAsync("shipping.sameday_timeframe", "Today"));
+
+    /// <summary>Resolved same-day fee for a customer's state + area (0 when no zone / not set).</summary>
+    public async Task<decimal> SameDayFeeAsync(string state, string? area)
+        => ResolveZone(await GetZonesAsync(), state, area)?.SameDayFee ?? 0m;
 
     // ── Rank branches by proximity to a customer (for online fulfilment) ──────
     public static List<Models.Domain.Store> RankStoresByProximity(
@@ -260,22 +297,22 @@ public class DeliveryZoneService
     // Farther bands cost more: Island / Outer-Mainland / Far ≈ ₦3,500 std, ₦5,500 express.
     public static List<DeliveryZoneDef> DefaultZones() => new()
     {
-        new() { State = "Lagos", Name = "Lekki / Ajah axis", StandardFee = 2500, ExpressFee = 3500,
+        new() { State = "Lagos", Name = "Lekki / Ajah axis", StandardFee = 2500, ExpressFee = 3500, SameDayFee = 5000,
             Areas = new() { "Ajah", "Sangotedo", "Lekki", "Chevron", "Agungi", "Osapa", "Ikota", "Badore", "Awoyaya", "Ibeju-Lekki", "Jakande", "Ogombo", "Abraham Adesanya", "Lakowe" } },
-        new() { State = "Lagos", Name = "Island (VI / Ikoyi)", StandardFee = 3500, ExpressFee = 5500,
+        new() { State = "Lagos", Name = "Island (VI / Ikoyi)", StandardFee = 3500, ExpressFee = 5500, SameDayFee = 7000,
             Areas = new() { "Victoria Island", "Ikoyi", "Lekki Phase 1", "Oniru", "Lagos Island", "Marina", "Obalende", "Eti-Osa" } },
-        new() { State = "Lagos", Name = "Central Mainland", StandardFee = 3000, ExpressFee = 4500,
+        new() { State = "Lagos", Name = "Central Mainland", StandardFee = 3000, ExpressFee = 4500, SameDayFee = 6000,
             Areas = new() { "Ikeja", "Yaba", "Surulere", "Gbagada", "Maryland", "Ketu", "Ojota", "Anthony Village", "Mushin", "Oshodi", "Isolo", "Ilupeju", "Ogudu", "Ogba", "Magodo", "Ojodu Berger", "Agidingbi", "Shomolu", "Bariga", "Palmgroove", "Alapere" } },
-        new() { State = "Lagos", Name = "Outer Mainland", StandardFee = 3500, ExpressFee = 5500,
+        new() { State = "Lagos", Name = "Outer Mainland", StandardFee = 3500, ExpressFee = 5500, SameDayFee = 7000,
             Areas = new() { "Ikorodu", "Alimosho", "Iyana Ipaja", "Ipaja", "Ayobo", "Ikotun", "Egbe", "Idimu", "Igando", "Festac", "Amuwo-Odofin", "Mile 2", "Satellite Town", "Ojo", "Abule Egba", "Meiran", "Akute", "Agbado", "Ejigbo", "Okota", "Ago Palace", "Akowonjo", "Dopemu", "Ijegun", "Agege" } },
-        new() { State = "Lagos", Name = "Far outskirts", StandardFee = 4000, ExpressFee = 6000,
+        new() { State = "Lagos", Name = "Far outskirts", StandardFee = 4000, ExpressFee = 6000, SameDayFee = 8000,
             Areas = new() { "Epe", "Badagry", "Eredo", "Shapati", "Ibeju" } },
 
-        new() { State = "Abuja", Name = "Gwarinpa / Life Camp axis", StandardFee = 2500, ExpressFee = 3500,
+        new() { State = "Abuja", Name = "Gwarinpa / Life Camp axis", StandardFee = 2500, ExpressFee = 3500, SameDayFee = 5000,
             Areas = new() { "Gwarinpa", "Life Camp", "Kado", "Katampe", "Jabi", "Utako", "Dawaki", "Kubwa Express" } },
-        new() { State = "Abuja", Name = "City centre", StandardFee = 3000, ExpressFee = 4500,
+        new() { State = "Abuja", Name = "City centre", StandardFee = 3000, ExpressFee = 4500, SameDayFee = 6000,
             Areas = new() { "Central Business District", "CBD", "Wuse", "Wuse 2", "Maitama", "Asokoro", "Garki", "Garki 2", "Central Area", "Wuye", "Guzape" } },
-        new() { State = "Abuja", Name = "Outer / satellite", StandardFee = 3500, ExpressFee = 5500,
+        new() { State = "Abuja", Name = "Outer / satellite", StandardFee = 3500, ExpressFee = 5500, SameDayFee = 7000,
             Areas = new() { "Lugbe", "Kubwa", "Nyanya", "Karu", "Mararaba", "Gwagwalada", "Kuje", "Bwari", "Dei-Dei", "Zuba", "Airport Road", "Lokogoma", "Apo", "Gudu", "Durumi", "Idu", "Karmo", "Jahi" } },
 
         new() { State = "Oyo", Name = "Ibadan metro", StandardFee = 2500, ExpressFee = 4000,

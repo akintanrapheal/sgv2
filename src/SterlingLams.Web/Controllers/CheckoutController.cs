@@ -127,8 +127,8 @@ public class CheckoutController : Controller
 
         var stores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
 
-        // Build delivery pricing JSON for client-side zone detection
-        var pricingJson = await BuildDeliveryPricingJsonAsync();
+        // Build delivery pricing JSON for client-side zone detection (incl. same-day eligibility for this cart)
+        var pricingJson = await BuildDeliveryPricingJsonAsync(cart, stores);
 
         var vm = new CheckoutViewModel
         {
@@ -191,8 +191,26 @@ public class CheckoutController : Controller
         return View(vm);
     }
 
+    // True when every item in the cart is in stock across the given zone's branches combined
+    // (Lagos = Ikota + Allen; Abuja = the Abuja branch) — the condition for same-day dispatch.
+    private async Task<bool> IsCartAvailableInZoneAsync(CartViewModel cart, SterlingLams.Web.Services.DeliveryZone zone, List<Models.Domain.Store> activeStores)
+    {
+        var zoneStoreIds = activeStores
+            .Where(s => SterlingLams.Web.Services.DeliveryZoneService.GetZone(s.State) == zone)
+            .Select(s => s.Id).ToList();
+        if (zoneStoreIds.Count == 0) return false;
+        foreach (var item in cart.Items)
+        {
+            var avail = 0;
+            foreach (var sid in zoneStoreIds)
+                avail += await _stock.GetAvailableAsync(item.ProductId, item.VariantId, sid);
+            if (avail < item.Quantity) return false;
+        }
+        return true;
+    }
+
     // Build the client-side delivery-pricing JSON (zone detection + fees).
-    private async Task<string> BuildDeliveryPricingJsonAsync()
+    private async Task<string> BuildDeliveryPricingJsonAsync(CartViewModel cart, List<Models.Domain.Store> activeStores)
     {
         // Distance zones per state (Lagos/Abuja), each with its own Standard + Express fees and the
         // areas it covers — the checkout resolves the fee from the customer's chosen area.
@@ -202,7 +220,7 @@ public class CheckoutController : Controller
             .ToDictionary(g => g.Key, g => g.Select(z => new
             {
                 name = z.Name,
-                standardFee = z.StandardFee, expressFee = z.ExpressFee,
+                standardFee = z.StandardFee, expressFee = z.ExpressFee, sameDayFee = z.SameDayFee,
                 standardDays = z.StandardDays, expressDays = z.ExpressDays,
                 areas = z.Areas,
             }).ToArray());
@@ -210,15 +228,45 @@ public class CheckoutController : Controller
         var natStdFee  = await _settings.GetDecimalAsync("shipping.national_standard_fee", 7500);
         var natStdDays = await _settings.GetAsync("shipping.national_standard_days", "2 - 5 working days");
 
+        // Same-day eligibility for THIS cart: enabled + the whole order is in local stock for the city.
+        // Availability doesn't change with the typed address, so it's computed once here; the client shows
+        // it for whichever of Lagos/Abuja the customer selects. Outside the daily window it's shown
+        // greyed-out (windowOpen=false) rather than hidden.
+        var sd = await _zones.GetSameDayAsync();
+        object sameDay = new { enabled = false };
+        if (sd.Enabled)
+        {
+            sameDay = new
+            {
+                enabled = true,
+                windowOpen = sd.WindowOpenNow(),
+                windowLabel = sd.WindowLabel,
+                timeframe = sd.Timeframe,
+                // Availability per city (whole order in local stock). The FEE comes from the resolved
+                // distance zone (sameDayFee, sent per-zone above), like Express/Standard.
+                lagos = new { available = await IsCartAvailableInZoneAsync(cart, SterlingLams.Web.Services.DeliveryZone.Lagos, activeStores) },
+                abuja = new { available = await IsCartAvailableInZoneAsync(cart, SterlingLams.Web.Services.DeliveryZone.Abuja, activeStores) },
+            };
+        }
+
+        // Which delivery methods are switched on (Admin → Settings → Shipping).
+        var deliveryEnabled = new
+        {
+            standard = await _settings.GetBoolAsync("shipping.standard_enabled", true),
+            express  = await _settings.GetBoolAsync("shipping.express_enabled", true),
+        };
+
         return System.Text.Json.JsonSerializer.Serialize(new
         {
-            zones = byState,   // { "Lagos": [ { name, standardFee, expressFee, standardDays, expressDays, areas[] } ], "Abuja": [...] }
+            zones = byState,   // { "Lagos": [ { name, standardFee, expressFee, sameDayFee, standardDays, expressDays, areas[] } ], "Abuja": [...] }
             national = new[]
             {
                 new { type = "Standard", label = "Standard Delivery", fee = natStdFee, timeframe = natStdDays },
             },
             lagosLGAs     = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs,
             abujaKeywords = new[] { "FCT", "Abuja", "Federal Capital" },
+            deliveryEnabled,
+            sameDay,
         });
     }
 
@@ -331,12 +379,13 @@ public class CheckoutController : Controller
         vm.DiscountAmount      = cart.DiscountAmount;
         vm.AppliedDiscountCode = cart.AppliedDiscountCode;
         vm.DiscountDescription = cart.DiscountDescription;
-        vm.DeliveryPricingJson = await BuildDeliveryPricingJsonAsync();
+        var activeStores       = await _db.Stores.Where(s => s.IsActive).ToListAsync();
+        vm.DeliveryPricingJson = await BuildDeliveryPricingJsonAsync(cart, activeStores);
         vm.NigerianStates      = SterlingLams.Web.Services.DeliveryZoneService.NigerianStates;
         vm.LagosLGAs           = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs;
         vm.PaystackPublicKey   = await _settings.GetAsync("payment.paystack.public_key", _config["Payment:Paystack:PublicKey"] ?? "");
         vm.PickupAvailable     = await _settings.GetBoolAsync("store.pickup_available", true);
-        vm.AvailableStores     = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
+        vm.AvailableStores     = activeStores
             .Select(s => new StorePickupOptionViewModel
             {
                 StoreId = s.Id, StoreName = s.Name, Address = s.Address,
@@ -505,6 +554,26 @@ public class CheckoutController : Controller
                 discountCode   = dr.Code;
                 discountAmount = dr.Amount;
                 freeShipping   = dr.FreeShipping;
+            }
+        }
+
+        // Same-day delivery guard: re-validate server-side (the option is client-rendered). It's only
+        // valid for a Lagos/Abuja address, inside the daily window, when the whole order is in local
+        // stock. Reject a tampered/expired selection rather than silently charging the same-day fee.
+        if (vm.FulfillmentType == FulfillmentChoice.Delivery
+            && string.Equals(vm.SelectedDeliveryType, "SameDay", StringComparison.OrdinalIgnoreCase))
+        {
+            var sd = await _zones.GetSameDayAsync();
+            var zone = SterlingLams.Web.Services.DeliveryZoneService.GetZone(vm.DeliveryAddress.State ?? "");
+            var activeStores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
+            var eligible = sd.Enabled && sd.WindowOpenNow()
+                && (zone == SterlingLams.Web.Services.DeliveryZone.Lagos || zone == SterlingLams.Web.Services.DeliveryZone.Abuja)
+                && await IsCartAvailableInZoneAsync(cart, zone, activeStores);
+            if (!eligible)
+            {
+                ModelState.AddModelError("SelectedDeliveryType",
+                    $"Same-day delivery isn't available for this order. It's offered to Lagos & Abuja addresses when every item is in local stock, between {sd.WindowLabel} daily. Please choose another delivery option.");
+                return await RedisplayCheckoutAsync(vm);
             }
         }
 
