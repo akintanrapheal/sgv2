@@ -15,7 +15,7 @@ public class IntegrationsController : AdminBaseController
     // A previously granted "Integrations" permission can no longer open this screen either.
     protected override string? Section => null;
 
-    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog" };
+    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog", "Google Analytics" };
     private static readonly string[] Providers = { "paystack", "stripe", "flutterwave" };
 
     private readonly ISettingsService _settings;
@@ -95,6 +95,12 @@ public class IntegrationsController : AdminBaseController
             PhEnabled    = await _settings.GetBoolAsync("posthog.enabled", false),
             PhProjectKey = Plain("posthog.project_api_key", null),
             PhRegion     = string.IsNullOrWhiteSpace(Plain("posthog.region", null)) ? "eu" : Plain("posthog.region", null).ToLowerInvariant(),
+
+            GaEnabled           = await _settings.GetBoolAsync("ga.enabled", false),
+            GaMeasurementId     = Plain("ga.measurement_id", null),
+            GaAdsConversionId   = Plain("ga.ads_conversion_id", null),
+            GaPropertyId        = Plain("ga.property_id", null),
+            GaServiceAccountSet = Set("ga.service_account_json", null),
 
             BaseUrl = baseUrl,
         };
@@ -200,6 +206,13 @@ public class IntegrationsViewModel
     public bool PhEnabled { get; set; }
     public string PhProjectKey { get; set; } = "";
     public string PhRegion { get; set; } = "eu";
+
+    // Google Analytics 4. Measurement ID is public (ships in the page); the service-account key is secret.
+    public bool GaEnabled { get; set; }
+    public string GaMeasurementId { get; set; } = "";
+    public string GaAdsConversionId { get; set; } = "";
+    public string GaPropertyId { get; set; } = "";
+    public bool GaServiceAccountSet { get; set; }
 
     public string BaseUrl { get; set; } = "";
 }

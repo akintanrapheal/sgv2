@@ -283,6 +283,51 @@
             </div>
         </section>
 
+        @* ─── Google Analytics 4 ──────────────────────────────────────────────── *@
+        <section class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
+            <div>
+                <h2 class="text-sm font-semibold text-neutral-800">Google Analytics (GA4)</h2>
+                <p class="text-xs text-neutral-400 mt-0.5">Loads Google's tag on the storefront for traffic, behaviour and SEO tracking. Add the property ID + a read-only service-account key to also pull reports into <a asp-area="Admin" asp-controller="GoogleAnalytics" asp-action="Index" class="text-brand-600 hover:underline">Admin → Google Analytics</a>.</p>
+            </div>
+
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" name="ga.enabled" value="true" @(Model.GaEnabled ? "checked" : "")
+                       class="mt-0.5 rounded border-neutral-300 accent-neutral-900 w-4 h-4" />
+                <div>
+                    <p class="text-sm font-medium text-neutral-800">Enable Google Analytics</p>
+                    <p class="text-xs text-neutral-400 mt-0.5">Master switch. When off, no tag loads on the storefront and reports are hidden.</p>
+                </div>
+            </label>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Measurement ID</label>
+                    <input type="text" name="ga.measurement_id" value="@Model.GaMeasurementId" placeholder="G-XXXXXXXXXX" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">GA4 → Admin → Data streams → your web stream. Public — it ships in the page.</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">GA4 Property ID</label>
+                    <input type="text" name="ga.property_id" value="@Model.GaPropertyId" placeholder="e.g. 123456789" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">Numeric ID from GA4 → Admin → Property Settings. Needed for in-console reports.</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Google Ads Conversion ID <span class="text-neutral-400 font-normal">(optional)</span></label>
+                    <input type="text" name="ga.ads_conversion_id" value="@Model.GaAdsConversionId" placeholder="AW-XXXXXXXXX" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">Fires alongside GA4 on the same tag for ad conversion tracking. Leave blank if not running Google Ads.</p>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium text-neutral-700 mb-1">Service Account Key (JSON) @if (Model.GaServiceAccountSet) {<span class="text-emerald-600 font-normal">· configured</span>}</label>
+                <textarea name="ga.service_account_json" rows="4" autocomplete="off" placeholder='@(Model.GaServiceAccountSet ? "•••••••• leave blank to keep the current key" : "Paste the full service-account JSON here")'
+                          class="w-full border border-neutral-200 px-3 py-2 text-xs font-mono rounded-sm focus:outline-none focus:border-brand-500 resize-none"></textarea>
+                <p class="text-[11px] text-neutral-400 mt-1">Create a service account in Google Cloud, enable the <b>Google Analytics Data API</b>, and add the account's email as a <b>Viewer</b> on the GA4 property. Stored encrypted; never shown back.</p>
+            </div>
+        </section>
+
         <div class="flex items-center gap-3">
             <button type="submit" class="bg-neutral-900 text-white text-sm px-6 py-2.5 rounded-sm hover:bg-neutral-700 transition-colors">
                 Save changes

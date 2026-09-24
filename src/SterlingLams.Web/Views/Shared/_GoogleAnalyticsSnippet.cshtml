@@ -1,0 +1,24 @@
+@inject SterlingLams.Web.Services.ISettingsService SettingsService
+@{
+    var gaEnabled = await SettingsService.GetBoolAsync("ga.enabled");
+    var gaId = (await SettingsService.GetAsync("ga.measurement_id")).Trim();      // G-XXXXXXXXXX (GA4)
+    var adsId = (await SettingsService.GetAsync("ga.ads_conversion_id")).Trim();  // AW-XXXXXXXXX (Google Ads)
+    // Only well-formed IDs are emitted, so nothing user-entered can break out of the attribute. The CSP
+    // allows googletagmanager.com only while GA is enabled (see Program.cs).
+    bool Ok(string id) => System.Text.RegularExpressions.Regex.IsMatch(id, "^(G|AW|GT)-[A-Za-z0-9_-]{4,20}$");
+    var gaOk = gaEnabled && Ok(gaId);
+    var adsOk = gaEnabled && Ok(adsId);
+    var primary = gaOk ? gaId : (adsOk ? adsId : null);   // one gtag.js load covers every config() ID
+}
+@* Google Analytics 4 + Google Ads (gtag.js) — storefront only. Off unless enabled + a valid ID is set. *@
+@if (primary != null)
+{
+    <script async src="https://www.googletagmanager.com/gtag/js?id=@primary" nonce="@Context.Items["csp-nonce"]"></script>
+    <script nonce="@Context.Items["csp-nonce"]">
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        @if (gaOk) { <text>gtag('config', '@gaId');</text> }
+        @if (adsOk) { <text>gtag('config', '@adsId');</text> }
+    </script>
+}
