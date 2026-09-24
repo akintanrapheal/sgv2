@@ -96,11 +96,16 @@ public class CartController : Controller
         SaveCart(cart);
         await SyncAbandonedAsync(cart);
 
+        // Name + unit price for the just-added line, so the storefront can send a GA4 add_to_cart event.
+        var added = cart.Items.First(i => i.ProductId == productId && i.VariantId == variantId);
+
         return Json(new
         {
             success = true,
             cartCount = cart.TotalItems,
-            subtotal = cart.FormattedSubtotal
+            subtotal = cart.FormattedSubtotal,
+            name = string.IsNullOrWhiteSpace(added.VariantName) ? added.ProductName : $"{added.ProductName} — {added.VariantName}",
+            price = added.UnitPrice
         });
     }
 

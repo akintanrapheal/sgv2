@@ -112,3 +112,33 @@
         You can check your order status anytime at <a href="/track" class="underline hover:text-neutral-700">/track</a> with your order number and email.
     </p>
 </div>
+
+@section Scripts {
+    @{
+        var gaItems = Model.Items.Select(i => new
+        {
+            item_id = i.ProductId.ToString(),
+            item_name = string.IsNullOrEmpty(i.VariantName) ? i.ProductName : $"{i.ProductName} — {i.VariantName}",
+            price = i.UnitPrice,
+            quantity = i.Quantity
+        });
+    }
+    @* GA4 purchase (conversion) event — parity with the old site's tag. No-ops unless the GA tag is
+       loaded (window.gtag), so it's independent of any other analytics. Guarded by sessionStorage so a
+       page refresh doesn't double-count the sale. *@
+    <script nonce="@Context.Items["csp-nonce"]">
+        (function () {
+            try {
+                var key = 'ga-purchase-@Model.OrderNumber';
+                if (!window.gtag || sessionStorage.getItem(key)) return;
+                gtag('event', 'purchase', {
+                    transaction_id: '@Model.OrderNumber',
+                    value: @Model.Total.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    currency: 'NGN',
+                    items: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(gaItems))
+                });
+                sessionStorage.setItem(key, '1');
+            } catch (e) { /* analytics must never break the confirmation page */ }
+        })();
+    </script>
+}
