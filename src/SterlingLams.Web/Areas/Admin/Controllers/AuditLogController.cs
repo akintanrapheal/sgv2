@@ -61,6 +61,24 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                         r.PerformedBy = nm;
             }
 
+            // Resolve any user-id GUIDs — the entity id on Account/POS login rows, and any service-
+            // supplied performer id (older rows) — to the staff member's name, so the log never shows a
+            // raw id. User ids are GUID strings; a GUID that isn't a user simply stays as-is.
+            var idSet = logs.Where(r => Guid.TryParse(r.EntityId, out _)).Select(r => r.EntityId)
+                .Concat(logs.Where(r => Guid.TryParse(r.PerformedBy, out _)).Select(r => r.PerformedBy))
+                .Distinct().ToList();
+            if (idSet.Count > 0)
+            {
+                var byId = (await _db.Users.Where(u => idSet.Contains(u.Id))
+                        .Select(u => new { u.Id, u.FirstName, u.LastName, u.UserName }).ToListAsync())
+                    .ToDictionary(u => u.Id, u => { var n = $"{u.FirstName} {u.LastName}".Trim(); return string.IsNullOrWhiteSpace(n) ? (u.UserName ?? "") : n; });
+                foreach (var r in logs)
+                {
+                    if (Guid.TryParse(r.EntityId, out _) && byId.TryGetValue(r.EntityId, out var en) && en.Length > 0) r.EntityName = en;
+                    if (Guid.TryParse(r.PerformedBy, out _) && byId.TryGetValue(r.PerformedBy, out var pn) && pn.Length > 0) r.PerformedBy = pn;
+                }
+            }
+
             var availableActions  = await _db.AuditLogs.Select(l => l.Action).Distinct().OrderBy(a => a).ToListAsync();
             var availableEntities = await _db.AuditLogs.Select(l => l.EntityType).Distinct().OrderBy(e => e).ToListAsync();
 
@@ -73,6 +91,28 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 SearchQuery = q,
                 AvailableActions = availableActions, AvailableEntities = availableEntities
             });
+        }
+
+        // Full detail for one audit entry (row click) — everything in one place, with the long
+        // description / changes shown in full and any user id resolved to the staff member's name.
+        public async Task<IActionResult> Detail(int id)
+        {
+            var log = await _db.AuditLogs.FirstOrDefaultAsync(l => l.Id == id);
+            if (log == null) return NotFound();
+            ViewData["Title"] = $"Audit — {log.Action}";
+
+            async Task<string?> NameAsync(string? v)
+            {
+                if (string.IsNullOrWhiteSpace(v)) return null;
+                var u = await _db.Users.Where(x => x.Id == v || x.Email == v || x.UserName == v)
+                    .Select(x => new { x.FirstName, x.LastName, x.UserName }).FirstOrDefaultAsync();
+                if (u == null) return null;
+                var n = $"{u.FirstName} {u.LastName}".Trim();
+                return string.IsNullOrWhiteSpace(n) ? u.UserName : n;
+            }
+            ViewBag.EntityName = Guid.TryParse(log.EntityId, out _) ? await NameAsync(log.EntityId) : null;
+            ViewBag.PerformerName = await NameAsync(log.PerformedBy);   // null when already a name / label
+            return View(log);
         }
 
         public async Task<IActionResult> ExportCsv(string act = "", string entity = "",

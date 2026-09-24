@@ -570,6 +570,8 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string Action { get; set; } = "";
         public string EntityType { get; set; } = "";
         public string EntityId { get; set; } = "";
+        /// <summary>Staff member's name when EntityId is a user id (Account/POS rows); else null.</summary>
+        public string? EntityName { get; set; }
         public string Description { get; set; } = "";
         public string? Changes { get; set; }
         public string PerformedBy { get; set; } = "";
