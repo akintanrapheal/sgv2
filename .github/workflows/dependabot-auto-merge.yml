@@ -1,0 +1,30 @@
+name: Dependabot auto-merge
+
+# Auto-merges Dependabot's low-risk PATCH updates once CI passes, so routine
+# version bumps take care of themselves. Minor and major updates are left for a
+# human to review. Merging still waits on the required "build-test" check
+# (branch protection on main), so a bump that breaks the build is never merged.
+on: pull_request_target
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch update metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Only patch updates auto-merge (e.g. 6.11.0 -> 6.11.1). --auto queues the
+      # merge and GitHub completes it when the required checks go green.
+      - name: Enable auto-merge for patch updates
+        if: steps.meta.outputs.update-type == 'version-update:semver-patch'
+        run: gh pr merge --auto --squash "${{ github.event.pull_request.html_url }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
