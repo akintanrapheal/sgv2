@@ -42,6 +42,20 @@
                         <span class="text-xs font-medium">₦@((Model.TotalSpend / Model.OrderCount).ToString("N0"))</span>
                     </div>
                 }
+                @if (Model.ImportedTransactions.HasValue)
+                {
+                    <div class="flex justify-between">
+                        <span class="text-xs text-neutral-400">In-store purchases <span class="text-neutral-300">(EposNow)</span></span>
+                        <span class="text-xs font-medium">@Model.ImportedTransactions.Value.ToString("N0")</span>
+                    </div>
+                }
+                @if (Model.LastTransactionAt.HasValue)
+                {
+                    <div class="flex justify-between">
+                        <span class="text-xs text-neutral-400">Last purchase</span>
+                        <span class="text-xs font-medium">@Model.LastTransactionAt.Value.ToLocalTime().ToString("dd MMM yyyy")</span>
+                    </div>
+                }
             </div>
         </div>
 

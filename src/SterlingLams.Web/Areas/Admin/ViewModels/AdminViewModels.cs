@@ -463,6 +463,10 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public int LoyaltyBalance { get; set; }
         public List<PointsLedgerEntry> LoyaltyEntries { get; set; } = new();
         public string? Tags { get; set; }
+
+        // Imported from the old POS (EposNow) at migration — null when never imported.
+        public int? ImportedTransactions { get; set; }
+        public DateTime? LastTransactionAt { get; set; }
     }
 
     // ─── Users ────────────────────────────────────────────────────────────
