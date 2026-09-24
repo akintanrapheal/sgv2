@@ -131,7 +131,7 @@ public class LowStockAlertService : BackgroundService
             if (await email.SendAsync(addr, BuildSubject(items), BuildBody(items), ct: ct))
             {
                 anySent = true;
-                _logger.LogInformation("Low-stock admin digest sent to {Addr} ({Count} item(s)).", addr, items.Count);
+                _logger.LogInformation("Low-stock admin digest sent to {Addr} ({Count} item(s)).", LogRedact.Email(addr), items.Count);
             }
         }
 
