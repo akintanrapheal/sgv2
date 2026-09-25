@@ -89,15 +89,41 @@
                 var clear = document.getElementById('inv-search-clear');
                 if (!form || !input) return;
                 var t;
-                // Auto-search as you type (debounced) — no need to press the button.
+                var KEY = 'inv-search-live';
+                var searchedQ = input.value;   // what the server actually searched (from the URL)
+
+                function scheduleSubmit() { clearTimeout(t); t = setTimeout(function () { form.submit(); }, 400); }
+                function caretToEnd() { try { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } catch (e) { input.focus(); } }
+
+                // Auto-search as you type (debounced). Every keystroke also saves the FULL current text so
+                // nothing is lost if a reload fires while you're still typing (see the restore below).
                 input.addEventListener('input', function () {
                     if (clear) clear.classList.toggle('hidden', !input.value);
-                    clearTimeout(t);
-                    t = setTimeout(function () { form.submit(); }, 350);
+                    try { sessionStorage.setItem(KEY, input.value); } catch (e) { }
+                    scheduleSubmit();
                 });
-                if (clear) clear.addEventListener('click', function () { input.value = ''; form.submit(); });
-                // After an auto-search reload, put the cursor back so typing continues seamlessly.
-                if (input.value) { input.focus(); var v = input.value; input.value = ''; input.value = v; }
+                if (clear) clear.addEventListener('click', function () {
+                    input.value = '';
+                    try { sessionStorage.removeItem(KEY); } catch (e) { }
+                    form.submit();
+                });
+
+                // After the reload: if you had typed more than what got searched (characters typed during
+                // the navigation), restore the full text, put the cursor at the end, and re-search to catch
+                // up — so the box never "eats" the last one or two characters.
+                try {
+                    var live = sessionStorage.getItem(KEY);
+                    if (live != null && live !== searchedQ) {
+                        input.value = live;
+                        if (clear) clear.classList.toggle('hidden', !live);
+                        caretToEnd();
+                        scheduleSubmit();
+                    } else if (input.value) {
+                        caretToEnd();
+                    }
+                } catch (e) {
+                    if (input.value) caretToEnd();
+                }
             }());
         </script>
 
