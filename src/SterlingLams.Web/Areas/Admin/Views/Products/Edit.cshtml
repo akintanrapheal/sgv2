@@ -538,11 +538,15 @@
 
             @if (Model.Images.Any())
             {
-                <p class="text-xs text-neutral-400 mb-3">The <span class="text-neutral-600 font-medium">primary</span> image shows on cards &amp; the product page. The <span class="text-emerald-600 font-medium">hover</span> image is revealed when a shopper hovers a card (Tiffany-style swap).</p>
-                <div class="flex flex-wrap gap-3 mb-5">
+                <p class="text-xs text-neutral-400 mb-1">The <span class="text-neutral-600 font-medium">primary</span> image shows on cards &amp; the product page. The <span class="text-emerald-600 font-medium">hover</span> image is revealed when a shopper hovers a card (Tiffany-style swap).</p>
+                <p class="text-xs text-neutral-400 mb-3 flex items-center gap-1">
+                    <svg class="w-3.5 h-3.5 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 9h8M8 15h8"/></svg>
+                    Drag the images to reorder them — the order here is the order shown on the product page. <span id="img-order-status" class="text-emerald-600"></span>
+                </p>
+                <div id="product-images" class="flex flex-wrap gap-3 mb-5">
                     @foreach (var img in Model.Images)
                     {
-                        <div class="relative group w-24">
+                        <div class="relative group w-24 cursor-move" draggable="true" data-img-id="@img.Id">
                             <img src="@Img.Cld(img.Url, 200, 200)" alt="@img.AltText" loading="lazy"
                                  class="w-24 h-24 object-cover rounded border @(img.IsPrimary ? "border-neutral-900 ring-1 ring-neutral-900" : img.IsHover ? "border-emerald-500 ring-1 ring-emerald-500" : "border-neutral-200")" />
                             @if (img.IsPrimary)
@@ -671,6 +675,73 @@
                     if (label && label.childNodes[0]) label.childNodes[0].nodeValue = 'Upload';
                 });
             });
+        }());
+    </script>
+
+    <script>
+        // Drag-and-drop reordering of the product image gallery. CSP-safe (no inline handlers, no
+        // external library); persists the new order to ReorderImages via fetch.
+        (function () {
+            var grid = document.getElementById('product-images');
+            if (!grid) return;
+
+            var token  = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+            var url    = '@Url.Action("ReorderImages", "Products", new { area = "Admin" })';
+            var pid    = '@Model.Id';
+            var status = document.getElementById('img-order-status');
+            var dragEl = null;
+
+            grid.querySelectorAll('[data-img-id]').forEach(function (card) {
+                card.addEventListener('dragstart', function (e) {
+                    dragEl = card;
+                    card.classList.add('opacity-40');
+                    e.dataTransfer.effectAllowed = 'move';
+                    try { e.dataTransfer.setData('text/plain', card.dataset.imgId); } catch (_) {}
+                });
+                card.addEventListener('dragend', function () {
+                    card.classList.remove('opacity-40');
+                    persist();
+                });
+            });
+
+            grid.addEventListener('dragover', function (e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                if (!dragEl) return;
+                var after = elementAfter(e.clientX);
+                if (after == null) grid.appendChild(dragEl);
+                else if (after !== dragEl) grid.insertBefore(dragEl, after);
+            });
+
+            // The card whose centre is just to the right of the pointer — insert the dragged card before it.
+            function elementAfter(x) {
+                var cards = [].slice.call(grid.querySelectorAll('[data-img-id]:not(.opacity-40)'));
+                var closest = { offset: Number.NEGATIVE_INFINITY, el: null };
+                cards.forEach(function (c) {
+                    var box = c.getBoundingClientRect();
+                    var offset = x - (box.left + box.width / 2);
+                    if (offset < 0 && offset > closest.offset) closest = { offset: offset, el: c };
+                });
+                return closest.el;
+            }
+
+            function persist() {
+                var ids = [].slice.call(grid.querySelectorAll('[data-img-id]'))
+                    .map(function (c) { return c.dataset.imgId; });
+                var body = new URLSearchParams();
+                body.append('productId', pid);
+                ids.forEach(function (id) { body.append('imageIds', id); });
+                body.append('__RequestVerificationToken', token);
+                if (status) status.textContent = 'Saving…';
+                fetch(url, { method: 'POST', body: body })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (!status) return;
+                        status.textContent = d && d.ok ? 'Order saved ✓' : 'Could not save order';
+                        if (d && d.ok) setTimeout(function () { status.textContent = ''; }, 2000);
+                    })
+                    .catch(function () { if (status) status.textContent = 'Could not save order'; });
+            }
         }());
     </script>
     </div><!-- /left column -->

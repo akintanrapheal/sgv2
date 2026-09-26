@@ -979,6 +979,29 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return RedirectToAction(nameof(Edit), new { id = productId });
         }
 
+        // Persist a new gallery order after drag-and-drop. imageIds is the full list of this product's
+        // image ids in their new left-to-right order; SortOrder is set to that index. Any image not in
+        // the list (shouldn't happen) is pushed to the end so nothing is lost.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ReorderImages(int productId, int[] imageIds)
+        {
+            if (imageIds == null || imageIds.Length == 0) return Json(new { ok = false });
+
+            var images = await _db.ProductImages.Where(i => i.ProductId == productId).ToListAsync();
+            var order = imageIds.ToList();
+            foreach (var img in images)
+            {
+                var idx = order.IndexOf(img.Id);
+                img.SortOrder = idx >= 0 ? idx : order.Count;
+            }
+
+            await _db.SaveChangesAsync();
+            await _storefrontCache.EvictAsync();
+            await LogAsync("Update", "Product", productId.ToString(), "Reordered product images");
+            return Json(new { ok = true });
+        }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> DeleteImage(int productId, int imageId)
