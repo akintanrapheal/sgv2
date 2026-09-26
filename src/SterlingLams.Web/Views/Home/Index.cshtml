@@ -96,7 +96,7 @@
 <!-- ─── Hero ──────────────────────────────────────────────────────────────── -->
 @* "fit" mode: JS sizes the section to each image's shape (no bars). "fill": full-screen crop. *@
 <section id="hero-section" data-autoheight="@(heroAutoHeight ? "1" : "")"
-         class="relative @(heroAutoHeight ? "min-h-[300px]" : "h-screen min-h-[600px]") flex items-center overflow-hidden">
+         class="relative @(heroAutoHeight ? "min-h-[180px]" : "h-[72vh] min-h-[440px] md:h-screen md:min-h-[600px]") flex items-center overflow-hidden">
 
     <!-- Background: campaign image(s) (admin-set) or gradient fallback -->
     <div class="absolute inset-0">
@@ -578,21 +578,25 @@
     }
     function sizeTo(img) {
         if (!img || !img.naturalWidth) return;
-        var w = section.clientWidth || window.innerWidth;
+        var w = section.getBoundingClientRect().width || window.innerWidth;
         var h = w * (img.naturalHeight / img.naturalWidth);
-        h = Math.max(300, Math.min(h, window.innerHeight * 0.92));  // cap extreme heights (cover crops a touch)
+        h = Math.max(160, Math.min(h, window.innerHeight * 0.92));  // cap extreme heights (cover crops a touch)
         section.style.height = h + 'px';
     }
     function sizeActive() { sizeTo(activeSlide()); }
 
     slides.forEach(function (img) {
         img.addEventListener('load', function () { if (img.classList.contains('opacity-100')) sizeTo(img); });
+        if (img.complete && img.classList.contains('opacity-100')) sizeTo(img); // already-cached image
     });
     window.addEventListener('resize', sizeActive);
     // Re-size as the active slide changes (the slider toggles opacity classes).
     var mo = new MutationObserver(sizeActive);
     slides.forEach(function (s) { mo.observe(s, { attributes: true, attributeFilter: ['class'] }); });
+    // Size now and again after layout/decoding settles (covers first paint + slow mobile decode).
     sizeActive();
+    requestAnimationFrame(sizeActive);
+    setTimeout(sizeActive, 300);
     window.addEventListener('load', sizeActive);
 }());
 // Featured products carousel — auto-slides one card at a time, loops, pauses on hover.
