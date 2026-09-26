@@ -239,7 +239,7 @@ public class CheckoutController : Controller
             sameDay = new
             {
                 enabled = true,
-                cutoff = sd.CutoffLabel,   // e.g. "1:00 PM" — used for the note, not enforcement
+                note = sd.Note,            // admin-editable, {cutoff} already substituted
                 timeframe = sd.Timeframe,
                 // Availability per city (whole order in local stock). The FEE comes from the resolved
                 // distance zone (sameDayFee, sent per-zone above), like Express/Standard.

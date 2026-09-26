@@ -208,8 +208,11 @@ public class DeliveryZoneService
     /// <summary>Admin-tunable same-day config (Admin → Settings → Shipping): the on/off switch, the daily
     /// selection window and the timeframe label. The FEE is per delivery zone (DeliveryZoneDef.SameDayFee),
     /// edited on the Delivery Zones page — same as Standard/Express.</summary>
-    public sealed record SameDayConfig(bool Enabled, string Start, string End, string Timeframe)
+    public sealed record SameDayConfig(bool Enabled, string Start, string End, string Timeframe, string NoteTemplate)
     {
+        /// <summary>The customer-facing note with {cutoff} replaced by the cut-off time (e.g. "1:00 PM").</summary>
+        public string Note => (NoteTemplate ?? "").Replace("{cutoff}", CutoffLabel);
+
         /// <summary>Is the current Nigeria-time (WAT) moment inside the daily selection window?
         /// Handles a window that wraps past midnight (e.g. 22:00 → 06:00).</summary>
         public bool WindowOpenNow()
@@ -231,7 +234,9 @@ public class DeliveryZoneService
         await _settings.GetBoolAsync("shipping.sameday_enabled", false),
         await _settings.GetAsync("shipping.sameday_start", "01:00"),
         await _settings.GetAsync("shipping.sameday_end", "13:00"),
-        await _settings.GetAsync("shipping.sameday_timeframe", "Today"));
+        await _settings.GetAsync("shipping.sameday_timeframe", "Today"),
+        await _settings.GetAsync("shipping.sameday_note",
+            "Need it today? Order by {cutoff} for same-day delivery. Orders placed after {cutoff} arrive the following day."));
 
     /// <summary>Resolved same-day fee for a customer's state + area (0 when no zone / not set).</summary>
     public async Task<decimal> SameDayFeeAsync(string state, string? area)
