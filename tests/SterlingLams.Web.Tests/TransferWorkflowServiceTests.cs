@@ -15,6 +15,7 @@ public class TransferWorkflowServiceTests
         public Task ReleaseReservationAsync(int orderId) => Task.CompletedTask;
         public Task<FulfilOutcome> FulfilPaidOrderAsync(int orderId) => Task.FromResult(FulfilOutcome.Fulfilled);
         public Task FinalizeAwaitingOrderAsync(int orderId) => Task.CompletedTask;
+        public Task NotifyLogisticsDispatchAsync(int orderId, string? orderUrl) => Task.CompletedTask;
     }
 
     [Fact]
