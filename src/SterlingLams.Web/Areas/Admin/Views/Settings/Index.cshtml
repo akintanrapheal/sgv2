@@ -131,15 +131,25 @@
                             {
                                 var listId = "il-" + s.Key.Replace(".", "-");
                                 var urls = (s.Value ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(u => u.Trim()).Where(u => u.Length > 0).ToList();
-                                <div class="imagelist space-y-3" data-key="@s.Key">
+                                var perSlideText = s.Key == "homepage.hero_images"; // per-slide "hide overlay text" toggle
+                                <div class="imagelist space-y-3" data-key="@s.Key" data-pertext="@(perSlideText ? "1" : "")">
                                     <input type="hidden" name="@s.Key" id="val-@listId" value="@s.Value" />
                                     <div id="@listId" class="flex flex-wrap gap-3">
-                                        @foreach (var u in urls)
+                                        @foreach (var raw in urls)
                                         {
+                                            var ubits = raw.Split('|');
+                                            var iu = ubits[0].Trim();
+                                            var inotext = ubits.Skip(1).Any(b => b.Trim().Equals("notext", StringComparison.OrdinalIgnoreCase));
                                             @* data-url keeps the real URL; the thumbnail is a resized copy. *@
-                                            <div class="il-item relative" data-url="@u">
-                                                <img src="@Img.Cld(u, 192, 192)" alt="Slide" loading="lazy" class="h-24 w-24 object-cover rounded border border-neutral-200" />
+                                            <div class="il-item relative w-24 cursor-move" data-url="@iu" draggable="true">
+                                                <img src="@Img.Cld(iu, 192, 192)" alt="Slide" loading="lazy" class="h-24 w-24 object-cover rounded border border-neutral-200" />
                                                 <button type="button" class="il-remove absolute -top-2 -right-2 bg-white border border-neutral-300 rounded-full w-6 h-6 text-neutral-500 hover:text-red-600 shadow flex items-center justify-center text-xs">&times;</button>
+                                                @if (perSlideText)
+                                                {
+                                                    <label class="mt-1 flex items-center gap-1 text-[10px] text-neutral-500 cursor-pointer">
+                                                        <input type="checkbox" class="il-notext accent-neutral-900" @(inotext ? "checked" : "") /> Hide text
+                                                    </label>
+                                                }
                                             </div>
                                         }
                                     </div>
@@ -148,7 +158,7 @@
                                         Add image
                                         <input type="file" accept="image/*" class="il-add hidden" data-list="@listId" />
                                     </label>
-                                    <p class="text-[11px] text-neutral-400">Add several photos to make the hero a rotating slider. They appear in the order added.</p>
+                                    <p class="text-[11px] text-neutral-400">Drag to reorder. @(perSlideText ? "Tick “Hide text” on a fully-designed banner so the hero words don’t cover it." : "")</p>
                                 </div>
                             }
                             else if (s.Type == "category")
@@ -267,15 +277,22 @@
         });
     });
 
-    // Multi-image (imagelist) manager — e.g. hero slider images
+    // Multi-image (imagelist) manager — e.g. hero slider images. Supports per-slide "hide text",
+    // drag-to-reorder, and immediate persistence.
     document.querySelectorAll('.imagelist').forEach(function (wrap) {
         var token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
         var hidden = wrap.querySelector('input[type="hidden"]');
         var container = document.getElementById(wrap.querySelector('.il-add').dataset.list);
+        var perText = wrap.dataset.pertext === '1';
+        var dragEl = null;
 
         function resync() {
-            var urls = Array.prototype.map.call(wrap.querySelectorAll('.il-item'), function (i) { return i.getAttribute('data-url'); });
-            hidden.value = urls.join('\n');
+            var lines = Array.prototype.map.call(wrap.querySelectorAll('.il-item'), function (i) {
+                var url = i.getAttribute('data-url');
+                var cb = i.querySelector('.il-notext');
+                return (cb && cb.checked) ? (url + '|notext') : url;
+            });
+            hidden.value = lines.join('\n');
             // Persist immediately (like the single-image picker) so it takes effect without Save.
             fetch(__adminBase + '/Settings/SaveOne', {
                 method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -286,6 +303,27 @@
         wrap.addEventListener('click', function (e) {
             var rm = e.target.closest('.il-remove');
             if (rm) { var item = rm.closest('.il-item'); if (item) { item.remove(); resync(); } }
+        });
+        // "Hide text" toggle on any slide.
+        wrap.addEventListener('change', function (e) { if (e.target.classList.contains('il-notext')) resync(); });
+
+        // Drag-to-reorder (left/right).
+        function wireDrag(item) {
+            item.addEventListener('dragstart', function () { dragEl = item; item.classList.add('opacity-40'); });
+            item.addEventListener('dragend', function () { item.classList.remove('opacity-40'); resync(); });
+        }
+        container.querySelectorAll('.il-item').forEach(wireDrag);
+        container.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            if (!dragEl) return;
+            var after = null, closest = Number.NEGATIVE_INFINITY;
+            container.querySelectorAll('.il-item:not(.opacity-40)').forEach(function (c) {
+                var b = c.getBoundingClientRect();
+                var off = e.clientX - (b.left + b.width / 2);
+                if (off < 0 && off > closest) { closest = off; after = c; }
+            });
+            if (after == null) container.appendChild(dragEl);
+            else if (after !== dragEl) container.insertBefore(dragEl, after);
         });
 
         var add = wrap.querySelector('.il-add');
@@ -300,10 +338,12 @@
                 add.value = '';
                 if (res.ok && data.url) {
                     var div = document.createElement('div');
-                    div.className = 'il-item relative'; div.setAttribute('data-url', data.url);
+                    div.className = 'il-item relative w-24 cursor-move'; div.setAttribute('data-url', data.url); div.setAttribute('draggable', 'true');
                     div.innerHTML = '<img src="' + data.url + '" alt="Slide" class="h-24 w-24 object-cover rounded border border-neutral-200" />'
-                        + '<button type="button" class="il-remove absolute -top-2 -right-2 bg-white border border-neutral-300 rounded-full w-6 h-6 text-neutral-500 hover:text-red-600 shadow flex items-center justify-center text-xs">&times;</button>';
+                        + '<button type="button" class="il-remove absolute -top-2 -right-2 bg-white border border-neutral-300 rounded-full w-6 h-6 text-neutral-500 hover:text-red-600 shadow flex items-center justify-center text-xs">&times;</button>'
+                        + (perText ? '<label class="mt-1 flex items-center gap-1 text-[10px] text-neutral-500 cursor-pointer"><input type="checkbox" class="il-notext accent-neutral-900" /> Hide text</label>' : '');
                     container.appendChild(div);
+                    wireDrag(div);
                     resync();
                 } else { alert(data.error ?? 'Upload failed. Please try again.'); }
             } catch (e) { alert('Upload failed. Please try again.'); }

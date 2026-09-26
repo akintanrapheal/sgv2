@@ -31,6 +31,11 @@ public static class SettingsSelectOptions
                 ("bag",             "Bag — outline"),
                 ("basket",          "Basket — outline"),
             },
+            ["homepage.hero_fit"] = new[]
+            {
+                ("fill", "Fill — crop to cover the hero (default)"),
+                ("fit",  "Fit — show the whole image (nothing cropped)"),
+            },
         };
 
     public static (string Value, string Label)[] For(string key) =>
