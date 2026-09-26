@@ -48,8 +48,8 @@
 }
 
 <footer class="bg-neutral-900 text-white @footerTopMargin">
-    <div class="max-w-7xl mx-auto px-6 py-16">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-12">
+    <div class="max-w-7xl mx-auto px-6 py-10 md:py-14">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-12">
 
             <!-- Brand -->
             <div class="md:col-span-1">
@@ -131,7 +131,7 @@
         </div>
 
         @* Centred brand logo — the footer's single logo, sitting above the payment badges. *@
-        <div class="border-t border-neutral-800 mt-12 pt-10 flex justify-center">
+        <div class="border-t border-neutral-800 mt-8 pt-8 flex justify-center">
             <a asp-controller="Home" asp-action="Index">
                 @* Admin-sized brand logo (built-in when none uploaded). A broken URL falls back to the
                    text wordmark rather than a broken-image glyph. *@
@@ -141,11 +141,11 @@
             </a>
         </div>
 
-        <div class="mt-8 pt-8 flex justify-center">
+        <div class="mt-6 pt-6 flex justify-center">
             <partial name="_PaymentBadges" />
         </div>
 
-        <div class="mt-8 pt-8 border-t border-neutral-800 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div class="mt-6 pt-6 border-t border-neutral-800 flex flex-col md:flex-row justify-between items-center gap-4">
             <p class="text-xs text-neutral-500">&copy; @DateTime.UtcNow.Year Sterlin Glams. All rights reserved.</p>
             <div class="flex gap-6">
                 <a asp-controller="Home" asp-action="Privacy"        class="text-xs text-neutral-500 hover:text-brand-500 transition-colors">Privacy Policy</a>
