@@ -33,10 +33,12 @@
     }
     if (heroImages.Count == 0 && !string.IsNullOrWhiteSpace(heroImageUrl)) { heroImages.Add(heroImageUrl); heroHideText.Add(false); }
     var hasHeroImage  = heroImages.Count > 0;
-    // How uploaded banners are sized: "fill" crops to fill the hero (default), "fit" shows the whole
-    // image (letterboxed) so nothing is cut off.
+    // How uploaded banners are sized: "fill" crops to a full-screen hero (default); "fit" makes the
+    // hero adopt each image's own shape (via JS) so the whole picture shows with NO grey bars and no
+    // cropping. Images always use object-cover — in "fit" the box matches the image, so nothing is cut.
     var heroFit = await SettingsService.GetAsync("homepage.hero_fit", "fill");
-    var heroObjectClass = heroFit == "fit" ? "object-contain" : "object-cover";
+    var heroAutoHeight = heroFit == "fit";
+    var heroObjectClass = "object-cover";
     // If every slide hides its text, the overlay never shows — render the section shorter and skip the
     // dark scrim so the picture reads cleanly.
     var allHideText = hasHeroImage && heroHideText.All(h => h);
@@ -92,10 +94,12 @@
 <partial name="_QuickViewModal" />
 
 <!-- ─── Hero ──────────────────────────────────────────────────────────────── -->
-<section class="relative h-screen min-h-[600px] flex items-center overflow-hidden">
+@* "fit" mode: JS sizes the section to each image's shape (no bars). "fill": full-screen crop. *@
+<section id="hero-section" data-autoheight="@(heroAutoHeight ? "1" : "")"
+         class="relative @(heroAutoHeight ? "min-h-[300px]" : "h-screen min-h-[600px]") flex items-center overflow-hidden">
 
     <!-- Background: campaign image(s) (admin-set) or gradient fallback -->
-    <div class="absolute inset-0 @(heroFit == "fit" ? "bg-neutral-100" : "")">
+    <div class="absolute inset-0">
         @if (hasHeroImage)
         {
             <div id="hero-slider" class="absolute inset-0" data-hidetext="@System.Text.Json.JsonSerializer.Serialize(heroHideText)">
@@ -556,6 +560,40 @@
     if (pb) pb.addEventListener('click', function () { show(idx - 1); restart(); });
     dots.forEach(function (d) { d.addEventListener('click', function () { show(+d.dataset.index); restart(); }); });
     restart();
+}());
+// Hero auto-height ("Fit" sizing): the section adopts each image's own shape, so the whole picture
+// shows with no grey bars and no cropping. Runs for a single slide too.
+(function () {
+    var section = document.getElementById('hero-section');
+    if (!section || section.dataset.autoheight !== '1') return;
+    var slider = document.getElementById('hero-slider');
+    if (!slider) return;
+    var slides = slider.querySelectorAll('.hero-slide');
+    if (!slides.length) return;
+    section.style.transition = 'height .5s ease';
+
+    function activeSlide() {
+        for (var i = 0; i < slides.length; i++) if (slides[i].classList.contains('opacity-100')) return slides[i];
+        return slides[0];
+    }
+    function sizeTo(img) {
+        if (!img || !img.naturalWidth) return;
+        var w = section.clientWidth || window.innerWidth;
+        var h = w * (img.naturalHeight / img.naturalWidth);
+        h = Math.max(300, Math.min(h, window.innerHeight * 0.92));  // cap extreme heights (cover crops a touch)
+        section.style.height = h + 'px';
+    }
+    function sizeActive() { sizeTo(activeSlide()); }
+
+    slides.forEach(function (img) {
+        img.addEventListener('load', function () { if (img.classList.contains('opacity-100')) sizeTo(img); });
+    });
+    window.addEventListener('resize', sizeActive);
+    // Re-size as the active slide changes (the slider toggles opacity classes).
+    var mo = new MutationObserver(sizeActive);
+    slides.forEach(function (s) { mo.observe(s, { attributes: true, attributeFilter: ['class'] }); });
+    sizeActive();
+    window.addEventListener('load', sizeActive);
 }());
 // Featured products carousel — auto-slides one card at a time, loops, pauses on hover.
 (function () {
