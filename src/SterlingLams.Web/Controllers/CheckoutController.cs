@@ -229,9 +229,9 @@ public class CheckoutController : Controller
         var natStdDays = await _settings.GetAsync("shipping.national_standard_days", "2 - 5 working days");
 
         // Same-day eligibility for THIS cart: enabled + the whole order is in local stock for the city.
-        // Availability doesn't change with the typed address, so it's computed once here; the client shows
-        // it for whichever of Lagos/Abuja the customer selects. Outside the daily window it's shown
-        // greyed-out (windowOpen=false) rather than hidden.
+        // The daily cut-off is no longer enforced or greyed-out — same-day is always selectable when the
+        // location/stock qualify; `cutoff` drives an informational note (order before it = same day,
+        // after = next day).
         var sd = await _zones.GetSameDayAsync();
         object sameDay = new { enabled = false };
         if (sd.Enabled)
@@ -239,8 +239,7 @@ public class CheckoutController : Controller
             sameDay = new
             {
                 enabled = true,
-                windowOpen = sd.WindowOpenNow(),
-                windowLabel = sd.WindowLabel,
+                cutoff = sd.CutoffLabel,   // e.g. "1:00 PM" — used for the note, not enforcement
                 timeframe = sd.Timeframe,
                 // Availability per city (whole order in local stock). The FEE comes from the resolved
                 // distance zone (sameDayFee, sent per-zone above), like Express/Standard.
@@ -261,7 +260,7 @@ public class CheckoutController : Controller
             zones = byState,   // { "Lagos": [ { name, standardFee, expressFee, sameDayFee, standardDays, expressDays, areas[] } ], "Abuja": [...] }
             national = new[]
             {
-                new { type = "Standard", label = "Standard Delivery", fee = natStdFee, timeframe = natStdDays },
+                new { type = "Standard", label = "Glams Standard — 2–4 Working Days", fee = natStdFee, timeframe = natStdDays },
             },
             lagosLGAs     = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs,
             abujaKeywords = new[] { "FCT", "Abuja", "Federal Capital" },
@@ -557,22 +556,23 @@ public class CheckoutController : Controller
             }
         }
 
-        // Same-day delivery guard: re-validate server-side (the option is client-rendered). It's only
-        // valid for a Lagos/Abuja address, inside the daily window, when the whole order is in local
-        // stock. Reject a tampered/expired selection rather than silently charging the same-day fee.
+        // Same-day delivery guard: re-validate server-side (the option is client-rendered). It's valid
+        // for a Lagos/Abuja address when the whole order is in local stock. The daily cut-off is NOT
+        // enforced here — orders placed after it are simply delivered the next day (shown as a note at
+        // checkout). Reject a tampered selection rather than silently charging the same-day fee.
         if (vm.FulfillmentType == FulfillmentChoice.Delivery
             && string.Equals(vm.SelectedDeliveryType, "SameDay", StringComparison.OrdinalIgnoreCase))
         {
             var sd = await _zones.GetSameDayAsync();
             var zone = SterlingLams.Web.Services.DeliveryZoneService.GetZone(vm.DeliveryAddress.State ?? "");
             var activeStores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
-            var eligible = sd.Enabled && sd.WindowOpenNow()
+            var eligible = sd.Enabled
                 && (zone == SterlingLams.Web.Services.DeliveryZone.Lagos || zone == SterlingLams.Web.Services.DeliveryZone.Abuja)
                 && await IsCartAvailableInZoneAsync(cart, zone, activeStores);
             if (!eligible)
             {
                 ModelState.AddModelError("SelectedDeliveryType",
-                    $"Same-day delivery isn't available for this order. It's offered to Lagos & Abuja addresses when every item is in local stock, between {sd.WindowLabel} daily. Please choose another delivery option.");
+                    "Glams Express (Same Day) isn't available for this order. It's offered to Lagos & Abuja addresses when every item is in local stock. Please choose another delivery option.");
                 return await RedisplayCheckoutAsync(vm);
             }
         }

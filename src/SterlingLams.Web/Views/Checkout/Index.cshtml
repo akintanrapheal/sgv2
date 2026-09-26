@@ -428,8 +428,8 @@ function onAreaChanged() {
     if (!z) { renderDeliveryOptions(nationalOptions(), 'National', ''); return; }
     var en = PRICING.deliveryEnabled || { standard: true, express: true };
     var opts = [];
-    if (en.express)  opts.push({ type: 'Express',  label: 'Express Delivery',  fee: z.expressFee,  timeframe: z.expressDays  });
-    if (en.standard) opts.push({ type: 'Standard', label: 'Standard Delivery', fee: z.standardFee, timeframe: z.standardDays });
+    if (en.express)  opts.push({ type: 'Express',  label: 'Glams Priority — 24–48 Hours',   fee: z.expressFee,  timeframe: z.expressDays  });
+    if (en.standard) opts.push({ type: 'Standard', label: 'Glams Standard — 2–4 Working Days', fee: z.standardFee, timeframe: z.standardDays });
     var sd = sameDayOptionFor(key, z);   // Lagos/Abuja only, when the whole order is in local stock
     if (sd) opts.unshift(sd);
     renderDeliveryOptions(opts, key, z.name);
@@ -442,7 +442,8 @@ function nationalOptions() {
 }
 
 // Same-day option for the selected city + resolved zone, or null. The fee is the zone's own same-day
-// fee (0 = not offered). Shown greyed-out (disabled) outside the daily window rather than hidden.
+// fee (0 = not offered). Always selectable when the location + stock qualify — the daily cut-off is
+// shown as a note (order before it = same day, after = next day) rather than disabling the option.
 function sameDayOptionFor(key, z) {
     var sd = PRICING.sameDay;
     if (!sd || !sd.enabled) return null;
@@ -451,10 +452,12 @@ function sameDayOptionFor(key, z) {
     if (!z || !(z.sameDayFee > 0)) return null;   // a zone with no same-day fee isn't offered
     return {
         type: 'SameDay',
-        label: 'Same-day Delivery',
+        label: 'Glams Express — Same Day',
         fee: z.sameDayFee,
-        timeframe: sd.windowOpen ? sd.timeframe : ('Only available ' + sd.windowLabel + ' daily'),
-        disabled: !sd.windowOpen
+        timeframe: sd.timeframe,
+        note: sd.cutoff
+            ? ('Order before ' + sd.cutoff + ' for same-day delivery. Orders placed after ' + sd.cutoff + ' are delivered the next day.')
+            : ''
     };
 }
 
@@ -480,22 +483,8 @@ function renderDeliveryOptions(options, key, zoneName) {
     options.forEach((opt) => {
         const card = document.createElement('label');
 
-        // Greyed-out (e.g. same-day outside its daily window): visible but not selectable.
-        if (opt.disabled) {
-            card.className = 'delivery-opt-card border border-neutral-200 p-4 bg-neutral-50 opacity-60';
-            card.style.cursor = 'not-allowed';
-            card.innerHTML = `
-                <div class="flex items-start justify-between mb-1">
-                    <p class="text-sm font-medium text-neutral-500">${opt.label}</p>
-                    <p class="text-sm font-medium text-neutral-500">&#8358;${Number(opt.fee).toLocaleString()}</p>
-                </div>
-                <p class="text-xs text-amber-600">${opt.timeframe}</p>
-            `;
-            grid.appendChild(card);
-            return;
-        }
-
         card.className = 'delivery-opt-card border border-neutral-300 p-4 cursor-pointer hover:border-neutral-900 transition-colors';
+        const noteHtml = opt.note ? `<p class="text-xs text-amber-600 mt-1">${opt.note}</p>` : '';
         card.innerHTML = `
             <input type="radio" name="_deliveryTypeUI" value="${opt.type}" data-fee="${opt.fee}" class="sr-only" />
             <div class="flex items-start justify-between mb-1">
@@ -503,6 +492,7 @@ function renderDeliveryOptions(options, key, zoneName) {
                 <p class="text-sm font-medium text-neutral-900">&#8358;${Number(opt.fee).toLocaleString()}</p>
             </div>
             <p class="text-xs text-neutral-400">${opt.timeframe}</p>
+            ${noteHtml}
         `;
         // CSP-safe: wire the change handler instead of an inline onchange attribute.
         card.querySelector('input[name="_deliveryTypeUI"]').addEventListener('change', () => selectDeliveryType(opt.type, opt.fee));

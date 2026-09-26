@@ -179,15 +179,15 @@ public class DeliveryZoneService
         if (zone != null)
         {
             var list = new List<DeliveryOption>();
-            if (expOn) list.Add(new() { Type = "Express",  Label = "Express Delivery",  Fee = zone.ExpressFee,  Timeframe = zone.ExpressDays  });
-            if (stdOn) list.Add(new() { Type = "Standard", Label = "Standard Delivery", Fee = zone.StandardFee, Timeframe = zone.StandardDays });
+            if (expOn) list.Add(new() { Type = "Express",  Label = "Glams Priority — 24–48 Hours",  Fee = zone.ExpressFee,  Timeframe = zone.ExpressDays  });
+            if (stdOn) list.Add(new() { Type = "Standard", Label = "Glams Standard — 2–4 Working Days", Fee = zone.StandardFee, Timeframe = zone.StandardDays });
             return list;
         }
 
         var natFee  = await _settings.GetDecimalAsync("shipping.national_standard_fee", 7500);
         var natDays = await _settings.GetAsync("shipping.national_standard_days", "2 - 5 working days");
         var national = new List<DeliveryOption>();
-        if (stdOn) national.Add(new() { Type = "Standard", Label = "Standard Delivery", Fee = natFee, Timeframe = natDays });
+        if (stdOn) national.Add(new() { Type = "Standard", Label = "Glams Standard — 2–4 Working Days", Fee = natFee, Timeframe = natDays });
         return national;
     }
 
@@ -221,6 +221,9 @@ public class DeliveryZoneService
         }
         /// <summary>Friendly window for display, e.g. "1:00 AM – 1:00 PM".</summary>
         public string WindowLabel => $"{Fmt(Start)} – {Fmt(End)}";
+        /// <summary>The daily cut-off (window end) for display, e.g. "1:00 PM". Orders placed after this
+        /// are delivered the next day — shown as a note rather than enforced/greyed-out.</summary>
+        public string CutoffLabel => Fmt(End);
         private static string Fmt(string hhmm) => TimeSpan.TryParse(hhmm, out var t) ? DateTime.Today.Add(t).ToString("h:mm tt") : hhmm;
     }
 
