@@ -411,6 +411,9 @@ public class CheckoutController : Controller
     private async Task<IActionResult> RedisplayCheckoutAsync(CheckoutViewModel vm)
     {
         await RehydrateCheckoutDisplayAsync(vm);
+        // The customer has already submitted, so keep their fulfilment choice selected on redisplay
+        // (a fresh GET leaves both unselected — no auto-select).
+        ViewData["FulfilmentPicked"] = true;
         return View("Index", vm);
     }
 
