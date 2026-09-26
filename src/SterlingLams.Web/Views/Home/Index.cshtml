@@ -221,9 +221,9 @@
 }
 @if (shopCategories.Any())
 {
-    <section class="py-20 bg-white">
+    <section class="py-10 md:py-16 bg-white">
         <div class="max-w-7xl mx-auto px-6">
-            <div class="text-center mb-14">
+            <div class="text-center mb-8 md:mb-10">
                 <h2 class="font-cormorant text-4xl font-light text-neutral-900">Shop by Category</h2>
                 @{
                     // Admin-configurable (Settings → Homepage). Values are sanitised before they go
@@ -317,7 +317,7 @@
 }
 @if (featOn && featBlocks.Any())
 {
-    <section class="py-20 bg-white">
+    <section class="py-10 md:py-16 bg-white">
         <div class="max-w-6xl mx-auto px-6">
             @if (!string.IsNullOrWhiteSpace(featHeading))
             {
@@ -371,9 +371,9 @@
 <!-- ─── Featured Products ─────────────────────────────────────────────────── -->
 @if (showFeatured)
 {
-<section class="py-20 bg-stone-50">
+<section class="py-10 md:py-16 bg-stone-50">
     <div class="max-w-7xl mx-auto px-6">
-        <div class="text-center mb-14">
+        <div class="text-center mb-8 md:mb-10">
             <p class="text-xs tracking-[0.3em] uppercase text-brand-500 mb-3">Curated for you</p>
             <h2 class="font-cormorant text-4xl font-light text-neutral-900">@featuredHeading</h2>
         </div>
@@ -448,7 +448,7 @@
 }
 
 <!-- ─── Store Finder Banner ───────────────────────────────────────────────── -->
-<section class="py-20 bg-neutral-900 text-white">
+<section class="py-10 md:py-16 bg-neutral-900 text-white">
     <div class="max-w-7xl mx-auto px-6 grid md:grid-cols-2 gap-12 items-center">
         <div>
             <p class="text-xs tracking-[0.3em] uppercase text-neutral-400 mb-4">3 Locations in Lagos</p>
