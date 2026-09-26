@@ -33,6 +33,11 @@
     }
     if (heroImages.Count == 0 && !string.IsNullOrWhiteSpace(heroImageUrl)) { heroImages.Add(heroImageUrl); heroHideText.Add(false); }
     var hasHeroImage  = heroImages.Count > 0;
+    // Optional portrait versions for phones (matched by order). When present, the phone shows the mobile
+    // image full-screen so a tall banner fills the screen instead of a cropped wide one.
+    var heroMobileRaw = await SettingsService.GetAsync("homepage.hero_images_mobile", "");
+    var heroMobileImages = heroMobileRaw.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+        .Select(l => l.Split('|')[0].Trim()).Where(u => u.Length > 0).ToList();
     // How uploaded banners are sized: "fill" crops to a full-screen hero (default); "fit" makes the
     // hero adopt each image's own shape (via JS) so the whole picture shows with NO grey bars and no
     // cropping. Images always use object-cover — in "fit" the box matches the image, so nothing is cut.
@@ -105,11 +110,20 @@
             <div id="hero-slider" class="absolute inset-0" data-hidetext="@System.Text.Json.JsonSerializer.Serialize(heroHideText)">
                 @for (var i = 0; i < heroImages.Count; i++)
                 {
-                    @* First slide is the LCP element: load eagerly + high priority; the rest are lazy. *@
-                    <img src="@Img.Cld(heroImages[i], 1920)" alt="Campaign" decoding="async"
-                         loading="@(i == 0 ? "eager" : "lazy")" fetchpriority="@(i == 0 ? "high" : "low")"
-                         class="hero-slide absolute inset-0 w-full h-full @heroObjectClass object-center transition-opacity duration-700 @(i == 0 ? "opacity-100" : "opacity-0")"
-                         data-index="@i" />
+                    @* First slide is the LCP element: load eagerly + high priority; the rest are lazy.
+                       When a matching mobile (portrait) image exists, phones swap to it via <picture> so a
+                       tall banner fills the phone screen instead of a cropped wide one. *@
+                    var mobileSrc = i < heroMobileImages.Count ? Img.Cld(heroMobileImages[i], 1080) : null;
+                    <picture>
+                        @if (mobileSrc != null)
+                        {
+                            <source media="(max-width: 767px)" srcset="@mobileSrc" />
+                        }
+                        <img src="@Img.Cld(heroImages[i], 1920)" alt="Campaign" decoding="async"
+                             loading="@(i == 0 ? "eager" : "lazy")" fetchpriority="@(i == 0 ? "high" : "low")"
+                             class="hero-slide absolute inset-0 w-full h-full @heroObjectClass object-center transition-opacity duration-700 @(i == 0 ? "opacity-100" : "opacity-0")"
+                             data-index="@i" />
+                    </picture>
                 }
             </div>
             <!-- Dark overlay so text remains readable over any image (skipped when no slide shows text) -->
