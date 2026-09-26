@@ -255,6 +255,13 @@ public class CheckoutController : Controller
             express  = await _settings.GetBoolAsync("shipping.express_enabled", true),
         };
 
+        // Editable checkout colours (Admin → Settings → Shipping).
+        var ui = new
+        {
+            selectFill = await _settings.GetAsync("checkout.select_fill", "#111827"),
+            noteColor  = await _settings.GetAsync("shipping.sameday_note_color", "#d97706"),
+        };
+
         return System.Text.Json.JsonSerializer.Serialize(new
         {
             zones = byState,   // { "Lagos": [ { name, standardFee, expressFee, sameDayFee, standardDays, expressDays, areas[] } ], "Abuja": [...] }
@@ -266,6 +273,7 @@ public class CheckoutController : Controller
             abujaKeywords = new[] { "FCT", "Abuja", "Federal Capital" },
             deliveryEnabled,
             sameDay,
+            ui,
         });
     }
 
