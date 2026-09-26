@@ -3,13 +3,47 @@
     ViewData["Title"] = "Our Stores";
     // Show the minimal "Shop at Sterlin Glams / Need Help?" header on the store-locator page.
     ViewData["MinimalHeader"] = true;
+    var mapStores = Model.Where(s => s.Latitude.HasValue && s.Longitude.HasValue).ToList();
+    string J(object o) => System.Text.Json.JsonSerializer.Serialize(o);
+    var mapData = mapStores.Select(s => new {
+        name = s.Name,
+        lat = s.Latitude!.Value,
+        lng = s.Longitude!.Value,
+        address = $"{s.Address}, {s.City}, {s.State}",
+        dir = $"https://www.google.com/maps/dir/?api=1&destination={s.Latitude},{s.Longitude}"
+    }).ToList();
 }
 
-<div class="max-w-5xl mx-auto px-6 py-16">
-    <div class="text-center mb-16">
+@section Styles {
+    <link rel="stylesheet" href="~/lib/leaflet/leaflet.min.css" />
+    <style>
+        #stores-map { height: 420px; }
+        @@media (max-width: 640px) { #stores-map { height: 300px; } }
+        /* Brand teardrop pin (CSS only — no marker image needed). */
+        .sg-pin { width: 26px; height: 26px; }
+        .sg-pin span {
+            display:block; width:22px; height:22px; margin:2px auto 0;
+            background:#ed028b; border:2px solid #fff; border-radius:50% 50% 50% 0;
+            transform: rotate(-45deg); box-shadow:0 2px 6px rgba(0,0,0,.3);
+        }
+        .leaflet-popup-content { font-family: inherit; }
+        .leaflet-popup-content .sg-pop-name { font-weight:600; color:#171717; }
+        .leaflet-popup-content .sg-pop-addr { color:#6b7280; font-size:12px; margin-top:2px; }
+        .leaflet-popup-content a.sg-pop-dir { display:inline-block; margin-top:8px; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:#ed028b; }
+    </style>
+}
+
+<div class="max-w-5xl mx-auto px-6 py-10 md:py-14">
+    <div class="text-center mb-8 md:mb-10">
         <p class="section-label">Visit us</p>
         <h1 class="font-cormorant text-5xl font-light">Our Stores</h1>
     </div>
+
+    @if (mapStores.Count > 0)
+    {
+        <!-- Interactive map: pins for every store, zoom + pan, click a pin for details & directions. -->
+        <div id="stores-map" class="mb-12 rounded-sm overflow-hidden border border-neutral-100" role="img" aria-label="Map of Sterlin Glams store locations"></div>
+    }
 
     <div class="grid md:grid-cols-3 gap-8">
         @foreach (var store in Model)
@@ -51,3 +85,39 @@
         }
     </div>
 </div>
+
+@section Scripts {
+    @if (mapStores.Count > 0)
+    {
+        <script src="~/lib/leaflet/leaflet.min.js" nonce="@Context.Items["csp-nonce"]"></script>
+        <script nonce="@Context.Items["csp-nonce"]">
+        (function () {
+            var stores = @Html.Raw(J(mapData));
+            if (!stores.length || typeof L === 'undefined') return;
+            function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+
+            var map = L.map('stores-map', { scrollWheelZoom: false, zoomControl: true });
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+                subdomains: 'abcd', maxZoom: 19
+            }).addTo(map);
+
+            var icon = L.divIcon({ className: 'sg-pin', html: '<span></span>', iconSize: [26, 26], iconAnchor: [13, 24], popupAnchor: [0, -22] });
+            var bounds = [];
+            stores.forEach(function (s) {
+                L.marker([s.lat, s.lng], { icon: icon, title: s.name }).addTo(map)
+                    .bindPopup('<div class="sg-pop-name">' + esc(s.name) + '</div>'
+                        + '<div class="sg-pop-addr">' + esc(s.address) + '</div>'
+                        + '<a class="sg-pop-dir" target="_blank" rel="noopener" href="' + esc(s.dir) + '">Get directions →</a>');
+                bounds.push([s.lat, s.lng]);
+            });
+            if (bounds.length === 1) map.setView(bounds[0], 14);
+            else map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+
+            // Only zoom with the wheel once the map is focused/clicked, so page scroll isn't hijacked.
+            map.on('focus', function () { map.scrollWheelZoom.enable(); });
+            map.on('blur', function () { map.scrollWheelZoom.disable(); });
+        }());
+        </script>
+    }
+}
