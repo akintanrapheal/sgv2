@@ -84,7 +84,8 @@
         {
             <text>
             SLCharts.doughnut('paymentMix', @Html.Raw(J(Model.Rows.Select(r => r.Method))),
-                @Html.Raw(J(Model.Rows.Select(r => r.Amount))), { money: true });
+                @Html.Raw(J(Model.Rows.Select(r => r.Amount))),
+                { money: true, hrefs: @Html.Raw(J(Model.Rows.Select(r => Url.Action("Orders", new { method = r.Method, from = from.ToString("yyyy-MM-dd"), to = to.ToString("yyyy-MM-dd") })))) });
             </text>
         }
     </script>

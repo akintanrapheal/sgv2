@@ -12,6 +12,19 @@
     var maxRev = Model.Any() ? Model.Max(r => r.Revenue) : 0m;
     string J(object o) => JsonSerializer.Serialize(o);
     var top = Model.Take(10).ToList();
+    var fromS = from.ToString("yyyy-MM-dd");
+    var toS = to.ToString("yyyy-MM-dd");
+    // One place that builds each row's drill-through URL — used for BOTH the table link and the chart bar.
+    // (Built with Url.Action so the route values are never dropped, unlike asp-route-* + asp-all-route-data.)
+    string? DrillUrl(SterlingLams.Web.Areas.Inventory.Controllers.NameValueRow r)
+    {
+        if (r.ProductId.HasValue) return Url.Action("ItemSales", new { productId = r.ProductId, from = fromS, to = toS });
+        if (!string.IsNullOrEmpty(r.CustomerId)) return Url.Action("CustomerSales", new { userId = r.CustomerId, from = fromS, to = toS });
+        if (r.CategoryId.HasValue) return Url.Action("SalesByItem", new { categoryId = r.CategoryId, from = fromS, to = toS });
+        if (!string.IsNullOrEmpty(r.DiscountCode)) return Url.Action("Orders", new { discount = r.DiscountCode, from = fromS, to = toS });
+        return null;
+    }
+    var chartHrefs = top.Select(r => DrillUrl(r) ?? "").ToList();
 }
 
 @await Html.PartialAsync("_ReportTabs", active)
@@ -51,22 +64,10 @@
                     var pct = maxRev > 0 ? (double)(r.Revenue / maxRev) * 100 : 0;
                     <tr class="hover:bg-neutral-50">
                         <td class="px-4 py-2.5 text-neutral-700">
-                            @{ var dr = new Dictionary<string, string> { ["from"] = from.ToString("yyyy-MM-dd"), ["to"] = to.ToString("yyyy-MM-dd") }; }
-                            @if (r.ProductId.HasValue)
+                            @{ var href = DrillUrl(r); }
+                            @if (href != null)
                             {
-                                <a asp-action="ItemSales" asp-route-productId="@r.ProductId" asp-all-route-data="dr" class="text-emerald-700 hover:underline">@r.Name</a>
-                            }
-                            else if (!string.IsNullOrEmpty(r.CustomerId))
-                            {
-                                <a asp-action="CustomerSales" asp-route-userId="@r.CustomerId" asp-all-route-data="dr" class="text-emerald-700 hover:underline">@r.Name</a>
-                            }
-                            else if (r.CategoryId.HasValue)
-                            {
-                                <a asp-action="SalesByItem" asp-route-categoryId="@r.CategoryId" asp-all-route-data="dr" class="text-emerald-700 hover:underline">@r.Name</a>
-                            }
-                            else if (!string.IsNullOrEmpty(r.DiscountCode))
-                            {
-                                <a asp-action="Orders" asp-route-discount="@r.DiscountCode" asp-all-route-data="dr" class="text-emerald-700 hover:underline">@r.Name</a>
+                                <a href="@href" class="text-emerald-700 hover:underline">@r.Name</a>
                             }
                             else
                             {
@@ -94,7 +95,7 @@
         {
             <text>
             SLCharts.hbar('breakdownChart', @Html.Raw(J(top.Select(r => r.Name))),
-                @Html.Raw(J(top.Select(r => r.Revenue))), { money: true, label: '@revenueLabel' });
+                @Html.Raw(J(top.Select(r => r.Revenue))), { money: true, label: '@revenueLabel', hrefs: @Html.Raw(J(chartHrefs)) });
             </text>
         }
     </script>
