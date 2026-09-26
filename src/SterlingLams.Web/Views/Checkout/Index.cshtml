@@ -455,9 +455,7 @@ function sameDayOptionFor(key, z) {
         label: 'Glams Express — Same Day',
         fee: z.sameDayFee,
         timeframe: sd.timeframe,
-        note: sd.cutoff
-            ? ('Order before ' + sd.cutoff + ' for same-day delivery. Orders placed after ' + sd.cutoff + ' are delivered the next day.')
-            : ''
+        note: sd.note || ''
     };
 }
 
