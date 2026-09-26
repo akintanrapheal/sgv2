@@ -97,9 +97,10 @@
             function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
 
             var map = L.map('stores-map', { scrollWheelZoom: false, zoomControl: true });
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-                subdomains: 'abcd', maxZoom: 19
+            // OpenStreetMap standard tiles — free and keyless (CARTO's basemap now needs an API key).
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors',
+                subdomains: 'abc', maxZoom: 19
             }).addTo(map);
 
             var icon = L.divIcon({ className: 'sg-pin', html: '<span></span>', iconSize: [26, 26], iconAnchor: [13, 24], popupAnchor: [0, -22] });
