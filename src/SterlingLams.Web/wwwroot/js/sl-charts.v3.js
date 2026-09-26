@@ -76,6 +76,15 @@
         box.addEventListener('mouseout', function (e) {
             if (e.target.closest && e.target.closest('[data-tip]')) hideTip();
         });
+        // Drill-through: a bar/segment/label carrying data-href navigates on click.
+        box.addEventListener('click', function (e) {
+            var el = e.target.closest && e.target.closest('[data-href]');
+            if (el) { var h = el.getAttribute('data-href'); if (h) window.location.href = h; }
+        });
+    }
+    // data-href (+ pointer cursor) for a clickable mark, or '' when no link for this index.
+    function hrefAttr(hrefs, i) {
+        return (hrefs && hrefs[i]) ? (' data-href="' + esc(hrefs[i]) + '" style="cursor:pointer"') : '';
     }
     // Plain-text tooltip carried on a data attribute. SVG attrs set via innerHTML aren't entity-
     // decoded on read here, so we keep it literal (just neutralise the quote that delimits the attr).
@@ -202,11 +211,12 @@
         bar: function (id, labels, data, opts) {
             opts = opts || {}; data = data || [];
             var isMoney = !!opts.money, max = Math.max.apply(null, data.concat([0]));
+            var hrefs = opts.hrefs || [];
             var svg = cartesian(labels, max, isMoney, function (p) {
                 var out = '', n = data.length, slot = (p.x1 - p.x0) / Math.max(1, n), bw = Math.min(48, slot * 0.6);
                 data.forEach(function (v, i) {
                     var cx = p.x0 + slot * (i + 0.5), h = (p.y1 - p.y0) * (v / p.top);
-                    out += '<rect x="' + (cx - bw / 2).toFixed(1) + '" y="' + (p.y1 - h).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="3" fill="' + palette[0] + '" fill-opacity="0.85" ' + tipAttr(labels[i], v, isMoney) + '/>';
+                    out += '<rect x="' + (cx - bw / 2).toFixed(1) + '" y="' + (p.y1 - h).toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="3" fill="' + palette[0] + '" fill-opacity="0.85" ' + tipAttr(labels[i], v, isMoney) + hrefAttr(hrefs, i) + '/>';
                 });
                 return out;
             });
@@ -216,16 +226,16 @@
 
         hbar: function (id, labels, data, opts) {
             opts = opts || {}; data = data || [];
-            var isMoney = !!opts.money, n = data.length;
+            var isMoney = !!opts.money, n = data.length, hrefs = opts.hrefs || [];
             var max = niceMax(Math.max.apply(null, data.concat([0])));
             var rowH = 30, padT = 8, padB = 8, W = 640, labelW = 150, valW = 92;
             var H = padT + padB + n * rowH, x0 = labelW, x1 = W - valW;
             var s = svgOpen(H);
             data.forEach(function (v, i) {
                 var cy = padT + i * rowH, barY = cy + 5, bh = rowH - 12, w = (x1 - x0) * (v / max), col = palette[i % palette.length];
-                var full = String(labels[i]);
-                s += '<text x="' + (labelW - 8) + '" y="' + (cy + rowH / 2 + 3).toFixed(1) + '" text-anchor="end" font-size="11" fill="#374151">' + esc(full.length > 22 ? full.slice(0, 21) + '…' : full) + '</text>';
-                s += '<rect x="' + x0 + '" y="' + barY.toFixed(1) + '" width="' + Math.max(0, w).toFixed(1) + '" height="' + bh + '" rx="3" fill="' + col + '" fill-opacity="0.85" ' + tipAttr(full, v, isMoney) + '/>';
+                var full = String(labels[i]), ha = hrefAttr(hrefs, i);
+                s += '<text x="' + (labelW - 8) + '" y="' + (cy + rowH / 2 + 3).toFixed(1) + '" text-anchor="end" font-size="11" fill="#374151"' + ha + '>' + esc(full.length > 22 ? full.slice(0, 21) + '…' : full) + '</text>';
+                s += '<rect x="' + x0 + '" y="' + barY.toFixed(1) + '" width="' + Math.max(0, w).toFixed(1) + '" height="' + bh + '" rx="3" fill="' + col + '" fill-opacity="0.85" ' + tipAttr(full, v, isMoney) + ha + '/>';
                 s += '<text x="' + (x1 + 6) + '" y="' + (cy + rowH / 2 + 3).toFixed(1) + '" font-size="10" fill="' + TXT + '">' + fmt(v, isMoney) + '</text>';
             });
             mount(id, s + '</svg>');
@@ -234,7 +244,7 @@
 
         doughnut: function (id, labels, data, opts) {
             opts = opts || {}; data = data || []; labels = labels || [];
-            var isMoney = !!opts.money;
+            var isMoney = !!opts.money, hrefs = opts.hrefs || [];
             var colors = opts.colors || labels.map(function (_, i) { return palette[i % palette.length]; });
             var total = data.reduce(function (a, b) { return a + (b || 0); }, 0) || 1;
             var H = 200, cx = 110, cy = 100, rO = 80, rI = 50;
@@ -248,14 +258,15 @@
                     var pt = function (r, a) { return (cx + r * Math.cos(a)).toFixed(2) + ' ' + (cy + r * Math.sin(a)).toFixed(2); };
                     var tipv = 'data-tip="' + (labels[i] + ': ' + fmt(v, isMoney) + ' (' + Math.round(frac * 100) + '%)').replace(/"/g, '”') + '"';
                     s += '<path d="M ' + pt(rO, ang) + ' A ' + rO + ' ' + rO + ' 0 ' + large + ' 1 ' + pt(rO, a2) +
-                         ' L ' + pt(rI, a2) + ' A ' + rI + ' ' + rI + ' 0 ' + large + ' 0 ' + pt(rI, ang) + ' Z" fill="' + colors[i % colors.length] + '" ' + tipv + '/>';
+                         ' L ' + pt(rI, a2) + ' A ' + rI + ' ' + rI + ' 0 ' + large + ' 0 ' + pt(rI, ang) + ' Z" fill="' + colors[i % colors.length] + '" ' + tipv + hrefAttr(hrefs, i) + '/>';
                     ang = a2;
                 });
             }
             var ly = 24, lx = 230;
             labels.forEach(function (lab, i) {
-                s += '<rect x="' + lx + '" y="' + (ly - 9) + '" width="10" height="10" rx="2" fill="' + colors[i % colors.length] + '"/>';
-                s += '<text x="' + (lx + 16) + '" y="' + ly + '" font-size="11" fill="#374151">' + esc(lab) + '</text>';
+                var ha = hrefAttr(hrefs, i);
+                s += '<rect x="' + lx + '" y="' + (ly - 9) + '" width="10" height="10" rx="2" fill="' + colors[i % colors.length] + '"' + ha + '/>';
+                s += '<text x="' + (lx + 16) + '" y="' + ly + '" font-size="11" fill="#374151"' + ha + '>' + esc(lab) + '</text>';
                 s += '<text x="620" y="' + ly + '" text-anchor="end" font-size="11" fill="' + TXT + '">' + fmt(data[i] || 0, isMoney) + '</text>';
                 ly += 22;
             });
