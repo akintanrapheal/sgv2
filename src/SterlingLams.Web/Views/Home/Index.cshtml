@@ -19,10 +19,27 @@
     var heroSubtext   = await SettingsService.GetAsync("homepage.hero_subtext",   "Luxury jewellery crafted for the discerning woman. Discover our newest arrivals.");
     var heroCta       = await SettingsService.GetAsync("homepage.hero_cta",       "Shop Collection");
     // Slider images: the multi-image list when set, otherwise the single campaign image.
-    var heroImages = heroImagesRaw.Split('\n', StringSplitOptions.RemoveEmptyEntries)
-        .Select(u => u.Trim()).Where(u => u.Length > 0).ToList();
-    if (heroImages.Count == 0 && !string.IsNullOrWhiteSpace(heroImageUrl)) heroImages.Add(heroImageUrl);
+    // Each line may carry a "|notext" flag = hide the overlay words on that slide (so a fully
+    // designed banner shows uncovered). Parse into parallel url + hide-text lists.
+    var heroImages = new List<string>();
+    var heroHideText = new List<bool>();
+    foreach (var line in heroImagesRaw.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+    {
+        var bits = line.Split('|');
+        var url = bits[0].Trim();
+        if (url.Length == 0) continue;
+        heroImages.Add(url);
+        heroHideText.Add(bits.Skip(1).Any(b => b.Trim().Equals("notext", StringComparison.OrdinalIgnoreCase)));
+    }
+    if (heroImages.Count == 0 && !string.IsNullOrWhiteSpace(heroImageUrl)) { heroImages.Add(heroImageUrl); heroHideText.Add(false); }
     var hasHeroImage  = heroImages.Count > 0;
+    // How uploaded banners are sized: "fill" crops to fill the hero (default), "fit" shows the whole
+    // image (letterboxed) so nothing is cut off.
+    var heroFit = await SettingsService.GetAsync("homepage.hero_fit", "fill");
+    var heroObjectClass = heroFit == "fit" ? "object-contain" : "object-cover";
+    // If every slide hides its text, the overlay never shows — render the section shorter and skip the
+    // dark scrim so the picture reads cleanly.
+    var allHideText = hasHeroImage && heroHideText.All(h => h);
 
     var showFeatured     = await SettingsService.GetBoolAsync("homepage.show_featured", true);
     var showBestSellers  = await SettingsService.GetBoolAsync("homepage.show_best_sellers", true);
@@ -78,21 +95,24 @@
 <section class="relative h-screen min-h-[600px] flex items-center overflow-hidden">
 
     <!-- Background: campaign image(s) (admin-set) or gradient fallback -->
-    <div class="absolute inset-0">
+    <div class="absolute inset-0 @(heroFit == "fit" ? "bg-neutral-100" : "")">
         @if (hasHeroImage)
         {
-            <div id="hero-slider" class="absolute inset-0">
+            <div id="hero-slider" class="absolute inset-0" data-hidetext="@System.Text.Json.JsonSerializer.Serialize(heroHideText)">
                 @for (var i = 0; i < heroImages.Count; i++)
                 {
                     @* First slide is the LCP element: load eagerly + high priority; the rest are lazy. *@
                     <img src="@Img.Cld(heroImages[i], 1920)" alt="Campaign" decoding="async"
                          loading="@(i == 0 ? "eager" : "lazy")" fetchpriority="@(i == 0 ? "high" : "low")"
-                         class="hero-slide absolute inset-0 w-full h-full object-cover object-center transition-opacity duration-700 @(i == 0 ? "opacity-100" : "opacity-0")"
+                         class="hero-slide absolute inset-0 w-full h-full @heroObjectClass object-center transition-opacity duration-700 @(i == 0 ? "opacity-100" : "opacity-0")"
                          data-index="@i" />
                 }
             </div>
-            <!-- Dark overlay so text remains readable over any image -->
-            <div class="absolute inset-0 bg-black/40"></div>
+            <!-- Dark overlay so text remains readable over any image (skipped when no slide shows text) -->
+            @if (!allHideText)
+            {
+                <div id="hero-scrim" class="absolute inset-0 bg-black/40 @(heroHideText.Count > 0 && heroHideText[0] ? "opacity-0" : "")"></div>
+            }
 
             @if (heroImages.Count > 1)
             {
@@ -116,7 +136,7 @@
         }
     </div>
 
-    <div class="relative z-10 max-w-7xl mx-auto px-6 text-center">
+    <div id="hero-copy" class="relative z-10 max-w-7xl mx-auto px-6 text-center @((allHideText || (heroHideText.Count > 0 && heroHideText[0])) ? "hidden" : "")">
         <p class="text-xs tracking-[0.4em] uppercase @(hasHeroImage ? "text-brand-300" : "text-brand-500") mb-6">@heroEyebrow</p>
         <h1 class="font-cormorant text-6xl md:text-8xl font-light @(hasHeroImage ? "text-white" : "text-neutral-900") leading-none mb-6">
             @{
@@ -516,11 +536,19 @@
     var slides = slider.querySelectorAll('.hero-slide');
     if (slides.length < 2) return;
     var dots = document.querySelectorAll('.hero-dot');
+    // Per-slide "hide overlay text" flags (so a designed banner shows uncovered).
+    var hideText = [];
+    try { hideText = JSON.parse(slider.dataset.hidetext || '[]'); } catch (_) {}
+    var copy = document.getElementById('hero-copy');
+    var scrim = document.getElementById('hero-scrim');
     var idx = 0, timer;
     function show(n) {
         idx = (n + slides.length) % slides.length;
         slides.forEach(function (s, i) { s.classList.toggle('opacity-100', i === idx); s.classList.toggle('opacity-0', i !== idx); });
         dots.forEach(function (d, i) { d.classList.toggle('bg-white', i === idx); d.classList.toggle('bg-white/40', i !== idx); });
+        var hide = !!hideText[idx];
+        if (copy) copy.classList.toggle('hidden', hide);
+        if (scrim) scrim.classList.toggle('opacity-0', hide);
     }
     function restart() { clearInterval(timer); timer = setInterval(function () { show(idx + 1); }, @heroSlideMs); }
     var nb = document.getElementById('hero-next'), pb = document.getElementById('hero-prev');
