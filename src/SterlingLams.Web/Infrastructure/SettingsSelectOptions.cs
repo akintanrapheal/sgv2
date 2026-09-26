@@ -33,8 +33,8 @@ public static class SettingsSelectOptions
             },
             ["homepage.hero_fit"] = new[]
             {
-                ("fill", "Fill — crop to cover the hero (default)"),
-                ("fit",  "Fit — show the whole image (nothing cropped)"),
+                ("fill", "Fill — full-screen hero, image cropped to cover (default)"),
+                ("fit",  "Fit — hero matches each image’s shape (whole image, no grey bars)"),
             },
         };
 
