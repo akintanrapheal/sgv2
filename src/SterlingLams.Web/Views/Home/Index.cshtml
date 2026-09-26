@@ -43,7 +43,9 @@
     // cropping. Images always use object-cover — in "fit" the box matches the image, so nothing is cut.
     var heroFit = await SettingsService.GetAsync("homepage.hero_fit", "fill");
     var heroAutoHeight = heroFit == "fit";
-    var heroObjectClass = "object-cover";
+    // Fit: the section auto-sizes to the image, so object-contain shows the WHOLE image with no crop
+    // (and no bars, since the box matches the image). Fill: object-cover for a full-bleed hero.
+    var heroObjectClass = heroAutoHeight ? "object-contain" : "object-cover";
     // If every slide hides its text, the overlay never shows — render the section shorter and skip the
     // dark scrim so the picture reads cleanly.
     var allHideText = hasHeroImage && heroHideText.All(h => h);
