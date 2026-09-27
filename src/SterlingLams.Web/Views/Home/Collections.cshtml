@@ -1,5 +1,7 @@
 @using SterlingLams.Web.Services
 @using SterlingLams.Web.Models.ViewModels
+@using SterlingLams.Web.Models.Domain
+@using System.Globalization
 @inject ISettingsService SettingsService
 @{
     ViewData["Title"] = "The Lookbook";
@@ -7,6 +9,10 @@
     Layout = "_Layout";
     ViewData["CardLowThreshold"] = 0;
     var lookbook = ViewBag.LookbookProducts as List<ProductCardViewModel> ?? new List<ProductCardViewModel>();
+    var campaigns = ViewBag.LookbookCampaigns as List<LookbookCampaign> ?? new List<LookbookCampaign>();
+    var pmap = ViewBag.LookbookProductMap as Dictionary<int, ProductCardViewModel.LookbookHotspotProduct> ?? new();
+    string Pct(double v) => v.ToString(CultureInfo.InvariantCulture);
+    var liveCampaigns = campaigns.Where(c => !string.IsNullOrWhiteSpace(c.Image)).ToList();
 
     // Category feature images are admin-editable in Settings → Collections.
     var collectionCards = new[]
@@ -32,6 +38,55 @@
         </p>
     </div>
 </section>
+
+<!-- ─── Magazine campaigns with shop-the-look hotspots ──────────────────────── -->
+@if (liveCampaigns.Any())
+{
+    <section class="bg-white">
+        @foreach (var c in liveCampaigns)
+        {
+            var spots = c.Hotspots.Where(h => pmap.ContainsKey(h.ProductId)).ToList();
+            <figure class="relative w-full m-0">
+                <img src="@Img.Cld(c.Image, 1920)" alt="@(c.Heading ?? "Campaign")" loading="lazy" class="block w-full h-auto" />
+
+                @if (!string.IsNullOrWhiteSpace(c.Heading) || !string.IsNullOrWhiteSpace(c.Subtext))
+                {
+                    <figcaption class="absolute left-0 bottom-0 p-6 md:p-12 max-w-xl">
+                        @if (!string.IsNullOrWhiteSpace(c.Heading))
+                        {
+                            <h2 class="font-cormorant text-3xl md:text-5xl font-light text-white drop-shadow">@c.Heading</h2>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(c.Subtext))
+                        {
+                            <p class="mt-2 text-sm md:text-base text-white/90 font-light drop-shadow">@c.Subtext</p>
+                        }
+                    </figcaption>
+                }
+
+                @foreach (var h in spots)
+                {
+                    var p = pmap[h.ProductId];
+                    <div class="lb-spot group absolute -translate-x-1/2 -translate-y-1/2" style="left:@Pct(h.X)%;top:@Pct(h.Y)%">
+                        <button type="button" class="lb-dot relative flex items-center justify-center w-6 h-6 rounded-full bg-white shadow-lg ring-1 ring-black/10" aria-label="Shop @p.Name">
+                            <span class="absolute inline-flex w-6 h-6 rounded-full bg-brand-400 opacity-60 animate-ping"></span>
+                            <span class="relative w-2.5 h-2.5 rounded-full bg-brand-500"></span>
+                        </button>
+                        <div class="lb-pop absolute bottom-full mb-3 left-1/2 -translate-x-1/2 w-56 bg-white rounded-lg shadow-xl p-3 opacity-0 pointer-events-none transition-opacity duration-200 group-hover:opacity-100 group-hover:pointer-events-auto group-[.open]:opacity-100 group-[.open]:pointer-events-auto">
+                            <a href="/Products/@p.Slug" class="flex items-center gap-3">
+                                <img src="@p.Image" alt="@p.Name" class="w-14 h-14 object-cover rounded shrink-0" />
+                                <span class="min-w-0">
+                                    <span class="block text-sm text-neutral-800 leading-snug line-clamp-2">@p.Name</span>
+                                    <span class="block text-sm text-brand-600 font-medium mt-0.5">@p.PriceText</span>
+                                    <span class="block text-[10px] tracking-widest uppercase text-neutral-400 mt-1">Shop →</span>
+                                </span>
+                            </a>
+                        </div>
+                    </div>
+                }
+            </figure>
+        }
+    </section>
+}
 
 <!-- ─── This season's edit (real products) ──────────────────────────────────── -->
 @if (lookbook.Any())
@@ -111,3 +166,28 @@
         View New Arrivals
     </a>
 </section>
+
+@section Scripts {
+    @if (liveCampaigns.Any())
+    {
+        <script nonce="@Context.Items["csp-nonce"]">
+        // Tap a hotspot to open its product card on touch devices (desktop uses hover). Only one open.
+        (function () {
+            var spots = document.querySelectorAll('.lb-spot');
+            spots.forEach(function (spot) {
+                var dot = spot.querySelector('.lb-dot');
+                if (!dot) return;
+                dot.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    var wasOpen = spot.classList.contains('open');
+                    spots.forEach(function (s) { s.classList.remove('open'); });
+                    if (!wasOpen) spot.classList.add('open');
+                });
+            });
+            document.addEventListener('click', function (e) {
+                if (!e.target.closest('.lb-spot')) spots.forEach(function (s) { s.classList.remove('open'); });
+            });
+        }());
+        </script>
+    }
+}

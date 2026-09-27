@@ -187,6 +187,36 @@ public class HomeController : Controller
 
         await SterlingLams.Web.Infrastructure.ProductCardPricing.ApplyVariantPriceRangesAsync(products, _db);
         ViewBag.LookbookProducts = products;
+
+        // Magazine campaigns with shop-the-look hotspots (edited in Admin → Lookbook). Resolve the
+        // products the hotspots point at so the storefront can show a mini-card on each dot.
+        var campaigns = Infrastructure.LookbookData.Parse(await _settings.GetAsync("lookbook.campaigns", ""));
+        var hotspotIds = campaigns.SelectMany(c => c.Hotspots).Select(h => h.ProductId).Distinct().ToList();
+        var now = DateTime.UtcNow;
+        var hotspotProducts = await Infrastructure.DbRead.RetryAsync(() => _db.Products
+            .Where(p => hotspotIds.Contains(p.Id) && p.IsActive)
+            .Select(p => new
+            {
+                p.Id, p.Name, p.Slug, p.Price, p.SalePrice, p.SaleStartsAt, p.SaleEndsAt,
+                Image = p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault()
+            })
+            .ToListAsync());
+
+        var map = new Dictionary<int, ProductCardViewModel.LookbookHotspotProduct>();
+        foreach (var p in hotspotProducts)
+        {
+            var onSale = p.SalePrice is decimal sp && sp > 0m && sp < p.Price
+                && (p.SaleStartsAt == null || now >= p.SaleStartsAt) && (p.SaleEndsAt == null || now <= p.SaleEndsAt);
+            var price = onSale ? p.SalePrice!.Value : p.Price;
+            map[p.Id] = new ProductCardViewModel.LookbookHotspotProduct(
+                p.Id, p.Name, p.Slug,
+                SterlingLams.Web.Infrastructure.Img.Cld(p.Image, 160, 160) ?? "/images/placeholder.jpg",
+                "₦" + price.ToString("N0"));
+        }
+
+        // Keep only campaigns that still have at least one resolvable hotspot product.
+        ViewBag.LookbookCampaigns = campaigns;
+        ViewBag.LookbookProductMap = map;
         return View();
     }
 

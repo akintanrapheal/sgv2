@@ -1,0 +1,232 @@
+@using System.Text.Json
+@model List<SterlingLams.Web.Models.Domain.LookbookCampaign>
+@{
+    ViewData["Title"] = "Lookbook";
+    var labels = ViewData["ProductLabels"];
+    var opts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+}
+
+@Html.AntiForgeryToken()
+
+<div class="flex items-center justify-between mb-2">
+    <div>
+        <h1 class="text-xl font-semibold text-neutral-900">Lookbook</h1>
+        <p class="text-sm text-neutral-500 mt-1">Full-width campaign photos with “shop the look” hotspots. Add a photo, click it to drop a dot, then pick the product that dot links to.</p>
+    </div>
+    <div class="flex items-center gap-3">
+        <span id="lb-status" class="text-xs text-neutral-400"></span>
+        <button type="button" id="lb-save" class="px-6 py-2 bg-neutral-900 text-white text-sm font-medium rounded-md hover:bg-black">Save changes</button>
+    </div>
+</div>
+
+<div id="lb-campaigns" class="space-y-8 mt-6"></div>
+
+<label class="mt-6 inline-flex items-center gap-2 px-4 py-2.5 border border-dashed border-neutral-300 rounded-md text-sm text-neutral-600 hover:border-neutral-500 cursor-pointer">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"/></svg>
+    Add campaign photo
+    <input type="file" id="lb-add" accept="image/*" class="hidden" />
+</label>
+
+<!-- Product picker popover -->
+<div id="lb-picker" class="hidden fixed z-50 w-72 bg-white border border-neutral-200 rounded-lg shadow-xl p-3">
+    <input id="lb-search" type="text" placeholder="Search product…" class="w-full border border-neutral-200 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-neutral-500" />
+    <div id="lb-results" class="mt-2 max-h-64 overflow-y-auto divide-y divide-neutral-50"></div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    var CAMPAIGNS = @Html.Raw(JsonSerializer.Serialize(Model, opts));
+    var LABELS = @Html.Raw(JsonSerializer.Serialize(labels, opts)) || {};
+    var URLS = {
+        upload: '@Url.Action("Image", "Upload", new { area = "Admin" })',
+        suggest: '@Url.Action("Suggest", "Products", new { area = "Admin" })',
+        save: '@Url.Action("Save", "Lookbook", new { area = "Admin" })'
+    };
+    var token = document.querySelector('input[name="__RequestVerificationToken"]');
+    var TOKEN = token ? token.value : '';
+
+    var wrap = document.getElementById('lb-campaigns');
+    var statusEl = document.getElementById('lb-status');
+    function esc(s){ var d=document.createElement('div'); d.textContent=s==null?'':String(s); return d.innerHTML; }
+    function money(n){ return '₦' + Number(n||0).toLocaleString(); }
+    function labelFor(id){ return LABELS[id] || LABELS[String(id)] || { name: 'Product #' + id, image: '/images/placeholder.jpg' }; }
+
+    // ---- render ----
+    function render() {
+        wrap.innerHTML = '';
+        if (!CAMPAIGNS.length) {
+            wrap.innerHTML = '<p class="text-sm text-neutral-400 border border-dashed border-neutral-200 rounded-md p-8 text-center">No campaigns yet — add a photo below to start your lookbook.</p>';
+            return;
+        }
+        CAMPAIGNS.forEach(function (c, ci) {
+            var card = document.createElement('div');
+            card.className = 'border border-neutral-100 rounded-lg p-4 bg-white';
+            var dots = (c.hotspots || []).map(function (h, hi) {
+                var lb = labelFor(h.productId);
+                return '<button type="button" class="lb-dot absolute -translate-x-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-brand-500 border-2 border-white shadow-lg text-white text-[10px] flex items-center justify-center cursor-move" '
+                    + 'data-ci="' + ci + '" data-hi="' + hi + '" style="left:' + h.x + '%;top:' + h.y + '%" title="' + esc(lb.name) + '">' + (hi + 1) + '</button>';
+            }).join('');
+            card.innerHTML =
+                '<div class="flex items-center justify-between mb-3">'
+                + '  <span class="text-xs font-medium text-neutral-500">Campaign ' + (ci + 1) + '</span>'
+                + '  <div class="flex items-center gap-2">'
+                + '    <button type="button" class="lb-up text-xs text-neutral-500 hover:text-neutral-900" data-ci="' + ci + '">↑</button>'
+                + '    <button type="button" class="lb-down text-xs text-neutral-500 hover:text-neutral-900" data-ci="' + ci + '">↓</button>'
+                + '    <button type="button" class="lb-remove text-xs text-red-500 hover:text-red-700" data-ci="' + ci + '">Remove</button>'
+                + '  </div>'
+                + '</div>'
+                + '<div class="grid gap-3 sm:grid-cols-2 mb-3">'
+                + '  <input class="lb-heading border border-neutral-200 rounded-md px-3 py-2 text-sm" placeholder="Heading (optional)" data-ci="' + ci + '" value="' + esc(c.heading || '') + '" />'
+                + '  <input class="lb-subtext border border-neutral-200 rounded-md px-3 py-2 text-sm" placeholder="Subtext (optional)" data-ci="' + ci + '" value="' + esc(c.subtext || '') + '" />'
+                + '</div>'
+                + '<p class="text-[11px] text-neutral-400 mb-2">Click the photo to add a hotspot · drag a dot to move it · click a dot to change or remove it.</p>'
+                + '<div class="lb-stage relative inline-block max-w-full select-none" data-ci="' + ci + '">'
+                + '  <img src="' + esc(c.image) + '" alt="Campaign" class="block max-w-full rounded-md" draggable="false" />'
+                + dots
+                + '</div>'
+                + '<div class="mt-2 text-xs text-neutral-500">' + (c.hotspots || []).length + ' hotspot(s)</div>';
+            wrap.appendChild(card);
+        });
+        wireCards();
+    }
+
+    function wireCards() {
+        wrap.querySelectorAll('.lb-heading').forEach(function (el) { el.addEventListener('input', function () { CAMPAIGNS[+el.dataset.ci].heading = el.value; }); });
+        wrap.querySelectorAll('.lb-subtext').forEach(function (el) { el.addEventListener('input', function () { CAMPAIGNS[+el.dataset.ci].subtext = el.value; }); });
+        wrap.querySelectorAll('.lb-remove').forEach(function (el) { el.addEventListener('click', function () { if (confirm('Remove this campaign?')) { CAMPAIGNS.splice(+el.dataset.ci, 1); render(); } }); });
+        wrap.querySelectorAll('.lb-up').forEach(function (el) { el.addEventListener('click', function () { var i = +el.dataset.ci; if (i > 0) { var t = CAMPAIGNS[i]; CAMPAIGNS[i] = CAMPAIGNS[i - 1]; CAMPAIGNS[i - 1] = t; render(); } }); });
+        wrap.querySelectorAll('.lb-down').forEach(function (el) { el.addEventListener('click', function () { var i = +el.dataset.ci; if (i < CAMPAIGNS.length - 1) { var t = CAMPAIGNS[i]; CAMPAIGNS[i] = CAMPAIGNS[i + 1]; CAMPAIGNS[i + 1] = t; render(); } }); });
+
+        wrap.querySelectorAll('.lb-stage').forEach(function (stage) {
+            var ci = +stage.dataset.ci;
+            stage.addEventListener('click', function (e) {
+                if (e.target.closest('.lb-dot')) return;        // clicking a dot is handled below
+                var r = stage.getBoundingClientRect();
+                var x = ((e.clientX - r.left) / r.width) * 100;
+                var y = ((e.clientY - r.top) / r.height) * 100;
+                openPicker(e.clientX, e.clientY, function (prod) {
+                    LABELS[prod.id] = { name: prod.name, image: prod.image };
+                    CAMPAIGNS[ci].hotspots = CAMPAIGNS[ci].hotspots || [];
+                    CAMPAIGNS[ci].hotspots.push({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, productId: prod.id });
+                    render();
+                });
+            });
+        });
+
+        wrap.querySelectorAll('.lb-dot').forEach(function (dot) { wireDot(dot); });
+    }
+
+    function wireDot(dot) {
+        var ci = +dot.dataset.ci, hi = +dot.dataset.hi;
+        var stage = dot.closest('.lb-stage');
+        var moved = false, dragging = false;
+        dot.addEventListener('pointerdown', function (e) {
+            e.preventDefault(); e.stopPropagation();
+            dragging = true; moved = false; dot.setPointerCapture(e.pointerId);
+        });
+        dot.addEventListener('pointermove', function (e) {
+            if (!dragging) return;
+            moved = true;
+            var r = stage.getBoundingClientRect();
+            var x = Math.max(0, Math.min(100, ((e.clientX - r.left) / r.width) * 100));
+            var y = Math.max(0, Math.min(100, ((e.clientY - r.top) / r.height) * 100));
+            dot.style.left = x + '%'; dot.style.top = y + '%';
+            CAMPAIGNS[ci].hotspots[hi].x = Math.round(x * 10) / 10;
+            CAMPAIGNS[ci].hotspots[hi].y = Math.round(y * 10) / 10;
+        });
+        dot.addEventListener('pointerup', function (e) {
+            dragging = false;
+            if (moved) return;   // a drag, not a click
+            // Click on dot → change product or remove.
+            openPicker(e.clientX, e.clientY, function (prod) {
+                if (prod === 'REMOVE') { CAMPAIGNS[ci].hotspots.splice(hi, 1); render(); return; }
+                LABELS[prod.id] = { name: prod.name, image: prod.image };
+                CAMPAIGNS[ci].hotspots[hi].productId = prod.id; render();
+            }, true);
+        });
+    }
+
+    // ---- product picker ----
+    var picker = document.getElementById('lb-picker');
+    var search = document.getElementById('lb-search');
+    var results = document.getElementById('lb-results');
+    var pickCb = null, searchTimer = null;
+
+    function openPicker(clientX, clientY, cb, allowRemove) {
+        pickCb = cb;
+        picker.classList.remove('hidden');
+        var w = 288, vw = window.innerWidth, vh = window.innerHeight;
+        picker.style.left = Math.min(clientX, vw - w - 12) + 'px';
+        picker.style.top = Math.min(clientY, vh - 320) + 'px';
+        search.value = '';
+        results.innerHTML = allowRemove ? removeRow() : '<p class="text-xs text-neutral-400 p-2">Type to search products…</p>';
+        setTimeout(function () { search.focus(); }, 20);
+    }
+    function closePicker() { picker.classList.add('hidden'); pickCb = null; }
+    function removeRow() {
+        return '<button type="button" class="lb-remove-hotspot w-full text-left px-2 py-2 text-xs text-red-600 hover:bg-red-50 rounded">✕ Remove this hotspot</button>';
+    }
+    results.addEventListener('click', function (e) {
+        var rm = e.target.closest('.lb-remove-hotspot');
+        if (rm && pickCb) { var cb = pickCb; closePicker(); cb('REMOVE'); return; }
+        var row = e.target.closest('.lb-result');
+        if (row && pickCb) {
+            var prod = JSON.parse(row.dataset.p);
+            var cb2 = pickCb; closePicker(); cb2(prod);
+        }
+    });
+    search.addEventListener('input', function () {
+        clearTimeout(searchTimer);
+        var q = search.value.trim();
+        if (q.length < 2) return;
+        searchTimer = setTimeout(function () {
+            fetch(URLS.suggest + '?q=' + encodeURIComponent(q))
+                .then(function (r) { return r.json(); })
+                .then(function (list) {
+                    var head = picker.querySelector('.lb-remove-hotspot') ? removeRow() : '';
+                    results.innerHTML = head + (list || []).map(function (p) {
+                        var prod = { id: p.id, name: p.name, image: p.image, price: p.price };
+                        return '<button type="button" class="lb-result w-full flex items-center gap-2 px-2 py-2 text-left hover:bg-neutral-50 rounded" data-p="' + esc(JSON.stringify(prod)) + '">'
+                            + '<img src="' + esc(p.image) + '" class="w-9 h-9 object-cover rounded border border-neutral-100" />'
+                            + '<span class="min-w-0"><span class="block text-xs font-medium text-neutral-800 truncate">' + esc(p.name) + '</span>'
+                            + '<span class="block text-[11px] text-neutral-400">' + money(p.price) + (p.sku ? ' · ' + esc(p.sku) : '') + '</span></span>'
+                            + '</button>';
+                    }).join('') || '<p class="text-xs text-neutral-400 p-2">No matches.</p>';
+                }).catch(function () {});
+        }, 250);
+    });
+    document.addEventListener('click', function (e) {
+        if (!picker.classList.contains('hidden') && !picker.contains(e.target) && !e.target.closest('.lb-dot') && !e.target.closest('.lb-stage')) closePicker();
+    });
+
+    // ---- add campaign (upload) ----
+    document.getElementById('lb-add').addEventListener('change', function () {
+        var input = this, file = input.files[0]; if (!file) return;
+        statusEl.textContent = 'Uploading…';
+        var fd = new FormData(); fd.append('file', file); fd.append('subfolder', 'lookbook'); fd.append('__RequestVerificationToken', TOKEN);
+        fetch(URLS.upload, { method: 'POST', body: fd })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                input.value = '';
+                if (d && d.url) { CAMPAIGNS.push({ image: d.url, heading: '', subtext: '', hotspots: [] }); render(); statusEl.textContent = 'Photo added — place hotspots, then Save.'; }
+                else { statusEl.textContent = (d && d.error) || 'Upload failed.'; }
+            }).catch(function () { statusEl.textContent = 'Upload failed.'; });
+    });
+
+    // ---- save ----
+    document.getElementById('lb-save').addEventListener('click', function () {
+        statusEl.textContent = 'Saving…';
+        fetch(URLS.save, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': TOKEN },
+            body: JSON.stringify(CAMPAIGNS)
+        }).then(function (r) { return r.json(); })
+          .then(function (d) { statusEl.textContent = d && d.ok ? ('Saved · ' + d.count + ' campaign(s).') : 'Save failed.'; })
+          .catch(function () { statusEl.textContent = 'Save failed.'; });
+    });
+
+    render();
+}());
+</script>
+}

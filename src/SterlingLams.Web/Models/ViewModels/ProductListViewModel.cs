@@ -2,6 +2,9 @@ namespace SterlingLams.Web.Models.ViewModels;
 
 public class ProductCardViewModel
 {
+    /// <summary>Minimal product info shown in a lookbook hotspot popover.</summary>
+    public record LookbookHotspotProduct(int Id, string Name, string Slug, string Image, string PriceText);
+
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;
