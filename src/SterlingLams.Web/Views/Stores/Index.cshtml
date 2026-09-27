@@ -4,120 +4,146 @@
     // Show the minimal "Shop at Sterlin Glams / Need Help?" header on the store-locator page.
     ViewData["MinimalHeader"] = true;
     var mapStores = Model.Where(s => s.Latitude.HasValue && s.Longitude.HasValue).ToList();
+    var globeData = mapStores.Select(s => new { lat = s.Latitude!.Value, lng = s.Longitude!.Value }).ToList();
     string J(object o) => System.Text.Json.JsonSerializer.Serialize(o);
-    var mapData = mapStores.Select(s => new {
-        name = s.Name,
-        lat = s.Latitude!.Value,
-        lng = s.Longitude!.Value,
-        address = $"{s.Address}, {s.City}, {s.State}",
-        dir = $"https://www.google.com/maps/dir/?api=1&destination={s.Latitude},{s.Longitude}"
-    }).ToList();
 }
 
 @section Styles {
-    <link rel="stylesheet" href="~/lib/leaflet/leaflet.min.css" />
     <style>
-        #stores-map { height: 420px; }
-        @@media (max-width: 640px) { #stores-map { height: 300px; } }
-        /* Brand teardrop pin (CSS only — no marker image needed). */
-        .sg-pin { width: 26px; height: 26px; }
-        .sg-pin span {
-            display:block; width:22px; height:22px; margin:2px auto 0;
-            background:#ed028b; border:2px solid #fff; border-radius:50% 50% 50% 0;
-            transform: rotate(-45deg); box-shadow:0 2px 6px rgba(0,0,0,.3);
-        }
-        .leaflet-popup-content { font-family: inherit; }
-        .leaflet-popup-content .sg-pop-name { font-weight:600; color:#171717; }
-        .leaflet-popup-content .sg-pop-addr { color:#6b7280; font-size:12px; margin-top:2px; }
-        .leaflet-popup-content a.sg-pop-dir { display:inline-block; margin-top:8px; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:#ed028b; }
+        /* Decorative globe behind the store list (Tiffany-style) — non-interactive backdrop. */
+        #stores-globe-wrap { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+        #stores-globe { position: absolute; left: 50%; top: 40px; transform: translateX(-50%); opacity: .55; }
+        @@media (max-width: 767px) { #stores-globe { top: 8px; opacity: .4; } }
     </style>
 }
 
-<div class="max-w-5xl mx-auto px-6 py-10 md:py-14">
-    <div class="text-center mb-8 md:mb-10">
-        <p class="section-label">Visit us</p>
-        <h1 class="font-cormorant text-5xl font-light">Our Stores</h1>
-    </div>
-
-    @if (mapStores.Count > 0)
+<div class="relative overflow-hidden">
+    @if (globeData.Count > 0)
     {
-        <!-- Interactive map: pins for every store, zoom + pan, click a pin for details & directions. -->
-        <div id="stores-map" class="mb-12 rounded-sm overflow-hidden border border-neutral-100" role="img" aria-label="Map of Sterlin Glams store locations"></div>
+        <div id="stores-globe-wrap" aria-hidden="true">
+            <canvas id="stores-globe" data-stores="@Html.Raw(J(globeData))"></canvas>
+        </div>
     }
 
-    <div class="grid md:grid-cols-3 gap-8">
-        @foreach (var store in Model)
-        {
-            <div class="border border-neutral-100 p-8 hover:border-neutral-400 transition-colors">
-                <div class="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center mb-6">
-                    <svg class="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                              d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-                    </svg>
+    <div class="relative z-10 max-w-5xl mx-auto px-6 py-10 md:py-14">
+        <div class="text-center mb-8 md:mb-10">
+            <p class="section-label">Visit us</p>
+            <h1 class="font-cormorant text-5xl font-light">Our Stores</h1>
+        </div>
+
+        <div class="grid md:grid-cols-3 gap-8">
+            @foreach (var store in Model)
+            {
+                <div class="border border-neutral-100 bg-white/80 backdrop-blur-sm p-8 hover:border-neutral-400 transition-colors">
+                    <div class="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center mb-6">
+                        <svg class="w-5 h-5 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                  d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        </svg>
+                    </div>
+                    <h2 class="font-cormorant text-2xl font-light mb-3">@store.Name</h2>
+                    <p class="text-sm text-neutral-500 font-light mb-2">@store.Address</p>
+                    <p class="text-sm text-neutral-500 font-light mb-6">@store.City, @store.State</p>
+
+                    @if (!string.IsNullOrEmpty(store.OpeningHours))
+                    {
+                        <p class="text-xs text-neutral-400 mb-4 tracking-wide">@store.OpeningHours</p>
+                    }
+
+                    @if (!string.IsNullOrEmpty(store.Phone))
+                    {
+                        <a href="tel:@store.Phone" class="text-xs tracking-widest uppercase text-neutral-600 hover:text-neutral-900 transition-colors">
+                            @store.Phone
+                        </a>
+                    }
+
+                    @if (store.Latitude.HasValue && store.Longitude.HasValue)
+                    {
+                        <a href="https://www.google.com/maps/dir/?api=1&destination=@store.Latitude,@store.Longitude"
+                           target="_blank" rel="noopener"
+                           class="mt-4 block text-xs tracking-widest uppercase border border-neutral-300 text-center py-2 hover:border-neutral-900 transition-colors">
+                            Get Directions
+                        </a>
+                    }
                 </div>
-                <h2 class="font-cormorant text-2xl font-light mb-3">@store.Name</h2>
-                <p class="text-sm text-neutral-500 font-light mb-2">@store.Address</p>
-                <p class="text-sm text-neutral-500 font-light mb-6">@store.City, @store.State</p>
-
-                @if (!string.IsNullOrEmpty(store.OpeningHours))
-                {
-                    <p class="text-xs text-neutral-400 mb-4 tracking-wide">@store.OpeningHours</p>
-                }
-
-                @if (!string.IsNullOrEmpty(store.Phone))
-                {
-                    <a href="tel:@store.Phone" class="text-xs tracking-widest uppercase text-neutral-600 hover:text-neutral-900 transition-colors">
-                        @store.Phone
-                    </a>
-                }
-
-                @if (store.Latitude.HasValue && store.Longitude.HasValue)
-                {
-                    <a href="https://www.google.com/maps/dir/?api=1&destination=@store.Latitude,@store.Longitude"
-                       target="_blank" rel="noopener"
-                       class="mt-4 block text-xs tracking-widest uppercase border border-neutral-300 text-center py-2 hover:border-neutral-900 transition-colors">
-                        Get Directions
-                    </a>
-                }
-            </div>
-        }
+            }
+        </div>
     </div>
 </div>
 
 @section Scripts {
-    @if (mapStores.Count > 0)
+    @if (globeData.Count > 0)
     {
-        <script src="~/lib/leaflet/leaflet.min.js" nonce="@Context.Items["csp-nonce"]"></script>
+        <script src="~/lib/globe/d3-array.min.js" nonce="@Context.Items["csp-nonce"]"></script>
+        <script src="~/lib/globe/d3-geo.min.js" nonce="@Context.Items["csp-nonce"]"></script>
+        <script src="~/lib/globe/topojson-client.min.js" nonce="@Context.Items["csp-nonce"]"></script>
         <script nonce="@Context.Items["csp-nonce"]">
         (function () {
-            var stores = @Html.Raw(J(mapData));
-            if (!stores.length || typeof L === 'undefined') return;
-            function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+            var canvas = document.getElementById('stores-globe');
+            if (!canvas || typeof d3 === 'undefined' || typeof topojson === 'undefined') return;
+            var stores = [];
+            try { stores = JSON.parse(canvas.dataset.stores || '[]'); } catch (_) {}
 
-            var map = L.map('stores-map', { scrollWheelZoom: false, zoomControl: true });
-            // OpenStreetMap standard tiles — free and keyless (CARTO's basemap now needs an API key).
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors',
-                subdomains: 'abc', maxZoom: 19
-            }).addTo(map);
+            var ctx = canvas.getContext('2d');
+            var world = null;
+            // Centre the globe on Nigeria so our locations face front.
+            var centreLng = 8, centreLat = 9;
 
-            var icon = L.divIcon({ className: 'sg-pin', html: '<span></span>', iconSize: [26, 26], iconAnchor: [13, 24], popupAnchor: [0, -22] });
-            var bounds = [];
-            stores.forEach(function (s) {
-                L.marker([s.lat, s.lng], { icon: icon, title: s.name }).addTo(map)
-                    .bindPopup('<div class="sg-pop-name">' + esc(s.name) + '</div>'
-                        + '<div class="sg-pop-addr">' + esc(s.address) + '</div>'
-                        + '<a class="sg-pop-dir" target="_blank" rel="noopener" href="' + esc(s.dir) + '">Get directions →</a>');
-                bounds.push([s.lat, s.lng]);
-            });
-            if (bounds.length === 1) map.setView(bounds[0], 14);
-            else map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+            fetch('/lib/globe/world-110m.json').then(function (r) { return r.json(); })
+                .then(function (w) { world = w; draw(); })
+                .catch(function () {});
 
-            // Only zoom with the wheel once the map is focused/clicked, so page scroll isn't hijacked.
-            map.on('focus', function () { map.scrollWheelZoom.enable(); });
-            map.on('blur', function () { map.scrollWheelZoom.disable(); });
+            function sizeFor() {
+                var wrap = canvas.parentElement;
+                var w = wrap ? wrap.clientWidth : window.innerWidth;
+                // A large, soft backdrop; capped so it stays tasteful.
+                return Math.max(320, Math.min(w * 0.9, 760));
+            }
+
+            function draw() {
+                if (!world) return;
+                var size = sizeFor();
+                var dpr = window.devicePixelRatio || 1;
+                canvas.width = size * dpr; canvas.height = size * dpr;
+                canvas.style.width = size + 'px'; canvas.style.height = size + 'px';
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                ctx.clearRect(0, 0, size, size);
+
+                var projection = d3.geoOrthographic()
+                    .scale(size / 2 - 2)
+                    .translate([size / 2, size / 2])
+                    .rotate([-centreLng, -centreLat]);
+                var path = d3.geoPath(projection, ctx);
+
+                // Sphere (ocean)
+                ctx.beginPath(); path({ type: 'Sphere' }); ctx.fillStyle = '#f4f4f5'; ctx.fill();
+                // Graticule
+                ctx.beginPath(); path(d3.geoGraticule10()); ctx.strokeStyle = 'rgba(0,0,0,0.045)'; ctx.lineWidth = 0.6; ctx.stroke();
+                // Land
+                var land = topojson.feature(world, world.objects.countries);
+                ctx.beginPath(); path(land); ctx.fillStyle = '#e2e2e5'; ctx.fill();
+                // Country borders
+                ctx.beginPath(); path(topojson.mesh(world, world.objects.countries, function (a, b) { return a !== b; }));
+                ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.5; ctx.stroke();
+                // Sphere outline
+                ctx.beginPath(); path({ type: 'Sphere' }); ctx.strokeStyle = 'rgba(0,0,0,0.06)'; ctx.lineWidth = 1; ctx.stroke();
+
+                // Store pins (brand pink), only when on the visible hemisphere.
+                var centre = [centreLng, centreLat];
+                stores.forEach(function (s) {
+                    if (d3.geoDistance([s.lng, s.lat], centre) > Math.PI / 2) return; // back of globe
+                    var p = projection([s.lng, s.lat]);
+                    if (!p) return;
+                    ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, 2 * Math.PI);
+                    ctx.fillStyle = '#ed028b'; ctx.fill();
+                    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.stroke();
+                });
+            }
+
+            var t;
+            window.addEventListener('resize', function () { clearTimeout(t); t = setTimeout(draw, 150); });
         }());
         </script>
     }
