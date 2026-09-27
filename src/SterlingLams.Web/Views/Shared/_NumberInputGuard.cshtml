@@ -1,0 +1,20 @@
+@*
+    Keeps number fields (Price, quantities, etc.) from changing by mouse — only what the
+    user types (or keyboard arrows) changes them:
+      • hides the up/down spinner arrows so they can't be clicked, and
+      • stops the mouse wheel from nudging the value while a field is focused.
+    Backoffice layouts allow inline script/style (CSP), so no nonce is needed here.
+*@
+<style>
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+</style>
+<script>
+    document.addEventListener('wheel', function (e) {
+        var a = document.activeElement;
+        if (a && a.tagName === 'INPUT' && a.type === 'number' && a === e.target) {
+            e.preventDefault(); // don't let the wheel change the focused number field
+        }
+    }, { passive: false });
+</script>
