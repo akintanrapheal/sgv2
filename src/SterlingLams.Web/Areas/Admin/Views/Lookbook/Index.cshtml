@@ -109,6 +109,9 @@
                     LABELS[prod.id] = { name: prod.name, image: prod.image };
                     CAMPAIGNS[ci].hotspots = CAMPAIGNS[ci].hotspots || [];
                     CAMPAIGNS[ci].hotspots.push({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, productId: prod.id });
+                    // Auto-fill heading/subtext from the jewellery (only when still blank — never overwrite edits).
+                    if (!CAMPAIGNS[ci].heading) CAMPAIGNS[ci].heading = prod.name || '';
+                    if (!CAMPAIGNS[ci].subtext) CAMPAIGNS[ci].subtext = prod.category ? ('Discover our ' + prod.category + ' collection.') : 'Shop the look.';
                     render();
                 });
             });
@@ -167,12 +170,14 @@
     function removeRow() {
         return '<button type="button" class="lb-remove-hotspot w-full text-left px-2 py-2 text-xs text-red-600 hover:bg-red-50 rounded">✕ Remove this hotspot</button>';
     }
+    var lastResults = {};   // id -> product, so the click handler needn't parse the DOM
     results.addEventListener('click', function (e) {
         var rm = e.target.closest('.lb-remove-hotspot');
         if (rm && pickCb) { var cb = pickCb; closePicker(); cb('REMOVE'); return; }
         var row = e.target.closest('.lb-result');
         if (row && pickCb) {
-            var prod = JSON.parse(row.dataset.p);
+            var prod = lastResults[row.dataset.id];
+            if (!prod) return;
             var cb2 = pickCb; closePicker(); cb2(prod);
         }
     });
@@ -184,10 +189,11 @@
             fetch(URLS.suggest + '?q=' + encodeURIComponent(q))
                 .then(function (r) { return r.json(); })
                 .then(function (list) {
+                    lastResults = {};
                     var head = picker.querySelector('.lb-remove-hotspot') ? removeRow() : '';
                     results.innerHTML = head + (list || []).map(function (p) {
-                        var prod = { id: p.id, name: p.name, image: p.image, price: p.price };
-                        return '<button type="button" class="lb-result w-full flex items-center gap-2 px-2 py-2 text-left hover:bg-neutral-50 rounded" data-p="' + esc(JSON.stringify(prod)) + '">'
+                        lastResults[p.id] = { id: p.id, name: p.name, image: p.image, price: p.price, category: p.category };
+                        return '<button type="button" class="lb-result w-full flex items-center gap-2 px-2 py-2 text-left hover:bg-neutral-50 rounded" data-id="' + p.id + '">'
                             + '<img src="' + esc(p.image) + '" class="w-9 h-9 object-cover rounded border border-neutral-100" />'
                             + '<span class="min-w-0"><span class="block text-xs font-medium text-neutral-800 truncate">' + esc(p.name) + '</span>'
                             + '<span class="block text-[11px] text-neutral-400">' + money(p.price) + (p.sku ? ' · ' + esc(p.sku) : '') + '</span></span>'
