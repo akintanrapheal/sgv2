@@ -566,8 +566,39 @@ function updateSummary(fee, unchosen) {
     document.getElementById('summary-total').textContent    = '₦' + Math.round(Math.max(0, total)).toLocaleString();
 }
 
+// Client-side check for the delivery address fields (server also validates). Marks each empty field,
+// and returns the first empty one so the submit handler can scroll/focus it.
+function validateDeliveryFields() {
+    var first = null;
+    function chk(el) {
+        if (!el) return;
+        var empty = !el.value || !el.value.trim();
+        el.classList.toggle('border-red-400', empty);
+        el.classList.toggle('border-red-500', empty);
+        var msg = el.nextElementSibling;
+        if (msg && msg.classList && msg.classList.contains('text-red-500')) msg.textContent = empty ? 'This field is required.' : '';
+        if (empty && !first) first = el;
+    }
+    chk(document.getElementById('DeliveryAddress_FullName'));
+    chk(document.getElementById('DeliveryAddress_Phone'));
+    chk(document.getElementById('DeliveryAddress_Line1'));
+    chk(document.getElementById('state-select'));
+    // City: whichever control is visible (area dropdown for Lagos/Abuja, else the text field).
+    var lga = document.getElementById('lagos-lga-select');
+    chk(lga && !lga.classList.contains('hidden') ? lga : document.getElementById('city-input'));
+    return first;
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────
 (function init() {
+    // Clear a field's error as soon as the customer starts fixing it.
+    ['DeliveryAddress_FullName', 'DeliveryAddress_Phone', 'DeliveryAddress_Line1', 'state-select', 'lagos-lga-select', 'city-input'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', function () { el.classList.remove('border-red-400', 'border-red-500'); });
+        el.addEventListener('change', function () { el.classList.remove('border-red-400', 'border-red-500'); });
+    });
+
     // CSP-safe wiring (replaces inline onchange attributes).
     document.querySelectorAll('input[name="FulfillmentType"]').forEach(r =>
         r.addEventListener('change', () => {
@@ -719,6 +750,18 @@ function updateSummary(fee, unchosen) {
             const derr = document.getElementById('delivery-error');
             if (derr) { derr.classList.remove('hidden'); derr.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
             return;
+        }
+
+        // Delivery address must be complete (our programmatic submit otherwise skips validation and
+        // the customer only sees the error after a reload). Flag empty fields and jump to the first.
+        if (ffChecked.value !== 'StorePickup') {
+            var firstBad = validateDeliveryFields();
+            if (firstBad) {
+                e.preventDefault();
+                firstBad.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                try { firstBad.focus({ preventScroll: true }); } catch (_) { firstBad.focus(); }
+                return;
+            }
         }
 
         // Terms & conditions must be accepted (checked on every submit, even after the timeframe step).
