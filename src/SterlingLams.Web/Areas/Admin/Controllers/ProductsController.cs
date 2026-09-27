@@ -171,6 +171,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 {
                     p.Id, p.Name, p.Sku, p.IsActive,
                     p.Price, p.SalePrice, p.SaleStartsAt, p.SaleEndsAt,
+                    CategoryName = p.Category != null ? p.Category.Name : null,
                     ImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder)
                         .Select(i => i.Url).FirstOrDefault(),
                     ExactCode = (p.Sku == term || p.Barcode == term
@@ -206,6 +207,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     id = r.Id,
                     name = r.Name,
                     sku = r.Sku,
+                    category = r.CategoryName,
                     active = r.IsActive,
                     image = SterlingLams.Web.Infrastructure.Img.Cld(r.ImageUrl, 96, 96) ?? "/images/placeholder.jpg",
                     price = min,          // effective (sale) price / range low
