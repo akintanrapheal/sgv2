@@ -1,9 +1,14 @@
 @using SterlingLams.Web.Services
+@using SterlingLams.Web.Models.ViewModels
 @inject ISettingsService SettingsService
 @{
-    ViewData["Title"] = "Collections";
-    ViewData["Description"] = "Explore our curated jewellery collections — rings, necklaces, bracelets and earrings crafted for the discerning woman.";
+    ViewData["Title"] = "The Lookbook";
+    ViewData["Description"] = "The Sterlin Glams lookbook — a curated edit of our finest rings, necklaces, bracelets and earrings, styled for the discerning woman.";
     Layout = "_Layout";
+    ViewData["CardLowThreshold"] = 0;
+    var lookbook = ViewBag.LookbookProducts as List<ProductCardViewModel> ?? new List<ProductCardViewModel>();
+
+    // Category feature images are admin-editable in Settings → Collections.
     var collectionCards = new[]
     {
         ("Rings", "rings", await SettingsService.GetAsync("collections.image_rings", "")),
@@ -13,36 +18,79 @@
     };
 }
 
-<!-- Hero -->
-<section class="relative h-72 flex items-center justify-center bg-neutral-100">
-    <div class="text-center">
-        <h1 class="font-cormorant text-5xl font-light text-neutral-900">Our Collections</h1>
+<partial name="_QuickViewModal" />
+
+<!-- ─── Editorial hero ───────────────────────────────────────────────────────── -->
+<section class="relative bg-stone-50 text-center overflow-hidden py-20 md:py-28">
+    <div class="max-w-3xl mx-auto px-6">
+        <p class="text-xs tracking-[0.4em] uppercase text-brand-500 mb-5">The Sterlin Glams Edit</p>
+        <h1 class="font-cormorant text-6xl md:text-7xl font-light text-neutral-900 leading-none">The Lookbook</h1>
+        <span class="mt-6 block mx-auto w-20 h-px bg-gradient-to-r from-transparent via-brand-400 to-transparent"></span>
+        <p class="mt-6 text-neutral-500 font-light leading-relaxed">
+            A curated edit of our season's finest — timeless pieces styled to be worn, layered and loved.
+            Explore the collection and shop the look.
+        </p>
     </div>
 </section>
 
-<!-- Collections Grid (card images are admin-editable in Settings → Collections) -->
-<section class="py-24 bg-white">
+<!-- ─── This season's edit (real products) ──────────────────────────────────── -->
+@if (lookbook.Any())
+{
+    <section class="py-14 md:py-20 bg-white">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-10 md:mb-14">
+                <p class="text-xs tracking-[0.35em] uppercase text-neutral-400 mb-3">Shop the edit</p>
+                <h2 class="font-cormorant text-4xl font-light text-neutral-900">This Season's Pieces</h2>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-10 md:gap-x-6 md:gap-y-14">
+                @foreach (var p in lookbook)
+                {
+                    <partial name="_ProductCard" model="p" />
+                }
+            </div>
+
+            <div class="text-center mt-12">
+                <a asp-controller="Products" asp-action="Index"
+                   class="inline-block border border-neutral-900 text-neutral-900 text-xs tracking-[0.2em] uppercase px-10 py-4 hover:bg-brand-500 hover:border-brand-500 hover:text-white transition-colors duration-300">
+                    View All Jewellery
+                </a>
+            </div>
+        </div>
+    </section>
+}
+
+<!-- ─── Shop by collection (category cards) ─────────────────────────────────── -->
+<section class="py-14 md:py-20 bg-stone-50">
     <div class="max-w-7xl mx-auto px-6">
-        <div class="grid md:grid-cols-2 gap-8">
+        <div class="text-center mb-10 md:mb-14">
+            <p class="text-xs tracking-[0.35em] uppercase text-brand-500 mb-3">Explore</p>
+            <h2 class="font-cormorant text-4xl font-light text-neutral-900">Shop by Collection</h2>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             @foreach (var (title, cat, img) in collectionCards)
             {
                 var hasImg = !string.IsNullOrWhiteSpace(img);
                 <a asp-controller="Products" asp-action="Index" asp-route-category="@cat"
-                   class="group relative overflow-hidden @(hasImg ? "bg-neutral-200" : "bg-stone-50") aspect-[4/3] flex items-end">
+                   class="group relative overflow-hidden rounded-lg @(hasImg ? "bg-neutral-200" : "bg-white") aspect-[3/4] flex items-end">
                     @if (hasImg)
                     {
-                        <img src="@Img.Cld(img, 800)" alt="@title" loading="lazy"
+                        <img src="@Img.Cld(img, 700)" alt="@title" loading="lazy"
                              class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-                        <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/70 via-neutral-900/20 to-transparent"></div>
+                        <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/75 via-neutral-900/15 to-transparent"></div>
                     }
                     else
                     {
-                        <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <div class="absolute inset-0 bg-gradient-to-br from-brand-50 to-stone-100"></div>
+                        <div class="absolute inset-0 bg-gradient-to-t from-neutral-900/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                     }
-                    <div class="relative z-10 p-8 w-full">
-                        <h2 class="font-cormorant text-3xl font-light mb-1 transition-colors duration-300 @(hasImg ? "text-white" : "text-neutral-900 group-hover:text-white")">@title</h2>
-                        <p class="text-xs tracking-widest uppercase transition-colors duration-300 @(hasImg ? "text-neutral-200" : "text-neutral-500 group-hover:text-neutral-300")">
-                            Shop Collection →
+                    <!-- pink accent line on hover -->
+                    <span class="absolute inset-x-0 bottom-0 h-1 bg-brand-500 scale-x-0 group-hover:scale-x-100 origin-left transition-transform duration-500"></span>
+                    <div class="relative z-10 p-6 md:p-7 w-full">
+                        <h3 class="font-cormorant text-2xl md:text-3xl font-light mb-1 transition-colors duration-300 @(hasImg ? "text-white" : "text-neutral-900")">@title</h3>
+                        <p class="text-xs tracking-widest uppercase transition-colors duration-300 @(hasImg ? "text-neutral-200 group-hover:text-brand-200" : "text-neutral-500 group-hover:text-brand-500")">
+                            Shop @title →
                         </p>
                     </div>
                 </a>
@@ -51,15 +99,15 @@
     </div>
 </section>
 
-<!-- New Arrivals CTA -->
+<!-- ─── New Arrivals CTA ─────────────────────────────────────────────────────── -->
 <section class="py-20 bg-neutral-900 text-white text-center">
-    <p class="text-xs tracking-[0.4em] uppercase text-neutral-400 mb-4">Just In</p>
+    <p class="text-xs tracking-[0.4em] uppercase text-brand-400 mb-4">Just In</p>
     <h2 class="font-cormorant text-4xl font-light mb-6">New Arrivals</h2>
     <p class="text-neutral-400 font-light text-sm max-w-md mx-auto mb-8">
         Discover our latest pieces, crafted with the finest materials and timeless elegance.
     </p>
     <a asp-controller="Products" asp-action="Index" asp-route-isNewArrival="true"
-       class="inline-block border border-white text-white text-xs tracking-[0.2em] uppercase px-12 py-4 hover:bg-white hover:text-neutral-900 transition-colors duration-300">
+       class="inline-block bg-brand-500 text-white text-xs tracking-[0.2em] uppercase px-12 py-4 hover:bg-brand-600 transition-colors duration-300">
         View New Arrivals
     </a>
 </section>
