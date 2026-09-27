@@ -149,8 +149,44 @@ public class HomeController : Controller
         return Json(new { success = true, message, code, pct });
     }
 
-    public IActionResult Collections()
+    [Microsoft.AspNetCore.OutputCaching.OutputCache(PolicyName = "Storefront")]
+    public async Task<IActionResult> Collections()
     {
+        // The lookbook showcases real pieces: featured products first, falling back to the newest
+        // active products so the page is never empty.
+        static System.Linq.Expressions.Expression<Func<Models.Domain.Product, ProductCardViewModel>> Card() =>
+            p => new ProductCardViewModel
+            {
+                Id = p.Id,
+                Name = p.Name,
+                Slug = p.Slug,
+                Price = p.Price,
+                SalePrice = p.SalePrice,
+                SaleStartsAt = p.SaleStartsAt,
+                SaleEndsAt = p.SaleEndsAt,
+                Currency = p.Currency,
+                PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
+                    .Select(i => i.Url).FirstOrDefault() ?? "/images/placeholder.jpg",
+                SecondaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
+                    .Select(i => i.Url).Skip(1).FirstOrDefault(),
+                IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0),
+                TotalStock = p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0,
+                HasVariants = p.Variants.Any(v => v.IsActive)
+            };
+
+        var products = await Infrastructure.DbRead.RetryAsync(() => _db.Products
+            .Where(p => p.IsActive && p.IsFeatured)
+            .OrderByDescending(p => p.CreatedAt).Take(12).Select(Card()).ToListAsync());
+
+        if (products.Count < 4)
+        {
+            products = await Infrastructure.DbRead.RetryAsync(() => _db.Products
+                .Where(p => p.IsActive)
+                .OrderByDescending(p => p.CreatedAt).Take(12).Select(Card()).ToListAsync());
+        }
+
+        await SterlingLams.Web.Infrastructure.ProductCardPricing.ApplyVariantPriceRangesAsync(products, _db);
+        ViewBag.LookbookProducts = products;
         return View();
     }
 
