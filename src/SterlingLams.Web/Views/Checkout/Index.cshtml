@@ -188,6 +188,7 @@
                         <h3 class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-4">Select Delivery Option</h3>
                         <div id="delivery-options-grid" class="grid grid-cols-1 gap-3 sm:grid-cols-2"></div>
                         <p id="delivery-error" class="text-xs text-red-500 mt-2 hidden">Please choose a delivery option.</p>
+                        <p id="delivery-fee-confirm" class="hidden mt-3 text-sm font-semibold" style="color:#ed028b"></p>
                         <p id="delivery-zone-note" class="text-xs text-neutral-400 mt-3"></p>
                     </div>
                 </section>
@@ -560,6 +561,21 @@ function selectDeliveryType(type, fee) {
     document.getElementById('selected-delivery-type').value = type;
     updateSummary(fee, !type);
     if (type) document.getElementById('delivery-error')?.classList.add('hidden');
+
+    // Confirm the EXACT delivery cost for the customer's chosen area, e.g. "Delivery to Festac — ₦5,500".
+    var confirmEl = document.getElementById('delivery-fee-confirm');
+    if (confirmEl) {
+        var placeEl = document.getElementById('city-input');
+        var place = (placeEl && placeEl.value.trim()) || currentStateValue() || 'your area';
+        if (type) {
+            confirmEl.textContent = Number(fee) > 0
+                ? `Delivery to ${place} — ₦${Number(fee).toLocaleString()}`
+                : `Free delivery to ${place}`;
+            confirmEl.classList.remove('hidden');
+        } else {
+            confirmEl.classList.add('hidden');
+        }
+    }
 }
 
 function updateSummary(fee, unchosen) {
