@@ -17,6 +17,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<SeoDescriptionGenerator>();
         services.AddScoped<JournalPostGenerator>();
         services.AddScoped<IOrderFulfilmentService, OrderFulfilmentService>();
+        services.AddScoped<IOrderStatusService, OrderStatusService>();
         services.AddScoped<ITransferWorkflowService, TransferWorkflowService>();
 
         // ─── Merchandising (best sellers / trending / new arrivals / recently viewed) ──

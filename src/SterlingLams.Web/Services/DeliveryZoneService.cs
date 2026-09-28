@@ -179,15 +179,15 @@ public class DeliveryZoneService
         if (zone != null)
         {
             var list = new List<DeliveryOption>();
-            if (expOn) list.Add(new() { Type = "Express",  Label = "Glams Priority — 24–48 Hours",  Fee = zone.ExpressFee,  Timeframe = zone.ExpressDays  });
-            if (stdOn) list.Add(new() { Type = "Standard", Label = "Glams Standard — 2–4 Working Days", Fee = zone.StandardFee, Timeframe = zone.StandardDays });
+            if (expOn) list.Add(new() { Type = "Express",  Label = "Glams Priority Delivery",  Fee = zone.ExpressFee,  Timeframe = "within 48 hrs"  });
+            if (stdOn) list.Add(new() { Type = "Standard", Label = "Glams Standard Delivery", Fee = zone.StandardFee, Timeframe = "3 - 5 working days" });
             return list;
         }
 
         var natFee  = await _settings.GetDecimalAsync("shipping.national_standard_fee", 7500);
         var natDays = await _settings.GetAsync("shipping.national_standard_days", "2 - 5 working days");
         var national = new List<DeliveryOption>();
-        if (stdOn) national.Add(new() { Type = "Standard", Label = "Glams Standard — 2–4 Working Days", Fee = natFee, Timeframe = natDays });
+        if (stdOn) national.Add(new() { Type = "Standard", Label = "Glams Standard Delivery", Fee = natFee, Timeframe = natDays });
         return national;
     }
 
@@ -234,9 +234,9 @@ public class DeliveryZoneService
         await _settings.GetBoolAsync("shipping.sameday_enabled", false),
         await _settings.GetAsync("shipping.sameday_start", "01:00"),
         await _settings.GetAsync("shipping.sameday_end", "13:00"),
-        await _settings.GetAsync("shipping.sameday_timeframe", "Today"),
+        await _settings.GetAsync("shipping.sameday_timeframe", "Same-day delivery"),
         await _settings.GetAsync("shipping.sameday_note",
-            "Need it today? Order by {cutoff} for same-day delivery. Orders placed after {cutoff} arrive the following day."));
+            "NOTE: Order today before {cutoff} for same-day delivery. Orders placed after {cutoff} are delivered the next day."));
 
     /// <summary>Resolved same-day fee for a customer's state + area (0 when no zone / not set).</summary>
     public async Task<decimal> SameDayFeeAsync(string state, string? area)
