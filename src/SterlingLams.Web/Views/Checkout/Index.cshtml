@@ -493,15 +493,19 @@ function renderDeliveryOptions(options, key, zoneName) {
         // the order total when the option is picked (data-fee below).
         const floor = (opt.from && Number(opt.from) > 0) ? Number(opt.from) : Number(opt.fee);
         const priceHtml = `<span class="text-[11px] uppercase tracking-wider text-neutral-400 font-bold mr-1">from</span>&#8358;${floor.toLocaleString()}`;
-        // Per-method icon.
-        const icons = { SameDay: '⚡', Express: '🚚', Standard: '📦' };
-        const icon = icons[opt.type] || '📦';
+        // Per-method plain SVG line icon (⚡ same-day, 🚚 priority, 📦 standard).
+        const iconPaths = {
+            SameDay:  '<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/>',
+            Express:  '<path stroke-linecap="round" stroke-linejoin="round" d="M8.25 18.75a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm0 0h1.125c.621 0 1.129-.504 1.09-1.124a17.902 17.902 0 0 0-3.213-9.193 2.056 2.056 0 0 0-1.58-.86H14.25M16.5 18.75h-2.25m0-11.177v-.958c0-.568-.422-1.048-.987-1.106a48.554 48.554 0 0 0-10.026 0 1.106 1.106 0 0 0-.987 1.106v7.635m12-6.677v6.677m0 4.5v-4.5m0 0h-12"/>',
+            Standard: '<path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9"/>'
+        };
+        const iconSvg = `<svg class="inline-block w-4 h-4 mr-1.5 -mt-1 align-middle text-neutral-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">${iconPaths[opt.type] || iconPaths.Standard}</svg>`;
         card.innerHTML = `
             <input type="radio" name="_deliveryTypeUI" value="${opt.type}" data-fee="${opt.fee}" class="sr-only" />
-            <svg class="opt-radio w-5 h-5 mt-0.5 flex-shrink-0 text-neutral-300" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="10" r="7.25"/></svg>
+            <svg class="opt-radio w-5 h-5 mt-0.5 flex-shrink-0 text-neutral-300" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="10" r="7.25"/><circle class="opt-dot" cx="10" cy="10" r="3.75" fill="currentColor" stroke="none" style="opacity:0"/></svg>
             <div class="flex-1 min-w-0">
                 <div class="flex items-baseline justify-between gap-3">
-                    <p class="text-[15px] font-semibold text-neutral-900 leading-tight"><span class="mr-2" aria-hidden="true">${icon}</span>${opt.label}</p>
+                    <p class="text-[15px] font-semibold text-neutral-900 leading-tight">${iconSvg}${opt.label}</p>
                     <p class="text-[15px] font-semibold text-neutral-900 whitespace-nowrap">${priceHtml}</p>
                 </div>
                 <p class="text-xs font-semibold text-neutral-500 mt-1">${opt.timeframe}</p>
@@ -532,31 +536,23 @@ function isLightColor(hex) {
     return (0.299*r + 0.587*g + 0.114*b) > 150;
 }
 
-// Strong "filled" selected state (inline styles — CSP-safe and not tree-shaken like JS-only classes).
-// Fill colour comes from the admin setting (PRICING.ui.selectFill); text auto-contrasts.
+// Selected state (inline styles — CSP-safe and not tree-shaken like JS-only classes): no fill — just a
+// pink (brand) radio ring + filled dot and a slightly thicker pink border, so the chosen option is clear.
 function setOptionSelected(card, on) {
     if (!card) return;
+    var pink = (PRICING.ui && PRICING.ui.brand) || '#ed028b';
+    var radio = card.querySelector('.opt-radio');
+    var dot   = card.querySelector('.opt-dot');
     if (on) {
-        var fill = (PRICING.ui && PRICING.ui.selectFill) || '#111827';
-        var light = isLightColor(fill);
-        var main = light ? '#111827' : '#ffffff';      // title / price
-        var sub  = light ? '#4b5563' : '#d4d4d4';      // subtitle
-        var note = light ? ((PRICING.ui && PRICING.ui.noteColor) || '#b45309') : '#fcd9a8'; // keep the accent readable
-        card.style.background = fill;
-        card.style.borderColor = fill;
-        card.querySelectorAll('p').forEach(function (p) {
-            if (p.classList.contains('opt-note')) p.style.color = note;
-            else if (p.classList.contains('text-neutral-400')) p.style.color = sub;
-            else p.style.color = main;
-        });
-        var svg = card.querySelector('svg'); if (svg) svg.style.color = main;
+        card.style.borderColor = pink;
+        card.style.borderWidth = '2px';
+        if (radio) radio.style.color = pink;   // rings + dot use currentColor
+        if (dot) dot.style.opacity = '1';
     } else {
-        card.style.background = '';
         card.style.borderColor = '';
-        card.querySelectorAll('p').forEach(function (p) {
-            p.style.color = p.classList.contains('opt-note') ? ((PRICING.ui && PRICING.ui.noteColor) || '') : '';
-        });
-        var s = card.querySelector('svg'); if (s) s.style.color = '';
+        card.style.borderWidth = '';
+        if (radio) radio.style.color = '';
+        if (dot) dot.style.opacity = '0';
     }
 }
 
