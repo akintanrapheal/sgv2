@@ -278,7 +278,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> UpdateStatus(int id, string status, string? paymentMethod, string? confirmReason)
+        public async Task<IActionResult> UpdateStatus(int id, string status, string? paymentMethod, string? confirmReason, string? returnUrl = null)
         {
             var order = await _db.Orders.FindAsync(id);
             if (order == null) return NotFound();
@@ -319,6 +319,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     TempData["Success"] = $"Order {order.OrderNumber} updated to {order.Status}.";
             }
 
+            // Logistics actions come back to the logistics list; only ever a same-site path.
+            if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+                return Redirect(returnUrl);
             return RedirectToAction(nameof(Detail), new { id });
         }
 

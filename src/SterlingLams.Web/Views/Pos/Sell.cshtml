@@ -3123,16 +3123,19 @@
             const placed = d.placedAt ? new Date(d.placedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
             const cust = d.customer || {};
             const isPickup = d.fulfillmentType === 'StorePickup';
-            // Two-step flow: pack first (stops the alarm), then notify (pickup) or dispatch (delivery).
+            // POS is pack-only. Pickup: pack then notify the customer. Delivery: pack, then it hands off
+            // to the admin Logistics board (which dispatches it and emails the customer "on its way").
             let act = null, actLabel = '';
             if (d.canPack) { act = 'pack'; actLabel = 'Mark as packed'; }
             else if (d.canNotifyPickup) { act = 'pickup'; actLabel = d.pickupNotified ? 'Resend pickup notification' : 'Send pickup-ready notification'; }
-            else if (d.canDispatch) { act = 'dispatch'; actLabel = 'Out for delivery'; }
             const packBtn = act
                 ? `<button type="button" id="fulfil-action-btn" data-id="${d.id}" data-act="${act}" class="w-full bg-brand-500 text-white rounded-lg py-3 text-sm font-semibold hover:bg-brand-600 transition-colors">${actLabel}</button>`
                 : '';
             const packedNote = d.packed && d.packedBy
                 ? `<p class="text-center text-[12px] text-emerald-600">✓ Packed by ${esc(d.packedBy)}</p>` : '';
+            // Once a delivery order is packed, dispatch is handled by the admin Logistics board.
+            const handoffNote = (d.packed && !isPickup)
+                ? `<p class="text-center text-[12px] text-neutral-400">Packed — logistics will mark it out for delivery.</p>` : '';
             // Incoming stock (awaiting transfer): source store + items with photos/quantities + Receive.
             const incomingHtml = (d.incoming && d.incoming.length) ? d.incoming.map(function (t) {
                 const rows = (t.items || []).map(function (i) {
@@ -3177,6 +3180,7 @@
                     ${d.note ? `<div class="border border-amber-200 bg-amber-50 rounded-xl p-3"><p class="text-[10px] uppercase tracking-wide text-amber-600 mb-1">Order note</p><p class="text-sm text-amber-800">${esc(d.note)}</p></div>` : ''}
                     ${packBtn}
                     ${packedNote}
+                    ${handoffNote}
                 </div>`;
             const pb = document.getElementById('fulfil-action-btn');
             if (pb) pb.addEventListener('click', () => fulfilAction(+pb.dataset.id, pb.dataset.act, pb));
@@ -3235,9 +3239,8 @@
     }
     async function fulfilAction(id, act, btn) {
         const map = {
-            pack:     { url: '/Pos/FulfilMarkPacked',    busy: 'Saving…',   ok: 'Packed — alert stopped. Now notify or dispatch.' },
-            pickup:   { url: '/Pos/FulfilNotifyPickup',  busy: 'Sending…',  ok: 'Pickup notification sent to the customer' },
-            dispatch: { url: '/Pos/FulfilOutForDelivery', busy: 'Updating…', ok: 'Marked out for delivery' }
+            pack:     { url: '/Pos/FulfilMarkPacked',    busy: 'Saving…',   ok: 'Packed — alert stopped.' },
+            pickup:   { url: '/Pos/FulfilNotifyPickup',  busy: 'Sending…',  ok: 'Pickup notification sent to the customer' }
         }[act];
         if (!map) return;
         btn.disabled = true; const ot = btn.textContent; btn.textContent = map.busy;

@@ -1447,12 +1447,14 @@ public class PosController : Controller
         if (register == null) return Json(new { toPack = Array.Empty<object>(), pickups = Array.Empty<object>(), awaitingTransfer = Array.Empty<object>(), toSend = Array.Empty<object>() });
         var storeId = register.StoreId;
 
-        // Orders this branch must physically prepare: delivery orders allocated here (until dispatched)
-        // and store-pickup orders here (until the pickup-ready email has gone out). Packed-but-not-
-        // finalised orders stay listed (their alarm just stops).
+        // Orders this branch must physically prepare: delivery orders allocated here (until PACKED —
+        // once packed they hand off to the admin Logistics board, which dispatches them and emails the
+        // customer) and store-pickup orders here (until the pickup-ready email has gone out). Packed
+        // pickups stay listed until notified; their alarm just stops.
         var actionable = await _db.Orders
             .Where(o => o.Channel == OrderChannel.Online && o.IsPaid
                 && ((o.FulfillmentType == FulfillmentType.Delivery && o.FulfillingStoreId == storeId
+                        && o.PackedAt == null
                         && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing))
                     || (o.FulfillmentType == FulfillmentType.StorePickup && o.PickupStoreId == storeId
                         && o.PickupReadyEmailedAt == null
@@ -1586,6 +1588,7 @@ public class PosController : Controller
         // Full action list (delivery until dispatched; pickup until the ready email is sent).
         var toPackQ = _db.Orders.Where(o => o.Channel == OrderChannel.Online && o.IsPaid
             && ((o.FulfillmentType == FulfillmentType.Delivery && o.FulfillingStoreId == storeId
+                    && o.PackedAt == null
                     && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing))
                 || (o.FulfillmentType == FulfillmentType.StorePickup && o.PickupStoreId == storeId
                     && o.PickupReadyEmailedAt == null
@@ -1716,8 +1719,9 @@ public class PosController : Controller
                       && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing),
             canNotifyPickup = o.FulfillmentType == FulfillmentType.StorePickup && o.PackedAt != null
                       && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded,
-            canDispatch = o.FulfillmentType == FulfillmentType.Delivery && o.PackedAt != null
-                      && o.Status != OrderStatus.Shipped,
+            // Delivery dispatch is no longer done at the POS — once packed, the admin Logistics board
+            // marks it out for delivery (and emails the customer). The POS only packs.
+            canDispatch = false,
             packed = o.PackedAt != null,
             packedBy = o.PackedByName,
             pickupNotified = o.FulfillmentType == FulfillmentType.StorePickup && o.PickupReadyEmailedAt != null,
@@ -1819,37 +1823,10 @@ public class PosController : Controller
         return Json(new { success = true });
     }
 
-    // Step 2 (delivery): the packed order goes out for delivery. Marks it Shipped (dispatched → leaves
-    // the queue into history) and emails the customer it's on its way.
-    [Authorize, HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> FulfilOutForDelivery([FromBody] FulfilPackDto req)
-    {
-        var register = await BoundRegisterAsync();
-        if (register == null) return Json(new { success = false, message = "This POS isn't set up." });
-        if (!await _access.CanWriteAsync(User, register.StoreId))
-            return Json(new { success = false, message = "You're not assigned to this branch's POS." });
-
-        var o = await _db.Orders.Include(x => x.Items).Include(x => x.User)
-            .FirstOrDefaultAsync(x => x.Id == req.OrderId && x.Channel == OrderChannel.Online
-                && x.FulfillmentType == FulfillmentType.Delivery && x.FulfillingStoreId == register.StoreId);
-        if (o == null) return Json(new { success = false, message = "Order not found for this branch." });
-        if (o.PackedAt == null) return Json(new { success = false, message = "Pack the order first." });
-        if (o.Status == OrderStatus.Shipped) return Json(new { success = false, message = "This order is already out for delivery." });
-
-        o.Status = OrderStatus.Shipped;
-        o.UpdatedAt = DateTime.UtcNow;
-        OrderNotes.AddSystem(_db, o.Id, $"Out for delivery from {register.Store?.Name}.");
-        await _db.SaveChangesAsync();
-
-        await SendPosStatusEmailAsync(o.Id, "order_shipped", "Your order is on its way",
-            "Good news {name} — your order {order} is on its way to you.");
-        _ = _whatsapp.NotifyOrderAsync(o.Id, WhatsAppOrderEvent.Shipped);
-        // Hand off to the logistics team (configurable logistics.notify_email) so they can deliver it.
-        var orderUrl = Url.Action("Detail", "Orders", new { area = "Admin", id = o.Id }, Request.Scheme);
-        await _fulfilment.NotifyLogisticsDispatchAsync(o.Id, orderUrl);
-        try { await _audit.LogAsync("Update", "Order", o.Id.ToString(), $"POS dispatched {o.OrderNumber} for delivery from {register.Store?.Name}"); } catch { }
-        return Json(new { success = true });
-    }
+    // NOTE: "Out for delivery" is no longer a POS action. Once a delivery order is packed here it leaves
+    // the POS fulfilment queue and appears on the admin Logistics board (Admin → Logistics), where the
+    // logistics team marks it out for delivery — that is what emails the customer "on its way" and hands
+    // off to the logistics team. Keeping dispatch off the POS stops the branch firing that email early.
 
     // Store pickup: tell the customer their order is ready to collect (QR pass email) → ReadyForPickup.
     [Authorize, HttpPost, ValidateAntiForgeryToken]
