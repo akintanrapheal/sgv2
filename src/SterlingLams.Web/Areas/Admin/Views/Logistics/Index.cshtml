@@ -2,7 +2,6 @@
 @{
     ViewData["Title"] = "Logistics";
     var tab = Model.Tab;
-    var returnUrl = Url.Action("Index", "Logistics", new { area = "Admin", tab });
     (string key, string label, int count)[] tabs =
     {
         ("dispatch",  "To dispatch",     Model.DispatchCount),
@@ -88,21 +87,17 @@
                     <td class="px-4 py-3 text-right">
                         @if (tab == "dispatch")
                         {
-                            <form asp-controller="Orders" asp-action="UpdateStatus" method="post" class="inline"
+                            <form asp-action="Dispatch" asp-route-tab="dispatch" method="post" class="inline"
                                   onsubmit="return confirm('Mark @r.OrderNumber out for delivery? The customer will be emailed that it&#39;s on its way.');">
                                 <input type="hidden" name="id" value="@r.Id" />
-                                <input type="hidden" name="status" value="Shipped" />
-                                <input type="hidden" name="returnUrl" value="@returnUrl" />
                                 <button type="submit" class="px-3 py-1.5 text-xs rounded-sm bg-neutral-900 text-white hover:bg-black transition-colors">Out for delivery</button>
                             </form>
                         }
                         else if (tab == "out")
                         {
-                            <form asp-controller="Orders" asp-action="UpdateStatus" method="post" class="inline"
+                            <form asp-action="MarkDelivered" asp-route-tab="out" method="post" class="inline"
                                   onsubmit="return confirm('Mark @r.OrderNumber delivered?');">
                                 <input type="hidden" name="id" value="@r.Id" />
-                                <input type="hidden" name="status" value="Delivered" />
-                                <input type="hidden" name="returnUrl" value="@returnUrl" />
                                 <button type="submit" class="px-3 py-1.5 text-xs rounded-sm border border-emerald-300 text-emerald-700 hover:bg-emerald-50 transition-colors">Mark delivered</button>
                             </form>
                         }
@@ -110,21 +105,17 @@
                         {
                             @if (!r.PickupNotified)
                             {
-                                <form asp-controller="Orders" asp-action="UpdateStatus" method="post" class="inline"
+                                <form asp-action="NotifyPickup" asp-route-tab="pickup" method="post" class="inline"
                                       onsubmit="return confirm('Email @r.OrderNumber the pickup-ready pass?');">
                                     <input type="hidden" name="id" value="@r.Id" />
-                                    <input type="hidden" name="status" value="ReadyForPickup" />
-                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
                                     <button type="submit" class="px-3 py-1.5 text-xs rounded-sm bg-neutral-900 text-white hover:bg-black transition-colors">Notify ready</button>
                                 </form>
                             }
                             else if (r.Status != "Collected")
                             {
-                                <form asp-controller="Orders" asp-action="UpdateStatus" method="post" class="inline"
+                                <form asp-action="MarkCollected" asp-route-tab="pickup" method="post" class="inline"
                                       onsubmit="return confirm('Mark @r.OrderNumber collected?');">
                                     <input type="hidden" name="id" value="@r.Id" />
-                                    <input type="hidden" name="status" value="Collected" />
-                                    <input type="hidden" name="returnUrl" value="@returnUrl" />
                                     <button type="submit" class="px-3 py-1.5 text-xs rounded-sm border border-violet-300 text-violet-700 hover:bg-violet-50 transition-colors">Mark collected</button>
                                 </form>
                             }

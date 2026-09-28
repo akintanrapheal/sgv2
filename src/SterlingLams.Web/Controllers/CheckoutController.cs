@@ -262,18 +262,28 @@ public class CheckoutController : Controller
             noteColor  = await _settings.GetAsync("shipping.sameday_note_color", "#d97706"),
         };
 
+        // Marketing "from ₦" starting prices per option (the exact zone fee still shows on the right +
+        // in the order total). Editable in Admin → Settings → Shipping.
+        var fromPrices = new
+        {
+            sameDay  = await _settings.GetDecimalAsync("shipping.sameday_from", 5000),
+            express  = await _settings.GetDecimalAsync("shipping.priority_from", 4000),
+            standard = await _settings.GetDecimalAsync("shipping.standard_from", 2000),
+        };
+
         return System.Text.Json.JsonSerializer.Serialize(new
         {
             zones = byState,   // { "Lagos": [ { name, standardFee, expressFee, sameDayFee, standardDays, expressDays, areas[] } ], "Abuja": [...] }
             national = new[]
             {
-                new { type = "Standard", label = "Glams Standard — 2–4 Working Days", fee = natStdFee, timeframe = natStdDays },
+                new { type = "Standard", label = "Glams Standard Delivery", fee = natStdFee, timeframe = natStdDays },
             },
             lagosLGAs     = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs,
             abujaKeywords = new[] { "FCT", "Abuja", "Federal Capital" },
             deliveryEnabled,
             sameDay,
             ui,
+            fromPrices,
         });
     }
 
@@ -583,7 +593,7 @@ public class CheckoutController : Controller
             if (!eligible)
             {
                 ModelState.AddModelError("SelectedDeliveryType",
-                    "Glams Express (Same Day) isn't available for this order. It's offered to Lagos & Abuja addresses when every item is in local stock. Please choose another delivery option.");
+                    "Glams Same-Day Delivery isn't available for this order. It's offered to Lagos & Abuja addresses when every item is in local stock. Please choose another delivery option.");
                 return await RedisplayCheckoutAsync(vm);
             }
         }

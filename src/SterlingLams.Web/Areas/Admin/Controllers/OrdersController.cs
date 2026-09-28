@@ -28,13 +28,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly ISettingsService _settings;
         private readonly SterlingLams.Web.Services.Logistics.ILogisticsDispatchService _logistics;
         private readonly IWhatsAppService _whatsapp;
+        private readonly IOrderStatusService _orderStatus;
         private const int PageSize = 25;
 
         public OrdersController(ApplicationDbContext db, IStockService stock, IPaymentService payment,
             ILoyaltyService loyalty, IGiftCardService giftCards, IOrderFulfilmentService fulfilment, IEmailService email,
             ISettingsService settings,
             SterlingLams.Web.Services.Logistics.ILogisticsDispatchService logistics,
-            IWhatsAppService whatsapp)
+            IWhatsAppService whatsapp, IOrderStatusService orderStatus)
         {
             _db = db;
             _stock = stock;
@@ -46,6 +47,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             _settings = settings;
             _logistics = logistics;
             _whatsapp = whatsapp;
+            _orderStatus = orderStatus;
         }
 
         // Lightweight poll for the admin new-order sound (runs from _AdminLayout every ~25s). Returns
@@ -311,9 +313,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 }
 
                 var staff = await CurrentStaffNameAsync();
-                var outcome = await ApplyStatusAsync(order, newStatus, staff, paymentMethod, confirmReason);
+                var outcome = await _orderStatus.ApplyAsync(order, newStatus, staff, paymentMethod, confirmReason);
 
-                if (outcome == StatusOutcome.SoldOut)
+                if (outcome == OrderStatusOutcome.SoldOut)
                     TempData["Error"] = $"Order {order.OrderNumber} can't be confirmed — an item is out of stock. It was cancelled.";
                 else
                     TempData["Success"] = $"Order {order.OrderNumber} updated to {order.Status}.";
@@ -323,115 +325,6 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
                 return Redirect(returnUrl);
             return RedirectToAction(nameof(Detail), new { id });
-        }
-
-        private enum StatusOutcome { Applied, SoldOut }
-
-        /// <summary>
-        /// Moves one order to <paramref name="newStatus"/> — the single path every status change goes
-        /// through (per-order Detail screen and the bulk action alike), so neither can skip the stock
-        /// deduction, the timeline note, the logistics push or the customer email. Commits this order
-        /// on its own, so a bulk run that is interrupted leaves the orders it already handled correct.
-        /// Callers must reject <see cref="OrderStatus.Refunded"/> first — refunds run through RefundOrder.
-        /// </summary>
-        private async Task<StatusOutcome> ApplyStatusAsync(Order order, OrderStatus newStatus, string staff,
-            string? paymentMethod = null, string? confirmReason = null)
-        {
-            var old = order.Status;
-
-            // Confirming an as-yet-unpaid order means the money has arrived out of band — a transfer the
-            // shop received, cash/card on pickup, etc. Mark it paid so it reconciles in Finance and can be
-            // fulfilled, and record the tender under the channel the staffer chose (defaults to Transfer
-            // for the bulk action, which can't prompt). The reason + channel are kept on the timeline and
-            // audit log so this is clearly a STAFF confirmation, not a Paystack auto-confirm. Saved
-            // immediately so it survives the reload after fulfilment below.
-            if (newStatus == OrderStatus.Confirmed && !order.IsPaid)
-            {
-                var channel = string.IsNullOrWhiteSpace(paymentMethod) ? "Transfer" : paymentMethod.Trim();
-                var reason = string.IsNullOrWhiteSpace(confirmReason) ? "" : $" Reason: {confirmReason.Trim()}";
-                order.IsPaid = true;
-                order.PaidAt = DateTime.UtcNow;
-                order.PaymentProvider = $"Manual ({channel})";
-                _db.OrderPayments.Add(new OrderPayment { OrderId = order.Id, Method = channel, Amount = order.Total });
-                OrderNotes.AddSystem(_db, order.Id, $"Payment confirmed manually by {staff} — {channel}, ₦{order.Total:N0}.{reason}");
-                await _db.SaveChangesAsync();
-                await LogAsync("Payment", "Order", order.Id.ToString(),
-                    $"Manual payment confirm for {order.OrderNumber}: {channel}, ₦{order.Total:N0} by {staff}.{reason}");
-            }
-
-            // Deduct stock when staff move an online order forward for the first time (e.g. they
-            // confirmed an offline/bank-transfer payment). The fulfilment engine allocates from the
-            // nearest branch + sets up any inter-branch transfers, and is idempotent (it no-ops once
-            // FulfillingStoreId is set), so this is safe even if payment already fulfilled the order.
-            var needsFulfil = order.Channel == OrderChannel.Online
-                && order.FulfillingStoreId == null
-                && newStatus is OrderStatus.Confirmed or OrderStatus.Processing
-                    or OrderStatus.ReadyForPickup or OrderStatus.Shipped or OrderStatus.Delivered;
-
-            if (needsFulfil)
-            {
-                var outcome = await _fulfilment.FulfilPaidOrderAsync(order.Id);
-                await _db.Entry(order).ReloadAsync();
-                if (outcome == FulfilOutcome.SoldOut) return StatusOutcome.SoldOut;
-                // The engine advances cross-branch orders to Awaiting Transfer (the transfer flow
-                // must run) — don't override that. Otherwise honour the status the staff picked.
-                if (order.Status != OrderStatus.AwaitingTransfer)
-                {
-                    order.Status = newStatus;
-                    OrderNotes.AddSystem(_db, order.Id, $"Marked {newStatus} by {staff} (stock deducted).");
-                }
-                order.UpdatedAt = DateTime.UtcNow;
-                await _db.SaveChangesAsync();
-            }
-            else
-            {
-                order.Status = newStatus;
-                order.UpdatedAt = DateTime.UtcNow;
-                OrderNotes.AddSystem(_db, order.Id, $"Order status changed from {old} to {newStatus} by {staff}.");
-                await _db.SaveChangesAsync();
-            }
-
-            await LogAsync("Update", "Order", order.Id.ToString(),
-                $"Order {order.OrderNumber} status: {old} → {order.Status}");
-
-            // Push the order to the Lagos delivery system once it's a confirmed delivery order
-            // (covers the post-transfer "ready" moment + manual confirmation). Idempotent + guarded.
-            await _logistics.PushOrderAsync(order.Id);
-
-            // On dispatch of a delivery order, email the logistics team the "new delivery to fulfil"
-            // notice (configurable logistics.notify_email). Only on a real transition to Shipped.
-            if (old != order.Status && order.Status == OrderStatus.Shipped
-                && order.FulfillmentType == FulfillmentType.Delivery)
-            {
-                var logiUrl = Url.Action("Detail", "Orders", new { area = "Admin", id = order.Id }, Request.Scheme);
-                await _fulfilment.NotifyLogisticsDispatchAsync(order.Id, logiUrl);
-            }
-
-            // Keep the customer posted as their order reaches each milestone. Only on a real
-            // transition (old != new) so re-saving the same status never re-sends. Subjects and
-            // intros for these emails are editable in the Email Customizer.
-            if (old != order.Status)
-            {
-                if (order.Status == OrderStatus.ReadyForPickup
-                    && order.FulfillmentType == FulfillmentType.StorePickup)
-                {
-                    // Store-pickup: the QR pickup-pass email (sent once, guarded by PickupReadyEmailedAt).
-                    if (order.PickupReadyEmailedAt == null)
-                        await SendPickupReadyEmailAsync(order.Id);
-                }
-                else if (order.Status is OrderStatus.Confirmed or OrderStatus.Processing or OrderStatus.Shipped
-                         or OrderStatus.Delivered or OrderStatus.ReadyForPickup
-                         or OrderStatus.Collected or OrderStatus.Cancelled)
-                {
-                    // Confirmed: the order-confirmed email (e.g. after a bank-transfer payment is
-                    // confirmed here — checkout only emails orders paid online at checkout). Collected:
-                    // confirm the in-store pickup was completed. Cancelled: tell the customer it was
-                    // cancelled (refund arranged separately if it was paid).
-                    await SendStatusUpdateEmailAsync(order.Id, order.Status);
-                }
-            }
-
-            return StatusOutcome.Applied;
         }
 
         /// <summary>
@@ -460,136 +353,6 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return User.Identity?.Name ?? "staff";
         }
 
-        // Sends the "ready for pickup" email with the QR pass (hosted image + pass link). Generates
-        // the pickup token if missing and stamps PickupReadyEmailedAt so it only sends once.
-        private async Task SendPickupReadyEmailAsync(int orderId)
-        {
-            var order = await _db.Orders
-                .Include(o => o.Items).Include(o => o.PickupStore).Include(o => o.User).Include(o => o.Customer)
-                .FirstOrDefaultAsync(o => o.Id == orderId);
-            if (order == null || order.FulfillmentType != FulfillmentType.StorePickup) return;
-            var buyer = Buyer(order);
-            var email = buyer?.Email;
-            if (string.IsNullOrWhiteSpace(email)) return;
-
-            if (string.IsNullOrEmpty(order.PickupToken))
-            {
-                order.PickupToken = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-                await _db.SaveChangesAsync(); // persist the token so the QR pass works even if email send fails
-            }
-
-            var baseUrl = $"{Request.Scheme}://{Request.Host}";
-            var passUrl = $"{baseUrl}/pickup/{order.PickupToken}";
-            var qrUrl = $"{passUrl}/qr.png";
-            var store = order.PickupStore;
-            var firstName = string.IsNullOrWhiteSpace(buyer?.FirstName) ? "there" : buyer!.FirstName;
-            string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
-
-            // Subject + intro are editable in the Email Customizer ("Ready for pickup" template).
-            var def = EmailCustomizerController.Types.FirstOrDefault(t => t.Key == "ready_for_pickup");
-            var subject = await _settings.GetAsync("email.ready_for_pickup.subject",
-                def.DefaultSubject ?? $"Your order {order.OrderNumber} is ready for pickup");
-            var introText = await _settings.GetAsync("email.ready_for_pickup.intro", def.DefaultIntro ?? "");
-            var introHtml = OrderEmailTemplate.ApplyPlaceholders(introText, order.OrderNumber, order.CreatedAt, firstName);
-
-            var items = string.Join("", order.Items.Select(i =>
-                $"<tr><td style=\"padding:4px 0;color:#374151\">{Enc(i.ProductName)}{(i.VariantName != null ? " (" + Enc(i.VariantName) + ")" : "")} &times; {i.Quantity}</td>"
-                + $"<td style=\"padding:4px 0;text-align:right;color:#111\">₦{i.LineTotal:N0}</td></tr>"));
-
-            var storeBlock = store == null ? "" :
-                $"<p style=\"margin:0 0 2px;font-weight:600\">{Enc(store.Name)}</p>"
-                + $"<p style=\"margin:0;color:#6b7280;font-size:13px\">{Enc($"{store.Address}, {store.City}, {store.State}".Trim(' ', ','))}</p>"
-                + (string.IsNullOrWhiteSpace(store.Phone) ? "" : $"<p style=\"margin:2px 0 0;color:#6b7280;font-size:13px\">{Enc(store.Phone)}</p>");
-
-            var body =
-                $"<p>Hi {Enc(firstName)},</p>"
-                + $"<p>{introHtml}</p>"
-                + $"<div style=\"text-align:center;margin:18px 0\"><img src=\"{qrUrl}\" alt=\"Pickup QR code\" width=\"200\" height=\"200\" style=\"width:200px;height:200px\" /><br/>"
-                + $"<span style=\"font:12px monospace;color:#6b7280\">{Enc(order.OrderNumber)}</span></div>"
-                + $"<div style=\"text-align:center;margin:0 0 18px\"><a href=\"{passUrl}\" style=\"display:inline-block;background:#ed028b;color:#fff;text-decoration:none;padding:10px 22px;border-radius:8px;font-weight:600\">View pickup pass</a></div>"
-                + $"<p style=\"font-weight:600;margin:18px 0 4px\">Pickup location</p>{storeBlock}"
-                + $"<table style=\"width:100%;border-collapse:collapse;margin-top:16px;font-size:14px\">{items}"
-                + $"<tr><td style=\"padding-top:8px;border-top:1px solid #eee;font-weight:700\">Total</td><td style=\"padding-top:8px;border-top:1px solid #eee;text-align:right;font-weight:700\">₦{order.Total:N0}</td></tr></table>"
-                + "<p style=\"color:#6b7280;font-size:13px;margin-top:16px\">Please bring a valid ID. This pass is unique to your order.</p>";
-
-            var sent = await _email.SendAsync(email!, subject, body, buyer?.FullName);
-            if (sent)
-            {
-                order.PickupReadyEmailedAt = DateTime.UtcNow;
-                OrderNotes.AddSystem(_db, order.Id, "Ready-for-pickup email with QR pass sent to the customer.");
-                await _db.SaveChangesAsync();
-            }
-        }
-
-        // Maps an order status to its Email Customizer template key.
-        private static string StatusTemplateKey(OrderStatus s) => s switch
-        {
-            OrderStatus.Processing     => "order_processing",
-            OrderStatus.ReadyForPickup => "ready_for_pickup",
-            OrderStatus.Shipped        => "order_shipped",
-            OrderStatus.Delivered      => "order_delivered",
-            OrderStatus.Collected      => "order_collected",
-            OrderStatus.Cancelled      => "order_cancelled",
-            _                          => "order_confirmed",
-        };
-
-        // Sends a customer-facing status-update email (Processing / Shipped / Delivered, plus Ready for
-        // pickup on delivery orders). Subject + intro come from the Email Customizer; body is the shared
-        // compact order summary. Best-effort — a missing customer email or SMTP failure is a no-op.
-        private async Task SendStatusUpdateEmailAsync(int orderId, OrderStatus status)
-        {
-            var order = await _db.Orders
-                .Include(o => o.Items).Include(o => o.User).Include(o => o.Customer)
-                .FirstOrDefaultAsync(o => o.Id == orderId);
-            if (order == null) return;
-            var buyer = Buyer(order);
-            var email = buyer?.Email;
-            if (string.IsNullOrWhiteSpace(email)) return;
-
-            var key = StatusTemplateKey(status);
-            var def = EmailCustomizerController.Types.FirstOrDefault(t => t.Key == key);
-            var subject = await _settings.GetAsync($"email.{key}.subject", def.DefaultSubject ?? "Your order update");
-            var introText = await _settings.GetAsync($"email.{key}.intro", def.DefaultIntro ?? "");
-
-            var firstName = string.IsNullOrWhiteSpace(buyer?.FirstName) ? "there" : buyer!.FirstName;
-            var introHtml = OrderEmailTemplate.ApplyPlaceholders(introText, order.OrderNumber, order.CreatedAt, firstName);
-            // Per-item primary image, made absolute for email clients (Cloudinary URLs already are).
-            var pids = order.Items.Select(i => i.ProductId).Distinct().ToList();
-            var imgMap = await _db.ProductImages.Where(im => pids.Contains(im.ProductId))
-                .GroupBy(im => im.ProductId)
-                .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
-                .ToDictionaryAsync(x => x.Pid, x => x.Url);
-            var baseUrl = HttpContext != null ? $"{Request.Scheme}://{Request.Host}" : "";
-            string? AbsImg(int pid)
-            {
-                var u = imgMap.GetValueOrDefault(pid);
-                if (string.IsNullOrWhiteSpace(u)) return null;
-                return u.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? u
-                     : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + u.TrimStart('/'));
-            }
-            var items = order.Items
-                .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId)))
-                .ToList();
-
-            var body = OrderEmailTemplate.BuildStatusUpdate(subject, introHtml, order.OrderNumber, items, order.Total);
-            var sent = await _email.SendAsync(email!, subject, body, buyer?.FullName);
-            if (sent)
-            {
-                OrderNotes.AddSystem(_db, order.Id, $"'{def.Label ?? status.ToString()}' status email sent to the customer.");
-                await _db.SaveChangesAsync();
-            }
-
-            // Fire the matching WhatsApp alongside the email (own scope, never throws, gated by the
-            // whatsapp.notify.* toggle + a customer phone). Fire-and-forget so it doesn't slow the UI.
-            var waEvent = status switch
-            {
-                OrderStatus.ReadyForPickup => (WhatsAppOrderEvent?)WhatsAppOrderEvent.ReadyForPickup,
-                OrderStatus.Shipped        => WhatsAppOrderEvent.Shipped,
-                OrderStatus.Delivered      => WhatsAppOrderEvent.Delivered,
-                _ => null,
-            };
-            if (waEvent is { } ev) _ = _whatsapp.NotifyOrderAsync(orderId, ev);
-        }
 
         // Re-send a customer email for an order: an order summary, or (for store-pickup orders) the
         // QR pickup pass. Useful when the original bounced or the customer lost it.
@@ -615,7 +378,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     TempData["Error"] = "A pickup pass only applies to store-pickup orders.";
                 else
                 {
-                    await SendPickupReadyEmailAsync(order.Id); // re-sends and re-stamps; logs its own note
+                    await _orderStatus.SendPickupReadyEmailAsync(order.Id); // re-sends and re-stamps; logs its own note
                     await LogAsync("EmailResend", "Order", order.Id.ToString(), $"Re-sent pickup pass for {order.OrderNumber} to {to}");
                     TempData["Success"] = $"Pickup pass re-sent to {to}.";
                 }
@@ -925,7 +688,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
                 // Every order takes the same route as a single update: stock deduction, timeline note,
                 // logistics push and customer email included.
-                if (await ApplyStatusAsync(o, newStatus, staff) == StatusOutcome.SoldOut) soldOut++;
+                if (await _orderStatus.ApplyAsync(o, newStatus, staff) == OrderStatusOutcome.SoldOut) soldOut++;
                 else applied++;
             }
 
