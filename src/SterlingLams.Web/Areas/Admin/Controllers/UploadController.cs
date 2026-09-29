@@ -11,11 +11,13 @@ public class UploadController : AdminBaseController
 
     private readonly IWebHostEnvironment _env;
     private readonly IConfiguration _config;
+    private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
 
-    public UploadController(IWebHostEnvironment env, IConfiguration config)
+    public UploadController(IWebHostEnvironment env, IConfiguration config, SterlingLams.Web.Services.ICloudinaryProvider cloud)
     {
         _env = env;
         _config = config;
+        _cloud = cloud;
     }
 
     [HttpPost, ValidateAntiForgeryToken]
@@ -38,12 +40,9 @@ public class UploadController : AdminBaseController
 
         // ── Cloudinary (persistent + CDN) when configured. Required on ephemeral hosts like Render,
         //    where local disk is wiped on every redeploy/restart. ──
-        var cloudName = _config["Cloudinary:CloudName"];
-        var apiKey    = _config["Cloudinary:ApiKey"];
-        var apiSecret = _config["Cloudinary:ApiSecret"];
-        if (!string.IsNullOrWhiteSpace(cloudName) && !string.IsNullOrWhiteSpace(apiKey) && !string.IsNullOrWhiteSpace(apiSecret))
+        var cloudinary = await _cloud.BuildAsync();
+        if (cloudinary != null)
         {
-            var cloudinary = new Cloudinary(new Account(cloudName, apiKey, apiSecret)) { Api = { Secure = true } };
             await using var s = file.OpenReadStream();
             var folder = string.IsNullOrEmpty(safeSubfolder) ? "sterlinglams" : $"sterlinglams/{safeSubfolder}";
             var result = await cloudinary.UploadAsync(new ImageUploadParams

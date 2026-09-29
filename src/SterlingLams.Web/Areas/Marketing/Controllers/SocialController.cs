@@ -21,13 +21,15 @@ public class SocialController : MarketingAreaController
     private static readonly HashSet<string> _allowedExt = new(StringComparer.OrdinalIgnoreCase)
         { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
 
+    private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
     public SocialController(ApplicationDbContext db, ISocialPublisher publisher,
-        IWebHostEnvironment env, IConfiguration config)
+        IWebHostEnvironment env, IConfiguration config, SterlingLams.Web.Services.ICloudinaryProvider cloud)
     {
         _db = db;
         _publisher = publisher;
         _env = env;
         _config = config;
+        _cloud = cloud;
     }
 
     public async Task<IActionResult> Index()
@@ -87,12 +89,9 @@ public class SocialController : MarketingAreaController
         if (!_allowedExt.Contains(ext))
             return BadRequest(new { error = "Invalid file type. Allowed: JPG, PNG, WEBP, GIF." });
 
-        var cloudName = _config["Cloudinary:CloudName"];
-        var apiKey    = _config["Cloudinary:ApiKey"];
-        var apiSecret = _config["Cloudinary:ApiSecret"];
-        if (!string.IsNullOrWhiteSpace(cloudName) && !string.IsNullOrWhiteSpace(apiKey) && !string.IsNullOrWhiteSpace(apiSecret))
+        var cloudinary = await _cloud.BuildAsync();
+        if (cloudinary != null)
         {
-            var cloudinary = new Cloudinary(new Account(cloudName, apiKey, apiSecret)) { Api = { Secure = true } };
             await using var s = file.OpenReadStream();
             var result = await cloudinary.UploadAsync(new ImageUploadParams
             {

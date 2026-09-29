@@ -15,7 +15,7 @@ public class IntegrationsController : AdminBaseController
     // A previously granted "Integrations" permission can no longer open this screen either.
     protected override string? Section => null;
 
-    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog", "Google Analytics" };
+    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog", "Google Analytics", "Cloudinary" };
     private static readonly string[] Providers = { "paystack", "stripe", "flutterwave" };
 
     private readonly ISettingsService _settings;
@@ -101,6 +101,10 @@ public class IntegrationsController : AdminBaseController
             GaAdsConversionId   = Plain("ga.ads_conversion_id", null),
             GaPropertyId        = Plain("ga.property_id", null),
             GaServiceAccountSet = Set("ga.service_account_json", null),
+
+            CloudinaryCloudName  = Plain("cloudinary.cloud_name", "Cloudinary:CloudName"),
+            CloudinaryApiKeySet  = Set("cloudinary.api_key", "Cloudinary:ApiKey"),
+            CloudinaryApiSecretSet = Set("cloudinary.api_secret", "Cloudinary:ApiSecret"),
 
             BaseUrl = baseUrl,
         };
@@ -213,6 +217,11 @@ public class IntegrationsViewModel
     public string GaAdsConversionId { get; set; } = "";
     public string GaPropertyId { get; set; } = "";
     public bool GaServiceAccountSet { get; set; }
+
+    // Cloudinary (image hosting). Cloud name is not secret; the API key + secret are.
+    public string CloudinaryCloudName { get; set; } = "";
+    public bool CloudinaryApiKeySet { get; set; }
+    public bool CloudinaryApiSecretSet { get; set; }
 
     public string BaseUrl { get; set; } = "";
 }

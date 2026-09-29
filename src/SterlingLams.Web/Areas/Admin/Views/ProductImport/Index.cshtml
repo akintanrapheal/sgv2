@@ -29,6 +29,19 @@
     </div>
 
     <div id="pi-results" class="hidden mt-6"></div>
+
+    <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
+        <h2 class="text-sm font-semibold text-neutral-800">Re-host images to Cloudinary</h2>
+        <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
+            If products were imported before Cloudinary was configured, their images point at the old
+            website. Move them onto Cloudinary now (before the domain switches to this store) so they never
+            break. Configure your keys in <a asp-controller="Integrations" asp-action="Index" class="text-brand-600 hover:underline">Admin → Integrations</a> first. Runs in batches — keep the tab open.
+        </p>
+        <div class="flex items-center gap-2 mt-4">
+            <button type="button" id="pi-rehost" class="px-5 py-2 border border-neutral-300 text-neutral-700 text-sm rounded-md hover:border-neutral-500">Re-host external images</button>
+            <span id="pi-rehost-status" class="text-sm text-neutral-500"></span>
+        </div>
+    </div>
 </div>
 
 @section Scripts {
@@ -120,6 +133,33 @@
             }).catch(function () { statusEl.textContent = 'A batch failed — click Import again to resume (already-imported items are skipped).'; previewBtn.disabled = false; applyBtn.disabled = false; });
         }
         batch();
+    });
+
+    // ── Re-host external images → Cloudinary (batched, repeats until done) ──
+    var rehostBtn = document.getElementById('pi-rehost');
+    var rehostStatus = document.getElementById('pi-rehost-status');
+    rehostBtn.addEventListener('click', function () {
+        if (!confirm('Move all product images that are still on external URLs onto Cloudinary? Safe to run repeatedly.')) return;
+        rehostBtn.disabled = true;
+        var total = 0;
+        function step() {
+            rehostStatus.textContent = 'Re-hosting… ' + total + ' moved so far…';
+            var fd = new FormData(); fd.append('__RequestVerificationToken', token ? token.value : '');
+            fetch(base + 'RehostImages', { method: 'POST', body: fd, headers: { 'RequestVerificationToken': token ? token.value : '' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d.ok) { rehostStatus.textContent = d.error || 'Failed.'; rehostBtn.disabled = false; return; }
+                    total += d.converted;
+                    if (d.converted > 0 && d.remaining > 0) { step(); }
+                    else {
+                        rehostStatus.textContent = 'Done — moved ' + total + ' image(s) to Cloudinary.'
+                            + (d.remaining > 0 ? ' ' + d.remaining + ' could not be fetched (left as-is).' : '');
+                        rehostBtn.disabled = false;
+                    }
+                })
+                .catch(function () { rehostStatus.textContent = 'A batch failed — click again to resume.'; rehostBtn.disabled = false; });
+        }
+        step();
     });
 })();
 </script>

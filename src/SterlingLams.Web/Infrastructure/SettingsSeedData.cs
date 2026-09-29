@@ -396,6 +396,11 @@ public static class SettingsSeedData
         new() { Key = "payment.stripe.webhook_secret",       Group = "Payments", Label = "Stripe Webhook Secret",     Type = "secret", Value = "", Description = "whsec_… From the Stripe dashboard webhook.",       SortOrder = 5 },
         // Cloudflare edge/security analytics (Admin → Traffic). Configured on the Traffic page.
         new() { Key = "cloudflare.api_token",                 Group = "Integrations", Label = "Cloudflare API Token",  Type = "secret", Value = "", Description = "Scoped token with Zone Analytics: Read.",         SortOrder = 20 },
+
+        // ── Cloudinary (image hosting/CDN) — settings-first, with Cloudinary:* env/appsettings fallback ──
+        new() { Key = "cloudinary.cloud_name", Group = "Cloudinary", Label = "Cloudinary Cloud Name", Type = "text",   Value = "", Description = "Your Cloudinary cloud name (e.g. dxmadm7vj). Product/category images upload here and are served via its CDN.", SortOrder = 1 },
+        new() { Key = "cloudinary.api_key",    Group = "Cloudinary", Label = "Cloudinary API Key",    Type = "secret", Value = "", Description = "Cloudinary API key (encrypted at rest).",    SortOrder = 2 },
+        new() { Key = "cloudinary.api_secret", Group = "Cloudinary", Label = "Cloudinary API Secret", Type = "secret", Value = "", Description = "Cloudinary API secret (encrypted at rest).", SortOrder = 3 },
         new() { Key = "cloudflare.zone_id",                   Group = "Integrations", Label = "Cloudflare Zone ID",    Type = "text",   Value = "", Description = "From the domain's Cloudflare Overview page.",      SortOrder = 21 },
 
         new() { Key = "payment.flutterwave.public_key",      Group = "Payments", Label = "Flutterwave Public Key",    Type = "text",   Value = "", Description = "FLWPUBK-…",                                          SortOrder = 6 },

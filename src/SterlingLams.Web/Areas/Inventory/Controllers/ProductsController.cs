@@ -15,14 +15,17 @@ public class ProductsController : InventoryAreaController
     private readonly SterlingLams.Web.Services.IStockService _stock;
     private readonly SterlingLams.Web.Services.IStoreAccessService _access;
     private const int PageSize = 30;
+    private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
     public ProductsController(ApplicationDbContext db, IWebHostEnvironment env, IConfiguration config,
-        SterlingLams.Web.Services.IStockService stock, SterlingLams.Web.Services.IStoreAccessService access)
+        SterlingLams.Web.Services.IStockService stock, SterlingLams.Web.Services.IStoreAccessService access,
+        SterlingLams.Web.Services.ICloudinaryProvider cloud)
     {
         _db = db;
         _env = env;
         _config = config;
         _stock = stock;
         _access = access;
+        _cloud = cloud;
     }
 
     // List — search matches name, SKU OR barcode (so a scanner finds the product). The "Current" tab
@@ -752,12 +755,9 @@ public class ProductsController : InventoryAreaController
         if (!allowed.Contains(ext)) return Json(new { ok = false, error = "Invalid type — use JPG, PNG, WEBP or GIF." });
 
         string url;
-        var cloudName = _config["Cloudinary:CloudName"];
-        var apiKey = _config["Cloudinary:ApiKey"];
-        var apiSecret = _config["Cloudinary:ApiSecret"];
-        if (!string.IsNullOrWhiteSpace(cloudName) && !string.IsNullOrWhiteSpace(apiKey) && !string.IsNullOrWhiteSpace(apiSecret))
+        var cloudinary = await _cloud.BuildAsync();
+        if (cloudinary != null)
         {
-            var cloudinary = new CloudinaryDotNet.Cloudinary(new CloudinaryDotNet.Account(cloudName, apiKey, apiSecret)) { Api = { Secure = true } };
             await using var s = file.OpenReadStream();
             var result = await cloudinary.UploadAsync(new CloudinaryDotNet.Actions.ImageUploadParams
             {

@@ -28,12 +28,12 @@ public class ProductImportController : AdminBaseController
     private const int MaxGallery = 4;    // gallery images imported per product (plus the featured one)
 
     private readonly ApplicationDbContext _db;
-    private readonly IConfiguration _config;
+    private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
     private readonly ILogger<ProductImportController> _log;
 
-    public ProductImportController(ApplicationDbContext db, IConfiguration config, ILogger<ProductImportController> log)
+    public ProductImportController(ApplicationDbContext db, SterlingLams.Web.Services.ICloudinaryProvider cloud, ILogger<ProductImportController> log)
     {
-        _db = db; _config = config; _log = log;
+        _db = db; _cloud = cloud; _log = log;
     }
 
     public IActionResult Index()
@@ -47,6 +47,50 @@ public class ProductImportController : AdminBaseController
 
     [HttpPost, ValidateAntiForgeryToken, RequestSizeLimit(60_000_000)]
     public Task<IActionResult> Apply(IFormFile? file) => RunAsync(file, apply: true);
+
+    // Re-host any product/variant image still on an external (non-Cloudinary) URL onto Cloudinary, in
+    // bounded batches (the page repeats until done). Fixes images imported while Cloudinary wasn't
+    // configured, before the old site's URLs stop resolving at domain cut-over. Idempotent.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> RehostImages()
+    {
+        var cloud = await _cloud.BuildAsync();
+        if (cloud == null)
+            return Json(new { ok = false, error = "Cloudinary isn't configured yet. Add your keys in Admin → Integrations, save, then try again." });
+
+        const int ImgBatch = 40;
+        const string Marker = "res.cloudinary.com";
+
+        var pending = await _db.ProductImages
+            .Where(i => i.Url != "" && !i.Url.Contains(Marker))
+            .OrderBy(i => i.Id).Take(ImgBatch).ToListAsync();
+        int converted = 0, failed = 0;
+        foreach (var img in pending)
+        {
+            var hosted = await UploadImageAsync(cloud, img.Url);
+            if (hosted != null && hosted.Contains(Marker)) { img.Url = hosted; converted++; }
+            else failed++;
+        }
+
+        // Variant swatch images too (rare on imports, but keep them consistent).
+        var vPending = await _db.ProductVariants
+            .Where(v => v.ImageUrl != null && v.ImageUrl != "" && !v.ImageUrl.Contains(Marker))
+            .OrderBy(v => v.Id).Take(ImgBatch).ToListAsync();
+        int vConverted = 0;
+        foreach (var v in vPending)
+        {
+            var hosted = await UploadImageAsync(cloud, v.ImageUrl!);
+            if (hosted != null && hosted.Contains(Marker)) { v.ImageUrl = hosted; vConverted++; }
+        }
+
+        if (converted > 0 || vConverted > 0) await _db.SaveChangesAsync();
+        var remaining = await _db.ProductImages.CountAsync(i => i.Url != "" && !i.Url.Contains(Marker))
+                       + await _db.ProductVariants.CountAsync(v => v.ImageUrl != null && v.ImageUrl != "" && !v.ImageUrl.Contains(Marker));
+        if (converted + vConverted > 0)
+            await LogAsync("Update", "Product", null, $"Re-hosted {converted + vConverted} image(s) to Cloudinary ({remaining} remaining).");
+
+        return Json(new { ok = true, converted = converted + vConverted, failed, remaining });
+    }
 
     private async Task<IActionResult> RunAsync(IFormFile? file, bool apply)
     {
@@ -117,7 +161,7 @@ public class ProductImportController : AdminBaseController
         int totalRows = rows.Count, candidates = 0, skippedExisting = 0, skippedNoSku = 0,
             skippedNoTitle = 0, created = 0, newCats = 0, imgUploaded = 0, variantsCreated = 0;
         var samples = new List<object>();
-        var cloud = GetCloudinary();
+        var cloud = await _cloud.BuildAsync();
 
         foreach (var r in rows)
         {
@@ -291,13 +335,6 @@ public class ProductImportController : AdminBaseController
 
     private static string Val(Dictionary<string, string> r, string key)
         => r.TryGetValue(key, out var v) && v != null ? v.Trim() : "";
-
-    private Cloudinary? GetCloudinary()
-    {
-        var cn = _config["Cloudinary:CloudName"]; var ak = _config["Cloudinary:ApiKey"]; var asx = _config["Cloudinary:ApiSecret"];
-        if (string.IsNullOrWhiteSpace(cn) || string.IsNullOrWhiteSpace(ak) || string.IsNullOrWhiteSpace(asx)) return null;
-        return new Cloudinary(new Account(cn, ak, asx)) { Api = { Secure = true } };
-    }
 
     // Upload a remote image URL to Cloudinary (server-side fetch). Returns the hosted URL, or the
     // original URL if Cloudinary isn't configured / the upload fails (so the image still shows).

@@ -26,13 +26,15 @@ public class MyAccountController : Controller
     private readonly IWebHostEnvironment _env;
     private readonly IConfiguration _config;
 
+    private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
     public MyAccountController(UserManager<ApplicationUser> users, SignInManager<ApplicationUser> signIn,
-        IWebHostEnvironment env, IConfiguration config)
+        IWebHostEnvironment env, IConfiguration config, SterlingLams.Web.Services.ICloudinaryProvider cloud)
     {
         _users = users;
         _signIn = signIn;
         _env = env;
         _config = config;
+        _cloud = cloud;
     }
 
     // Any backend role (i.e. anything other than the storefront "Customer" role) counts as staff —
@@ -143,12 +145,11 @@ public class MyAccountController : Controller
     // Cloudinary when configured (persistent + CDN), else local disk (dev only). Returns null on failure.
     private async Task<string?> UploadAsync(IFormFile file, string ext)
     {
-        var cloud = _config["Cloudinary:CloudName"]; var key = _config["Cloudinary:ApiKey"]; var secret = _config["Cloudinary:ApiSecret"];
-        if (!string.IsNullOrWhiteSpace(cloud) && !string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(secret))
+        var cloudinary = await _cloud.BuildAsync();
+        if (cloudinary != null)
         {
             try
             {
-                var cloudinary = new Cloudinary(new Account(cloud, key, secret)) { Api = { Secure = true } };
                 await using var s = file.OpenReadStream();
                 var res = await cloudinary.UploadAsync(new ImageUploadParams
                 {
