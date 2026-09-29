@@ -1,0 +1,126 @@
+@{
+    ViewData["Title"] = "Import Products";
+}
+
+@Html.AntiForgeryToken()
+
+<div class="max-w-3xl">
+    <h1 class="text-xl font-semibold text-neutral-900">Import Products</h1>
+    <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
+        Bring products over from the old WooCommerce site. Upload the migration
+        <strong>products CSV</strong> (columns: SKU, Title, Categories, Regular/Sale/Price, Featured Image,
+        Gallery Images…). Each row becomes a simple product — name, SKU, price, category (created if new)
+        and images re-hosted on Cloudinary. Any product whose <strong>SKU already exists is skipped</strong>,
+        so it's safe to re-run. Stock is <strong>not</strong> set — imported items start at 0 and you enter
+        opening stock per branch. <strong>Preview first</strong> — nothing is written until you click Import.
+    </p>
+
+    <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
+        <label class="block text-xs text-neutral-500 mb-1">Products CSV</label>
+        <input id="pi-file" type="file" accept=".csv,text/csv"
+               class="block w-full text-sm text-neutral-700 file:mr-3 file:py-2 file:px-4 file:rounded-sm file:border-0 file:bg-neutral-900 file:text-white file:text-xs file:cursor-pointer border border-neutral-200 rounded-sm" />
+        <div class="flex items-center gap-2 mt-4">
+            <button type="button" id="pi-preview" class="px-5 py-2 border border-neutral-300 text-neutral-700 text-sm rounded-md hover:border-neutral-500">Preview</button>
+            <button type="button" id="pi-apply" class="px-6 py-2 bg-neutral-900 text-white text-sm font-medium rounded-md hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed" disabled>Import</button>
+            <span id="pi-status" class="text-sm text-neutral-500"></span>
+        </div>
+        <p class="text-[12px] text-neutral-400 mt-3">Importing hundreds of products (with image uploads) runs in
+            small batches automatically — keep this tab open until it says <em>Done</em>.</p>
+    </div>
+
+    <div id="pi-results" class="hidden mt-6"></div>
+</div>
+
+@section Scripts {
+<script>
+(function () {
+    var fileEl = document.getElementById('pi-file');
+    var previewBtn = document.getElementById('pi-preview');
+    var applyBtn = document.getElementById('pi-apply');
+    var statusEl = document.getElementById('pi-status');
+    var results = document.getElementById('pi-results');
+    var token = document.querySelector('input[name="__RequestVerificationToken"]');
+    var base = (window.__adminBase || '') + '/ProductImport/';
+    var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+
+    fileEl.addEventListener('change', function () { applyBtn.disabled = true; results.classList.add('hidden'); statusEl.textContent = ''; });
+
+    function stat(label, val, tone) {
+        return '<div class="border border-neutral-200 rounded-md px-3 py-2">'
+            + '<div class="text-xl font-semibold ' + (tone || 'text-neutral-900') + '">' + val + '</div>'
+            + '<div class="text-[11px] uppercase tracking-wide text-neutral-400">' + label + '</div></div>';
+    }
+
+    function render(d, importedTotal) {
+        var grid = '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">'
+            + stat(d.applied ? 'Imported' : 'Will import', d.applied ? importedTotal : d.candidates, 'text-emerald-600')
+            + stat('Already in store', d.skippedExisting)
+            + stat('New categories', d.newCategories)
+            + stat('Images hosted', d.imagesHosted)
+            + stat('No SKU', d.skippedNoSku)
+            + stat('Variations skipped', d.skippedVariation)
+            + stat('Rows in file', d.totalRows)
+            + (d.applied ? stat('Remaining', d.remaining, d.remaining ? 'text-amber-600' : 'text-neutral-900') : '')
+            + '</div>';
+        var sample = '';
+        if (d.samples && d.samples.length) {
+            sample = '<h3 class="text-sm font-semibold text-neutral-700 mt-6 mb-2">Sample (' + (d.applied ? 'batch' : 'first that would import') + ')</h3>'
+                + '<div class="overflow-x-auto"><table class="w-full text-sm border border-neutral-200 rounded-md">'
+                + '<thead><tr class="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500">'
+                + '<th class="px-3 py-2">SKU</th><th class="px-3 py-2">Title</th><th class="px-3 py-2">Category</th><th class="px-3 py-2">Price</th></tr></thead><tbody>'
+                + d.samples.map(function (s) {
+                    return '<tr class="border-t border-neutral-100"><td class="px-3 py-2 font-mono text-xs">' + esc(s.sku) + '</td>'
+                        + '<td class="px-3 py-2">' + esc(s.title) + '</td>'
+                        + '<td class="px-3 py-2">' + esc(s.category) + '</td>'
+                        + '<td class="px-3 py-2">₦' + esc(s.price) + '</td></tr>';
+                }).join('') + '</tbody></table></div>';
+        }
+        results.innerHTML = grid + sample;
+        results.classList.remove('hidden');
+    }
+
+    function post(url) {
+        var fd = new FormData();
+        fd.append('file', fileEl.files[0]);
+        fd.append('__RequestVerificationToken', token ? token.value : '');
+        return fetch(url, { method: 'POST', body: fd, headers: { 'RequestVerificationToken': token ? token.value : '' } })
+            .then(function (r) { return r.json(); });
+    }
+
+    previewBtn.addEventListener('click', function () {
+        if (!fileEl.files || !fileEl.files.length) { statusEl.textContent = 'Choose a CSV file first.'; return; }
+        statusEl.textContent = 'Reading…'; previewBtn.disabled = true; applyBtn.disabled = true;
+        post(base + 'Preview').then(function (d) {
+            previewBtn.disabled = false;
+            if (!d.ok) { statusEl.textContent = d.error || 'Failed.'; return; }
+            render(d, 0);
+            statusEl.textContent = d.candidates + ' new product(s) ready to import (' + d.skippedExisting + ' already in store).';
+            applyBtn.disabled = d.candidates === 0;
+        }).catch(function () { previewBtn.disabled = false; statusEl.textContent = 'Request failed.'; });
+    });
+
+    applyBtn.addEventListener('click', function () {
+        if (!fileEl.files || !fileEl.files.length) { statusEl.textContent = 'Choose a CSV file first.'; return; }
+        if (!confirm('Import these products into the store? Products with an existing SKU are skipped; images are uploaded to Cloudinary. This runs in batches — keep the tab open.')) return;
+        previewBtn.disabled = true; applyBtn.disabled = true;
+        var importedTotal = 0;
+        function batch() {
+            statusEl.textContent = 'Importing… ' + importedTotal + ' done so far (uploading images, please wait)…';
+            post(base + 'Apply').then(function (d) {
+                if (!d.ok) { statusEl.textContent = d.error || 'Failed.'; previewBtn.disabled = false; return; }
+                importedTotal += d.created;
+                render(d, importedTotal);
+                if (d.remaining > 0 && d.created > 0) {
+                    batch();   // keep going until nothing remains
+                } else {
+                    statusEl.textContent = 'Done — imported ' + importedTotal + ' product(s). '
+                        + (d.remaining > 0 ? (d.remaining + ' could not be created (see logs).') : 'Now set opening stock per branch.');
+                    previewBtn.disabled = false;
+                }
+            }).catch(function () { statusEl.textContent = 'A batch failed — click Import again to resume (already-imported items are skipped).'; previewBtn.disabled = false; applyBtn.disabled = false; });
+        }
+        batch();
+    });
+})();
+</script>
+}
