@@ -328,6 +328,36 @@
             </div>
         </section>
 
+        @* ─── Cloudinary (image hosting / CDN) ─────────────────────────────────── *@
+        <section class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
+            <div>
+                <h2 class="text-sm font-semibold text-neutral-800">Cloudinary (image hosting)</h2>
+                <p class="text-xs text-neutral-400 mt-0.5">Where product &amp; category images are uploaded and served from (resized WebP via CDN). Required in production — without it, image uploads on the live site can't be saved. Find these in your Cloudinary dashboard → Product Environment / API Keys.</p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Cloud Name</label>
+                    <input type="text" name="cloudinary.cloud_name" value="@Model.CloudinaryCloudName" placeholder="e.g. dxmadm7vj" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">Not secret — part of every image URL.</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">API Key @if (Model.CloudinaryApiKeySet) {<span class="text-emerald-600 font-normal">· configured</span>}</label>
+                    <input type="password" name="cloudinary.api_key" value="" autocomplete="off"
+                           placeholder="@(Model.CloudinaryApiKeySet ? "•••••••• leave blank to keep" : "API key")"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">API Secret @if (Model.CloudinaryApiSecretSet) {<span class="text-emerald-600 font-normal">· configured</span>}</label>
+                    <input type="password" name="cloudinary.api_secret" value="" autocomplete="off"
+                           placeholder="@(Model.CloudinaryApiSecretSet ? "•••••••• leave blank to keep" : "API secret")"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">Stored encrypted; never shown back.</p>
+                </div>
+            </div>
+        </section>
+
         <div class="flex items-center gap-3">
             <button type="submit" class="bg-neutral-900 text-white text-sm px-6 py-2.5 rounded-sm hover:bg-neutral-700 transition-colors">
                 Save changes

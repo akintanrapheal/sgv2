@@ -26,13 +26,15 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly SeoDescriptionGenerator _seo;
         private const int PageSize = 30;
 
+        private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
         public ProductsController(
             ApplicationDbContext db,
             IWooCommerceImportService wooImporter,
             IWebHostEnvironment env,
             IConfiguration config,
             IStorefrontCache storefrontCache,
-            SeoDescriptionGenerator seo)
+            SeoDescriptionGenerator seo,
+            SterlingLams.Web.Services.ICloudinaryProvider cloud)
         {
             _db = db;
             _wooImporter = wooImporter;
@@ -40,6 +42,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             _config = config;
             _storefrontCache = storefrontCache;
             _seo = seo;
+            _cloud = cloud;
         }
 
         public async Task<IActionResult> Index(
@@ -841,12 +844,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private async Task<string?> SaveProductImageAsync(IFormFile file)
         {
             var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-            var cloudName = _config["Cloudinary:CloudName"];
-            var apiKey    = _config["Cloudinary:ApiKey"];
-            var apiSecret = _config["Cloudinary:ApiSecret"];
-            if (!string.IsNullOrWhiteSpace(cloudName) && !string.IsNullOrWhiteSpace(apiKey) && !string.IsNullOrWhiteSpace(apiSecret))
+            var cloudinary = await _cloud.BuildAsync();
+            if (cloudinary != null)
             {
-                var cloudinary = new Cloudinary(new Account(cloudName, apiKey, apiSecret)) { Api = { Secure = true } };
                 await using var s = file.OpenReadStream();
                 var result = await cloudinary.UploadAsync(new ImageUploadParams
                 {

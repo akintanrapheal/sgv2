@@ -21,11 +21,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly IWebHostEnvironment _env;
         private readonly IConfiguration _config;
 
-        public CategoriesController(ApplicationDbContext db, IWebHostEnvironment env, IConfiguration config)
+        private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
+        public CategoriesController(ApplicationDbContext db, IWebHostEnvironment env, IConfiguration config,
+            SterlingLams.Web.Services.ICloudinaryProvider cloud)
         {
             _db = db;
             _env = env;
             _config = config;
+            _cloud = cloud;
         }
 
         public async Task<IActionResult> Index()
@@ -155,12 +158,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         /// ephemeral hosts like Render), otherwise the local wwwroot/uploads folder (dev only).</summary>
         private async Task<string> SaveCategoryImageAsync(IFormFile file)
         {
-            var cloudName = _config["Cloudinary:CloudName"];
-            var apiKey    = _config["Cloudinary:ApiKey"];
-            var apiSecret = _config["Cloudinary:ApiSecret"];
-            if (!string.IsNullOrWhiteSpace(cloudName) && !string.IsNullOrWhiteSpace(apiKey) && !string.IsNullOrWhiteSpace(apiSecret))
+            var cloudinary = await _cloud.BuildAsync();
+            if (cloudinary != null)
             {
-                var cloudinary = new Cloudinary(new Account(cloudName, apiKey, apiSecret)) { Api = { Secure = true } };
                 await using var s = file.OpenReadStream();
                 var result = await cloudinary.UploadAsync(new ImageUploadParams
                 {
