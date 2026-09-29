@@ -70,8 +70,52 @@ public class ProductImportController : AdminBaseController
         var cats = (await _db.Categories.ToListAsync())
             .GroupBy(c => c.Name.Trim().ToLowerInvariant()).ToDictionary(g => g.Key, g => g.First());
 
+        // Attributes + values → get-or-create caches (for variable products' options, e.g. Colour/Size).
+        var attrsList = await _db.ProductAttributes.Include(a => a.Values).ToListAsync();
+        var attrByName = attrsList.ToDictionary(a => a.Name.Trim().ToLowerInvariant());
+        var attrSlugs = new HashSet<string>(attrsList.Select(a => a.Slug), StringComparer.OrdinalIgnoreCase);
+        var valueCache = new Dictionary<string, ProductAttributeValue>(StringComparer.OrdinalIgnoreCase);
+        foreach (var a in attrsList)
+            foreach (var av in a.Values)
+                valueCache[a.Name.Trim().ToLowerInvariant() + "||" + av.Value.Trim().ToLowerInvariant()] = av;
+
+        // Get-or-create one attribute value (e.g. Colour=Gold), reusing tracked instances across products
+        // so the same option is never duplicated. New attributes/values persist on the next SaveChanges.
+        ProductAttributeValue GetOrCreateValue(string label, string value)
+        {
+            label = NormAttrLabel(label); value = value.Trim();
+            var alk = label.ToLowerInvariant();
+            if (!attrByName.TryGetValue(alk, out var attr))
+            {
+                attr = new ProductAttribute { Name = label, Slug = UniqueSlug(Slugify(label), attrSlugs), IsActive = true };
+                attrSlugs.Add(attr.Slug);
+                _db.ProductAttributes.Add(attr);
+                attrByName[alk] = attr;
+            }
+            var vk = alk + "||" + value.ToLowerInvariant();
+            if (!valueCache.TryGetValue(vk, out var pav))
+            {
+                pav = new ProductAttributeValue { Attribute = attr, Value = value };
+                attr.Values.Add(pav);
+                valueCache[vk] = pav;
+            }
+            return pav;
+        }
+
+        // Variation rows grouped by their parent product's SKU (parents carry the SKU; variants add the option).
+        var variationsByParent = new Dictionary<string, List<Dictionary<string, string>>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var r in rows)
+        {
+            if (!string.Equals(Val(r, "Type"), "product_variation", StringComparison.OrdinalIgnoreCase)) continue;
+            var psku = Val(r, "Parent SKU");
+            if (psku.Length == 0) continue;
+            if (!variationsByParent.TryGetValue(psku, out var list)) variationsByParent[psku] = list = new();
+            list.Add(r);
+        }
+        var variantRows = variationsByParent.Sum(kv => kv.Value.Count);
+
         int totalRows = rows.Count, candidates = 0, skippedExisting = 0, skippedNoSku = 0,
-            skippedVariation = 0, skippedNoTitle = 0, created = 0, newCats = 0, imgUploaded = 0;
+            skippedNoTitle = 0, created = 0, newCats = 0, imgUploaded = 0, variantsCreated = 0;
         var samples = new List<object>();
         var cloud = GetCloudinary();
 
@@ -84,7 +128,7 @@ public class ProductImportController : AdminBaseController
                 return "";
             }
 
-            if (string.Equals(G("Type"), "product_variation", StringComparison.OrdinalIgnoreCase)) { skippedVariation++; continue; }
+            if (string.Equals(G("Type"), "product_variation", StringComparison.OrdinalIgnoreCase)) continue; // handled via variationsByParent
             var title = G("Title");
             if (title.Length == 0) { skippedNoTitle++; continue; }
             var sku = G("SKU");
@@ -122,6 +166,8 @@ public class ProductImportController : AdminBaseController
 
             var slug = UniqueSlug(Slugify(title), slugs); slugs.Add(slug);
             var extCode = UniqueCode("WP-" + G("ID"), codes); codes.Add(extCode);
+            var vrows = variationsByParent.GetValueOrDefault(sku);
+            var isVariable = vrows != null && vrows.Count > 0;
 
             var product = new Product
             {
@@ -132,7 +178,7 @@ public class ProductImportController : AdminBaseController
                 SalePrice = salePrice,
                 Currency = "NGN",
                 Sku = sku,
-                ProductType = "simple",
+                ProductType = isVariable ? "variable" : "simple",
                 CategoryId = categoryId,
                 IsActive = true,
                 TrackStock = true,
@@ -161,6 +207,32 @@ public class ProductImportController : AdminBaseController
                 sort++;
             }
 
+            // Variable product: build a variant per variation row, with its option value(s) and price.
+            // Old variations carry no SKU of their own (the SKU is on the parent), so variant SKU stays null.
+            if (isVariable)
+            {
+                foreach (var vr in vrows!)
+                {
+                    var options = ParseOptions(Val(vr, "Options"));
+                    if (options.Count == 0) continue;
+                    var avs = options.Select(o => GetOrCreateValue(o.label, o.value)).ToList();
+                    var vreg = ParseMoney(Val(vr, "Regular Price"));
+                    if (vreg == 0m) vreg = ParseMoney(Val(vr, "Price"));
+                    var vsale = ParseMoney(Val(vr, "Sale Price"));
+                    var variant = new ProductVariant
+                    {
+                        Name = string.Join(" / ", avs.Select(a => a.Value)),
+                        Price = vreg > 0m ? vreg : (decimal?)null,
+                        SalePrice = (vsale > 0m && vsale < vreg) ? vsale : (decimal?)null,
+                        StockQuantity = 0,   // opening stock is entered per branch, like simple products
+                        IsActive = true,
+                    };
+                    foreach (var av in avs) variant.AttributeValues.Add(av);
+                    product.Variants.Add(variant);
+                    variantsCreated++;
+                }
+            }
+
             _db.Products.Add(product);
             await _db.SaveChangesAsync();   // per-product commit → resumable if the batch is cut short
             existing.Add(sku);
@@ -169,7 +241,7 @@ public class ProductImportController : AdminBaseController
 
         if (apply && created > 0)
             await LogAsync("Import", "Product", null,
-                $"Imported {created} product(s) from CSV (skipped {skippedExisting} existing; {newCats} new categories; {imgUploaded} images hosted).");
+                $"Imported {created} product(s) from CSV ({variantsCreated} variants; skipped {skippedExisting} existing; {newCats} new categories; {imgUploaded} images hosted).");
 
         var remaining = apply ? Math.Max(0, candidates - created) : candidates;
         return Json(new
@@ -182,13 +254,43 @@ public class ProductImportController : AdminBaseController
             remaining,
             newCategories = newCats,
             imagesHosted = imgUploaded,
+            variantsCreated,
+            variantRows,
             skippedExisting,
             skippedNoSku,
-            skippedVariation,
             skippedNoTitle,
             samples,
         });
     }
+
+    private static readonly Dictionary<string, string> AttrSynonyms = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["color"] = "Colour", ["colour"] = "Colour", ["size"] = "Size", ["length"] = "Length",
+    };
+
+    private static string NormAttrLabel(string label)
+    {
+        label = (label ?? "").Trim();
+        return AttrSynonyms.TryGetValue(label, out var norm) ? norm : label;
+    }
+
+    // "Colour=Gold; Size=7" → [(Colour,Gold),(Size,7)]
+    private static List<(string label, string value)> ParseOptions(string s)
+    {
+        var list = new List<(string, string)>();
+        foreach (var part in (s ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq <= 0) continue;
+            var label = part[..eq].Trim();
+            var value = part[(eq + 1)..].Trim();
+            if (label.Length > 0 && value.Length > 0) list.Add((label, value));
+        }
+        return list;
+    }
+
+    private static string Val(Dictionary<string, string> r, string key)
+        => r.TryGetValue(key, out var v) && v != null ? v.Trim() : "";
 
     private Cloudinary? GetCloudinary()
     {
