@@ -28,6 +28,12 @@
         <button type="button" id="apply-btn" class="px-5 py-2 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 disabled:opacity-40" disabled>Apply to category</button>
     </div>
     <p id="status" class="text-sm mt-3 text-neutral-500"></p>
+
+    <div class="mt-5 pt-4 border-t border-neutral-100">
+        <p class="text-sm text-neutral-600 mb-2">Or do the whole catalogue at once — generates full + short descriptions for <strong>every product missing one</strong> (all categories, active &amp; inactive). Never touches products that already have a description.</p>
+        <button type="button" id="apply-all-btn" class="px-5 py-2 border border-neutral-300 text-neutral-700 text-sm rounded-sm hover:border-neutral-500">Generate for all categories (missing only)</button>
+        <span id="all-status" class="text-sm text-neutral-500 ml-2"></span>
+    </div>
 </div>
 
 <div id="samples" class="mt-6 space-y-5 max-w-3xl"></div>
@@ -88,6 +94,31 @@
     });
 
     cat.addEventListener('change', function () { samples.innerHTML = ''; applyBtn.disabled = true; setStatus(''); });
+
+    // Whole-catalogue: generate for every product missing a description, in batches, until done.
+    var allBtn = document.getElementById('apply-all-btn'), allStatus = document.getElementById('all-status');
+    allBtn.addEventListener('click', function () {
+        if (!confirm('Generate full + short descriptions for EVERY product that has none yet (all categories, active & inactive)?\n\nProducts that already have a description are left untouched. Runs in batches — keep this tab open.')) return;
+        allBtn.disabled = true; previewBtn.disabled = true; applyBtn.disabled = true;
+        var total = 0;
+        function step() {
+            allStatus.textContent = 'Generating… ' + total + ' done so far…';
+            var body = new FormData(); body.append('__RequestVerificationToken', token);
+            fetch(__adminBase + '/Seo/ApplyAll', { method: 'POST', body: body })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d.ok) { allStatus.textContent = d.error || 'Failed.'; allBtn.disabled = false; previewBtn.disabled = false; return; }
+                    total += d.done;
+                    if (d.done > 0 && d.remaining > 0) { step(); }
+                    else {
+                        allStatus.textContent = '✓ Done — generated descriptions for ' + total + ' product(s).' + (d.remaining > 0 ? ' ' + d.remaining + ' left.' : '');
+                        allBtn.disabled = false; previewBtn.disabled = false;
+                    }
+                })
+                .catch(function () { allStatus.textContent = 'A batch failed — click again to resume.'; allBtn.disabled = false; previewBtn.disabled = false; });
+        }
+        step();
+    });
 })();
 </script>
 }
