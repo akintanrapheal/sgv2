@@ -46,7 +46,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         }
 
         public async Task<IActionResult> Index(
-            string q = "", string category = "", string status = "", string type = "",
+            string q = "", string category = "", string status = "", string type = "", string stock = "",
             decimal? minPrice = null, decimal? maxPrice = null, string sort = "name_asc", int page = 1)
         {
             ViewData["Title"] = "Products";
@@ -107,6 +107,16 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 query = query.Where(p => p.ProductType == "variable");
             else if (type == "simple")
                 query = query.Where(p => p.ProductType != "variable");
+
+            // Stock filter — mirrors the on-hand total shown in the Stock column (summed across every
+            // store + variant pool). Only stock-tracked products qualify; untracked ones show "—" and
+            // belong to neither bucket. Out of stock also catches products with no inventory rows (sum 0).
+            if (stock == "instock")
+                query = query.Where(p => p.TrackStock
+                    && _db.StoreInventories.Where(si => si.ProductId == p.Id).Sum(si => si.QuantityOnHand) > 0);
+            else if (stock == "outofstock")
+                query = query.Where(p => p.TrackStock
+                    && _db.StoreInventories.Where(si => si.ProductId == p.Id).Sum(si => si.QuantityOnHand) <= 0);
 
             // Status counts for the tab bar — over the NON-trashed set (Trash is its own bucket), computed
             // with every filter EXCEPT status applied so the tabs reflect the current search/category.
@@ -171,6 +181,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 CategoryFilter      = category,
                 StatusFilter        = status,
                 TypeFilter          = type,
+                StockFilter         = stock,
                 MinPrice            = minPrice,
                 MaxPrice            = maxPrice,
                 CurrentPage         = page,
@@ -706,9 +717,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         public async Task<IActionResult> Bulk(string op, int[] ids,
             int? bulkCategoryId = null, decimal? bulkSalePrice = null,
             DateTime? bulkSaleStartsAt = null, DateTime? bulkSaleEndsAt = null,
-            string q = "", string category = "", string status = "", string type = "", int page = 1)
+            string q = "", string category = "", string status = "", string type = "", string stock = "", int page = 1)
         {
-            var back = new { q, category, status, type, page };
+            var back = new { q, category, status, type, stock, page };
             ids ??= Array.Empty<int>();
             if (ids.Length == 0)
             {

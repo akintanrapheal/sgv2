@@ -4,6 +4,7 @@
     bool hasFilters = !string.IsNullOrEmpty(Model.SearchQuery) ||
                       !string.IsNullOrEmpty(Model.CategoryFilter) ||
                       !string.IsNullOrEmpty(Model.StatusFilter) ||
+                      !string.IsNullOrEmpty(Model.StockFilter) ||
                       Model.MinPrice.HasValue || Model.MaxPrice.HasValue;
 
     // Clickable column-sort helpers — each click toggles asc/desc and preserves the active filters.
@@ -15,6 +16,7 @@
         {
             ["q"] = Model.SearchQuery ?? "", ["category"] = Model.CategoryFilter ?? "",
             ["status"] = Model.StatusFilter ?? "", ["type"] = Model.TypeFilter ?? "",
+            ["stock"] = Model.StockFilter ?? "",
             ["minPrice"] = Model.MinPrice?.ToString() ?? "", ["maxPrice"] = Model.MaxPrice?.ToString() ?? "",
             ["sort"] = next,
         };
@@ -178,6 +180,17 @@
             </select>
         </div>
 
+        <!-- Stock -->
+        <div class="flex flex-col gap-1">
+            <label class="text-[10px] text-neutral-400 uppercase tracking-widest">Stock</label>
+            <select name="stock"
+                    class="border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-neutral-400 bg-white min-w-[130px]">
+                <option value="">All Stock</option>
+                <option value="instock"    selected="@(Model.StockFilter == "instock")">In stock</option>
+                <option value="outofstock" selected="@(Model.StockFilter == "outofstock")">Out of stock</option>
+            </select>
+        </div>
+
         <!-- Price range -->
         <div class="flex flex-col gap-1">
             <label class="text-[10px] text-neutral-400 uppercase tracking-widest">Price (₦)</label>
@@ -226,6 +239,12 @@
                     Status: @System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(Model.StatusFilter)
                 </span>
             }
+            @if (!string.IsNullOrEmpty(Model.StockFilter))
+            {
+                <span class="text-[11px] bg-neutral-100 text-neutral-600 px-3 py-1 rounded-full">
+                    Stock: @(Model.StockFilter == "instock" ? "In stock" : "Out of stock")
+                </span>
+            }
             @if (Model.MinPrice.HasValue || Model.MaxPrice.HasValue)
             {
                 <span class="text-[11px] bg-neutral-100 text-neutral-600 px-3 py-1 rounded-full">
@@ -243,6 +262,7 @@
     <input type="hidden" name="category" value="@Model.CategoryFilter" />
     <input type="hidden" name="status"   value="@Model.StatusFilter" />
     <input type="hidden" name="type"     value="@Model.TypeFilter" />
+    <input type="hidden" name="stock"    value="@Model.StockFilter" />
     <input type="hidden" name="page"     value="@Model.CurrentPage" />
     <input type="hidden" name="op"        id="bulk-op" value="" />
     <div id="bulk-bar" class="hidden flex-col gap-2 bg-neutral-900 text-white rounded-sm px-4 py-2.5 mb-3">
@@ -484,6 +504,7 @@
         ["category"] = Model.CategoryFilter ?? "",
         ["status"] = Model.StatusFilter ?? "",
         ["type"] = Model.TypeFilter ?? "",
+        ["stock"] = Model.StockFilter ?? "",
         ["minPrice"] = Model.MinPrice?.ToString() ?? "",
         ["maxPrice"] = Model.MaxPrice?.ToString() ?? "",
         ["sort"] = Model.Sort ?? "name_asc",

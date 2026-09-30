@@ -232,6 +232,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string CategoryFilter { get; set; } = "";
         public string StatusFilter { get; set; } = "";
         public string TypeFilter { get; set; } = "";
+        public string StockFilter { get; set; } = "";
         public decimal? MinPrice { get; set; }
         public decimal? MaxPrice { get; set; }
         public int CurrentPage { get; set; } = 1;
