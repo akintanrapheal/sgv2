@@ -27,13 +27,19 @@ public class ProductImportController : AdminBaseController
     private const int Batch = 12;        // products created per Apply call (bounds image-upload time)
     private const int MaxGallery = 4;    // gallery images imported per product (plus the featured one)
 
+    // A normal browser User-Agent — the old WooCommerce site 403s empty / bot UAs (incl. Cloudinary's
+    // remote fetcher and .NET's default no-UA client), so we download the bytes ourselves with this.
+    private const string BrowserUa = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36";
+
     private readonly ApplicationDbContext _db;
     private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
+    private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<ProductImportController> _log;
 
-    public ProductImportController(ApplicationDbContext db, SterlingLams.Web.Services.ICloudinaryProvider cloud, ILogger<ProductImportController> log)
+    public ProductImportController(ApplicationDbContext db, SterlingLams.Web.Services.ICloudinaryProvider cloud,
+        IHttpClientFactory httpFactory, ILogger<ProductImportController> log)
     {
-        _db = db; _cloud = cloud; _log = log;
+        _db = db; _cloud = cloud; _httpFactory = httpFactory; _log = log;
     }
 
     public IActionResult Index()
@@ -336,8 +342,9 @@ public class ProductImportController : AdminBaseController
     private static string Val(Dictionary<string, string> r, string key)
         => r.TryGetValue(key, out var v) && v != null ? v.Trim() : "";
 
-    // Upload a remote image URL to Cloudinary (server-side fetch). Returns the hosted URL, or the
-    // original URL if Cloudinary isn't configured / the upload fails (so the image still shows).
+    // Download the image ourselves (browser User-Agent — the old site 403s empty/bot UAs and Cloudinary's
+    // own fetcher) and upload the BYTES to Cloudinary. Returns the hosted URL, or the original URL if
+    // Cloudinary isn't configured / the download or upload fails (so the image still shows).
     private async Task<string?> UploadImageAsync(Cloudinary? cloud, string url)
     {
         url = (url ?? "").Trim();
@@ -345,9 +352,23 @@ public class ProductImportController : AdminBaseController
         if (cloud == null) return url;
         try
         {
+            var http = _httpFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(30);
+            using var req = new HttpRequestMessage(System.Net.Http.HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("User-Agent", BrowserUa);
+            using var resp = await http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode)
+            {
+                _log.LogWarning("Product import: download failed for {Url}: HTTP {Status}", url, (int)resp.StatusCode);
+                return url;
+            }
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            using var ms = new MemoryStream(bytes);
+            var name = System.IO.Path.GetFileName(new Uri(url).AbsolutePath);
+            if (string.IsNullOrWhiteSpace(name)) name = "image.jpg";
             var res = await cloud.UploadAsync(new ImageUploadParams
             {
-                File = new FileDescription(url),
+                File = new FileDescription(name, ms),
                 Folder = "sterlinglams/products",
                 PublicId = Guid.NewGuid().ToString("N"),
                 UniqueFilename = false,
@@ -357,7 +378,7 @@ public class ProductImportController : AdminBaseController
                 return res.SecureUrl.ToString();
             _log.LogWarning("Product import: Cloudinary upload failed for {Url}: {Status}", url, res.Error?.Message);
         }
-        catch (Exception ex) { _log.LogWarning(ex, "Product import: image upload threw for {Url}", url); }
+        catch (Exception ex) { _log.LogWarning(ex, "Product import: image download/upload threw for {Url}", url); }
         return url; // fall back to the original URL
     }
 
