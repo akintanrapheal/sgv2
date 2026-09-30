@@ -110,13 +110,23 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             // Stock filter — mirrors the on-hand total shown in the Stock column (summed across every
             // store + variant pool). Only stock-tracked products qualify; untracked ones show "—" and
-            // belong to neither bucket. Out of stock also catches products with no inventory rows (sum 0).
-            if (stock == "instock")
-                query = query.Where(p => p.TrackStock
-                    && _db.StoreInventories.Where(si => si.ProductId == p.Id).Sum(si => si.QuantityOnHand) > 0);
-            else if (stock == "outofstock")
-                query = query.Where(p => p.TrackStock
-                    && _db.StoreInventories.Where(si => si.ProductId == p.Id).Sum(si => si.QuantityOnHand) <= 0);
+            // belong to neither bucket. Out of stock also catches products with no inventory rows.
+            // Precompute the in-stock product set ONCE (a single GROUP BY) rather than a correlated
+            // Sum() subquery per row — the subquery was re-run across the tab counts + total + page
+            // query (7×) over thousands of products, which made the filtered list crawl. Npgsql passes
+            // the id set as an array parameter, so the membership test stays fast even for large sets.
+            if (stock == "instock" || stock == "outofstock")
+            {
+                var inStockIds = await _db.StoreInventories
+                    .GroupBy(si => si.ProductId)
+                    .Where(g => g.Sum(x => x.QuantityOnHand) > 0)
+                    .Select(g => g.Key)
+                    .ToListAsync();
+
+                query = stock == "instock"
+                    ? query.Where(p => p.TrackStock && inStockIds.Contains(p.Id))
+                    : query.Where(p => p.TrackStock && !inStockIds.Contains(p.Id));
+            }
 
             // Status counts for the tab bar — over the NON-trashed set (Trash is its own bucket), computed
             // with every filter EXCEPT status applied so the tabs reflect the current search/category.
