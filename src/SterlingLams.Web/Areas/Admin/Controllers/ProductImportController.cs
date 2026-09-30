@@ -230,7 +230,10 @@ public class ProductImportController : AdminBaseController
                 Sku = sku,
                 ProductType = isVariable ? "variable" : "simple",
                 CategoryId = categoryId,
-                IsActive = true,
+                // Published rows go live (Active); draft/pending rows import hidden (Inactive) so they
+                // sit in the Inactive tab until you're ready to publish them.
+                IsActive = !string.Equals(G("Status"), "draft", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(G("Status"), "pending", StringComparison.OrdinalIgnoreCase),
                 TrackStock = true,
                 LowStockThreshold = 3,
                 CreatedAt = DateTime.UtcNow,

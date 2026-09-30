@@ -243,6 +243,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public int CountActive { get; set; }
         public int CountInactive { get; set; }
         public int CountFeatured { get; set; }
+        public int CountTrash { get; set; }
     }
 
     public class AdminProductEditViewModel

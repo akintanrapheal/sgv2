@@ -60,6 +60,7 @@
         ("active",   "Active",   Model.CountActive),
         ("inactive", "Inactive", Model.CountInactive),
         ("featured", "Featured", Model.CountFeatured),
+        ("trash",    "Trash",    Model.CountTrash),
     };
 }
 <div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-4 text-sm">
@@ -253,7 +254,7 @@
             <button type="button" data-op="feature"    class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Feature</button>
             <button type="button" data-op="unfeature"  class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Unfeature</button>
             <button type="button" data-op="run-seo"    class="bulk-btn px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 rounded-sm transition-colors">Generate SEO</button>
-            <button type="button" data-op="delete"     class="bulk-btn px-3 py-1.5 text-xs bg-rose-500/80 hover:bg-rose-500 rounded-sm transition-colors">Delete</button>
+            <button type="button" data-op="delete"     class="bulk-btn px-3 py-1.5 text-xs bg-rose-500/80 hover:bg-rose-500 rounded-sm transition-colors">Trash</button>
         </div>
         <div class="flex items-center gap-2 flex-wrap border-t border-white/10 pt-2 text-xs">
             <!-- Move to category -->
@@ -406,30 +407,53 @@
 
                     <td class="px-4 py-3 text-right">
                         <div class="flex items-center justify-end gap-3">
-                            <a asp-area="Admin" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id"
-                               class="text-xs text-neutral-500 hover:text-neutral-900 transition-colors">Edit</a>
-                            <form asp-area="Admin" asp-controller="Products" asp-action="Duplicate"
-                                  asp-route-id="@p.Id" method="post" class="inline">
-                                @Html.AntiForgeryToken()
-                                <button type="submit" data-no-loading="1"
-                                        class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors">Copy</button>
-                            </form>
-                            <form asp-area="Admin" asp-controller="Products" asp-action="ToggleActive"
-                                  asp-route-id="@p.Id" method="post" class="inline">
-                                @Html.AntiForgeryToken()
-                                <button type="submit" data-no-loading="1"
-                                        class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors">
-                                    @(p.IsActive ? "Deactivate" : "Activate")
-                                </button>
-                            </form>
-                            <form asp-area="Admin" asp-controller="Products" asp-action="Delete"
-                                  asp-route-id="@p.Id" method="post" class="inline"
-                                  data-itemname="@p.Name"
-                                  onsubmit="return confirm('Delete ' + this.dataset.itemname + ', are you sure?')">
-                                @Html.AntiForgeryToken()
-                                <button type="submit" data-no-loading="1"
-                                        class="text-xs text-rose-400 hover:text-rose-700 transition-colors">Delete</button>
-                            </form>
+                            @if (p.IsArchived)
+                            {
+                                @* Trash view: restore, or permanently delete. *@
+                                <a asp-area="Admin" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id"
+                                   class="text-xs text-neutral-500 hover:text-neutral-900 transition-colors">Edit</a>
+                                <form asp-area="Admin" asp-controller="Products" asp-action="Restore"
+                                      asp-route-id="@p.Id" method="post" class="inline">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" data-no-loading="1"
+                                            class="text-xs text-emerald-500 hover:text-emerald-700 transition-colors">Restore</button>
+                                </form>
+                                <form asp-area="Admin" asp-controller="Products" asp-action="DeletePermanent"
+                                      asp-route-id="@p.Id" method="post" class="inline"
+                                      data-itemname="@p.Name"
+                                      onsubmit="return confirm('Permanently delete ' + this.dataset.itemname + '? This cannot be undone.')">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" data-no-loading="1"
+                                            class="text-xs text-rose-400 hover:text-rose-700 transition-colors">Delete permanently</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <a asp-area="Admin" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id"
+                                   class="text-xs text-neutral-500 hover:text-neutral-900 transition-colors">Edit</a>
+                                <form asp-area="Admin" asp-controller="Products" asp-action="Duplicate"
+                                      asp-route-id="@p.Id" method="post" class="inline">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" data-no-loading="1"
+                                            class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors">Copy</button>
+                                </form>
+                                <form asp-area="Admin" asp-controller="Products" asp-action="ToggleActive"
+                                      asp-route-id="@p.Id" method="post" class="inline">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" data-no-loading="1"
+                                            class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors">
+                                        @(p.IsActive ? "Deactivate" : "Activate")
+                                    </button>
+                                </form>
+                                <form asp-area="Admin" asp-controller="Products" asp-action="Delete"
+                                      asp-route-id="@p.Id" method="post" class="inline"
+                                      data-itemname="@p.Name"
+                                      onsubmit="return confirm('Move ' + this.dataset.itemname + ' to Trash?')">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" data-no-loading="1"
+                                            class="text-xs text-rose-400 hover:text-rose-700 transition-colors">Trash</button>
+                                </form>
+                            }
                         </div>
                     </td>
                 </tr>
@@ -515,7 +539,7 @@
         const ids = selected().map(c => c.value);
         if (!ids.length) { alert('No products selected.'); return; }
         const op = btn.dataset.op;
-        if (op === 'delete' && !confirm('Delete the ' + ids.length + ' selected product(s)? This also removes their variants, images and stock, and cannot be undone.')) return;
+        if (op === 'delete' && !confirm('Move the ' + ids.length + ' selected product(s) to Trash? You can restore or permanently delete them from the Trash tab.')) return;
         if (op === 'run-seo' && !confirm('Generate SEO descriptions for ' + ids.length + ' product(s)? This overwrites their current descriptions.')) return;
         if (op === 'set-sale' && !form.querySelector('[name="bulkSalePrice"]').value) { alert('Enter a sale price first.'); return; }
         if (op === 'set-category' && !form.querySelector('[name="bulkCategoryId"]').value) { alert('Pick a category first.'); return; }
