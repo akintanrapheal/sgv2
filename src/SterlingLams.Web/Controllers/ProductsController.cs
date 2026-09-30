@@ -43,9 +43,12 @@ public class ProductsController : Controller
         if (!string.IsNullOrWhiteSpace(filters.Search))
         {
             var term = filters.Search.Trim();
+            // Match the category name too, so "necklaces" returns everything in the Necklaces,
+            // Necklaces & Pendants (and Mens Necklaces) categories, not only products named "necklace".
             query = query.Where(p => EF.Functions.ILike(p.Name, $"%{term}%")
                 || EF.Functions.ILike(p.Description ?? "", $"%{term}%")
                 || EF.Functions.ILike(p.Sku ?? "", $"%{term}%")
+                || EF.Functions.ILike(p.Category.Name, $"%{term}%")
                 || p.Variants.Any(v => EF.Functions.ILike(v.Sku ?? "", $"%{term}%")));
         }
 
@@ -412,6 +415,7 @@ public class ProductsController : Controller
                 EF.Functions.ILike(p.Name, $"%{term}%") ||
                 EF.Functions.ILike(p.ShortDescription ?? "", $"%{term}%") ||
                 EF.Functions.ILike(p.Sku ?? "", $"%{term}%") ||
+                EF.Functions.ILike(p.Category.Name, $"%{term}%") ||
                 p.Barcode == term ||
                 p.Variants.Any(v => EF.Functions.ILike(v.Sku ?? "", $"%{term}%") || v.Barcode == term)))
             .Select(p => new
