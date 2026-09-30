@@ -238,6 +238,11 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public int TotalPages { get; set; } = 1;
         public int TotalCount { get; set; }
         public List<Category> AvailableCategories { get; set; } = new();
+        // Status tab counts (reflect the current search/category, before the status filter).
+        public int CountAll { get; set; }
+        public int CountActive { get; set; }
+        public int CountInactive { get; set; }
+        public int CountFeatured { get; set; }
     }
 
     public class AdminProductEditViewModel

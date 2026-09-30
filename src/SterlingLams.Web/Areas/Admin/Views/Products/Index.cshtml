@@ -51,6 +51,35 @@
     </a>
 </div>
 
+<!-- ── Status tabs (WordPress-style counts) -->
+@{
+    var curStatus = Model.StatusFilter ?? "";
+    (string key, string label, int count)[] statusTabs =
+    {
+        ("",         "All",      Model.CountAll),
+        ("active",   "Active",   Model.CountActive),
+        ("inactive", "Inactive", Model.CountInactive),
+        ("featured", "Featured", Model.CountFeatured),
+    };
+}
+<div class="flex flex-wrap items-center gap-x-3 gap-y-1 mb-4 text-sm">
+    @for (var i = 0; i < statusTabs.Length; i++)
+    {
+        var t = statusTabs[i];
+        var isCur = curStatus == t.key;
+        <a asp-area="Admin" asp-controller="Products" asp-action="Index"
+           asp-route-status="@t.key" asp-route-q="@Model.SearchQuery" asp-route-category="@Model.CategoryFilter"
+           asp-route-type="@Model.TypeFilter" asp-route-sort="@Model.Sort"
+           class="@(isCur ? "text-neutral-900 font-semibold" : "text-brand-600 hover:underline")">
+            @t.label <span class="text-neutral-400 font-normal">(@t.count.ToString("N0"))</span>
+        </a>
+        @if (i < statusTabs.Length - 1)
+        {
+            <span class="text-neutral-300">|</span>
+        }
+    }
+</div>
+
 <!-- ── Filter form (standalone — no nested forms) -->
 <form method="get" class="bg-white rounded-sm border border-neutral-100 p-4 mb-4 space-y-3">
     <input type="hidden" name="sort" value="@Model.Sort" />
