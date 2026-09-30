@@ -409,7 +409,9 @@ public class ProductImportController : AdminBaseController
 
     private static readonly Dictionary<string, string> AttrSynonyms = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["color"] = "Colour", ["colour"] = "Colour", ["size"] = "Size", ["length"] = "Length",
+        // Normalise both spellings to the store's canonical "Color" attribute so imports never
+        // re-create a duplicate "Colour" (the get-or-create matches on this name, case-insensitively).
+        ["color"] = "Color", ["colour"] = "Color", ["size"] = "Size", ["length"] = "Length",
     };
 
     private static string NormAttrLabel(string label)

@@ -111,6 +111,76 @@ public static class SeedData
                 await db.SaveChangesAsync();
             }
 
+            // ─── One-time: merge duplicate "Colour" attribute into "Color" (idempotent) ──────────
+            // The product importer used to normalise every colour option to "Colour" (British), which
+            // re-created a duplicate of the store's canonical "Color" attribute on each run. Consolidate:
+            // re-point every variant from a "Colour=X" value to the matching "Color=X" (created under
+            // Color if missing), then delete the now-empty "Colour". The importer now normalises to
+            // "Color", so this block runs once and no-ops on later deploys (nothing named "Colour" left).
+            var colorAttr  = await db.ProductAttributes.Include(a => a.Values)
+                .FirstOrDefaultAsync(a => a.Name.ToLower() == "color");
+            var colourAttr = await db.ProductAttributes.Include(a => a.Values)
+                .FirstOrDefaultAsync(a => a.Name.ToLower() == "colour");
+
+            if (colourAttr != null && colorAttr == null)
+            {
+                // No canonical "Color" yet — just rename the duplicate in place (keeps all variant links).
+                colourAttr.Name = "Color";
+                if (!await db.ProductAttributes.AnyAsync(a => a.Slug == "color"))
+                    colourAttr.Slug = "color";
+                await db.SaveChangesAsync();
+                logger.LogInformation("Renamed 'Colour' attribute to 'Color'.");
+            }
+            else if (colourAttr != null && colorAttr != null && colourAttr.Id != colorAttr.Id)
+            {
+                // Ensure every "Colour" value has a twin under "Color" (match on the value text).
+                foreach (var srcVal in colourAttr.Values)
+                {
+                    var key = srcVal.Value.Trim().ToLowerInvariant();
+                    if (!colorAttr.Values.Any(v => v.Value.Trim().ToLowerInvariant() == key))
+                    {
+                        colorAttr.Values.Add(new ProductAttributeValue
+                        {
+                            AttributeId = colorAttr.Id,
+                            Value       = srcVal.Value.Trim(),
+                            ColorHex    = srcVal.ColorHex,
+                            SortOrder   = srcVal.SortOrder,
+                        });
+                    }
+                }
+                await db.SaveChangesAsync(); // new Color values get Ids before re-pointing variants
+
+                var colorByValue = colorAttr.Values
+                    .GroupBy(v => v.Value.Trim().ToLowerInvariant())
+                    .ToDictionary(g => g.Key, g => g.First());
+
+                // Re-point every variant that references a Colour value onto the matching Color value.
+                var affected = await db.ProductVariants
+                    .Include(v => v.AttributeValues)
+                    .Where(v => v.AttributeValues.Any(av => av.AttributeId == colourAttr.Id))
+                    .ToListAsync();
+
+                foreach (var variant in affected)
+                {
+                    foreach (var oldAv in variant.AttributeValues
+                                 .Where(av => av.AttributeId == colourAttr.Id).ToList())
+                    {
+                        variant.AttributeValues.Remove(oldAv);
+                        if (colorByValue.TryGetValue(oldAv.Value.Trim().ToLowerInvariant(), out var newAv)
+                            && !variant.AttributeValues.Any(x => x.Id == newAv.Id))
+                        {
+                            variant.AttributeValues.Add(newAv);
+                        }
+                    }
+                }
+                await db.SaveChangesAsync();
+
+                // Colour's values are now unreferenced — removing the attribute cascades them away.
+                db.ProductAttributes.Remove(colourAttr);
+                await db.SaveChangesAsync();
+                logger.LogInformation("Merged duplicate 'Colour' attribute into 'Color' ({Count} variants re-pointed).", affected.Count);
+            }
+
             // â”€â”€â”€ Stores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             var stores = new[]
             {
