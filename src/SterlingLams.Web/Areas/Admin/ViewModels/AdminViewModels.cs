@@ -244,6 +244,8 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public int CountInactive { get; set; }
         public int CountFeatured { get; set; }
         public int CountTrash { get; set; }
+        // Total on-hand stock per product id (summed across stores + variants) for the current page.
+        public Dictionary<int, int> StockByProduct { get; set; } = new();
     }
 
     public class AdminProductEditViewModel
