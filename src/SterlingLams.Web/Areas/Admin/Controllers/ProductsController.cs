@@ -108,6 +108,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             else if (type == "simple")
                 query = query.Where(p => p.ProductType != "variable");
 
+            // Status counts for the tab bar — computed on the query with every filter EXCEPT status
+            // applied, so the tabs reflect the current search/category and switching between them adds up.
+            var countAll      = await query.CountAsync();
+            var countActive   = await query.CountAsync(p => p.IsActive);
+            var countInactive = await query.CountAsync(p => !p.IsActive);
+            var countFeatured = await query.CountAsync(p => p.IsFeatured);
+
             switch (status)
             {
                 case "active":   query = query.Where(p => p.IsActive);           break;
@@ -150,6 +157,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 TotalCount          = total,
                 TotalPages          = (int)Math.Ceiling(total / (double)PageSize),
                 AvailableCategories = await _db.Categories.OrderBy(c => c.Name).ToListAsync(),
+                CountAll            = countAll,
+                CountActive         = countActive,
+                CountInactive       = countInactive,
+                CountFeatured       = countFeatured,
             };
 
             return View(vm);
