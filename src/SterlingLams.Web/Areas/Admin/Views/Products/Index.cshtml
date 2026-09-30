@@ -353,7 +353,7 @@
                     <!-- Name (clickable) + hover row actions -->
                     <td class="px-4 py-3 align-top">
                         <a asp-area="Admin" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id"
-                           class="text-[13px] font-semibold text-brand-600 hover:underline">@p.Name</a>@if (!p.IsActive && !p.IsArchived) { <span class="text-neutral-400 text-xs"> — Draft</span> } @if (p.IsArchived) { <span class="text-rose-400 text-xs"> — Trash</span> }
+                           class="text-[13px] font-semibold text-neutral-800 hover:text-neutral-900 hover:underline">@p.Name</a>@if (!p.IsActive && !p.IsArchived) { <span class="text-neutral-400 text-xs"> — Draft</span> } @if (p.IsArchived) { <span class="text-rose-400 text-xs"> — Trash</span> }
                         <div class="flex gap-1 mt-0.5 flex-wrap items-center">
                             @if (p.Variants.Count > 0)
                             {
