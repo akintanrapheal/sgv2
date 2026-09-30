@@ -82,5 +82,34 @@ public class SeoController : AdminBaseController
         return Json(new { ok = true, count = prods.Count, category = cat.Name });
     }
 
+    // Generate descriptions for products across ALL categories that don't have one yet (active + inactive,
+    // excluding trashed), in bounded batches — the page repeats until none remain. Never overwrites
+    // existing copy, so it's safe to run repeatedly and targets exactly the newly imported products.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ApplyAll()
+    {
+        const int Batch = 300;
+        var catNames = await _db.Categories.ToDictionaryAsync(c => c.Id, c => c.Name);
+
+        var prods = await _db.Products
+            .Where(p => !p.IsArchived && (p.Description == null || p.Description == ""))
+            .OrderBy(p => p.Id).Take(Batch).ToListAsync();
+
+        var now = DateTime.UtcNow;
+        foreach (var p in prods)
+        {
+            var cat = catNames.GetValueOrDefault(p.CategoryId, "");
+            p.Description = ProductHtml.Sanitize(_gen.Build(p.Id, p.Name, cat));
+            p.ShortDescription = _gen.BuildShort(p.Id, p.Name, cat);
+            p.UpdatedAt = now;
+        }
+        if (prods.Count > 0) await _db.SaveChangesAsync();
+
+        var remaining = await _db.Products.CountAsync(p => !p.IsArchived && (p.Description == null || p.Description == ""));
+        if (prods.Count > 0)
+            await LogAsync("Update", "Product", null, $"SEO all-categories: generated {prods.Count} description(s), {remaining} remaining.");
+        return Json(new { ok = true, done = prods.Count, remaining });
+    }
+
     public class CatRow { public int Id { get; set; } public string Name { get; set; } = ""; public int Count { get; set; } }
 }
