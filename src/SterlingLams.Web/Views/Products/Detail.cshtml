@@ -142,10 +142,26 @@
         <!-- ─── Image Gallery ─────────────────────────────────────────── -->
         <div class="space-y-3">
             <!-- Zoom container: hover to zoom, click to toggle pinned zoom -->
-            <div class="aspect-square bg-neutral-50 overflow-hidden zoom-container cursor-zoom-in relative" id="zoom-container">
+            <div class="group aspect-square bg-neutral-50 overflow-hidden zoom-container cursor-zoom-in relative" id="zoom-container">
                 <img id="main-image" src="@Img.Cld(Model.PrimaryImageUrl, 1000)" alt="@Model.Name" width="800" height="800"
                      class="w-full h-full object-cover object-center transition-transform duration-300 will-change-transform" />
                 <partial name="_DiscountBadge" model="Model.DiscountPercent" />
+                @if (Model.ImageUrls.Count > 1)
+                {
+                    <button type="button" id="main-prev" aria-label="Previous image"
+                            class="absolute left-3 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-white/85 hover:bg-white text-neutral-800 shadow flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 19l-7-7 7-7"/></svg>
+                    </button>
+                    <button type="button" id="main-next" aria-label="Next image"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-white/85 hover:bg-white text-neutral-800 shadow flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5l7 7-7 7"/></svg>
+                    </button>
+                }
+                <button type="button" id="enlarge-btn" aria-label="Click to enlarge" title="Click to enlarge"
+                        class="group/enl absolute bottom-3 left-3 z-20 flex items-center gap-2 bg-white/85 hover:bg-white text-neutral-800 shadow rounded-full px-2.5 py-2 transition-colors">
+                    <svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 8V4m0 0h4M4 4l5 5m11-5v4m0-4h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+                    <span class="hidden group-hover/enl:inline whitespace-nowrap text-xs tracking-wide pr-1">Click to enlarge</span>
+                </button>
             </div>
             @if (Model.ImageUrls.Count > 1)
             {
@@ -163,8 +179,8 @@
             }
         </div>
 
-        <!-- Mobile fullscreen image lightbox (tap-to-open; hover-zoom is desktop-only) -->
-        <div id="img-lightbox" class="hidden fixed inset-0 z-[300] bg-black md:hidden" role="dialog" aria-modal="true" aria-label="Product image">
+        <!-- Fullscreen image lightbox — opens on any device from the enlarge button, an arrow, or a tap/click -->
+        <div id="img-lightbox" class="hidden fixed inset-0 z-[300] bg-black" role="dialog" aria-modal="true" aria-label="Product image">
             <button type="button" id="lightbox-close" class="absolute top-4 right-4 z-10 text-white p-2" aria-label="Close image">
                 <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
@@ -772,14 +788,42 @@
     let selectedVariantId = null;
     let qty = 1;
 
-    // ── Image zoom: desktop = move-to-zoom; touch/mobile = tap to open fullscreen lightbox ──
+    // ── Image gallery: prev/next arrows, hover-zoom (desktop), and a fullscreen lightbox (all devices) ──
     const zoomContainer = document.getElementById('zoom-container');
     const mainImg = document.getElementById('main-image');
     const canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
+    const galThumbs = Array.from(document.querySelectorAll('.thumb-btn'));
+    const galImages = galThumbs.length ? galThumbs.map(b => b.getAttribute('data-img-url'))
+                                       : (mainImg ? [mainImg.getAttribute('src')] : []);
+    let galIndex = 0;
+
+    function highlightThumb(i) {
+        galThumbs.forEach((b, k) => {
+            b.classList.toggle('border-brand-500', k === i);
+            b.classList.toggle('border-transparent', k !== i);
+        });
+    }
+    function syncIndexFromMain() {
+        const cur = mainImg ? galImages.indexOf(mainImg.getAttribute('src')) : -1;
+        if (cur >= 0) galIndex = cur;
+    }
+    function setMain(i) {
+        if (!mainImg || galImages.length === 0) return;
+        galIndex = (i + galImages.length) % galImages.length;
+        mainImg.style.transform = 'scale(1)';
+        mainImg.src = galImages[galIndex];
+        highlightThumb(galIndex);
+    }
+
+    // Main-image arrows (both desktop & touch).
+    document.getElementById('main-prev')?.addEventListener('click', (e) => { e.stopPropagation(); syncIndexFromMain(); setMain(galIndex - 1); });
+    document.getElementById('main-next')?.addEventListener('click', (e) => { e.stopPropagation(); syncIndexFromMain(); setMain(galIndex + 1); });
+
+    // Desktop: hover anywhere on the image to zoom into that point.
     if (zoomContainer && mainImg && canHover) {
-        // Desktop: hover anywhere on the image to zoom into that point.
         zoomContainer.addEventListener('mousemove', (e) => {
+            if (lightbox && !lightbox.classList.contains('hidden')) return;
             const rect = zoomContainer.getBoundingClientRect();
             const x = ((e.clientX - rect.left) / rect.width) * 100;
             const y = ((e.clientY - rect.top) / rect.height) * 100;
@@ -792,45 +836,50 @@
         });
     }
 
-    // Touch/mobile: tap the image to open a swipeable fullscreen viewer.
+    // Fullscreen lightbox (all devices): open from the enlarge button, a click/tap on the image.
     const lightbox = document.getElementById('img-lightbox');
     const lightboxImg = document.getElementById('lightbox-img');
-    if (zoomContainer && mainImg && lightbox && lightboxImg && !canHover) {
-        zoomContainer.classList.remove('cursor-zoom-in');
-        const thumbs = Array.from(document.querySelectorAll('.thumb-btn'));
-        const images = thumbs.length ? thumbs.map(b => b.getAttribute('data-img-url'))
-                                     : [mainImg.getAttribute('src')];
-        const counter = document.getElementById('lightbox-counter');
-        let idx = 0;
-        const show = (i) => {
-            idx = (i + images.length) % images.length;
-            lightboxImg.src = images[idx];
-            if (counter) counter.textContent = (idx + 1) + ' / ' + images.length;
-        };
-        const open = () => {
-            const cur = images.indexOf(mainImg.getAttribute('src'));
-            show(cur >= 0 ? cur : 0);
-            lightbox.classList.remove('hidden');
-            document.body.style.overflow = 'hidden';
-        };
-        const close = () => {
-            lightbox.classList.add('hidden');
-            document.body.style.overflow = '';
-        };
-        zoomContainer.addEventListener('click', open);
-        document.getElementById('lightbox-close')?.addEventListener('click', close);
-        document.getElementById('lightbox-prev')?.addEventListener('click', () => show(idx - 1));
-        document.getElementById('lightbox-next')?.addEventListener('click', () => show(idx + 1));
-        // Tap the dark area (not the image/controls) to close.
+    const lbCounter = document.getElementById('lightbox-counter');
+    let lbIndex = 0;
+    function lbShow(i) {
+        if (galImages.length === 0) return;
+        lbIndex = (i + galImages.length) % galImages.length;
+        lightboxImg.src = galImages[lbIndex];
+        if (lbCounter) lbCounter.textContent = (lbIndex + 1) + ' / ' + galImages.length;
+    }
+    function openLightbox() {
+        if (!lightbox || !lightboxImg || galImages.length === 0) return;
+        syncIndexFromMain();
+        lbShow(galIndex);
+        lightbox.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeLightbox() {
+        if (!lightbox) return;
+        lightbox.classList.add('hidden');
+        document.body.style.overflow = '';
+        setMain(lbIndex);   // keep the image you were viewing as the main one
+    }
+    if (zoomContainer && mainImg && lightbox && lightboxImg) {
+        document.getElementById('enlarge-btn')?.addEventListener('click', (e) => { e.stopPropagation(); openLightbox(); });
+        zoomContainer.addEventListener('click', openLightbox);
+        document.getElementById('lightbox-close')?.addEventListener('click', closeLightbox);
+        document.getElementById('lightbox-prev')?.addEventListener('click', () => lbShow(lbIndex - 1));
+        document.getElementById('lightbox-next')?.addEventListener('click', () => lbShow(lbIndex + 1));
         lightbox.addEventListener('click', (e) => {
-            if (e.target.id === 'img-lightbox' || e.target.id === 'lightbox-stage') close();
+            if (e.target.id === 'img-lightbox' || e.target.id === 'lightbox-stage') closeLightbox();
         });
-        // Swipe left/right to change image.
+        document.addEventListener('keydown', (e) => {
+            if (lightbox.classList.contains('hidden')) return;
+            if (e.key === 'Escape') closeLightbox();
+            else if (e.key === 'ArrowLeft' && galImages.length > 1) lbShow(lbIndex - 1);
+            else if (e.key === 'ArrowRight' && galImages.length > 1) lbShow(lbIndex + 1);
+        });
         let startX = 0;
         lightbox.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; }, { passive: true });
         lightbox.addEventListener('touchend', (e) => {
             const dx = e.changedTouches[0].clientX - startX;
-            if (Math.abs(dx) > 50 && images.length > 1) show(dx < 0 ? idx + 1 : idx - 1);
+            if (Math.abs(dx) > 50 && galImages.length > 1) lbShow(dx < 0 ? lbIndex + 1 : lbIndex - 1);
         }, { passive: true });
     }
 
