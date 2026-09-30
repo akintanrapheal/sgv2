@@ -108,19 +108,30 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             else if (type == "simple")
                 query = query.Where(p => p.ProductType != "variable");
 
-            // Status counts for the tab bar — computed on the query with every filter EXCEPT status
-            // applied, so the tabs reflect the current search/category and switching between them adds up.
-            var countAll      = await query.CountAsync();
-            var countActive   = await query.CountAsync(p => p.IsActive);
-            var countInactive = await query.CountAsync(p => !p.IsActive);
-            var countFeatured = await query.CountAsync(p => p.IsFeatured);
+            // Status counts for the tab bar — over the NON-trashed set (Trash is its own bucket), computed
+            // with every filter EXCEPT status applied so the tabs reflect the current search/category.
+            var visible = query.Where(p => !p.IsArchived);
+            var countAll      = await visible.CountAsync();
+            var countActive   = await visible.CountAsync(p => p.IsActive);
+            var countInactive = await visible.CountAsync(p => !p.IsActive);
+            var countFeatured = await visible.CountAsync(p => p.IsFeatured);
+            var countTrash    = await query.CountAsync(p => p.IsArchived);
 
-            switch (status)
+            // Trash tab shows archived (soft-deleted) products; every other tab excludes them.
+            if (status == "trash")
             {
-                case "active":   query = query.Where(p => p.IsActive);           break;
-                case "inactive": query = query.Where(p => !p.IsActive);          break;
-                case "featured": query = query.Where(p => p.IsFeatured);         break;
-                case "new":      query = query.Where(p => p.IsNewArrival);       break;
+                query = query.Where(p => p.IsArchived);
+            }
+            else
+            {
+                query = visible;
+                switch (status)
+                {
+                    case "active":   query = query.Where(p => p.IsActive);     break;
+                    case "inactive": query = query.Where(p => !p.IsActive);    break;
+                    case "featured": query = query.Where(p => p.IsFeatured);   break;
+                    case "new":      query = query.Where(p => p.IsNewArrival); break;
+                }
             }
 
             query = sort switch
@@ -161,6 +172,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 CountActive         = countActive,
                 CountInactive       = countInactive,
                 CountFeatured       = countFeatured,
+                CountTrash          = countTrash,
             };
 
             return View(vm);
@@ -680,28 +692,15 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var products = await _db.Products.Include(p => p.Category).Where(p => ids.Contains(p.Id)).ToListAsync();
             var n = products.Count;
 
-            // Delete is special: skip products with order/stock history (RESTRICT FKs) and report.
+            // Delete moves the selected products to Trash (soft) — hidden from the storefront and grouped
+            // under the Trash tab. Nothing is destroyed; permanent removal is done per-item from Trash.
             if (op == "delete")
             {
-                var blocked = new HashSet<int>();
-                foreach (var p in products)
-                    if (await ProductHasHistoryAsync(p.Id)) blocked.Add(p.Id);
-                var deletable = products.Where(p => !blocked.Contains(p.Id)).ToList();
-                _db.Products.RemoveRange(deletable);
-                try
-                {
-                    await _db.SaveChangesAsync();
-                }
-                catch (DbUpdateException)
-                {
-                    TempData["Error"] = "Some products are referenced by existing records and can't be deleted. Deactivate them instead.";
-                    return RedirectToAction(nameof(Index), back);
-                }
+                products.ForEach(p => { p.IsActive = false; p.IsArchived = true; p.UpdatedAt = DateTime.UtcNow; });
+                await _db.SaveChangesAsync();
                 await _storefrontCache.EvictAsync();
-                await LogAsync("Delete", "Product", null, $"Bulk delete: {deletable.Count} deleted, {blocked.Count} skipped (history)");
-                TempData[deletable.Count > 0 ? "Success" : "Error"] = blocked.Count > 0
-                    ? $"{deletable.Count} product(s) deleted; {blocked.Count} kept — they have order/stock history (deactivate instead)."
-                    : $"{deletable.Count} product(s) deleted.";
+                await LogAsync("Update", "Product", null, $"Bulk move to Trash: {n} product(s)");
+                TempData["Success"] = $"{n} product(s) moved to Trash.";
                 return RedirectToAction(nameof(Index), back);
             }
 
@@ -808,6 +807,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return RedirectToAction(nameof(Index));
         }
 
+        // "Delete" now moves the product to Trash (soft): hidden from the storefront (IsActive=false) and
+        // grouped under the Trash tab (IsArchived=true). Works even for products with order/stock history
+        // (nothing is destroyed). Permanent removal is a separate, explicit action from the Trash tab.
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Delete(int id)
@@ -815,12 +817,48 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var product = await _db.Products.FindAsync(id);
             if (product != null)
             {
-                // Products with sales or stock history can't be deleted — that would destroy order
-                // line items / the stock ledger (FKs are RESTRICT). Deactivate instead.
+                product.IsActive = false;
+                product.IsArchived = true;
+                product.UpdatedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+                await _storefrontCache.EvictAsync();
+                await LogAsync("Update", "Product", id.ToString(), $"Moved product '{product.Name}' to Trash");
+                TempData["Success"] = $"'{product.Name}' moved to Trash.";
+            }
+            return RedirectToAction(nameof(Index));
+        }
+
+        // Restore a trashed product — it comes back Inactive (hidden) so you choose when to publish it.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> Restore(int id)
+        {
+            var product = await _db.Products.FindAsync(id);
+            if (product != null)
+            {
+                product.IsArchived = false;
+                product.UpdatedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+                await _storefrontCache.EvictAsync();
+                await LogAsync("Update", "Product", id.ToString(), $"Restored product '{product.Name}' from Trash");
+                TempData["Success"] = $"'{product.Name}' restored — it's Inactive; activate it when ready.";
+            }
+            return RedirectToAction(nameof(Index), new { status = "trash" });
+        }
+
+        // Permanently remove a product from the Trash. Blocked when it has order/stock history (RESTRICT
+        // FKs preserve that record) — such items simply stay in Trash.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> DeletePermanent(int id)
+        {
+            var product = await _db.Products.FindAsync(id);
+            if (product != null)
+            {
                 if (await ProductHasHistoryAsync(id))
                 {
-                    TempData["Error"] = $"'{product.Name}' has order or stock history and can't be deleted. Deactivate it instead.";
-                    return RedirectToAction(nameof(Index));
+                    TempData["Error"] = $"'{product.Name}' has order or stock history and can't be permanently deleted — it will stay in Trash.";
+                    return RedirectToAction(nameof(Index), new { status = "trash" });
                 }
 
                 var name = product.Name;
@@ -831,15 +869,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 }
                 catch (DbUpdateException)
                 {
-                    TempData["Error"] = $"'{name}' is referenced by existing records and can't be deleted. Deactivate it instead.";
-                    return RedirectToAction(nameof(Index));
+                    TempData["Error"] = $"'{name}' is referenced by existing records and can't be permanently deleted — it will stay in Trash.";
+                    return RedirectToAction(nameof(Index), new { status = "trash" });
                 }
                 await _storefrontCache.EvictAsync();
-                await LogAsync("Delete", "Product", id.ToString(), $"Deleted product '{name}'");
-                TempData["Success"] = $"Product '{name}' deleted.";
+                await LogAsync("Delete", "Product", id.ToString(), $"Permanently deleted product '{name}'");
+                TempData["Success"] = $"'{name}' permanently deleted.";
             }
-
-            return RedirectToAction(nameof(Index));
+            return RedirectToAction(nameof(Index), new { status = "trash" });
         }
 
         /// <summary>True if the product is referenced by any order line item or stock-ledger row —
