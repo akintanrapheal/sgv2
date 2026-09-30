@@ -27,8 +27,8 @@ public static class StoreMenu
             ("Sunglasses", "sunglasses"), ("Brooches", "brooches"), ("Extenders", "extenders"))),
         new("Watches", null, G(("Bracelet Watches", "bracelet-watches"), ("Strap Watches", "strap-watches"))),
         new("Gifts", null, G(("Gift Boxes", "gift-boxes"), ("Gifts Combo Packages", "gifts-combo-packages"))),
-        new("Mens", null, G(("Bracelet", "mens-bracelets"), ("Cufflinks", "cufflinks"), ("Unisex Brooches", "unisex-brooches"),
-            ("Trouser Chains", "trouser-chains"), ("MenKind", "menkind"))),
+        new("Mens", null, G(("Bracelet", "mens-bracelets"), ("Necklaces", "mens-necklaces"), ("Cufflinks", "cufflinks"),
+            ("Unisex Brooches", "unisex-brooches"), ("Trouser Chains", "trouser-chains"), ("MenKind", "menkind"))),
         new("Clutches", null, G(("Stoned Clutches", "stoned-clutches"), ("None Stone Clutches", "none-stone-clutches"))),
     };
 
