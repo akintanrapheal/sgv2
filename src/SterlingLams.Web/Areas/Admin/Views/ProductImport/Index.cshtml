@@ -44,6 +44,25 @@
     </div>
 
     <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
+        <h2 class="text-sm font-semibold text-neutral-800">Import barcodes (EposNow)</h2>
+        <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
+            Upload an EposNow <strong>ProductList</strong> CSV (<span class="font-mono">Name;CategoryId;Barcode</span>).
+            Each row's SKU (the leading code in Name) is matched to a product — a <strong>simple</strong> product gets
+            the barcode on itself, a <strong>variable</strong> product gets it on the matching colour/size variant.
+            SKUs not in the catalogue are skipped. <strong>Preview first</strong> — nothing is written until you Apply.
+        </p>
+        <label class="block text-xs text-neutral-500 mt-3 mb-1">Barcodes CSV</label>
+        <input id="pi-bc-file" type="file" accept=".csv,text/csv"
+               class="block w-full text-sm text-neutral-700 file:mr-3 file:py-2 file:px-4 file:rounded-sm file:border-0 file:bg-neutral-900 file:text-white file:text-xs file:cursor-pointer border border-neutral-200 rounded-sm" />
+        <div class="flex items-center gap-2 mt-4">
+            <button type="button" id="pi-bc-preview" class="px-5 py-2 border border-neutral-300 text-neutral-700 text-sm rounded-md hover:border-neutral-500">Preview</button>
+            <button type="button" id="pi-bc-apply" class="px-6 py-2 bg-neutral-900 text-white text-sm font-medium rounded-md hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed" disabled>Apply</button>
+            <span id="pi-bc-status" class="text-sm text-neutral-500"></span>
+        </div>
+        <div id="pi-bc-results" class="hidden mt-4"></div>
+    </div>
+
+    <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
         <h2 class="text-sm font-semibold text-neutral-800">Remove hyphens from SKUs</h2>
         <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
             Cleans product SKUs to your store's hyphen-free format (e.g. <span class="font-mono">601-2134 → 6012134</span>).
@@ -173,6 +192,66 @@
                 .catch(function () { rehostStatus.textContent = 'A batch failed — click again to resume.'; rehostBtn.disabled = false; });
         }
         step();
+    });
+
+    // ── Import barcodes (EposNow ProductList) — preview then apply ──
+    var bcFile = document.getElementById('pi-bc-file');
+    var bcPreview = document.getElementById('pi-bc-preview');
+    var bcApply = document.getElementById('pi-bc-apply');
+    var bcStatus = document.getElementById('pi-bc-status');
+    var bcResults = document.getElementById('pi-bc-results');
+    bcFile.addEventListener('change', function () { bcApply.disabled = true; bcResults.classList.add('hidden'); bcStatus.textContent = ''; });
+
+    function bcPost(url) {
+        var fd = new FormData(); fd.append('file', bcFile.files[0]);
+        fd.append('__RequestVerificationToken', token ? token.value : '');
+        return fetch(url, { method: 'POST', body: fd, headers: { 'RequestVerificationToken': token ? token.value : '' } }).then(function (r) { return r.json(); });
+    }
+    function bcRender(d) {
+        var grid = '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">'
+            + stat(d.committed ? 'Written' : 'To write', d.committed ? d.written : d.toWrite, 'text-emerald-600')
+            + stat('Products matched', d.productsMatched)
+            + stat('SKUs not in store', d.skusNotFound)
+            + stat('No variant match', d.noVariantMatch)
+            + stat('Ambiguous', d.ambiguous)
+            + stat('Duplicate barcodes', d.duplicateBarcodes)
+            + stat('Rows read', d.rowsRead)
+            + (d.writeFailed ? stat('Write failed', '!', 'text-red-600') : '')
+            + '</div>';
+        var sample = '';
+        if (d.sample && d.sample.length) {
+            sample = '<h3 class="text-sm font-semibold text-neutral-700 mt-5 mb-2">Sample matches</h3>'
+                + '<div class="overflow-x-auto"><table class="w-full text-sm border border-neutral-200 rounded-md">'
+                + '<thead><tr class="bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500">'
+                + '<th class="px-3 py-2">SKU</th><th class="px-3 py-2">Barcode</th><th class="px-3 py-2">Goes to</th></tr></thead><tbody>'
+                + d.sample.map(function (s) {
+                    return '<tr class="border-t border-neutral-100"><td class="px-3 py-2 font-mono text-xs">' + esc(s.sku) + '</td>'
+                        + '<td class="px-3 py-2 font-mono text-xs">' + esc(s.barcode) + '</td>'
+                        + '<td class="px-3 py-2">' + esc(s.status === 'product-barcode' ? 'product (simple)' : (s.variant || '')) + '</td></tr>';
+                }).join('') + '</tbody></table></div>';
+        }
+        bcResults.innerHTML = grid + sample; bcResults.classList.remove('hidden');
+    }
+    bcPreview.addEventListener('click', function () {
+        if (!bcFile.files || !bcFile.files.length) { bcStatus.textContent = 'Choose a CSV first.'; return; }
+        bcStatus.textContent = 'Reading…'; bcPreview.disabled = true; bcApply.disabled = true;
+        bcPost(base + 'PreviewBarcodes').then(function (d) {
+            bcPreview.disabled = false;
+            if (!d.ok) { bcStatus.textContent = d.error || 'Failed.'; return; }
+            bcRender(d);
+            bcStatus.textContent = d.toWrite + ' barcode(s) ready to write (' + d.productsMatched + ' products matched).';
+            bcApply.disabled = d.toWrite === 0;
+        }).catch(function () { bcPreview.disabled = false; bcStatus.textContent = 'Request failed.'; });
+    });
+    bcApply.addEventListener('click', function () {
+        if (!confirm('Write these barcodes to the matched products? Existing barcodes on those items are overwritten.')) return;
+        bcPreview.disabled = true; bcApply.disabled = true; bcStatus.textContent = 'Writing…';
+        bcPost(base + 'ApplyBarcodes').then(function (d) {
+            bcPreview.disabled = false;
+            if (!d.ok) { bcStatus.textContent = d.error || 'Failed.'; return; }
+            bcRender(d);
+            bcStatus.textContent = d.writeFailed ? 'Write failed — nothing saved. ' + (d.errors[0] || '') : ('Done — ' + d.written + ' barcode(s) written.');
+        }).catch(function () { bcPreview.disabled = false; bcStatus.textContent = 'Request failed.'; });
     });
 
     // ── Remove hyphens from SKUs (batched, repeats until done) ──

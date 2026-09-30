@@ -34,13 +34,15 @@ public class ProductImportController : AdminBaseController
     private readonly ApplicationDbContext _db;
     private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
     private readonly SterlingLams.Web.Services.IStorefrontCache _cache;
+    private readonly SterlingLams.Web.Services.BarcodeImportService _barcodes;
     private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<ProductImportController> _log;
 
     public ProductImportController(ApplicationDbContext db, SterlingLams.Web.Services.ICloudinaryProvider cloud,
-        SterlingLams.Web.Services.IStorefrontCache cache, IHttpClientFactory httpFactory, ILogger<ProductImportController> log)
+        SterlingLams.Web.Services.IStorefrontCache cache, SterlingLams.Web.Services.BarcodeImportService barcodes,
+        IHttpClientFactory httpFactory, ILogger<ProductImportController> log)
     {
-        _db = db; _cloud = cloud; _cache = cache; _httpFactory = httpFactory; _log = log;
+        _db = db; _cloud = cloud; _cache = cache; _barcodes = barcodes; _httpFactory = httpFactory; _log = log;
     }
 
     public IActionResult Index()
@@ -54,6 +56,56 @@ public class ProductImportController : AdminBaseController
 
     [HttpPost, ValidateAntiForgeryToken, RequestSizeLimit(60_000_000)]
     public Task<IActionResult> Apply(IFormFile? file) => RunAsync(file, apply: true);
+
+    // Import EposNow barcodes from a "ProductList" CSV (Name;CategoryId;Barcode) — matches each row's
+    // SKU (the leading token of Name) to a product and assigns the barcode: to a SIMPLE product it's the
+    // product's own barcode; to a VARIABLE product it's placed on the colour/size-matched variant. Dry-run
+    // Preview first (commit=false), then Apply (commit=true, single two-phase unique-barcode write).
+    [HttpPost, ValidateAntiForgeryToken, RequestSizeLimit(60_000_000)]
+    public Task<IActionResult> PreviewBarcodes(IFormFile? file) => RunBarcodesAsync(file, commit: false);
+
+    [HttpPost, ValidateAntiForgeryToken, RequestSizeLimit(60_000_000)]
+    public Task<IActionResult> ApplyBarcodes(IFormFile? file) => RunBarcodesAsync(file, commit: true);
+
+    private async Task<IActionResult> RunBarcodesAsync(IFormFile? file, bool commit)
+    {
+        if (file == null || file.Length == 0)
+            return Json(new { ok = false, error = "Choose the barcodes CSV (ProductList: Name;CategoryId;Barcode)." });
+
+        List<string> lines;
+        try
+        {
+            using var sr = new StreamReader(file.OpenReadStream());
+            var text = await sr.ReadToEndAsync();
+            lines = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n').ToList();
+        }
+        catch (Exception ex) { return Json(new { ok = false, error = "Couldn't read the CSV: " + ex.Message }); }
+
+        var res = await _barcodes.ImportNamedAsync(lines, commit);
+        if (commit && res.Written > 0)
+            await _cache.EvictAsync();
+        if (commit)
+            await LogAsync("Import", "Product", null, $"Barcode import: {res.Summary}");
+
+        return Json(new
+        {
+            ok = true,
+            committed = res.Committed,
+            summary = res.Summary,
+            rowsRead = res.RowsRead,
+            productsMatched = res.ProductsMatched,
+            toWrite = res.Assigned,
+            written = res.Written,
+            skusNotFound = res.SkusNotFound,
+            noVariantMatch = res.NoVariantMatch,
+            ambiguous = res.Ambiguous,
+            duplicateBarcodes = res.DuplicateBarcodes,
+            writeFailed = res.WriteFailed,
+            errors = res.Errors.Take(10),
+            sample = res.Rows.Where(x => x.Status == "matched" || x.Status == "product-barcode").Take(15)
+                .Select(x => new { x.Sku, x.Barcode, variant = x.VariantName, x.Status }),
+        });
+    }
 
     // Remove hyphens from product SKUs (601-2134 → 6012134) to match the store's hyphen-free format, in
     // bounded batches (the page repeats until done). Collision-safe: if the cleaned SKU already exists on
