@@ -46,6 +46,7 @@ public static class SeedData
                 new { Name = "Bracelet Watches", Slug = "bracelet-watches", Description = "Watches with a metal bracelet band" },
                 new { Name = "Strap Watches",    Slug = "strap-watches",    Description = "Watches with a leather or fabric strap" },
                 new { Name = "Bracelet",         Slug = "mens-bracelets",   Description = "Wrist bracelets" },
+                new { Name = "Mens Necklaces",   Slug = "mens-necklaces",   Description = "Necklaces and chains for men" },
                 new { Name = "Sets",         Slug = "sets",         Description = "Matching jewellery sets and gift collections" },
                 new { Name = "Clutches",     Slug = "clutches",     Description = "Evening clutches and stoned bags" },
                 new { Name = "Sunglasses",   Slug = "sunglasses",   Description = "Fashion and crystal sunglasses" },
@@ -79,7 +80,7 @@ public static class SeedData
                 braceletCat.Name = "Bracelet & Bangle";
                 logger.LogInformation("Renamed 'Bracelets' category to 'Bracelet & Bangle'.");
             }
-            foreach (var slug in new[] { "bracelet-watches", "strap-watches", "mens-bracelets" })
+            foreach (var slug in new[] { "bracelet-watches", "strap-watches", "mens-bracelets", "mens-necklaces" })
             {
                 var sub = await db.Categories.FirstOrDefaultAsync(c => c.Slug == slug);
                 if (sub != null && !sub.IsActive) { sub.IsActive = true; }
