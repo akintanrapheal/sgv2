@@ -154,9 +154,18 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .Take(PageSize)
                 .ToListAsync();
 
+            // Total on-hand stock per product (summed across every store + variant pool) for this page.
+            var pageIds = products.Select(p => p.Id).ToList();
+            var stockByProduct = await _db.StoreInventories
+                .Where(si => pageIds.Contains(si.ProductId))
+                .GroupBy(si => si.ProductId)
+                .Select(g => new { Id = g.Key, Qty = g.Sum(x => x.QuantityOnHand) })
+                .ToDictionaryAsync(x => x.Id, x => x.Qty);
+
             var vm = new AdminProductListViewModel
             {
                 Products            = products,
+                StockByProduct      = stockByProduct,
                 SearchQuery         = q,
                 Sort                = sort,
                 CategoryFilter      = category,
@@ -671,6 +680,24 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             TempData["Success"] = $"'{product.Name}' is now {(product.IsActive ? "active" : "inactive")}.";
             return RedirectToAction(nameof(Index));
+        }
+
+        // Toggle the Featured flag from the list's star. Returns JSON so the star flips in place without
+        // reloading the list (keeps the current filters/page/scroll).
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ToggleFeatured(int id)
+        {
+            var product = await _db.Products.FindAsync(id);
+            if (product == null) return Json(new { ok = false });
+
+            product.IsFeatured = !product.IsFeatured;
+            product.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+            await _storefrontCache.EvictAsync();
+            await LogAsync("Update", "Product", product.Id.ToString(),
+                $"{(product.IsFeatured ? "Featured" : "Unfeatured")} '{product.Name}'");
+            return Json(new { ok = true, featured = product.IsFeatured });
         }
 
         // ── Bulk actions on selected products ────────────────────────────────────

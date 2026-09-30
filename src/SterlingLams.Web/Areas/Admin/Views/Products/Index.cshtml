@@ -290,26 +290,23 @@
                 <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">
                     <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-all-route-data="nameRoute" class="hover:text-neutral-800">Name@(SortIndicator("name"))</a>
                 </th>
-                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">
-                    <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-all-route-data="categoryRoute" class="hover:text-neutral-800">Category@(SortIndicator("category"))</a>
-                </th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">SKU</th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Stock</th>
                 <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">
                     <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-all-route-data="priceRoute" class="hover:text-neutral-800">Price@(SortIndicator("price"))</a>
                 </th>
                 <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">
-                    <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-all-route-data="saleRoute" class="hover:text-neutral-800">Sale Price@(SortIndicator("sale"))</a>
+                    <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-all-route-data="categoryRoute" class="hover:text-neutral-800">Categories@(SortIndicator("category"))</a>
                 </th>
-                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">
-                    <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-all-route-data="statusRoute" class="hover:text-neutral-800">Status@(SortIndicator("status"))</a>
-                </th>
-                <th class="text-right px-4 py-3 text-xs text-neutral-400 font-medium">Actions</th>
+                <th class="px-4 py-3 text-xs text-neutral-400 font-medium text-center" title="Featured">&#9733;</th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Date</th>
             </tr>
         </thead>
         <tbody class="divide-y divide-neutral-50">
             @if (!Model.Products.Any())
             {
                 <tr>
-                    <td colspan="8" class="px-6 py-16 text-center text-neutral-400 text-sm">
+                    <td colspan="9" class="px-6 py-16 text-center text-neutral-400 text-sm">
                         @if (hasFilters)
                         {
                             <span>No products match your filters. <a asp-area="Admin" asp-controller="Products" asp-action="Index" asp-route-clear="1" class="underline hover:text-neutral-700">Clear all filters</a></span>
@@ -324,7 +321,8 @@
             @foreach (var p in Model.Products)
             {
                 var thumb = p.Images.OrderBy(i => i.SortOrder).FirstOrDefault()?.Url;
-                <tr class="hover:bg-neutral-50 transition-colors">
+                var stockQty = Model.StockByProduct.GetValueOrDefault(p.Id, 0);
+                <tr class="group hover:bg-neutral-50 transition-colors">
                     <!-- Select -->
                     <td class="px-4 py-2"><input type="checkbox" value="@p.Id" class="row-check align-middle cursor-pointer" /></td>
                     <!-- Thumbnail -->
@@ -352,41 +350,92 @@
                         }
                     </td>
 
-                    <!-- Name -->
-                    <td class="px-4 py-3">
-                        <p class="text-xs font-medium text-neutral-800">@p.Name</p>
+                    <!-- Name (clickable) + hover row actions -->
+                    <td class="px-4 py-3 align-top">
+                        <a asp-area="Admin" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id"
+                           class="text-[13px] font-semibold text-brand-600 hover:underline">@p.Name</a>@if (!p.IsActive && !p.IsArchived) { <span class="text-neutral-400 text-xs"> — Draft</span> } @if (p.IsArchived) { <span class="text-rose-400 text-xs"> — Trash</span> }
                         <div class="flex gap-1 mt-0.5 flex-wrap items-center">
                             @if (p.Variants.Count > 0)
                             {
                                 <span class="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-medium">@p.Variants.Count variant@(p.Variants.Count == 1 ? "" : "s")</span>
                             }
-                            @if (p.IsFeatured)   { <span class="text-[9px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">Featured</span> }
                             @if (p.IsNewArrival) { <span class="text-[9px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">New</span> }
-                            @if (!string.IsNullOrEmpty(p.Sku)) { <span class="text-[9px] text-neutral-400 font-mono">@p.Sku</span> }
+                        </div>
+                        <!-- Row actions: always visible on touch, revealed on hover on desktop -->
+                        <div class="row-actions mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] md:invisible md:group-hover:visible">
+                            @if (p.IsArchived)
+                            {
+                                <a asp-area="Admin" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id" class="text-neutral-500 hover:text-neutral-900">Edit</a>
+                                <span class="text-neutral-300">|</span>
+                                <form asp-area="Admin" asp-controller="Products" asp-action="Restore" asp-route-id="@p.Id" method="post" class="inline">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" data-no-loading="1" class="text-emerald-600 hover:text-emerald-800">Restore</button>
+                                </form>
+                                <span class="text-neutral-300">|</span>
+                                <form asp-area="Admin" asp-controller="Products" asp-action="DeletePermanent" asp-route-id="@p.Id" method="post" class="inline"
+                                      data-itemname="@p.Name" onsubmit="return confirm('Permanently delete ' + this.dataset.itemname + '? This cannot be undone.')">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" data-no-loading="1" class="text-rose-500 hover:text-rose-700">Delete permanently</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <a asp-area="Admin" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id" class="text-neutral-500 hover:text-neutral-900">Edit</a>
+                                <span class="text-neutral-300">|</span>
+                                <form asp-area="Admin" asp-controller="Products" asp-action="Duplicate" asp-route-id="@p.Id" method="post" class="inline">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" data-no-loading="1" class="text-neutral-500 hover:text-neutral-900">Duplicate</button>
+                                </form>
+                                <span class="text-neutral-300">|</span>
+                                <form asp-area="Admin" asp-controller="Products" asp-action="ToggleActive" asp-route-id="@p.Id" method="post" class="inline">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" data-no-loading="1" class="text-neutral-500 hover:text-neutral-900">@(p.IsActive ? "Deactivate" : "Activate")</button>
+                                </form>
+                                <span class="text-neutral-300">|</span>
+                                <form asp-area="Admin" asp-controller="Products" asp-action="Delete" asp-route-id="@p.Id" method="post" class="inline"
+                                      data-itemname="@p.Name" onsubmit="return confirm('Move ' + this.dataset.itemname + ' to Trash?')">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" data-no-loading="1" class="text-rose-500 hover:text-rose-700">Trash</button>
+                                </form>
+                            }
                         </div>
                     </td>
 
-                    <td class="px-4 py-3 text-xs text-neutral-500">@(p.Category?.Name ?? "—")</td>
-                    <td class="px-4 py-3 text-xs font-medium">₦@p.Price.ToString("N0")</td>
+                    <!-- SKU -->
+                    <td class="px-4 py-3 text-xs text-neutral-500 font-mono">@(string.IsNullOrEmpty(p.Sku) ? "—" : p.Sku)</td>
 
-                    <!-- Sale price — live sales in brand colour with the discount %; a sale that is
-                         scheduled or already finished shows muted so it isn't mistaken for active. -->
+                    <!-- Stock (total on-hand across stores) -->
                     <td class="px-4 py-3 text-xs whitespace-nowrap">
-                        @if (p.SalePrice is decimal sale && sale > 0m)
+                        @if (!p.TrackStock)
                         {
-                            <span class="font-medium @(p.IsOnSale ? "text-brand-600" : "text-neutral-400 line-through")">₦@sale.ToString("N0")</span>
-                            if (p.IsOnSale)
-                            {
-                                <span class="ml-1 text-[10px] bg-rose-50 text-rose-600 px-1.5 py-0.5 rounded">-@(((int)Math.Round((p.Price - sale) / p.Price * 100m)))%</span>
-                            }
-                            else if (p.SaleStartsAt is DateTime starts && starts > DateTime.UtcNow)
-                            {
-                                <span class="ml-1 text-[10px] text-neutral-400">scheduled @starts.ToLocalTime().ToString("d MMM")</span>
-                            }
-                            else if (p.SaleEndsAt is DateTime ends && ends < DateTime.UtcNow)
-                            {
-                                <span class="ml-1 text-[10px] text-neutral-400">ended @ends.ToLocalTime().ToString("d MMM")</span>
-                            }
+                            <span class="text-neutral-400">—</span>
+                        }
+                        else if (stockQty > 0)
+                        {
+                            <span class="text-emerald-600 font-medium">In stock</span> <span class="text-neutral-400">(@stockQty)</span>
+                        }
+                        else
+                        {
+                            <span class="text-rose-600 font-medium">Out of stock</span>
+                        }
+                    </td>
+
+                    <!-- Price (regular struck through when a live sale runs, then the sale price + %) -->
+                    <td class="px-4 py-3 text-xs whitespace-nowrap">
+                        @if (p.SalePrice is decimal sale && sale > 0m && p.IsOnSale)
+                        {
+                            <span class="text-neutral-400 line-through">₦@p.Price.ToString("N0")</span>
+                            <span class="font-medium text-brand-600 ml-1">₦@sale.ToString("N0")</span>
+                            <span class="ml-1 text-[10px] bg-rose-50 text-rose-600 px-1.5 py-0.5 rounded">-@(((int)Math.Round((p.Price - sale) / p.Price * 100m)))%</span>
+                        }
+                        else if (p.SalePrice is decimal sale2 && sale2 > 0m)
+                        {
+                            <span class="font-medium">₦@p.Price.ToString("N0")</span>
+                            <span class="ml-1 text-[10px] text-neutral-400">sale ₦@sale2.ToString("N0") @(p.SaleStartsAt is DateTime starts && starts > DateTime.UtcNow ? "(scheduled)" : "(ended)")</span>
+                        }
+                        else if (p.Price > 0m)
+                        {
+                            <span class="font-medium">₦@p.Price.ToString("N0")</span>
                         }
                         else
                         {
@@ -394,67 +443,25 @@
                         }
                     </td>
 
-                    <td class="px-4 py-3">
-                        @if (p.IsActive)
-                        {
-                            <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Active</span>
-                        }
-                        else
-                        {
-                            <span class="text-[10px] bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full">Inactive</span>
-                        }
+                    <!-- Categories -->
+                    <td class="px-4 py-3 text-xs text-neutral-500">@(p.Category?.Name ?? "—")</td>
+
+                    <!-- Featured star (click to toggle, no reload) -->
+                    <td class="px-4 py-3 text-center">
+                        <button type="button" class="star-toggle" data-id="@p.Id"
+                                title="@(p.IsFeatured ? "Featured — click to unfeature" : "Click to feature")" aria-label="Toggle featured">
+                            <svg class="w-5 h-5 mx-auto pointer-events-none" viewBox="0 0 24 24"
+                                 fill="@(p.IsFeatured ? "currentColor" : "none")" stroke="currentColor" stroke-width="1.5"
+                                 style="color:@(p.IsFeatured ? "#ed028b" : "#cbd5e1")">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.5a.56.56 0 011.04 0l2.09 5.01a.56.56 0 00.48.34l5.4.44c.5.04.7.66.32.99l-4.12 3.53a.56.56 0 00-.18.56l1.26 5.28a.56.56 0 01-.84.6l-4.63-2.82a.56.56 0 00-.58 0L6.9 20.9a.56.56 0 01-.84-.6l1.26-5.29a.56.56 0 00-.18-.56L3.02 10.9a.56.56 0 01.32-.99l5.4-.44a.56.56 0 00.48-.34L11.48 3.5z"/>
+                            </svg>
+                        </button>
                     </td>
 
-                    <td class="px-4 py-3 text-right">
-                        <div class="flex items-center justify-end gap-3">
-                            @if (p.IsArchived)
-                            {
-                                @* Trash view: restore, or permanently delete. *@
-                                <a asp-area="Admin" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id"
-                                   class="text-xs text-neutral-500 hover:text-neutral-900 transition-colors">Edit</a>
-                                <form asp-area="Admin" asp-controller="Products" asp-action="Restore"
-                                      asp-route-id="@p.Id" method="post" class="inline">
-                                    @Html.AntiForgeryToken()
-                                    <button type="submit" data-no-loading="1"
-                                            class="text-xs text-emerald-500 hover:text-emerald-700 transition-colors">Restore</button>
-                                </form>
-                                <form asp-area="Admin" asp-controller="Products" asp-action="DeletePermanent"
-                                      asp-route-id="@p.Id" method="post" class="inline"
-                                      data-itemname="@p.Name"
-                                      onsubmit="return confirm('Permanently delete ' + this.dataset.itemname + '? This cannot be undone.')">
-                                    @Html.AntiForgeryToken()
-                                    <button type="submit" data-no-loading="1"
-                                            class="text-xs text-rose-400 hover:text-rose-700 transition-colors">Delete permanently</button>
-                                </form>
-                            }
-                            else
-                            {
-                                <a asp-area="Admin" asp-controller="Products" asp-action="Edit" asp-route-id="@p.Id"
-                                   class="text-xs text-neutral-500 hover:text-neutral-900 transition-colors">Edit</a>
-                                <form asp-area="Admin" asp-controller="Products" asp-action="Duplicate"
-                                      asp-route-id="@p.Id" method="post" class="inline">
-                                    @Html.AntiForgeryToken()
-                                    <button type="submit" data-no-loading="1"
-                                            class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors">Copy</button>
-                                </form>
-                                <form asp-area="Admin" asp-controller="Products" asp-action="ToggleActive"
-                                      asp-route-id="@p.Id" method="post" class="inline">
-                                    @Html.AntiForgeryToken()
-                                    <button type="submit" data-no-loading="1"
-                                            class="text-xs text-neutral-400 hover:text-neutral-700 transition-colors">
-                                        @(p.IsActive ? "Deactivate" : "Activate")
-                                    </button>
-                                </form>
-                                <form asp-area="Admin" asp-controller="Products" asp-action="Delete"
-                                      asp-route-id="@p.Id" method="post" class="inline"
-                                      data-itemname="@p.Name"
-                                      onsubmit="return confirm('Move ' + this.dataset.itemname + ' to Trash?')">
-                                    @Html.AntiForgeryToken()
-                                    <button type="submit" data-no-loading="1"
-                                            class="text-xs text-rose-400 hover:text-rose-700 transition-colors">Trash</button>
-                                </form>
-                            }
-                        </div>
+                    <!-- Date: published (created) + last modified -->
+                    <td class="px-4 py-3 text-xs text-neutral-500 whitespace-nowrap">
+                        <div><span class="text-neutral-400">Published</span> @p.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</div>
+                        <div><span class="text-neutral-400">Modified</span> @p.UpdatedAt.ToLocalTime().ToString("dd MMM yyyy")</div>
                     </td>
                 </tr>
             }
@@ -610,5 +617,29 @@
 
     document.addEventListener('click', function (e) { if (!box.contains(e.target) && e.target !== input) hide(); });
     input.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
+})();
+
+// ── Featured star toggle (in place, no page reload) ──
+(function () {
+    var tok = document.querySelector('input[name="__RequestVerificationToken"]');
+    document.querySelectorAll('.star-toggle').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var fd = new FormData();
+            fd.append('id', btn.dataset.id);
+            if (tok) fd.append('__RequestVerificationToken', tok.value);
+            btn.disabled = true;
+            fetch((window.__adminBase || '') + '/Products/ToggleFeatured',
+                { method: 'POST', body: fd, headers: { 'RequestVerificationToken': tok ? tok.value : '' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    btn.disabled = false;
+                    if (!d.ok) return;
+                    var svg = btn.querySelector('svg');
+                    if (d.featured) { svg.setAttribute('fill', 'currentColor'); svg.style.color = '#ed028b'; btn.title = 'Featured — click to unfeature'; }
+                    else { svg.setAttribute('fill', 'none'); svg.style.color = '#cbd5e1'; btn.title = 'Click to feature'; }
+                })
+                .catch(function () { btn.disabled = false; });
+        });
+    });
 })();
 </script>
