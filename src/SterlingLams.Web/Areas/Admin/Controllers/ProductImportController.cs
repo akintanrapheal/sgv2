@@ -33,13 +33,14 @@ public class ProductImportController : AdminBaseController
 
     private readonly ApplicationDbContext _db;
     private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
+    private readonly SterlingLams.Web.Services.IStorefrontCache _cache;
     private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<ProductImportController> _log;
 
     public ProductImportController(ApplicationDbContext db, SterlingLams.Web.Services.ICloudinaryProvider cloud,
-        IHttpClientFactory httpFactory, ILogger<ProductImportController> log)
+        SterlingLams.Web.Services.IStorefrontCache cache, IHttpClientFactory httpFactory, ILogger<ProductImportController> log)
     {
-        _db = db; _cloud = cloud; _httpFactory = httpFactory; _log = log;
+        _db = db; _cloud = cloud; _cache = cache; _httpFactory = httpFactory; _log = log;
     }
 
     public IActionResult Index()
@@ -53,6 +54,44 @@ public class ProductImportController : AdminBaseController
 
     [HttpPost, ValidateAntiForgeryToken, RequestSizeLimit(60_000_000)]
     public Task<IActionResult> Apply(IFormFile? file) => RunAsync(file, apply: true);
+
+    // Remove hyphens from product SKUs (601-2134 → 6012134) to match the store's hyphen-free format, in
+    // bounded batches (the page repeats until done). Collision-safe: if the cleaned SKU already exists on
+    // another live product, THIS one is a duplicate the hyphen mismatch let in — it's moved to Trash
+    // instead of clashing. Idempotent.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> NormalizeSkus()
+    {
+        const int Bat = 200;
+        var pending = await _db.Products
+            .Where(p => p.Sku != null && p.Sku.Contains("-") && !p.IsArchived)
+            .OrderBy(p => p.Id).Take(Bat).ToListAsync();
+
+        int cleaned = 0, trashedDupes = 0;
+        foreach (var p in pending)
+        {
+            var clean = p.Sku!.Replace("-", "").Trim();
+            if (clean.Length == 0 || clean == p.Sku) continue;
+            var clash = await _db.Products.AnyAsync(x => x.Id != p.Id && !x.IsArchived && x.Sku == clean);
+            if (clash)
+            {
+                p.IsActive = false; p.IsArchived = true; p.UpdatedAt = DateTime.UtcNow; trashedDupes++;
+            }
+            else
+            {
+                p.Sku = clean; p.UpdatedAt = DateTime.UtcNow; cleaned++;
+            }
+        }
+        if (cleaned + trashedDupes > 0)
+        {
+            await _db.SaveChangesAsync();
+            if (trashedDupes > 0) await _cache.EvictAsync();
+        }
+        var remaining = await _db.Products.CountAsync(p => p.Sku != null && p.Sku.Contains("-") && !p.IsArchived);
+        if (cleaned + trashedDupes > 0)
+            await LogAsync("Update", "Product", null, $"SKU hyphen cleanup: {cleaned} cleaned, {trashedDupes} duplicate(s) trashed ({remaining} remaining).");
+        return Json(new { ok = true, cleaned, trashedDupes, remaining });
+    }
 
     // Re-host any product/variant image still on an external (non-Cloudinary) URL onto Cloudinary, in
     // bounded batches (the page repeats until done). Fixes images imported while Cloudinary wasn't
@@ -157,7 +196,7 @@ public class ProductImportController : AdminBaseController
         foreach (var r in rows)
         {
             if (!string.Equals(Val(r, "Type"), "product_variation", StringComparison.OrdinalIgnoreCase)) continue;
-            var psku = Val(r, "Parent SKU");
+            var psku = Val(r, "Parent SKU").Replace("-", "");   // match the de-hyphenated parent SKU
             if (psku.Length == 0) continue;
             if (!variationsByParent.TryGetValue(psku, out var list)) variationsByParent[psku] = list = new();
             list.Add(r);
@@ -181,7 +220,7 @@ public class ProductImportController : AdminBaseController
             if (string.Equals(G("Type"), "product_variation", StringComparison.OrdinalIgnoreCase)) continue; // handled via variationsByParent
             var title = G("Title");
             if (title.Length == 0) { skippedNoTitle++; continue; }
-            var sku = G("SKU");
+            var sku = G("SKU").Replace("-", "");   // store SKUs are hyphen-free; also lets dedup match
             if (sku.Length == 0) { skippedNoSku++; continue; }
             if (existing.Contains(sku)) { skippedExisting++; continue; }
 

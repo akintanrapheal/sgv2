@@ -42,6 +42,19 @@
             <span id="pi-rehost-status" class="text-sm text-neutral-500"></span>
         </div>
     </div>
+
+    <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
+        <h2 class="text-sm font-semibold text-neutral-800">Remove hyphens from SKUs</h2>
+        <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
+            Cleans product SKUs to your store's hyphen-free format (e.g. <span class="font-mono">601-2134 → 6012134</span>).
+            If a cleaned SKU already belongs to another product, that hyphenated one is a duplicate and is moved to
+            <strong>Trash</strong> instead. Runs in batches — keep the tab open.
+        </p>
+        <div class="flex items-center gap-2 mt-4">
+            <button type="button" id="pi-sku" class="px-5 py-2 border border-neutral-300 text-neutral-700 text-sm rounded-md hover:border-neutral-500">Remove hyphens from SKUs</button>
+            <span id="pi-sku-status" class="text-sm text-neutral-500"></span>
+        </div>
+    </div>
 </div>
 
 @section Scripts {
@@ -158,6 +171,33 @@
                     }
                 })
                 .catch(function () { rehostStatus.textContent = 'A batch failed — click again to resume.'; rehostBtn.disabled = false; });
+        }
+        step();
+    });
+
+    // ── Remove hyphens from SKUs (batched, repeats until done) ──
+    var skuBtn = document.getElementById('pi-sku');
+    var skuStatus = document.getElementById('pi-sku-status');
+    skuBtn.addEventListener('click', function () {
+        if (!confirm('Remove hyphens from all product SKUs? Duplicates (where the clean SKU already exists) are moved to Trash. Safe to run repeatedly.')) return;
+        skuBtn.disabled = true;
+        var cleanedTotal = 0, trashedTotal = 0;
+        function step() {
+            skuStatus.textContent = 'Cleaning… ' + cleanedTotal + ' fixed, ' + trashedTotal + ' dupes trashed so far…';
+            var fd = new FormData(); fd.append('__RequestVerificationToken', token ? token.value : '');
+            fetch(base + 'NormalizeSkus', { method: 'POST', body: fd, headers: { 'RequestVerificationToken': token ? token.value : '' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d.ok) { skuStatus.textContent = d.error || 'Failed.'; skuBtn.disabled = false; return; }
+                    cleanedTotal += d.cleaned; trashedTotal += d.trashedDupes;
+                    if ((d.cleaned + d.trashedDupes) > 0 && d.remaining > 0) { step(); }
+                    else {
+                        skuStatus.textContent = 'Done — ' + cleanedTotal + ' SKU(s) cleaned, ' + trashedTotal + ' duplicate(s) moved to Trash.'
+                            + (d.remaining > 0 ? ' ' + d.remaining + ' left.' : '');
+                        skuBtn.disabled = false;
+                    }
+                })
+                .catch(function () { skuStatus.textContent = 'A batch failed — click again to resume.'; skuBtn.disabled = false; });
         }
         step();
     });
