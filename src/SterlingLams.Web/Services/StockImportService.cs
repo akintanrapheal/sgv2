@@ -74,12 +74,13 @@ public class StockImportService
             foreach (var n in names) if (col.TryGetValue(n, out var i)) return i;
             return 0;
         }
-        var cName = Col("Name", "Product", "Title");
+        var cName = Col("Name", "Product Name", "Product", "Title");
+        var cSku = Col("SKU", "Sku");
         var cBarcode = Col("Barcode", "EAN", "Code");
-        var cQty = Col("DatedStock", "Stock", "Quantity", "Qty", "OnHand");
-        var cPrice = Col("SalePrice", "Price", "RetailPrice");
-        if (cName == 0 && cBarcode == 0)
-            throw new InvalidOperationException("Couldn't find a 'Name' or 'Barcode' column in the sheet.");
+        var cQty = Col("DatedStock", "Current Stock", "Stock", "Quantity", "Qty", "On Hand", "OnHand");
+        var cPrice = Col("SalePrice", "Sale Price", "Price", "RetailPrice", "Retail Price");
+        if (cName == 0 && cBarcode == 0 && cSku == 0)
+            throw new InvalidOperationException("Couldn't find a 'Name', 'SKU' or 'Barcode' column in the sheet.");
 
         string Cell(IXLRow row, int c)
         {
@@ -97,11 +98,16 @@ public class StockImportService
         var rows = new List<Row>();
         foreach (var r in ws.RowsUsed().Skip(1)) // skip header
         {
-            var name = Cell(r, cName);
+            var rawName = Cell(r, cName);
             var barcode = Cell(r, cBarcode);
-            if (name.Length == 0 && barcode.Length == 0) continue;
-            var (sku, desc) = SplitName(name);
-            rows.Add(new Row(desc.Length > 0 ? desc : name, sku, barcode, ToQty(Cell(r, cQty)), ToMoney(Cell(r, cPrice))));
+            var skuCell = Cell(r, cSku);
+            if (rawName.Length == 0 && barcode.Length == 0 && skuCell.Length == 0) continue;
+            // SKU from its own column when present (e.g. the per-category export); otherwise parse it
+            // out of a "SKU (DESCRIPTION)" Name. Display name = the description, or the raw name.
+            var (parsedSku, desc) = SplitName(rawName);
+            var sku = skuCell.Length > 0 ? skuCell : parsedSku;
+            var display = desc.Length > 0 ? desc : rawName;
+            rows.Add(new Row(display, sku, barcode, ToQty(Cell(r, cQty)), ToMoney(Cell(r, cPrice))));
         }
         return rows;
     }
@@ -125,18 +131,22 @@ public class StockImportService
             }
             return -1;
         }
-        int iName = Idx("Name", "Product", "Title"), iBc = Idx("Barcode", "EAN", "Code"),
-            iQty = Idx("DatedStock", "Stock", "Quantity", "Qty", "OnHand"), iPrice = Idx("SalePrice", "Price", "RetailPrice");
+        int iName = Idx("Name", "Product Name", "Product", "Title"), iSku = Idx("SKU", "Sku"),
+            iBc = Idx("Barcode", "EAN", "Code"),
+            iQty = Idx("DatedStock", "Current Stock", "Stock", "Quantity", "Qty", "On Hand", "OnHand"),
+            iPrice = Idx("SalePrice", "Sale Price", "Price", "RetailPrice", "Retail Price");
 
         var rows = new List<Row>();
         for (int li = 1; li < lines.Count; li++)
         {
             var f = Split(lines[li]);
             string At(int i) => i >= 0 && i < f.Length ? f[i].Trim() : "";
-            var name = At(iName); var barcode = At(iBc);
-            if (name.Length == 0 && barcode.Length == 0) continue;
-            var (sku, desc) = SplitName(name);
-            rows.Add(new Row(desc.Length > 0 ? desc : name, sku, barcode, ToQty(At(iQty)), ToMoney(At(iPrice))));
+            var rawName = At(iName); var barcode = At(iBc); var skuCell = At(iSku);
+            if (rawName.Length == 0 && barcode.Length == 0 && skuCell.Length == 0) continue;
+            var (parsedSku, desc) = SplitName(rawName);
+            var sku = skuCell.Length > 0 ? skuCell : parsedSku;
+            var display = desc.Length > 0 ? desc : rawName;
+            rows.Add(new Row(display, sku, barcode, ToQty(At(iQty)), ToMoney(At(iPrice))));
         }
         return rows;
     }
