@@ -258,7 +258,10 @@ public class RefundApprovalService : IRefundApprovalService
 
             var subject = Fill(subjT);
             if (!string.IsNullOrWhiteSpace(store?.Email)) await _email.SendAsync(store!.Email!, subject, html);
-            var admin = await _settings.GetAsync("notifications.admin_email", "");
+            // Copy recipients: the dedicated restock list, falling back to the general admin email.
+            var admin = await _settings.GetAsync("notifications.restock_emails", "");
+            if (string.IsNullOrWhiteSpace(admin))
+                admin = await _settings.GetAsync("notifications.admin_email", "");
             foreach (var addr in SterlingLams.Web.Infrastructure.EmailRecipients.Split(admin))
                 if (!string.Equals(addr, store?.Email, StringComparison.OrdinalIgnoreCase))
                     await _email.SendAsync(addr, "[copy] " + subject, html);

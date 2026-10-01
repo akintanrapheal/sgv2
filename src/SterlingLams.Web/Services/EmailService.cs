@@ -99,7 +99,7 @@ public class SmtpEmailService : IEmailService
     }
 
     /// <summary>Admin-customizable email branding (Settings → Emails), resolved per send.</summary>
-    private sealed record Branding(string FromName, string ReplyTo, string HeaderColor, string FooterText, string? LogoUrl, int LogoHeight);
+    private sealed record Branding(string FromName, string ReplyTo, string HeaderColor, string FooterText, string? LogoUrl, int LogoHeight, string NoReplyNotice);
 
     /// <summary>Resolves live SMTP config: values entered in Admin → Integrations (SMTP password
     /// decrypted transparently) take precedence, falling back to appsettings/env config. An untouched
@@ -130,6 +130,9 @@ public class SmtpEmailService : IEmailService
         var replyTo = await _settings.GetAsync("email.reply_to", "");
         var headerColor = await _settings.GetAsync("email.header_color", "#0a0a0a");
         var footerText = await _settings.GetAsync("email.footer_text", "This is an automated message — please don't reply.");
+        // Dedicated "do not reply" notice, shown on its own line in every email footer. Kept separate
+        // from footerText so it survives a rebrand of that line; blank = hidden. Rebrandable in Admin → Emails.
+        var noReplyNotice = await _settings.GetAsync("email.noreply_notice", "This is an automatic email — please do not reply.");
         var logoHeight = (int)await _settings.GetDecimalAsync("email.logo_height", 72);
         if (logoHeight is < 16 or > 300) logoHeight = 72;
 
@@ -145,7 +148,7 @@ public class SmtpEmailService : IEmailService
             var baseUrl = (_config["App:BaseUrl"] ?? "").TrimEnd('/');
             if (!string.IsNullOrEmpty(baseUrl)) logoUrl = baseUrl + "/" + logo.TrimStart('/');
         }
-        return new Branding(fromName, replyTo, headerColor, footerText, logoUrl, logoHeight);
+        return new Branding(fromName, replyTo, headerColor, footerText, logoUrl, logoHeight, noReplyNotice);
     }
 
     public async Task<bool> SendAsync(string toEmail, string subject, string innerHtml, string? toName = null, CancellationToken ct = default)
@@ -263,6 +266,7 @@ public class SmtpEmailService : IEmailService
           {content}
         </td></tr>
         <tr><td style=""padding:20px 32px;border-top:1px solid #e7e5e4;text-align:center;font-size:11px;color:#a8a29e;"">
+          {(string.IsNullOrWhiteSpace(brand.NoReplyNotice) ? "" : $@"<div style=""margin:0 0 6px;font-weight:600;color:#78716c;"">{System.Net.WebUtility.HtmlEncode(brand.NoReplyNotice)}</div>")}
           &copy; {DateTime.UtcNow:yyyy} {System.Net.WebUtility.HtmlEncode(brand.FromName)}. {System.Net.WebUtility.HtmlEncode(brand.FooterText)}
         </td></tr>
       </table>
