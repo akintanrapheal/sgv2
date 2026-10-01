@@ -76,7 +76,10 @@ public class FulfilmentRetryService : BackgroundService
 
             var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
             var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
-            var adminEmail = await settings.GetAsync("notifications.admin_email", "");
+            // Fulfilment-issue recipients: the dedicated list, falling back to the general admin email.
+            var adminEmail = await settings.GetAsync("notifications.fulfilment_emails", "");
+            if (string.IsNullOrWhiteSpace(adminEmail))
+                adminEmail = await settings.GetAsync("notifications.admin_email", "");
 
             if (!string.IsNullOrWhiteSpace(adminEmail))
             {
