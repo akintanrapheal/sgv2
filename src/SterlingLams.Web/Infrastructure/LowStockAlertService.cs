@@ -49,9 +49,13 @@ public class LowStockAlertService : BackgroundService
         if (DateOnly.TryParse(lastSentStr, out var lastSent) && lastSent.AddDays(everyDays) > today)
             return; // not due yet
 
-        var adminEmail = await settings.GetAsync("notifications.admin_email", "");
+        // Low-stock digest recipients: the dedicated low-stock list, falling back to the general
+        // admin email when that list is left blank (so existing single-email setups keep working).
+        var adminEmail = await settings.GetAsync("notifications.low_stock_emails", "");
+        if (string.IsNullOrWhiteSpace(adminEmail))
+            adminEmail = await settings.GetAsync("notifications.admin_email", "");
         // Per-store digest: each branch also gets a low-stock email for ITS OWN stock, to the store's
-        // email. On by default; the admin all-branches digest still goes to notifications.admin_email.
+        // email. On by default; the admin all-branches digest goes to the recipients resolved above.
         var perStore = await settings.GetBoolAsync("notifications.low_stock_per_store", true);
         if (string.IsNullOrWhiteSpace(adminEmail) && !perStore)
         {
