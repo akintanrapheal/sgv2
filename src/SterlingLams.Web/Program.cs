@@ -250,6 +250,7 @@ builder.Services.Configure<SterlingLams.Web.Services.EmailOptions>(builder.Confi
 builder.Services.AddScoped<SterlingLams.Web.Services.IEmailService, SterlingLams.Web.Services.SmtpEmailService>();
 builder.Services.AddScoped<SterlingLams.Web.Services.IAbandonedCartCapture, SterlingLams.Web.Services.AbandonedCartCapture>();
 builder.Services.AddScoped<SterlingLams.Web.Services.BarcodeImportService>();
+builder.Services.AddScoped<SterlingLams.Web.Services.StockImportService>();
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 // Per-IP throttle on auth & email-sending endpoints (brute-force / abuse protection).
