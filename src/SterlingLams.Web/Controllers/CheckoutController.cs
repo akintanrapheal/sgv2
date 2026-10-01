@@ -1020,7 +1020,11 @@ public class CheckoutController : Controller
             // Admin new-order alert
             if (await _settings.GetBoolAsync("notifications.new_order", true))
             {
-                var adminEmail = await _settings.GetAsync("notifications.admin_email", "");
+                // New-order alert recipients: the dedicated new-order list, falling back to the
+                // general admin email when that list is left blank.
+                var adminEmail = await _settings.GetAsync("notifications.new_order_emails", "");
+                if (string.IsNullOrWhiteSpace(adminEmail))
+                    adminEmail = await _settings.GetAsync("notifications.admin_email", "");
                 if (!string.IsNullOrWhiteSpace(adminEmail))
                 {
                     // Rich admin alert — same layout as the customer confirmation (images, colour,

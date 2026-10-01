@@ -56,6 +56,14 @@ public static class SettingsSeedData
             adminEmail.Label = "Admin Email(s)";
             adminEmail.Description = "Receives new order and low stock alerts. Add several by separating them with commas.";
         }
+        // New-order and low-stock alerts now have their OWN recipient fields (notifications.new_order_emails
+        // / low_stock_emails), each falling back to this general admin email when blank. Relabel the general
+        // one so its new role is clear (value untouched; the per-notification fields are seeded below).
+        if (adminEmail != null && adminEmail.Description.StartsWith("Receives new order and low stock"))
+        {
+            adminEmail.Label = "Admin Email(s) — general / fallback";
+            adminEmail.Description = "General admin alerts (refunds, fulfilment issues) and the fallback for any notification below whose own email list is left blank. Separate several with commas.";
+        }
 
         // Receipt logo re-based from height-in-px to width-in-mm. Convert the old default (76px) to the
         // new 45mm (4.5cm) width; leave any other admin-set value alone.
@@ -188,13 +196,15 @@ public static class SettingsSeedData
         new() { Key = "logistics.notify_email",            Group = "Shipping", Label = "Logistics dispatch email",           Type = "email",   Value = "sterlinglamslogistics@gmail.com", Description = "Where the 'new delivery to fulfil' email is sent when a delivery order is dispatched. Leave blank to turn logistics emails off.", SortOrder = 8 },
 
         // ── Notifications ─────────────────────────────────────────────────────
-        new() { Key = "notifications.admin_email",     Group = "Notifications", Label = "Admin Email(s)",                 Type = "text",    Value = "rapheal@sterlinglamslogistics.com", Description = "Receives new order and low stock alerts. Add several by separating them with commas.", SortOrder = 1 },
-        new() { Key = "notifications.new_order",       Group = "Notifications", Label = "New Order Alerts",               Type = "boolean", Value = "true",  Description = "Send email to admin when a new order is placed.",          SortOrder = 2 },
-        new() { Key = "notifications.low_stock",       Group = "Notifications", Label = "Low Stock Alerts",               Type = "boolean", Value = "true",  Description = "Send email to admin when stock falls below threshold.",     SortOrder = 3 },
-        new() { Key = "notifications.low_stock_every_days", Group = "Notifications", Label = "Low Stock Alert Frequency (days)", Type = "number", Value = "1", Description = "Send the low-stock digest at most once every N days (1 = daily, 3 = every 3 days, 7 = weekly). Only applies when Low Stock Alerts is on.", SortOrder = 3 },
-        new() { Key = "notifications.low_stock_per_store",  Group = "Notifications", Label = "Per-store Low Stock Digest",      Type = "boolean", Value = "true", Description = "Also email each branch its OWN low-stock digest to the store's email address (set on the store), alongside the all-branches digest sent to the admin. Only applies when Low Stock Alerts is on.", SortOrder = 3 },
+        new() { Key = "notifications.admin_email",     Group = "Notifications", Label = "Admin Email(s) — general / fallback", Type = "text", Value = "rapheal@sterlinglamslogistics.com", Description = "General admin alerts (refunds, fulfilment issues) and the fallback for any notification below whose own email list is left blank. Separate several with commas.", SortOrder = 1 },
+        new() { Key = "notifications.new_order",       Group = "Notifications", Label = "New Order Alerts",               Type = "boolean", Value = "true",  Description = "Send an email when a new order is placed.",          SortOrder = 2 },
+        new() { Key = "notifications.new_order_emails", Group = "Notifications", Label = "New Order Alert Email(s)",       Type = "text",    Value = "",      Description = "Who receives new-order alerts. Leave blank to use the Admin Email(s) above. Add several by separating them with commas.", SortOrder = 3 },
+        new() { Key = "notifications.low_stock",       Group = "Notifications", Label = "Low Stock Alerts",               Type = "boolean", Value = "true",  Description = "Send an email when stock falls below threshold.",     SortOrder = 4 },
+        new() { Key = "notifications.low_stock_emails", Group = "Notifications", Label = "Low Stock Alert Email(s)",       Type = "text",    Value = "",      Description = "Who receives low-stock alerts. Leave blank to use the Admin Email(s) above. Add several by separating them with commas.", SortOrder = 5 },
+        new() { Key = "notifications.low_stock_every_days", Group = "Notifications", Label = "Low Stock Alert Frequency (days)", Type = "number", Value = "1", Description = "Send the low-stock digest at most once every N days (1 = daily, 3 = every 3 days, 7 = weekly). Only applies when Low Stock Alerts is on.", SortOrder = 6 },
+        new() { Key = "notifications.low_stock_per_store",  Group = "Notifications", Label = "Per-store Low Stock Digest",      Type = "boolean", Value = "true", Description = "Also email each branch its OWN low-stock digest to the store's email address (set on the store), alongside the all-branches digest. Only applies when Low Stock Alerts is on.", SortOrder = 7 },
+        new() { Key = "notifications.branch_fulfilment", Group = "Notifications", Label = "Branch Fulfilment Alerts",     Type = "boolean", Value = "true",  Description = "Email branches when an online order is fulfilled: each source branch is told to send a transfer, and the fulfilling branch is told to pack & dispatch.", SortOrder = 8 },
         new() { Key = "notifications.low_stock_last_sent",  Group = "Notifications", Label = "", Type = "hidden", Value = "", Description = "", SortOrder = 99 }, // internal: last time the digest was sent
-        new() { Key = "notifications.branch_fulfilment", Group = "Notifications", Label = "Branch Fulfilment Alerts",     Type = "boolean", Value = "true",  Description = "Email branches when an online order is fulfilled: each source branch is told to send a transfer, and the fulfilling branch is told to pack & dispatch.", SortOrder = 35 },
         new() { Key = "inventory.low_stock_threshold", Group = "Inventory", Label = "Low Stock Threshold (units)",   Type = "number",  Value = "5",     Description = "At or below this quantity an item counts as low: turns the per-branch availability dot amber on product pages, shows the storefront 'low stock' nudge, and triggers low-stock alerts (the exact number is never shown to customers).", SortOrder = 1 },
         new() { Key = "notifications.order_confirmed", Group = "Notifications", Label = "Customer Order Confirmation",    Type = "boolean", Value = "true",  Description = "Send order confirmation email to customer after payment.",  SortOrder = 4 },
         new() { Key = "notifications.abandoned_cart",       Group = "Notifications", Label = "Abandoned Cart Recovery",        Type = "boolean", Value = "true", Description = "Email shoppers a recovery link if they reach checkout but don't pay.", SortOrder = 5 },
