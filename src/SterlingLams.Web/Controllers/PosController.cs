@@ -118,8 +118,11 @@ public class PosController : Controller
     private async Task<Register?> BoundRegisterAsync()
     {
         if (int.TryParse(Request.Cookies[RegisterCookie], out var id))
+            // Register must be active AND belong to an active store — deactivating a branch (e.g. a
+            // store not open to customers yet) must take its tills offline even on devices already
+            // bound to them, sending the device back to the register picker (which also hides them).
             return await Infrastructure.DbRead.RetryAsync(() => _db.Registers.Include(r => r.Store)
-                .FirstOrDefaultAsync(r => r.Id == id && r.IsActive));
+                .FirstOrDefaultAsync(r => r.Id == id && r.IsActive && r.Store != null && r.Store.IsActive));
         return null;
     }
 
@@ -187,7 +190,10 @@ public class PosController : Controller
         var register = await BoundRegisterAsync();
         if (register == null)
         {
-            var registers = await Infrastructure.DbRead.RetryAsync(() => _db.Registers.Where(r => r.IsActive)
+            // Only offer tills at active stores — a deactivated branch (not yet open to customers)
+            // must not appear in the picker.
+            var registers = await Infrastructure.DbRead.RetryAsync(() => _db.Registers
+                .Where(r => r.IsActive && r.Store != null && r.Store.IsActive)
                 .Include(r => r.Store).OrderBy(r => r.Name).ToListAsync());
             return View("PickRegister", registers);
         }
