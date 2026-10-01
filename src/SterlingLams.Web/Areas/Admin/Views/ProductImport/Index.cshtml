@@ -63,6 +63,45 @@
     </div>
 
     <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
+        <h2 class="text-sm font-semibold text-neutral-800">Import stock &amp; POS prices (EposNow)</h2>
+        <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
+            Upload an EposNow stock export (<span class="font-mono">.xlsx</span> or <span class="font-mono">.csv</span>:
+            <span class="font-mono">Name, Barcode, DatedStock, SalePrice…</span>) for <strong>one branch</strong>.
+            Each row is matched to a product/variant by its <strong>barcode</strong>. Apply sets that branch's
+            <strong>on-hand quantity</strong> to <span class="font-mono">DatedStock</span>, and (optionally) writes
+            <span class="font-mono">SalePrice</span> as the product's <strong>POS price</strong> — the till price only;
+            the website price and sale price are never touched. <strong>Preview first</strong> — nothing is written until you Apply.
+        </p>
+        <div class="grid sm:grid-cols-2 gap-3 mt-3">
+            <div>
+                <label class="block text-xs text-neutral-500 mb-1">Branch (store)</label>
+                <select id="pi-st-store" class="block w-full text-sm border border-neutral-200 rounded-sm px-3 py-2 bg-white">
+                    <option value="">— choose store —</option>
+                    @foreach (var s in (ViewBag.Stores as IEnumerable<SterlingLams.Web.Models.Domain.Store> ?? Enumerable.Empty<SterlingLams.Web.Models.Domain.Store>()))
+                    {
+                        <option value="@s.Id">@s.Name</option>
+                    }
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-neutral-500 mb-1">Stock file (.xlsx / .csv)</label>
+                <input id="pi-st-file" type="file" accept=".xlsx,.csv,text/csv"
+                       class="block w-full text-sm text-neutral-700 file:mr-3 file:py-2 file:px-4 file:rounded-sm file:border-0 file:bg-neutral-900 file:text-white file:text-xs file:cursor-pointer border border-neutral-200 rounded-sm" />
+            </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-4 mt-3">
+            <label class="flex items-center gap-2 text-sm text-neutral-700"><input id="pi-st-stock" type="checkbox" checked /> Set on-hand stock</label>
+            <label class="flex items-center gap-2 text-sm text-neutral-700"><input id="pi-st-pos" type="checkbox" checked /> Set POS price from SalePrice</label>
+        </div>
+        <div class="flex items-center gap-2 mt-4">
+            <button type="button" id="pi-st-preview" class="px-5 py-2 border border-neutral-300 text-neutral-700 text-sm rounded-md hover:border-neutral-500">Preview</button>
+            <button type="button" id="pi-st-apply" class="px-6 py-2 bg-neutral-900 text-white text-sm font-medium rounded-md hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed" disabled>Apply to branch</button>
+            <span id="pi-st-status" class="text-sm text-neutral-500"></span>
+        </div>
+        <div id="pi-st-results" class="hidden mt-4"></div>
+    </div>
+
+    <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
         <h2 class="text-sm font-semibold text-neutral-800">Remove hyphens from SKUs</h2>
         <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
             Cleans product SKUs to your store's hyphen-free format (e.g. <span class="font-mono">601-2134 → 6012134</span>).
@@ -252,6 +291,110 @@
             bcRender(d);
             bcStatus.textContent = d.writeFailed ? 'Write failed — nothing saved. ' + (d.errors[0] || '') : ('Done — ' + d.written + ' barcode(s) written.');
         }).catch(function () { bcPreview.disabled = false; bcStatus.textContent = 'Request failed.'; });
+    });
+
+    // ── Import stock & POS prices (EposNow) — preview then apply, with an issues list ──
+    var stStore = document.getElementById('pi-st-store');
+    var stFile = document.getElementById('pi-st-file');
+    var stStock = document.getElementById('pi-st-stock');
+    var stPos = document.getElementById('pi-st-pos');
+    var stPreview = document.getElementById('pi-st-preview');
+    var stApply = document.getElementById('pi-st-apply');
+    var stStatus = document.getElementById('pi-st-status');
+    var stResults = document.getElementById('pi-st-results');
+    [stFile, stStore, stStock, stPos].forEach(function (el) {
+        el.addEventListener('change', function () { stApply.disabled = true; stResults.classList.add('hidden'); stStatus.textContent = ''; });
+    });
+
+    function stPost(url) {
+        var fd = new FormData();
+        fd.append('file', stFile.files[0]);
+        fd.append('storeId', stStore.value || '0');
+        fd.append('setStock', stStock.checked);
+        fd.append('setPosPrice', stPos.checked);
+        fd.append('__RequestVerificationToken', token ? token.value : '');
+        return fetch(url, { method: 'POST', body: fd, headers: { 'RequestVerificationToken': token ? token.value : '' } }).then(function (r) { return r.json(); });
+    }
+
+    function stRender(d) {
+        var grid = '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">'
+            + stat(d.committed ? 'Stock set' : 'Stock lines', d.stockLines, 'text-emerald-600')
+            + stat('Total units', d.totalUnits)
+            + stat(d.committed ? 'POS prices set' : 'POS prices', d.posPricesSet)
+            + stat('Matched', d.matched)
+            + stat('Issues', d.issuesTotal, d.issuesTotal ? 'text-amber-600' : 'text-neutral-900')
+            + stat('Rows in file', d.rowsRead)
+            + '</div>';
+        var issues = '';
+        if (d.issues && d.issues.length) {
+            issues = '<div class="flex items-center justify-between mt-6 mb-2">'
+                + '<h3 class="text-sm font-semibold text-neutral-700">Rows with issues'
+                + (d.issuesTotal > d.issues.length ? ' (showing ' + d.issues.length + ' of ' + d.issuesTotal + ')' : '')
+                + '</h3>'
+                + '<button type="button" id="pi-st-dl" class="text-xs px-3 py-1.5 border border-neutral-300 rounded-md hover:border-neutral-500">Download all issues (CSV)</button></div>'
+                + '<div class="overflow-x-auto max-h-96 overflow-y-auto border border-neutral-200 rounded-md"><table class="w-full text-sm">'
+                + '<thead class="sticky top-0 bg-neutral-50"><tr class="text-left text-xs uppercase tracking-wide text-neutral-500">'
+                + '<th class="px-3 py-2">SKU</th><th class="px-3 py-2">Name</th><th class="px-3 py-2">Barcode</th><th class="px-3 py-2">Qty</th><th class="px-3 py-2">Issue</th></tr></thead><tbody>'
+                + d.issues.map(function (i) {
+                    return '<tr class="border-t border-neutral-100"><td class="px-3 py-2 font-mono text-xs">' + esc(i.sku) + '</td>'
+                        + '<td class="px-3 py-2">' + esc(i.name) + '</td>'
+                        + '<td class="px-3 py-2 font-mono text-xs">' + esc(i.barcode) + '</td>'
+                        + '<td class="px-3 py-2">' + esc(i.qty) + '</td>'
+                        + '<td class="px-3 py-2 text-amber-700">' + esc(i.reason) + '</td></tr>';
+                }).join('') + '</tbody></table></div>';
+        }
+        stResults.innerHTML = grid + issues;
+        stResults.classList.remove('hidden');
+        var dl = document.getElementById('pi-st-dl');
+        if (dl) dl.addEventListener('click', stDownloadIssues);
+    }
+
+    function stDownloadIssues() {
+        var fd = new FormData();
+        fd.append('file', stFile.files[0]);
+        fd.append('storeId', stStore.value || '0');
+        fd.append('__RequestVerificationToken', token ? token.value : '');
+        fetch(base + 'ExportStockIssues', { method: 'POST', body: fd, headers: { 'RequestVerificationToken': token ? token.value : '' } })
+            .then(function (r) { return r.blob(); })
+            .then(function (b) {
+                var url = URL.createObjectURL(b); var a = document.createElement('a');
+                a.href = url; a.download = 'stock-import-issues.csv'; document.body.appendChild(a); a.click();
+                a.remove(); URL.revokeObjectURL(url);
+            });
+    }
+
+    function stValidate() {
+        if (!stStore.value) { stStatus.textContent = 'Choose the branch first.'; return false; }
+        if (!stFile.files || !stFile.files.length) { stStatus.textContent = 'Choose a stock file first.'; return false; }
+        return true;
+    }
+
+    stPreview.addEventListener('click', function () {
+        if (!stValidate()) return;
+        stStatus.textContent = 'Reading…'; stPreview.disabled = true; stApply.disabled = true;
+        stPost(base + 'PreviewStock').then(function (d) {
+            stPreview.disabled = false;
+            if (!d.ok) { stStatus.textContent = d.error || 'Failed.'; return; }
+            stRender(d);
+            stStatus.textContent = d.matched + ' matched · ' + d.stockLines + ' stock change(s) · ' + d.issuesTotal + ' issue(s).';
+            stApply.disabled = (d.stockLines === 0 && d.posPricesSet === 0);
+        }).catch(function () { stPreview.disabled = false; stStatus.textContent = 'Request failed.'; });
+    });
+
+    stApply.addEventListener('click', function () {
+        if (!stValidate()) return;
+        var label = stStore.options[stStore.selectedIndex].text;
+        if (!confirm('Apply this stock to ' + label + '? On-hand quantities are SET to the sheet values'
+            + (stPos.checked ? ', and POS prices updated from SalePrice' : '') + '. Website prices are not touched.')) return;
+        stPreview.disabled = true; stApply.disabled = true; stStatus.textContent = 'Applying…';
+        stPost(base + 'ApplyStock').then(function (d) {
+            stPreview.disabled = false;
+            if (!d.ok) { stStatus.textContent = d.error || 'Failed.'; return; }
+            stRender(d);
+            stStatus.textContent = 'Done — ' + d.stockLines + ' stock line(s), ' + d.totalUnits + ' units'
+                + (stPos.checked ? ', ' + d.posPricesSet + ' POS price(s)' : '') + ' set for ' + label + '.'
+                + (d.issuesTotal ? ' ' + d.issuesTotal + ' row(s) had issues — download the CSV to fix them.' : '');
+        }).catch(function () { stPreview.disabled = false; stApply.disabled = false; stStatus.textContent = 'Request failed.'; });
     });
 
     // ── Remove hyphens from SKUs (batched, repeats until done) ──

@@ -35,20 +35,89 @@ public class ProductImportController : AdminBaseController
     private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
     private readonly SterlingLams.Web.Services.IStorefrontCache _cache;
     private readonly SterlingLams.Web.Services.BarcodeImportService _barcodes;
+    private readonly SterlingLams.Web.Services.StockImportService _stockImport;
     private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<ProductImportController> _log;
 
     public ProductImportController(ApplicationDbContext db, SterlingLams.Web.Services.ICloudinaryProvider cloud,
         SterlingLams.Web.Services.IStorefrontCache cache, SterlingLams.Web.Services.BarcodeImportService barcodes,
+        SterlingLams.Web.Services.StockImportService stockImport,
         IHttpClientFactory httpFactory, ILogger<ProductImportController> log)
     {
-        _db = db; _cloud = cloud; _cache = cache; _barcodes = barcodes; _httpFactory = httpFactory; _log = log;
+        _db = db; _cloud = cloud; _cache = cache; _barcodes = barcodes; _stockImport = stockImport; _httpFactory = httpFactory; _log = log;
     }
 
-    public IActionResult Index()
+    public async Task<IActionResult> Index()
     {
         ViewData["Title"] = "Import products";
+        ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
         return View();
+    }
+
+    // ── Stock import (per-store on-hand + optional POS price), from an EposNow xlsx/csv ──────────
+    [HttpPost, ValidateAntiForgeryToken]
+    public Task<IActionResult> PreviewStock(IFormFile? file, int storeId, bool setStock = true, bool setPosPrice = true)
+        => RunStockAsync(file, storeId, setStock, setPosPrice, commit: false);
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public Task<IActionResult> ApplyStock(IFormFile? file, int storeId, bool setStock = true, bool setPosPrice = true)
+        => RunStockAsync(file, storeId, setStock, setPosPrice, commit: true);
+
+    private async Task<IActionResult> RunStockAsync(IFormFile? file, int storeId, bool setStock, bool setPosPrice, bool commit)
+    {
+        if (file == null || file.Length == 0)
+            return Json(new { ok = false, error = "Choose the stock file (.xlsx or .csv)." });
+        if (storeId <= 0)
+            return Json(new { ok = false, error = "Choose which store this stock is for." });
+        if (!setStock && !setPosPrice)
+            return Json(new { ok = false, error = "Tick at least one of: set stock, set POS price." });
+
+        await using var ms = new MemoryStream();
+        await using (var s = file.OpenReadStream()) await s.CopyToAsync(ms);
+        ms.Position = 0;
+
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var res = await _stockImport.RunAsync(ms, file.FileName, storeId, setStock, setPosPrice, commit, userId);
+        if (res.Error != null) return Json(new { ok = false, error = res.Error });
+
+        if (commit)
+        {
+            await _cache.EvictAsync();
+            await LogAsync("Import", "Stock", storeId.ToString(), res.Summary);
+        }
+
+        return Json(new
+        {
+            ok = true,
+            committed = res.Committed,
+            rowsRead = res.RowsRead,
+            matched = res.Matched,
+            unmatched = res.Unmatched,
+            stockLines = res.StockLines,
+            totalUnits = res.TotalUnits,
+            posPricesSet = res.PosPricesSet,
+            summary = res.Summary,
+            issuesTotal = res.Issues.Count,
+            issues = res.Issues.Take(300).Select(i => new { i.Sku, i.Name, i.Barcode, i.Qty, salePrice = i.SalePrice, i.Reason }),
+        });
+    }
+
+    // Download EVERY problem row (unmatched / duplicate / no-barcode) as CSV so they can be fixed in the sheet.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ExportStockIssues(IFormFile? file, int storeId)
+    {
+        if (file == null || file.Length == 0) return BadRequest("No file.");
+        await using var ms = new MemoryStream();
+        await using (var s = file.OpenReadStream()) await s.CopyToAsync(ms);
+        ms.Position = 0;
+
+        var res = await _stockImport.RunAsync(ms, file.FileName, storeId, setStock: true, setPosPrice: true, commit: false, userId: null);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("SKU,Name,Barcode,DatedStock,SalePrice,Issue");
+        static string Q(string? v) => "\"" + (v ?? "").Replace("\"", "\"\"") + "\"";
+        foreach (var i in res.Issues)
+            sb.AppendLine(string.Join(",", Q(i.Sku), Q(i.Name), Q(i.Barcode), i.Qty, i.SalePrice, Q(i.Reason)));
+        return File(System.Text.Encoding.UTF8.GetBytes(sb.ToString()), "text/csv", "stock-import-issues.csv");
     }
 
     [HttpPost, ValidateAntiForgeryToken, RequestSizeLimit(60_000_000)]
