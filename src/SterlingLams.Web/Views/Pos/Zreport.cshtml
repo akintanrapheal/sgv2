@@ -51,10 +51,7 @@
                 {
                     <div class="flex justify-between text-red-600"><span>− Cash out</span><span>₦@Model.CashOut.ToString("N0")</span></div>
                 }
-                @if (Model.CashRefunds > 0)
-                {
-                    <div class="flex justify-between text-red-600"><span>− Cash refunds</span><span>₦@Model.CashRefunds.ToString("N0")</span></div>
-                }
+                @* Refunds are settled off-till (not from this drawer), so they don't reduce expected cash. *@
                 <div class="flex justify-between font-medium"><span>Expected in drawer</span><span>₦@Model.ExpectedCash.ToString("N0")</span></div>
                 @if (!interim)
                 {
