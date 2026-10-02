@@ -186,7 +186,8 @@ public class OrgController : InventoryAreaController
 
         // Cashiers = users with a POS PIN (they sign into the POS app via PIN, no back-office role).
         var cashierUsers = await _db.Users.Where(u => u.PinHash != null)
-            .Select(u => new { u.Id, u.FirstName, u.LastName, u.PhoneNumber, u.LastLoginAt })
+            .Select(u => new { u.Id, u.FirstName, u.LastName, u.PhoneNumber, u.LastLoginAt,
+                               Pending = u.PinHash == ApplicationUser.PinPendingMarker })
             .ToListAsync();
         var cashierIds = cashierUsers.Select(c => c.Id).ToList();
         var storeMap = await (from us in _db.UserStores
@@ -202,7 +203,8 @@ public class OrgController : InventoryAreaController
             Phone = c.PhoneNumber,
             StoreId = storeMap.Where(m => m.UserId == c.Id).Select(m => (int?)m.StoreId).FirstOrDefault(),
             Branches = storeMap.Where(m => m.UserId == c.Id).Select(m => m.Name.Replace("Sterlin Glams ", "")).ToList(),
-            LastLogin = c.LastLoginAt
+            LastLogin = c.LastLoginAt,
+            PinPending = c.Pending
         }).OrderBy(c => c.Name).ToList();
         ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
 
@@ -288,8 +290,10 @@ public class OrgController : InventoryAreaController
 
         if (firstName.Length == 0 && lastName.Length == 0)
         { TempData["Error"] = "Enter the cashier's name."; return RedirectToAction(nameof(Staff)); }
-        if (pin.Length < 4 || pin.Length > 8 || !pin.All(char.IsDigit))
-        { TempData["Error"] = "PIN must be 4–8 digits."; return RedirectToAction(nameof(Staff)); }
+        // PIN is OPTIONAL now: leave it blank and the cashier chooses their own PIN at first POS login.
+        // If one IS entered, it must be 4–8 digits.
+        if (pin.Length > 0 && (pin.Length < 4 || pin.Length > 8 || !pin.All(char.IsDigit)))
+        { TempData["Error"] = "PIN must be 4–8 digits (or leave it blank for the cashier to set on first login)."; return RedirectToAction(nameof(Staff)); }
         if (email != null && await _db.Users.AnyAsync(u => u.NormalizedEmail == _userManager.NormalizeEmail(email)))
         { TempData["Error"] = "A user with that email already exists."; return RedirectToAction(nameof(Staff)); }
 
@@ -307,7 +311,10 @@ public class OrgController : InventoryAreaController
             PhoneNumber = phone.Length > 0 ? phone : null,
             CreatedAt = DateTime.UtcNow
         };
-        user.PinHash = _userManager.PasswordHasher.HashPassword(user, pin);
+        // Blank PIN → mark it pending so the cashier sets their own at first login; otherwise hash it now.
+        user.PinHash = pin.Length == 0
+            ? ApplicationUser.PinPendingMarker
+            : _userManager.PasswordHasher.HashPassword(user, pin);
         var res = await _userManager.CreateAsync(user);
         if (!res.Succeeded)
         { TempData["Error"] = string.Join(" ", res.Errors.Select(e => e.Description)); return RedirectToAction(nameof(Staff)); }
@@ -318,7 +325,9 @@ public class OrgController : InventoryAreaController
             await _db.SaveChangesAsync();
         }
         await LogAsync("Create", "User", user.Id, $"Created cashier '{user.FullName}'");
-        TempData["Success"] = $"Cashier {user.FullName} added.";
+        TempData["Success"] = user.PinPending
+            ? $"Cashier {user.FullName} added. They'll choose their PIN the first time they sign in at a till."
+            : $"Cashier {user.FullName} added.";
         return RedirectToAction(nameof(Staff));
     }
 
@@ -362,6 +371,20 @@ public class OrgController : InventoryAreaController
         return RedirectToAction(nameof(Staff));
     }
 
+    // "Reset PIN": clears the cashier's PIN and flags it pending, so the NEXT time they pick their name
+    // at a till they're asked to choose a new PIN themselves (their old PIN stops working immediately).
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResetCashierPin(string id)
+    {
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null) return NotFound();
+        user.PinHash = ApplicationUser.PinPendingMarker;
+        await _userManager.UpdateAsync(user);
+        await LogAsync("Update", "User", id, $"Reset POS PIN for {user.FullName} (cashier to set a new one at next login)");
+        TempData["Success"] = $"PIN reset for {user.FullName}. They'll set a new one next time they sign in at a till.";
+        return RedirectToAction(nameof(Staff));
+    }
+
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> SetCashierStore(string id, int storeId)
     {
@@ -398,4 +421,6 @@ public class CashierRow
     public int? StoreId { get; set; }
     public List<string> Branches { get; set; } = new();
     public DateTime? LastLogin { get; set; }
+    /// <summary>True when the cashier hasn't chosen a PIN yet (set on first login).</summary>
+    public bool PinPending { get; set; }
 }

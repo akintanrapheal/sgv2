@@ -10,8 +10,19 @@ public class ApplicationUser : IdentityUser
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? LastLoginAt { get; set; }
 
-    /// <summary>Hashed PIN for quick till sign-in. Null = this user can't sign in at a till.</summary>
+    /// <summary>Hashed PIN for quick till sign-in. Null = this user can't sign in at a till.
+    /// <see cref="PinPendingMarker"/> = a cashier who must choose their own PIN at first POS login.</summary>
     public string? PinHash { get; set; }
+
+    /// <summary>Sentinel stored in <see cref="PinHash"/> to mean "this cashier has POS access but has
+    /// not chosen a PIN yet — prompt them to set one at first sign-in". Kept as a marker (rather than a
+    /// new column) so it needs no schema change, and it never validates as a real PIN. A cashier with
+    /// this marker still shows on the till login screen and in the staff list (PinHash is non-null).</summary>
+    public const string PinPendingMarker = "__SET_PIN_ON_FIRST_LOGIN__";
+
+    /// <summary>True when this cashier still needs to choose their PIN (see <see cref="PinPendingMarker"/>).</summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public bool PinPending => PinHash == PinPendingMarker;
 
     /// <summary>True for shell accounts created automatically during guest checkout (random password,
     /// can't sign in until they reset it). Guest checkout reuses a guest account for the same email

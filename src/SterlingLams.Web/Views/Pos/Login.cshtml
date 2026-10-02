@@ -41,11 +41,15 @@
                     @foreach (var c in Model)
                     {
                         <button type="button" class="cashier-btn bg-white border border-neutral-200 rounded-xl px-3 py-6 text-center hover:border-brand-400 hover:shadow-md transition-all duration-200"
-                                data-id="@c.Id" data-name="@c.Name">
+                                data-id="@c.Id" data-name="@c.Name" data-pending="@(c.PinPending ? "true" : "false")">
                             <div class="w-10 h-10 rounded-full bg-neutral-100 flex items-center justify-center mx-auto mb-2 text-neutral-500 font-medium text-sm">
                                 @(string.IsNullOrEmpty(c.Name) ? "?" : c.Name.Substring(0, 1).ToUpper())
                             </div>
                             <span class="text-sm text-neutral-700 leading-tight">@(string.IsNullOrEmpty(c.Name) ? "—" : c.Name)</span>
+                            @if (c.PinPending)
+                            {
+                                <span class="block mt-1 text-[10px] uppercase tracking-wide text-brand-600">Set PIN</span>
+                            }
                         </button>
                     }
                 </div>
@@ -54,8 +58,9 @@
 
         <!-- PIN pad -->
         <div class="w-full max-w-sm bg-white border-l border-neutral-100 p-6 flex flex-col overflow-y-auto">
-            <p class="text-center text-xs uppercase tracking-[0.2em] text-neutral-400 mb-2">Enter your PIN</p>
-            <p id="pin-name" class="text-center text-base font-medium text-neutral-800 h-6 mb-3">&nbsp;</p>
+            <p id="pin-prompt" class="text-center text-xs uppercase tracking-[0.2em] text-neutral-400 mb-2">Enter your PIN</p>
+            <p id="pin-name" class="text-center text-base font-medium text-neutral-800 h-6 mb-1">&nbsp;</p>
+            <p id="pin-hint" class="text-center text-xs text-brand-600 min-h-4 mb-2 hidden">First time here — choose a 4–8 digit PIN you'll remember.</p>
 
             <div class="border-b-2 border-neutral-300 h-10 flex items-center justify-center gap-3 mb-2" id="pin-dots"></div>
             <p id="pin-error" class="text-center text-xs text-red-500 min-h-4 mb-3" role="alert" aria-live="assertive"></p>
@@ -86,10 +91,12 @@
 (function () {
     const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
     const nameEl = document.getElementById('pin-name');
+    const promptEl = document.getElementById('pin-prompt');
+    const hintEl = document.getElementById('pin-hint');
     const dots = document.getElementById('pin-dots');
     const errEl = document.getElementById('pin-error');
     const loginBtn = document.getElementById('pin-login');
-    let userId = null, pin = '', submitting = false;
+    let userId = null, pin = '', submitting = false, pending = false;
 
     // Live clock — big display + small header
     function tick() {
@@ -142,6 +149,11 @@
         b.style.boxShadow = SELECTED.boxShadow;
         b.setAttribute('aria-pressed', 'true');
         userId = b.dataset.id; nameEl.textContent = b.dataset.name; pin = ''; renderDots(); errEl.textContent = '';
+        // Cashiers who haven't chosen a PIN yet get the "create your PIN" flow instead of sign-in.
+        pending = b.dataset.pending === 'true';
+        promptEl.textContent = pending ? 'Create your PIN' : 'Enter your PIN';
+        hintEl.classList.toggle('hidden', !pending);
+        loginBtn.textContent = pending ? 'Set PIN' : 'Sign In';
     }
     document.querySelectorAll('.cashier-btn').forEach(b => b.addEventListener('click', () => selectCashier(b)));
 
@@ -168,9 +180,9 @@
         if (pin.length < 4) { errEl.textContent = 'Enter your PIN (at least 4 digits).'; return; }
         submitting = true;
         loginBtn.disabled = true;
-        loginBtn.textContent = 'Signing in…';
+        loginBtn.textContent = pending ? 'Setting PIN…' : 'Signing in…';
         try {
-            const res = await fetch('/Pos/Login', {
+            const res = await fetch(pending ? '/Pos/SetOwnPin' : '/Pos/Login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token },
                 body: `userId=${encodeURIComponent(userId)}&pin=${encodeURIComponent(pin)}`
@@ -178,7 +190,7 @@
             let data = {};
             try { data = await res.json(); } catch { /* non-JSON (e.g. an auth redirect) */ }
             if (res.ok && data.success) { location.href = window.__posBase || '/Pos'; return; }
-            errEl.textContent = data.message || `Sign-in failed (${res.status}). Please try again.`;
+            errEl.textContent = data.message || `${pending ? 'Could not set PIN' : 'Sign-in failed'} (${res.status}). Please try again.`;
         } catch {
             errEl.textContent = 'Network error — check your connection and try again.';
         }
@@ -186,7 +198,7 @@
         submitting = false;
         pin = ''; renderDots();
         loginBtn.disabled = false;
-        loginBtn.textContent = 'Sign In';
+        loginBtn.textContent = pending ? 'Set PIN' : 'Sign In';
     }
 
     // Safety net: never let a script error or rejected promise fail silently on the POS login.
