@@ -105,6 +105,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string Status { get; set; } = "";
         public bool IsPaid { get; set; }
         public string FulfillmentType { get; set; } = "";
+        public bool IsPos { get; set; }   // walk-in till sale — shown as "In-store" / "Paid & collected"
         public DateTime CreatedAt { get; set; }
     }
 
