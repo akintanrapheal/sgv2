@@ -1371,6 +1371,8 @@ public class PosController : Controller
             }
 
             await _signIn.SignInAsync(user, isPersistent: false);
+            user.LastLoginAt = DateTime.UtcNow;   // record POS PIN sign-ins too, not just web logins
+            await _db.SaveChangesAsync();
             try { await _audit.LogAsync("Login", "POS", user.Id, $"{user.FullName} signed in to POS{(reg != null ? $" ({reg.Name})" : "")}"); } catch { }
             return Json(new { success = true });
         }
@@ -1414,6 +1416,7 @@ public class PosController : Controller
         }
 
         user.PinHash = _hasher.HashPassword(user, pin);
+        user.LastLoginAt = DateTime.UtcNow;
         await _db.SaveChangesAsync();
         await _signIn.SignInAsync(user, isPersistent: false);
         try { await _audit.LogAsync("Login", "POS", user.Id, $"{user.FullName} set their PIN and signed in to POS{(reg != null ? $" ({reg.Name})" : "")}"); } catch { }
@@ -1620,6 +1623,47 @@ public class PosController : Controller
             .ToListAsync();
 
         return Json(new { orders });
+    }
+
+    public class PackedListVm
+    {
+        public string CashierName { get; set; } = "";
+        public string StoreName { get; set; } = "";
+        public string RegisterName { get; set; } = "";
+        public DateTime Day { get; set; }
+        public List<Order> Orders { get; set; } = new();
+        public int ItemCount => Orders.Sum(o => o.Items.Sum(i => i.Quantity));
+    }
+
+    // Receipt-roll printout of every order THIS cashier packed TODAY (Lagos day) — a paper record for the
+    // shift. 80mm thermal, black & white, auto-prints. Covers both delivery and store-pickup packs.
+    [Authorize, HttpGet]
+    public async Task<IActionResult> PackedListPrint()
+    {
+        var me = await _userManager.GetUserAsync(User);
+        if (me == null) return Unauthorized();
+        var register = await BoundRegisterAsync();
+
+        var dayStart = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(SterlingLams.Web.Services.ReportCalendar.Today);
+        var dayEnd = dayStart.AddDays(1);
+
+        var orders = await _db.Orders
+            .Where(o => o.PackedByUserId == me.Id
+                     && o.PackedAt != null && o.PackedAt >= dayStart && o.PackedAt < dayEnd)
+            .Include(o => o.Items)
+            .Include(o => o.User)
+            .Include(o => o.PickupStore)
+            .OrderBy(o => o.PackedAt)
+            .ToListAsync();
+
+        return View(new PackedListVm
+        {
+            CashierName = me.FullName,
+            StoreName = register?.Store?.Name ?? "",
+            RegisterName = register?.Name ?? "",
+            Day = SterlingLams.Web.Services.ReportCalendar.Today,
+            Orders = orders
+        });
     }
 
     // Lightweight poll for the fulfilment badge + "new order to pack" toast (see the Sell screen).

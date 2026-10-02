@@ -2964,11 +2964,13 @@
         </button>`;
     }
     async function loadHistory() {
+        // Receipt-roll printout of everything THIS cashier packed today — a paper record for the shift.
+        const printBar = '<a href="/Pos/PackedListPrint" target="_blank" class="block text-center bg-neutral-900 text-white rounded-lg py-2.5 mb-3 text-sm font-medium hover:bg-neutral-700 transition-colors">Print my packed list (today)</a>';
         listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Loading…</p>';
         try {
             if (!historyCache) { const r = await fetch('/Pos/FulfilHistory'); historyCache = (await r.json()).orders || []; }
-            if (!historyCache.length) { listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Nothing packed or processed yet.</p>'; return; }
-            listEl.innerHTML = historyCache.map(historyCard).join('');
+            if (!historyCache.length) { listEl.innerHTML = printBar + '<p class="text-center text-neutral-400 py-10 text-sm">Nothing packed or processed yet.</p>'; return; }
+            listEl.innerHTML = printBar + historyCache.map(historyCard).join('');
             listEl.querySelectorAll('.fulfil-card').forEach(b => b.addEventListener('click', () => openDetail(+b.dataset.id)));
         } catch { listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Could not load history.</p>'; }
     }
