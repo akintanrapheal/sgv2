@@ -89,6 +89,15 @@ public class CheckoutController : Controller
     /// to anyone who guesses an order number.</summary>
     private string ConfirmationToken(string orderNumber) => _confirmTokenProtector.Protect(orderNumber);
 
+    /// <summary>Shared customer-care mailboxes that staff use to place orders on behalf of many different
+    /// customers. These are exempt from the "an account already exists — please sign in" guard in guest
+    /// checkout, so care can keep ordering with them even though they're registered accounts.</summary>
+    private static readonly HashSet<string> CustomerCareEmails = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "websitecustomer@gmail.com",
+        "websitecare@gmail.com",
+    };
+
     private bool ConfirmationTokenValid(string orderNumber, string? token)
     {
         if (string.IsNullOrEmpty(token)) return false;
@@ -506,7 +515,8 @@ public class CheckoutController : Controller
             // registered account (that would leak orders into a stranger's history). Reuse an existing
             // *guest* shell for the same email (no account sprawl); create one only if none exists.
             var existing = await _userManager.FindByEmailAsync(vm.GuestEmail);
-            if (existing != null && !existing.IsGuest)
+            var isCareEmail = CustomerCareEmails.Contains(vm.GuestEmail.Trim());
+            if (existing != null && !existing.IsGuest && !isCareEmail)
             {
                 ModelState.AddModelError("GuestEmail",
                     "An account already exists with this email. Please sign in to place your order (or reset your password if you've forgotten it).");
