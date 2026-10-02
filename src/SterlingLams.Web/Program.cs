@@ -500,11 +500,11 @@ if (StaffPaths.PosIsSecret)
     });
 }
 
-// NOTE: the LegacyUrlRedirectMiddleware (301 old WooCommerce URLs → /products…) is intentionally
-// DISABLED. A bot crawling thousands of old faceted URLs (/shop?filter_color=…, /product-category/…)
-// had those redirected onto the DB-backed /products page, which exhausted the Npgsql connection pool
-// (100) and took the site down. Old URLs now fall through to the cheap no-DB 404 as before. Re-enable
-// only with a version that does NOT redirect high-volume faceted crawl URLs onto a DB query.
+// 301 old WooCommerce/WordPress URLs (still in Google's index) to the new structure so public links
+// like /contact-us, /shop and /product/{slug} redirect instead of 404-ing. The high-volume faceted
+// crawl URLs (/shop?filter_color=…) that once overloaded the DB are blocked by robots.txt, so crawlers
+// no longer hammer the redirect→/products path; real users clicking an old link still get redirected.
+app.UseMiddleware<SterlingLams.Web.Infrastructure.LegacyUrlRedirectMiddleware>();
 
 app.UseRouting();
 app.UseRateLimiter();
