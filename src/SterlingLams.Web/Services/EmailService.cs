@@ -33,7 +33,9 @@ public interface IEmailService
     /// Never throws — returns false on failure (or when SMTP isn't configured) so callers
     /// (checkout, password reset) are never broken by mail problems.
     /// </summary>
-    Task<bool> SendAsync(string toEmail, string subject, string innerHtml, string? toName = null, CancellationToken ct = default);
+    /// <param name="fromOverride">Optional sender address for this email (e.g. a reports/alerts
+    /// address). Blank/null → the global From. The display name stays the brand name.</param>
+    Task<bool> SendAsync(string toEmail, string subject, string innerHtml, string? toName = null, CancellationToken ct = default, string? fromOverride = null);
 
     /// <summary>Renders the branded email shell around the given inner HTML — for the admin preview.
     /// An optional logo-height override lets the customizer preview size changes before saving.</summary>
@@ -151,7 +153,7 @@ public class SmtpEmailService : IEmailService
         return new Branding(fromName, replyTo, headerColor, footerText, logoUrl, logoHeight, noReplyNotice);
     }
 
-    public async Task<bool> SendAsync(string toEmail, string subject, string innerHtml, string? toName = null, CancellationToken ct = default)
+    public async Task<bool> SendAsync(string toEmail, string subject, string innerHtml, string? toName = null, CancellationToken ct = default, string? fromOverride = null)
     {
         if (string.IsNullOrWhiteSpace(toEmail))
             return false;
@@ -186,9 +188,15 @@ public class SmtpEmailService : IEmailService
         var body = Wrap(subject, innerHtml + (pixel ?? ""), brand);
         try
         {
+            // Per-email sender (reports/alerts addresses) when provided and valid, else the global From.
+            var fromAddr = smtp.FromAddress;
+            if (!string.IsNullOrWhiteSpace(fromOverride))
+            {
+                try { fromAddr = new MailAddress(fromOverride.Trim()).Address; } catch { /* keep global */ }
+            }
             using var msg = new MailMessage
             {
-                From = new MailAddress(smtp.FromAddress, brand.FromName),
+                From = new MailAddress(fromAddr, brand.FromName),
                 Subject = subject,
                 Body = body,
                 IsBodyHtml = true,
