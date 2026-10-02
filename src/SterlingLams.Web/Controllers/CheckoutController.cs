@@ -428,6 +428,14 @@ public class CheckoutController : Controller
     // Re-render checkout after a validation error, with all display data repopulated.
     private async Task<IActionResult> RedisplayCheckoutAsync(CheckoutViewModel vm)
     {
+        // Log exactly why checkout bounced, so a "page just reloads" report is diagnosable from logs.
+        var errs = ModelState.Where(kv => kv.Value!.Errors.Count > 0)
+            .Select(kv => $"{(string.IsNullOrEmpty(kv.Key) ? "(form)" : kv.Key)}: {string.Join("; ", kv.Value!.Errors.Select(e => e.ErrorMessage))}")
+            .ToList();
+        if (errs.Count > 0)
+            _logger.LogWarning("Checkout redisplayed (fulfilment={Fulfilment}, store={StoreId}) — validation: {Errors}",
+                vm.FulfillmentType, vm.SelectedStoreId, string.Join(" | ", errs));
+
         await RehydrateCheckoutDisplayAsync(vm);
         // The customer has already submitted, so keep their fulfilment choice selected on redisplay
         // (a fresh GET leaves both unselected — no auto-select).
