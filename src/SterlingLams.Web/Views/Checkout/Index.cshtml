@@ -324,6 +324,18 @@
                         <span class="text-xs text-neutral-600 font-light">Send me order updates on WhatsApp</span>
                     </label>
 
+                    @* Model-level errors (e.g. "Payment could not be initiated", minimum order) — without
+                       this, a failed payment-init silently re-rendered the page with no visible reason. *@
+                    @if (ViewData.ModelState[string.Empty]?.Errors.Count > 0)
+                    {
+                        <div class="mb-4 border border-red-300 bg-red-50 text-red-700 text-xs rounded-sm px-3 py-2.5" role="alert">
+                            @foreach (var err in ViewData.ModelState[string.Empty]!.Errors)
+                            {
+                                <p>@err.ErrorMessage</p>
+                            }
+                        </div>
+                    }
+
                     <button type="submit"
                             class="w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-4 hover:bg-brand-600 transition-colors duration-300">
                         Proceed to Payment
