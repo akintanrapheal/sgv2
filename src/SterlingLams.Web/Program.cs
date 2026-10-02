@@ -480,6 +480,10 @@ if (StaffPaths.PosIsSecret)
     });
 }
 
+// 301 old WooCommerce URLs (/shop, /product-category/…, /product/{slug}) to the new structure so
+// Google's indexed links keep their ranking instead of 404-ing. Runs after static files, before routing.
+app.UseMiddleware<SterlingLams.Web.Infrastructure.LegacyUrlRedirectMiddleware>();
+
 app.UseRouting();
 app.UseRateLimiter();
 app.UseSession();
