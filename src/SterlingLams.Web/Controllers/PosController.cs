@@ -869,8 +869,9 @@ public class PosController : Controller
             CashRefunds = cashRefunds,
             CashIn = cashIn,
             CashOut = cashOut,
-            // Every refund is deducted from the expected cash (money returned to the customer).
-            ExpectedCash = session.OpeningFloat + cash + cashIn - cashOut - refundsTotal
+            // Cash refunds are handed out of the drawer, so they reduce expected cash. (All refunds are
+            // still netted in the sales Refunds/Net lines and shown in Completed Transactions.)
+            ExpectedCash = session.OpeningFloat + cash + cashIn - cashOut - cashRefunds
         };
     }
 
@@ -973,9 +974,16 @@ public class PosController : Controller
         }
         decimal? C(string k) => interim ? null : (counted.TryGetValue(k, out var v) ? v : 0);
 
+        // Approved refunds for this session. A cash refund is money handed out of the drawer, so the Cash
+        // tender's expected amount is net of cash refunds — counting the real drawer then balances. (Card/
+        // transfer refunds go back to the card/bank, not the till, so they don't reduce the cash drawer.)
+        var refundsAll = await _db.Refunds.Where(r => r.TillSessionId == session.Id && r.Status == RefundStatus.Approved)
+            .Select(r => new { r.RefundNumber, r.CreatedAt, r.Reason, r.RefundMethod, r.Amount }).ToListAsync();
+        var cashRefunds = refundsAll.Where(r => r.RefundMethod == "Cash").Sum(r => r.Amount);
+
         var tenders = new List<TenderLine>
         {
-            new("Cash",     "Cash",          SumOf("Cash"),     C("Cash")),
+            new("Cash",     "Cash",          SumOf("Cash") - cashRefunds, C("Cash")),
             new("Card",     "Card",          SumOf("Card"),     C("Card")),
             new("Transfer", "Bank transfer", SumOf("Transfer"), C("Transfer")),
             new("GiftCard", "Gift card",     giftCard,          C("GiftCard")),
@@ -987,9 +995,6 @@ public class PosController : Controller
             .Select(m => m.Amount).ToListAsync();
         var cashIn = moves.Where(a => a > 0).Sum();
         var cashOut = moves.Where(a => a < 0).Sum(a => -a);
-        var refundsAll = await _db.Refunds.Where(r => r.TillSessionId == session.Id && r.Status == RefundStatus.Approved)
-            .Select(r => new { r.RefundNumber, r.CreatedAt, r.Reason, r.RefundMethod, r.Amount }).ToListAsync();
-        var cashRefunds = refundsAll.Where(r => r.RefundMethod == "Cash").Sum(r => r.Amount);
 
         // Sales breakdowns (line-level; Net = gross − line discount, tax 0 for this catalogue).
         var lines = sales.SelectMany(o => o.Items.Select(i => new
@@ -1036,11 +1041,11 @@ public class PosController : Controller
                 : staffNames.GetValueOrDefault(session.ClosedByUserId ?? session.OpenedByUserId, ""),
             Transactions = sales.Count,
             Tenders = tenders,
-            // Every approved refund is money returned to the customer, so it's deducted from the expected
-            // drawer (and shown on the Refunds tab + netted in revenue).
-            Withdrawn = cashOut + refundsAll.Sum(r => r.Amount),
+            // Cash refunds are handed out of the drawer, so they count as cash withdrawn and reduce the
+            // expected drawer. (All refunds are still shown on the Refunds tab + netted in revenue.)
+            Withdrawn = cashOut + cashRefunds,
             Deposited = cashIn,
-            ExpectedCashDrawer = session.OpeningFloat + SumOf("Cash") + cashIn - cashOut - refundsAll.Sum(r => r.Amount),
+            ExpectedCashDrawer = session.OpeningFloat + SumOf("Cash") + cashIn - cashOut - cashRefunds,
             SalesQtyItems = lines.Sum(l => l.Quantity),
             SalesDiscount = lines.Sum(l => l.DiscountAmount),
             SalesNet = totalNet,
