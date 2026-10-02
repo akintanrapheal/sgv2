@@ -181,6 +181,26 @@ public static class SeedData
                 logger.LogInformation("Merged duplicate 'Colour' attribute into 'Color' ({Count} variants re-pointed).", affected.Count);
             }
 
+            // ─── One-time: ensure every product with images has a PRIMARY image (idempotent) ─────
+            // Imported products often have images but none flagged IsPrimary, so IsPrimary-based
+            // lookups (cart, checkout, order emails, cards) fell back to the "image coming soon"
+            // placeholder. Mark the first image (by SortOrder) as primary wherever none is set.
+            var needPrimary = await db.Products
+                .Where(p => p.Images.Any() && !p.Images.Any(i => i.IsPrimary))
+                .Select(p => p.Id)
+                .ToListAsync();
+            if (needPrimary.Count > 0)
+            {
+                foreach (var batch in needPrimary.Chunk(200))
+                {
+                    var imgs = await db.ProductImages.Where(i => batch.Contains(i.ProductId)).ToListAsync();
+                    foreach (var grp in imgs.GroupBy(i => i.ProductId))
+                        grp.OrderBy(i => i.SortOrder).ThenBy(i => i.Id).First().IsPrimary = true;
+                    await db.SaveChangesAsync();
+                }
+                logger.LogInformation("Set a primary image on {Count} product(s) that had none.", needPrimary.Count);
+            }
+
             // â”€â”€â”€ Stores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             var stores = new[]
             {
