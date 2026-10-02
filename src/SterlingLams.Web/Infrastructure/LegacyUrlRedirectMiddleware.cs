@@ -37,6 +37,17 @@ public sealed class LegacyUrlRedirectMiddleware
         if (p.Length == 0) return null;
         var lower = p.ToLowerInvariant();
 
+        // Old WordPress content pages → their new routes. (Only mapped to pages that exist; /cart and
+        // /checkout already resolve on the new site, so they're deliberately NOT remapped — that would loop.)
+        switch (lower)
+        {
+            case "/contact-us": case "/contact":                               return "/Home/Contact";
+            case "/about-us": case "/about": case "/our-story":                return "/Home/About";
+            case "/privacy-policy": case "/privacy":                           return "/Home/Privacy";
+            case "/terms-and-conditions": case "/terms-of-service": case "/terms": return "/Home/Terms";
+            case "/my-account": case "/account": case "/account/":            return "/Account/Login";
+        }
+
         if (lower == "/shop") return "/products";
         if (lower.StartsWith("/shop/"))
         {
