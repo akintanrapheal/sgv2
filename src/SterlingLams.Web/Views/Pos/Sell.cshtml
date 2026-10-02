@@ -2964,13 +2964,11 @@
         </button>`;
     }
     async function loadHistory() {
-        // Receipt-roll printout of everything THIS cashier packed today — a paper record for the shift.
-        const printBar = '<a href="/Pos/PackedListPrint" target="_blank" class="block text-center bg-neutral-900 text-white rounded-lg py-2.5 mb-3 text-sm font-medium hover:bg-neutral-700 transition-colors">Print my packed list (today)</a>';
         listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Loading…</p>';
         try {
             if (!historyCache) { const r = await fetch('/Pos/FulfilHistory'); historyCache = (await r.json()).orders || []; }
-            if (!historyCache.length) { listEl.innerHTML = printBar + '<p class="text-center text-neutral-400 py-10 text-sm">Nothing packed or processed yet.</p>'; return; }
-            listEl.innerHTML = printBar + historyCache.map(historyCard).join('');
+            if (!historyCache.length) { listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Nothing packed or processed yet.</p>'; return; }
+            listEl.innerHTML = historyCache.map(historyCard).join('');
             listEl.querySelectorAll('.fulfil-card').forEach(b => b.addEventListener('click', () => openDetail(+b.dataset.id)));
         } catch { listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Could not load history.</p>'; }
     }
@@ -3180,6 +3178,7 @@
                     </div>
                     ${d.note ? `<div class="border border-amber-200 bg-amber-50 rounded-xl p-3"><p class="text-[10px] uppercase tracking-wide text-amber-600 mb-1">Order note</p><p class="text-sm text-amber-800">${esc(d.note)}</p></div>` : ''}
                     ${packBtn}
+                    <a href="${window.__posBase}/PackedOrderPrint/${d.id}" target="_blank" class="block text-center border border-neutral-300 text-neutral-700 rounded-lg py-2.5 text-sm font-medium hover:border-neutral-400 transition-colors">Print this order</a>
                     ${packedNote}
                     ${handoffNote}
                 </div>`;

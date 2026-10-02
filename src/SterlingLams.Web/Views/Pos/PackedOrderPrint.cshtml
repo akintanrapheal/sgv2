@@ -1,0 +1,120 @@
+@model SterlingLams.Web.Models.Domain.Order
+@using SterlingLams.Web.Services
+@inject ISettingsService Settings
+@{
+    Layout = null;
+    var siteName = await Settings.GetAsync("general.site_name", "Sterlin Glams");
+    var logoUrl  = await Settings.GetAsync("pos.receipt_logo_url", "");
+    if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = await Settings.GetAsync("general.logo_url", "");
+    if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = "/images/sg-logo.png";
+    var showLogo = await Settings.GetBoolAsync("pos.receipt_show_logo", true);
+    var logoWidthMm = Math.Clamp(await Settings.GetIntAsync("pos.receipt_logo_height", 45), 20, 76);
+
+    var isPickup = Model.FulfillmentType == SterlingLams.Web.Models.Domain.FulfillmentType.StorePickup;
+    var store = Model.Register?.Store ?? Model.PickupStore;
+    var when = (Model.PackedAt ?? Model.UpdatedAt).ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+    var a = Model.DeliveryAddress;
+    string? Barcode(SterlingLams.Web.Models.Domain.OrderItem i) =>
+        !string.IsNullOrWhiteSpace(i.ProductVariant?.Barcode) ? i.ProductVariant!.Barcode : i.Product?.Barcode;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Packed @Model.OrderNumber</title>
+    <style>
+        @@page { size: 80mm auto; margin: 0; }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; }
+        body { font-family: Arial, Helvetica, sans-serif; color:#000; font-size:12px; line-height:1.4; font-weight:600; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+        .r { width:80mm; margin:0 auto; padding:4mm 3mm; }
+        .c { text-align:center; }
+        .logo { display:block; margin:0 auto 6px; max-width:100%; max-height:28mm; height:auto; object-fit:contain; }
+        .biz { text-align:center; font-size:18px; font-weight:800; letter-spacing:.3px; margin:0 0 2px; }
+        .sub { text-align:center; font-size:11px; font-weight:600; line-height:1.35; }
+        hr { border:none; border-top:1px solid #000; margin:6px 0; }
+        .dash { border-top:1px dashed #000; margin:5px 0; }
+        .row { display:flex; justify-content:space-between; gap:8px; margin:1px 0; }
+        .row span:last-child { text-align:right; }
+        .b { font-weight:800; }
+        .ordno { font-size:16px; font-weight:800; }
+        .lbl { font-size:10px; text-transform:uppercase; letter-spacing:.5px; font-weight:800; margin:6px 0 2px; }
+        .item { margin:3px 0; }
+        .item .nm { font-size:12px; font-weight:800; overflow-wrap:break-word; word-break:break-word; }
+        .item .mn { font-size:11px; font-weight:600; font-family:monospace; }
+        .btns { width:80mm; margin:12px auto 0; display:flex; gap:8px; }
+        .btns button, .btns a { flex:1; padding:9px; font-size:12px; text-align:center; border:1px solid #ccc; background:#fff; cursor:pointer; text-decoration:none; color:#111; border-radius:4px; font-weight:600; }
+        @@media print { .btns { display:none; } }
+    </style>
+</head>
+<body onload="window.print()">
+    <div class="r">
+        @if (showLogo)
+        {
+            <img src="@logoUrl" alt="" class="logo" style="width:@(logoWidthMm)mm" onerror="this.style.display='none'" />
+        }
+        <div class="biz">@siteName</div>
+        <div class="sub">
+            <div>PACKING SLIP</div>
+            @if (store != null) { <div>@store.Name</div> }
+        </div>
+        <hr />
+
+        <div class="row"><span class="ordno">@Model.OrderNumber</span><span class="b">@(isPickup ? "PICKUP" : "DELIVERY")</span></div>
+        <div class="row"><span>Packed</span><span>@when</span></div>
+        @if (!string.IsNullOrWhiteSpace(Model.PackedByName))
+        {
+            <div class="row"><span>By</span><span>@Model.PackedByName</span></div>
+        }
+        <hr />
+
+        <div class="lbl">Items (@Model.Items.Sum(i => i.Quantity))</div>
+        @foreach (var i in Model.Items)
+        {
+            var bc = Barcode(i);
+            <div class="item">
+                <div class="nm">@i.ProductName@(string.IsNullOrWhiteSpace(i.VariantName) ? "" : " (" + i.VariantName + ")") &times; @i.Quantity</div>
+                @if (!string.IsNullOrWhiteSpace(i.ProductSku) || !string.IsNullOrWhiteSpace(bc))
+                {
+                    <div class="mn">@(string.IsNullOrWhiteSpace(i.ProductSku) ? "" : "SKU " + i.ProductSku)@(!string.IsNullOrWhiteSpace(i.ProductSku) && !string.IsNullOrWhiteSpace(bc) ? "  ·  " : "")@(string.IsNullOrWhiteSpace(bc) ? "" : "Barcode " + bc)</div>
+                }
+            </div>
+            <div class="dash"></div>
+        }
+
+        <div class="lbl">Customer</div>
+        <div>@(Model.User?.FullName ?? "Customer")</div>
+        @if (!string.IsNullOrWhiteSpace(Model.User?.PhoneNumber)) { <div>@Model.User!.PhoneNumber</div> }
+
+        @if (isPickup)
+        {
+            <div class="lbl">Collection</div>
+            <div>Store pickup@(store != null ? " · " + store.Name : "")</div>
+        }
+        else if (a != null)
+        {
+            <div class="lbl">Deliver to</div>
+            @if (!string.IsNullOrWhiteSpace(a.FullName)) { <div>@a.FullName</div> }
+            <div>@(string.Join(", ", new[] { a.Line1, a.Line2, a.City, a.State }.Where(x => !string.IsNullOrWhiteSpace(x))))</div>
+            @if (!string.IsNullOrWhiteSpace(a.Phone)) { <div>@a.Phone</div> }
+        }
+
+        @if (!string.IsNullOrWhiteSpace(Model.Notes))
+        {
+            <div class="lbl">Order note</div>
+            <div style="white-space:pre-line;">@Model.Notes</div>
+        }
+
+        <hr />
+        <div class="row b"><span>TOTAL</span><span>&#8358;@Model.Total.ToString("N0")</span></div>
+        <hr />
+        <div class="c" style="font-size:11px;">@Model.OrderNumber</div>
+    </div>
+
+    <div class="btns">
+        <button onclick="window.print()">Print</button>
+        <a href="#" onclick="window.close();return false;">Close</a>
+    </div>
+</body>
+</html>
