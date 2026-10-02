@@ -480,9 +480,11 @@ if (StaffPaths.PosIsSecret)
     });
 }
 
-// 301 old WooCommerce URLs (/shop, /product-category/…, /product/{slug}) to the new structure so
-// Google's indexed links keep their ranking instead of 404-ing. Runs after static files, before routing.
-app.UseMiddleware<SterlingLams.Web.Infrastructure.LegacyUrlRedirectMiddleware>();
+// NOTE: the LegacyUrlRedirectMiddleware (301 old WooCommerce URLs → /products…) is intentionally
+// DISABLED. A bot crawling thousands of old faceted URLs (/shop?filter_color=…, /product-category/…)
+// had those redirected onto the DB-backed /products page, which exhausted the Npgsql connection pool
+// (100) and took the site down. Old URLs now fall through to the cheap no-DB 404 as before. Re-enable
+// only with a version that does NOT redirect high-volume faceted crawl URLs onto a DB query.
 
 app.UseRouting();
 app.UseRateLimiter();
