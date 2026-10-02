@@ -846,7 +846,9 @@ public class PosController : Controller
             + sales.Where(o => !withRows.Contains(o.Id) && o.PaymentProvider == m).Sum(o => o.Total);
         var cash = SumOf("Cash");
 
-        // Only approved refunds have actually paid cash out of the drawer.
+        // Refunds are NOT paid out of the till's cash drawer (they're settled separately — transfer /
+        // manager / head office), so they do not reduce the expected drawer. They're still reported as
+        // revenue (Refunds / Net in the sales section). CashRefunds kept for reference only.
         var refunds = await _db.Refunds.Where(r => r.TillSessionId == session.Id && r.Status == RefundStatus.Approved).ToListAsync();
         var cashRefunds = refunds.Where(r => r.RefundMethod == "Cash").Sum(r => r.Amount);
 
@@ -867,7 +869,8 @@ public class PosController : Controller
             CashRefunds = cashRefunds,
             CashIn = cashIn,
             CashOut = cashOut,
-            ExpectedCash = session.OpeningFloat + cash + cashIn - cashOut - cashRefunds
+            // Refunds don't come out of the drawer, so they're not subtracted here.
+            ExpectedCash = session.OpeningFloat + cash + cashIn - cashOut
         };
     }
 
@@ -1033,9 +1036,11 @@ public class PosController : Controller
                 : staffNames.GetValueOrDefault(session.ClosedByUserId ?? session.OpenedByUserId, ""),
             Transactions = sales.Count,
             Tenders = tenders,
-            Withdrawn = cashOut + cashRefunds,
+            // Refunds aren't paid from the till drawer, so they don't count as cash withdrawn and don't
+            // reduce the expected drawer (they're still shown on the Refunds tab + netted in revenue).
+            Withdrawn = cashOut,
             Deposited = cashIn,
-            ExpectedCashDrawer = session.OpeningFloat + SumOf("Cash") + cashIn - cashOut - cashRefunds,
+            ExpectedCashDrawer = session.OpeningFloat + SumOf("Cash") + cashIn - cashOut,
             SalesQtyItems = lines.Sum(l => l.Quantity),
             SalesDiscount = lines.Sum(l => l.DiscountAmount),
             SalesNet = totalNet,
@@ -1583,6 +1588,12 @@ public class PosController : Controller
             .Include(t => t.ToStore).Include(t => t.Items)
             .OrderBy(t => t.CreatedAt).ToListAsync();
         var outOrderIds = outbound.Select(t => t.OrderId!.Value).Distinct().ToList();
+        // Drop transfers whose order was refunded/cancelled — the order no longer needs fulfilling, so the
+        // stock shouldn't still be sent to the other branch.
+        var deadOrderIds = (await _db.Orders.Where(o => outOrderIds.Contains(o.Id)
+                && (o.Status == OrderStatus.Refunded || o.Status == OrderStatus.Cancelled))
+            .Select(o => o.Id).ToListAsync()).ToHashSet();
+        outbound = outbound.Where(t => !deadOrderIds.Contains(t.OrderId!.Value)).ToList();
         var outOrderNums = await _db.Orders.Where(o => outOrderIds.Contains(o.Id))
             .Select(o => new { o.Id, o.OrderNumber }).ToDictionaryAsync(o => o.Id, o => o.OrderNumber);
         var toSend = outbound.Select(t => new
