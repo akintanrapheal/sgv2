@@ -27,6 +27,11 @@ public interface IOrderStatusService
 
     /// <summary>Sends (or re-sends) the store-pickup QR pass email and stamps PickupReadyEmailedAt.</summary>
     Task SendPickupReadyEmailAsync(int orderId);
+
+    /// <summary>Fires the "new order" admin alert (to notifications.new_order_emails → admin_email, from
+    /// email.from_alerts) for an order placed/confirmed off the gateway — e.g. customer care took payment
+    /// by transfer. Online Paystack orders already fire this at checkout, so this is the manual path.</summary>
+    Task SendNewOrderAdminAlertAsync(int orderId);
 }
 
 public sealed class OrderStatusService : IOrderStatusService
@@ -71,6 +76,10 @@ public sealed class OrderStatusService : IOrderStatusService
         string? paymentMethod = null, string? confirmReason = null)
     {
         var old = order.Status;
+        // A staffer confirming an as-yet-unpaid order = an order pushed through manually (customer care took
+        // payment off the gateway). These never went through the storefront's checkout alert, so fire the
+        // admin "new order" alert at the end, once stock/fulfilment have settled.
+        var manuallyConfirmed = newStatus == OrderStatus.Confirmed && !order.IsPaid;
 
         // Confirming an as-yet-unpaid order means the money has arrived out of band — a transfer the
         // shop received, cash/card on pickup, etc. Mark it paid so it reconciles in Finance and can be
@@ -154,6 +163,11 @@ public sealed class OrderStatusService : IOrderStatusService
                 await SendStatusUpdateEmailAsync(order.Id, order.Status);
             }
         }
+
+        // Manually-confirmed (off-gateway) orders didn't go through the checkout new-order alert — fire it
+        // now so the shop's orders inbox sees them just like a website order. Best-effort.
+        if (manuallyConfirmed)
+            await SendNewOrderAdminAlertAsync(order.Id);
 
         return OrderStatusOutcome.Applied;
     }
@@ -289,5 +303,82 @@ public sealed class OrderStatusService : IOrderStatusService
             _ => null,
         };
         if (waEvent is { } ev) _ = _whatsapp.NotifyOrderAsync(orderId, ev);
+    }
+
+    public async Task SendNewOrderAdminAlertAsync(int orderId)
+    {
+        // Respect the same master toggle as the storefront alert.
+        if (!await _settings.GetBoolAsync("notifications.new_order", true)) return;
+
+        // Recipients: the dedicated new-order list, falling back to the general admin email.
+        var to = await _settings.GetAsync("notifications.new_order_emails", "");
+        if (string.IsNullOrWhiteSpace(to)) to = await _settings.GetAsync("notifications.admin_email", "");
+        if (string.IsNullOrWhiteSpace(to)) return;
+
+        var order = await _db.Orders
+            .Include(o => o.Items).Include(o => o.PickupStore).Include(o => o.DeliveryAddress)
+            .Include(o => o.User).Include(o => o.Customer)
+            .FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order == null) return;
+
+        var buyer = Buyer(order);
+        var buyerName = string.IsNullOrWhiteSpace(buyer?.FullName) ? "a customer" : buyer!.FullName;
+
+        // Per-item primary image, made absolute for email clients.
+        var pids = order.Items.Select(i => i.ProductId).Distinct().ToList();
+        var imgMap = await _db.ProductImages.Where(im => pids.Contains(im.ProductId))
+            .GroupBy(im => im.ProductId)
+            .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
+            .ToDictionaryAsync(x => x.Pid, x => x.Url);
+        var baseUrl = BaseUrl();
+        string? AbsImg(int pid)
+        {
+            var u = imgMap.GetValueOrDefault(pid);
+            if (string.IsNullOrWhiteSpace(u)) return null;
+            return u.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? u
+                 : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + u.TrimStart('/'));
+        }
+        var items = order.Items
+            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId)))
+            .ToList();
+
+        string E(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+        // Fulfilment line: pickup store or delivery.
+        var fulfil = order.FulfillmentType == FulfillmentType.StorePickup
+            ? $"Pickup at {E(order.PickupStore?.Name ?? "store")}"
+            : (order.DeliveryFee > 0 ? $"Delivery — ₦{order.DeliveryFee:N0}" : "Delivery");
+        var paidVia = string.IsNullOrWhiteSpace(order.PaymentProvider) ? "Manual" : E(order.PaymentProvider);
+        var contact = new[] { buyer?.Email, buyer?.PhoneNumber }.Where(x => !string.IsNullOrWhiteSpace(x));
+        var extra =
+            $@"<table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""margin:4px 0 0;font-size:13px;color:#44403c;line-height:1.7;"">
+  <tr><td><strong>Customer:</strong> {E(buyerName)}{(contact.Any() ? " — " + E(string.Join(", ", contact)) : "")}</td></tr>
+  <tr><td><strong>Fulfilment:</strong> {fulfil}</td></tr>
+  <tr><td><strong>Payment:</strong> {paidVia}</td></tr>
+</table>";
+
+        var subjectT = await _settings.GetAsync("email.new_order_admin.subject", "New order {order}");
+        var subject = subjectT.Replace("{order}", order.OrderNumber) + $" — ₦{order.Total:N0}";
+        var heading = subjectT.Replace("{order}", order.OrderNumber);
+        var intro = "A new order has come in (confirmed manually by staff) — full details below. View it in the admin dashboard under Orders.";
+
+        string? detailUrl = null;
+        if (_http.HttpContext != null)
+            detailUrl = _links.GetUriByAction(_http.HttpContext, "Detail", "Orders",
+                new { area = "Admin", id = order.Id }, _http.HttpContext.Request.Scheme, _http.HttpContext.Request.Host);
+
+        var body = OrderEmailTemplate.BuildStatusUpdate(heading, intro, order.OrderNumber, items, order.Total,
+            extraHtml: extra, buttonLabel: detailUrl == null ? null : "View order",
+            buttonHref: detailUrl);
+
+        var fromAlerts = await _settings.GetAsync("email.from_alerts", "");
+        var sentAny = false;
+        foreach (var addr in SterlingLams.Web.Infrastructure.EmailRecipients.Split(to))
+            sentAny |= await _email.SendAsync(addr, subject, body, fromOverride: fromAlerts);
+
+        if (sentAny)
+        {
+            OrderNotes.AddSystem(_db, order.Id, $"New-order alert sent to the orders inbox ({to}).");
+            await _db.SaveChangesAsync();
+        }
     }
 }

@@ -246,6 +246,15 @@
             }
         </div>
 
+        <!-- Internal new-order alert -->
+        <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
+            <h2 class="text-sm font-medium mb-3">Staff alert</h2>
+            <form asp-area="Admin" asp-controller="Orders" asp-action="SendNewOrderAlert" asp-route-id="@Model.Order.Id" method="post">
+                <button type="submit" class="px-3 py-1.5 text-xs border border-neutral-200 rounded-sm hover:border-neutral-400 transition-colors">Send new-order alert</button>
+            </form>
+            <p class="text-[11px] text-neutral-400 mt-2">Notifies the orders inbox (Settings → Notifications). Use for orders taken manually. Manually-confirmed orders fire this automatically.</p>
+        </div>
+
         <!-- Customer history -->
         <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
             <h2 class="text-sm font-medium mb-3">Customer history</h2>

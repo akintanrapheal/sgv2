@@ -410,6 +410,21 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             return RedirectToAction(nameof(Detail), new { id });
         }
 
+        // Fire the "new order" admin alert (to the orders inbox) for an order that was pushed through
+        // manually — e.g. customer care took a transfer off the gateway, so it never triggered the
+        // storefront's checkout alert. Safe to re-use for any order.
+        [HttpPost, ValidateAntiForgeryToken]
+        public async Task<IActionResult> SendNewOrderAlert(int id)
+        {
+            var order = await _db.Orders.FindAsync(id);
+            if (order == null) return NotFound();
+
+            await _orderStatus.SendNewOrderAdminAlertAsync(id); // logs its own order note
+            await LogAsync("EmailResend", "Order", id.ToString(), $"Fired new-order alert for {order.OrderNumber}");
+            TempData["Success"] = $"New-order alert sent for {order.OrderNumber}. If nothing arrives, check the new-order recipient in Settings → Notifications.";
+            return RedirectToAction(nameof(Detail), new { id });
+        }
+
         // ── Order notes (WooCommerce-style timeline) ──────────────────────────
         [HttpPost]
         [ValidateAntiForgeryToken]
