@@ -1625,45 +1625,21 @@ public class PosController : Controller
         return Json(new { orders });
     }
 
-    public class PackedListVm
-    {
-        public string CashierName { get; set; } = "";
-        public string StoreName { get; set; } = "";
-        public string RegisterName { get; set; } = "";
-        public DateTime Day { get; set; }
-        public List<Order> Orders { get; set; } = new();
-        public int ItemCount => Orders.Sum(o => o.Items.Sum(i => i.Quantity));
-    }
-
-    // Receipt-roll printout of every order THIS cashier packed TODAY (Lagos day) — a paper record for the
-    // shift. 80mm thermal, black & white, auto-prints. Covers both delivery and store-pickup packs.
+    // Receipt-roll printout of ONE packed order — a paper record the cashier keeps per order. 80mm
+    // thermal, black & white, auto-prints. Shows items with SKU/barcode, customer and collection/shipping.
     [Authorize, HttpGet]
-    public async Task<IActionResult> PackedListPrint()
+    public async Task<IActionResult> PackedOrderPrint(int id)
     {
-        var me = await _userManager.GetUserAsync(User);
-        if (me == null) return Unauthorized();
-        var register = await BoundRegisterAsync();
-
-        var dayStart = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(SterlingLams.Web.Services.ReportCalendar.Today);
-        var dayEnd = dayStart.AddDays(1);
-
-        var orders = await _db.Orders
-            .Where(o => o.PackedByUserId == me.Id
-                     && o.PackedAt != null && o.PackedAt >= dayStart && o.PackedAt < dayEnd)
-            .Include(o => o.Items)
+        var order = await _db.Orders
+            .Include(o => o.Items).ThenInclude(i => i.Product)
+            .Include(o => o.Items).ThenInclude(i => i.ProductVariant)
             .Include(o => o.User)
             .Include(o => o.PickupStore)
-            .OrderBy(o => o.PackedAt)
-            .ToListAsync();
-
-        return View(new PackedListVm
-        {
-            CashierName = me.FullName,
-            StoreName = register?.Store?.Name ?? "",
-            RegisterName = register?.Name ?? "",
-            Day = SterlingLams.Web.Services.ReportCalendar.Today,
-            Orders = orders
-        });
+            .Include(o => o.DeliveryAddress)
+            .Include(o => o.Register).ThenInclude(r => r!.Store)
+            .FirstOrDefaultAsync(o => o.Id == id);
+        if (order == null) return NotFound();
+        return View(order);
     }
 
     // Lightweight poll for the fulfilment badge + "new order to pack" toast (see the Sell screen).
