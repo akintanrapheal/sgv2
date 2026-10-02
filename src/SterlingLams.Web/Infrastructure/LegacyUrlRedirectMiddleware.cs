@@ -1,15 +1,10 @@
 namespace SterlingLams.Web.Infrastructure;
 
 /// <summary>
-/// 301-redirects old WooCommerce/WordPress URLs (still indexed by Google and hit by bots) to the new
-/// storefront structure, so ranking/link-equity is preserved and the old links stop dead-ending in 404s.
-///   /shop                         → /products
-///   /shop/{slug}                  → /products/{slug}   (old product permalink)
-///   /product/{slug}               → /products/{slug}
-///   /product-category/…/{cat}     → /products?category={cat}
-///   /wp-login.php, /wp-admin, /feed → /   (bot/old-link noise)
-/// Query strings from the old faceted URLs (filter_color, per_page, orderby…) are dropped — the new
-/// pages have their own facets. Unknown WordPress paths (wp-json, wp-content, xmlrpc) fall through to 404.
+/// 301-redirects the old WooCommerce/WordPress URLs (still in Google's index and hit by bots) to the new
+/// storefront structure, so ranking/link-equity is preserved and old links stop dead-ending in 404s.
+/// The exact page/post list was taken from the old WordPress export; families (products, categories, tags,
+/// store-location pages) are matched by pattern. Query strings from old faceted URLs are dropped.
 /// </summary>
 public sealed class LegacyUrlRedirectMiddleware
 {
@@ -30,24 +25,78 @@ public sealed class LegacyUrlRedirectMiddleware
         await _next(ctx);
     }
 
-    /// <summary>New path (with query) for a known old URL, or null if it isn't one we remap.</summary>
+    // Exact old path (lower-case, no trailing slash) → new path. Covers every published page + post from
+    // the old WordPress site. Checked BEFORE the family patterns below.
+    private static readonly Dictionary<string, string> Exact = new(StringComparer.Ordinal)
+    {
+        // Content / policy pages
+        ["/about-sterlin-glams"] = "/Home/About", ["/about-us"] = "/Home/About", ["/about"] = "/Home/About", ["/our-story"] = "/Home/About",
+        ["/contact-us"] = "/Home/Contact", ["/contact"] = "/Home/Contact",
+        ["/terms-and-conditions"] = "/Home/Terms", ["/terms-of-service"] = "/Home/Terms", ["/terms"] = "/Home/Terms",
+        ["/the-privacy-policy"] = "/Home/Privacy", ["/privacy-policy"] = "/Home/Privacy", ["/privacy"] = "/Home/Privacy", ["/cookie-policy"] = "/Home/Privacy",
+        ["/payments-and-returns-policy"] = "/Home/Terms",
+        ["/my-account"] = "/Account/Login",
+        ["/jewelry-delivery-service"] = "/Home/Terms",
+        ["/jewelry-faqs"] = "/Home/Contact",
+        // Order tracking
+        ["/track-jewelry-order"] = "/track", ["/track-your-order"] = "/track",
+        // Blog
+        ["/blog"] = "/Journal", ["/jewelry-care-guide"] = "/Journal",
+        // Shop landing pages → the product list
+        ["/jewelry-categories"] = "/products", ["/jewelry-sale"] = "/products", ["/latest-jewelry-products"] = "/products",
+        ["/featured-jewelry-collection"] = "/products", ["/top-rated-jewelry"] = "/products", ["/product-directory"] = "/products",
+        ["/shop-by-jewelry-category"] = "/products", ["/compare-jewelry-products"] = "/products", ["/place-jewelry-order"] = "/products",
+        ["/sg-chic-collection"] = "/products", ["/sg-chic-jewelry-shop"] = "/products", ["/sg-kingsmen"] = "/products",
+        ["/sg-kingsmen-shop"] = "/products", ["/sg-packaging"] = "/products", ["/sg-packaging-store"] = "/products",
+        // Misc leftover pages → home
+        ["/home-glasses"] = "/", ["/html-sitemap"] = "/", ["/page-not-found"] = "/",
+        // Instagram "link in bio" / quick-links landing → home (brand landing). Can become its own page later.
+        ["/quicklinks"] = "/", ["/quick-links"] = "/", ["/links"] = "/", ["/link-in-bio"] = "/", ["/linkinbio"] = "/",
+        // Blog posts → the Journal (articles not individually migrated)
+        ["/a-jewelry-shop-in-lagos-for-every-occasion-how-to-shop-smart-at-sterlin-glams"] = "/Journal",
+        ["/helvetica-austin-bespoke"] = "/Journal",
+        ["/how-to-find-the-right-jewelry-shop-in-lagos"] = "/Journal",
+        ["/how-to-layer-necklaces-lagos-stylist-guide"] = "/Journal",
+        ["/igbo-bridal-jewelry-guide"] = "/Journal",
+        ["/ikota-lekki-phase-2-jewelry-guide"] = "/Journal",
+        ["/inside-lagos-most-loved-jewelry-store-in-ikeja-ikota"] = "/Journal",
+        ["/jewelry-lagos-women-trending-pieces"] = "/Journal",
+        ["/jewelry-store-ikeja-shopping-guide"] = "/Journal",
+        ["/jewelry-stores-in-abuja-2026-guide"] = "/Journal",
+        ["/jewelry-stores-in-lagos-nigeria-insiders-guide"] = "/Journal",
+        ["/jewelry-wholesalers-in-lagos-vs-retail-brands-whats-actually-better-for-you"] = "/Journal",
+        ["/lagos-bride-jewelry-guide"] = "/Journal",
+        ["/nigerian-bridal-jewelry-guide"] = "/Journal",
+        ["/nothing-hunts-us-like-the-things-we-didnt-buy"] = "/Journal",
+        ["/office-jewelry-lagos-working-woman"] = "/Journal",
+        ["/online-jewelry-stores-in-lagos-buyers-guide"] = "/Journal",
+        ["/ring-stores-in-lagos-statement-stackable-cocktail"] = "/Journal",
+        ["/the-best-jewelry-stores-in-lagos-nigeria-and-what-makes-sterlin-glams-different"] = "/Journal",
+        ["/where-to-buy-jewelry-in-nigeria"] = "/Journal",
+        ["/why-lagos-women-notice-your-jewelry-first"] = "/Journal",
+        ["/yoruba-bridal-jewelry-guide"] = "/Journal",
+    };
+
+    /// <summary>New path for a known old URL, or null if it isn't one we remap. (/cart, /checkout,
+    /// /wishlist already resolve on the new site, so they're intentionally not remapped — that would loop.)</summary>
     public static string? MapLegacy(string path)
     {
         var p = (path ?? "").TrimEnd('/');
         if (p.Length == 0) return null;
         var lower = p.ToLowerInvariant();
 
-        // Old WordPress content pages → their new routes. (Only mapped to pages that exist; /cart and
-        // /checkout already resolve on the new site, so they're deliberately NOT remapped — that would loop.)
-        switch (lower)
-        {
-            case "/contact-us": case "/contact":                               return "/Home/Contact";
-            case "/about-us": case "/about": case "/our-story":                return "/Home/About";
-            case "/privacy-policy": case "/privacy":                           return "/Home/Privacy";
-            case "/terms-and-conditions": case "/terms-of-service": case "/terms": return "/Home/Terms";
-            case "/my-account": case "/account": case "/account/":            return "/Account/Login";
-        }
+        // 1) Exact page/post matches first (so e.g. a blog post that starts with "jewelry-store" wins over
+        //    the store-location pattern below).
+        if (Exact.TryGetValue(lower, out var mapped)) return mapped;
 
+        // 2) WordPress families → the closest new page.
+        if (lower.StartsWith("/jewelry-store") || lower.StartsWith("/jewellery-store")
+            || lower.StartsWith("/jewelry-shop") || lower.StartsWith("/jewellery-shop"))
+            return "/Stores";
+        if (lower.StartsWith("/tag/") || lower.StartsWith("/category/")) return "/products";
+        if (lower.StartsWith("/author/")) return "/";
+
+        // 3) Catalogue (slug-preserving where possible).
         if (lower == "/shop") return "/products";
         if (lower.StartsWith("/shop/"))
         {
@@ -64,6 +113,8 @@ public sealed class LegacyUrlRedirectMiddleware
             var segs = p["/product-category/".Length..].Split('/', StringSplitOptions.RemoveEmptyEntries);
             return segs.Length > 0 ? $"/products?category={Uri.EscapeDataString(segs[^1])}" : "/products";
         }
+
+        // 4) WordPress system paths.
         if (lower is "/wp-login.php" or "/wp-admin" or "/feed" || lower.StartsWith("/wp-admin/") || lower.StartsWith("/feed/"))
             return "/";
 
