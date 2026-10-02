@@ -325,14 +325,21 @@
                         <span class="text-xs text-neutral-600 font-light">Send me order updates on WhatsApp</span>
                     </label>
 
-                    @* Model-level errors (e.g. "Payment could not be initiated", minimum order) — without
-                       this, a failed payment-init silently re-rendered the page with no visible reason. *@
-                    @if (ViewData.ModelState[string.Empty]?.Errors.Count > 0)
+                    @* Show EVERY validation error (deduped). Field-level errors can otherwise sit in a
+                       hidden section (e.g. the delivery address while on pickup) and never be seen,
+                       making the page look like it "just reloads". *@
+                    @{
+                        var checkoutErrors = ViewData.ModelState.Values
+                            .SelectMany(v => v.Errors).Select(e => e.ErrorMessage)
+                            .Where(m => !string.IsNullOrWhiteSpace(m))
+                            .Distinct().ToList();
+                    }
+                    @if (checkoutErrors.Count > 0)
                     {
                         <div class="mb-4 border border-red-300 bg-red-50 text-red-700 text-xs rounded-sm px-3 py-2.5" role="alert">
-                            @foreach (var err in ViewData.ModelState[string.Empty]!.Errors)
+                            @foreach (var m in checkoutErrors)
                             {
-                                <p>@err.ErrorMessage</p>
+                                <p>@m</p>
                             }
                         </div>
                     }
