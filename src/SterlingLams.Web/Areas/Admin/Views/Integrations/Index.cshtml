@@ -328,6 +328,38 @@
             </div>
         </section>
 
+        @* ─── Meta Pixel (Facebook / Instagram ads) ─────────────────────────────── *@
+        <section class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
+            <div>
+                <h2 class="text-sm font-semibold text-neutral-800">Meta Pixel (Facebook / Instagram ads)</h2>
+                <p class="text-xs text-neutral-400 mt-0.5">Loads the Meta Pixel on the storefront so your Facebook &amp; Instagram ads can track page views + purchases and retarget visitors. Get the ID from <b>Meta Events Manager</b>.</p>
+            </div>
+
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" name="meta.enabled" value="true" @(Model.MetaEnabled ? "checked" : "")
+                       class="mt-0.5 rounded border-neutral-300 accent-neutral-900 w-4 h-4" />
+                <div>
+                    <p class="text-sm font-medium text-neutral-800">Enable Meta Pixel</p>
+                    <p class="text-xs text-neutral-400 mt-0.5">Master switch. When off, no pixel loads on the storefront.</p>
+                </div>
+            </label>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Pixel ID</label>
+                    <input type="text" name="meta.pixel_id" value="@Model.MetaPixelId" placeholder="e.g. 1234567890123456" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">Numbers only, from Meta Events Manager → your dataset. Public — it ships in the page.</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Domain verification code <span class="text-neutral-400 font-normal">(optional)</span></label>
+                    <input type="text" name="meta.domain_verification" value="@Model.MetaDomainVerification" placeholder="facebook-domain-verification code" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">From Meta Business Settings → Brand safety → Domains. Added as a meta tag to verify sterlinglams.com.</p>
+                </div>
+            </div>
+        </section>
+
         @* ─── Cloudinary (image hosting / CDN) ─────────────────────────────────── *@
         <section class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
             <div>

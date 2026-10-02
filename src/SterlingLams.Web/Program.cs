@@ -430,12 +430,22 @@ app.Use(async (context, next) =>
 
     // Google Analytics 4 tag needs googletagmanager.com (script) + google-analytics.com (beacons). Only
     // widen the storefront CSP for those hosts while GA is actually enabled, so it stays strict otherwise.
+    var settingsSvc = context.RequestServices.GetRequiredService<SterlingLams.Web.Services.ISettingsService>();
     var gaHosts = "";
-    if (!staffArea && await context.RequestServices.GetRequiredService<SterlingLams.Web.Services.ISettingsService>().GetBoolAsync("ga.enabled", false))
+    if (!staffArea && await settingsSvc.GetBoolAsync("ga.enabled", false))
     {
         scriptSrc += " https://www.googletagmanager.com";
         // GA4 beacons + (if configured) Google Ads conversion pings.
         gaHosts = " https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://www.googleadservices.com https://www.google.com https://googleads.g.doubleclick.net";
+    }
+
+    // Meta Pixel (Facebook/Instagram ads) needs connect.facebook.net (script) + facebook.com (beacons).
+    // Only widen the storefront CSP for those hosts while the pixel is enabled.
+    var metaHosts = "";
+    if (!staffArea && await settingsSvc.GetBoolAsync("meta.enabled", false))
+    {
+        scriptSrc += " https://connect.facebook.net";
+        metaHosts = " https://connect.facebook.net https://www.facebook.com";
     }
 
     context.Response.Headers["Content-Security-Policy"] =
@@ -444,7 +454,7 @@ app.Use(async (context, next) =>
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
         "font-src 'self' https://fonts.gstatic.com; " +
         "img-src 'self' data: https:; " +
-        "connect-src 'self'" + gaHosts + "; " +
+        "connect-src 'self'" + gaHosts + metaHosts + "; " +
         "object-src 'none'; " +
         "base-uri 'self'; " +
         // Allow the checkout form to redirect to the Paystack hosted payment page (the payment

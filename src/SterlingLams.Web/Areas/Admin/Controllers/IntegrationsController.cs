@@ -15,7 +15,7 @@ public class IntegrationsController : AdminBaseController
     // A previously granted "Integrations" permission can no longer open this screen either.
     protected override string? Section => null;
 
-    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog", "Google Analytics", "Cloudinary" };
+    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog", "Google Analytics", "Meta Pixel", "Cloudinary" };
     private static readonly string[] Providers = { "paystack", "stripe", "flutterwave" };
 
     private readonly ISettingsService _settings;
@@ -101,6 +101,10 @@ public class IntegrationsController : AdminBaseController
             GaAdsConversionId   = Plain("ga.ads_conversion_id", null),
             GaPropertyId        = Plain("ga.property_id", null),
             GaServiceAccountSet = Set("ga.service_account_json", null),
+
+            MetaEnabled            = await _settings.GetBoolAsync("meta.enabled", false),
+            MetaPixelId            = Plain("meta.pixel_id", null),
+            MetaDomainVerification = Plain("meta.domain_verification", null),
 
             CloudinaryCloudName  = Plain("cloudinary.cloud_name", "Cloudinary:CloudName"),
             CloudinaryApiKeySet  = Set("cloudinary.api_key", "Cloudinary:ApiKey"),
@@ -216,6 +220,11 @@ public class IntegrationsViewModel
     public string GaMeasurementId { get; set; } = "";
     public string GaAdsConversionId { get; set; } = "";
     public string GaPropertyId { get; set; } = "";
+
+    // Meta Pixel (Facebook/Instagram ads). Pixel id + verification code are public (ship in the page).
+    public bool MetaEnabled { get; set; }
+    public string MetaPixelId { get; set; } = "";
+    public string MetaDomainVerification { get; set; } = "";
     public bool GaServiceAccountSet { get; set; }
 
     // Cloudinary (image hosting). Cloud name is not secret; the API key + secret are.
