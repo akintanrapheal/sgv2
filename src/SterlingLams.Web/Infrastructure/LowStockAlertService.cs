@@ -127,12 +127,13 @@ public class LowStockAlertService : BackgroundService
         }
 
         var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
+        var fromAlerts = await settings.GetAsync("email.from_alerts", "");
         var anySent = false;
 
         // 1) Admin digest — every branch, to each configured admin email (comma-separated list).
         foreach (var addr in EmailRecipients.Split(adminEmail))
         {
-            if (await email.SendAsync(addr, BuildSubject(items), BuildBody(items), ct: ct))
+            if (await email.SendAsync(addr, BuildSubject(items), BuildBody(items), ct: ct, fromOverride: fromAlerts))
             {
                 anySent = true;
                 _logger.LogInformation("Low-stock admin digest sent to {Addr} ({Count} item(s)).", LogRedact.Email(addr), items.Count);
@@ -149,7 +150,7 @@ public class LowStockAlertService : BackgroundService
                 var branchKey = s.Name.Replace("Sterlin Glams ", "");
                 var mine = items.Where(x => x.Branch == branchKey).Cast<dynamic>().ToList();
                 if (mine.Count == 0) continue;
-                if (await email.SendAsync(s.Email!, BuildSubject(mine), BuildBody(mine), ct: ct))
+                if (await email.SendAsync(s.Email!, BuildSubject(mine), BuildBody(mine), ct: ct, fromOverride: fromAlerts))
                 {
                     anySent = true;
                     _logger.LogInformation("Low-stock digest sent to {Branch} ({Count} item(s)).", branchKey, mine.Count);

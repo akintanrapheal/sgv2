@@ -71,9 +71,10 @@ public class FinanceReportService : IFinanceReportService
 
         var subject = $"Sterlin Glams — {freqLabel} finance summary ({f:dd MMM}–{t:dd MMM})";
 
+        var fromReports = await _settings.GetAsync("email.from_reports", "");
         var sent = 0;
         foreach (var to in recipients)
-            if (await _email.SendAsync(to, subject, body)) sent++;
+            if (await _email.SendAsync(to, subject, body, fromOverride: fromReports)) sent++;
 
         return sent > 0 ? (true, $"Sent to {sent} recipient(s).") : (false, "Could not send — check SMTP settings.");
     }
