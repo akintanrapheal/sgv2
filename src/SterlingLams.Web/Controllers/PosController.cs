@@ -846,10 +846,10 @@ public class PosController : Controller
             + sales.Where(o => !withRows.Contains(o.Id) && o.PaymentProvider == m).Sum(o => o.Total);
         var cash = SumOf("Cash");
 
-        // Refunds are NOT paid out of the till's cash drawer (they're settled separately — transfer /
-        // manager / head office), so they do not reduce the expected drawer. They're still reported as
-        // revenue (Refunds / Net in the sales section). CashRefunds kept for reference only.
+        // Every approved refund is money returned to the customer, so it's deducted from the day's
+        // expected cash. (It's also shown in the sales Refunds/Net lines and in Completed Transactions.)
         var refunds = await _db.Refunds.Where(r => r.TillSessionId == session.Id && r.Status == RefundStatus.Approved).ToListAsync();
+        var refundsTotal = refunds.Sum(r => r.Amount);
         var cashRefunds = refunds.Where(r => r.RefundMethod == "Cash").Sum(r => r.Amount);
 
         // Cash drops/top-ups during the shift (pay-in positive, pay-out negative) move the drawer.
@@ -865,12 +865,12 @@ public class PosController : Controller
             CashSales = cash,
             CardSales = SumOf("Card"),
             TransferSales = SumOf("Transfer"),
-            RefundsTotal = refunds.Sum(r => r.Amount),
+            RefundsTotal = refundsTotal,
             CashRefunds = cashRefunds,
             CashIn = cashIn,
             CashOut = cashOut,
-            // Refunds don't come out of the drawer, so they're not subtracted here.
-            ExpectedCash = session.OpeningFloat + cash + cashIn - cashOut
+            // Every refund is deducted from the expected cash (money returned to the customer).
+            ExpectedCash = session.OpeningFloat + cash + cashIn - cashOut - refundsTotal
         };
     }
 
@@ -1036,11 +1036,11 @@ public class PosController : Controller
                 : staffNames.GetValueOrDefault(session.ClosedByUserId ?? session.OpenedByUserId, ""),
             Transactions = sales.Count,
             Tenders = tenders,
-            // Refunds aren't paid from the till drawer, so they don't count as cash withdrawn and don't
-            // reduce the expected drawer (they're still shown on the Refunds tab + netted in revenue).
-            Withdrawn = cashOut,
+            // Every approved refund is money returned to the customer, so it's deducted from the expected
+            // drawer (and shown on the Refunds tab + netted in revenue).
+            Withdrawn = cashOut + refundsAll.Sum(r => r.Amount),
             Deposited = cashIn,
-            ExpectedCashDrawer = session.OpeningFloat + SumOf("Cash") + cashIn - cashOut,
+            ExpectedCashDrawer = session.OpeningFloat + SumOf("Cash") + cashIn - cashOut - refundsAll.Sum(r => r.Amount),
             SalesQtyItems = lines.Sum(l => l.Quantity),
             SalesDiscount = lines.Sum(l => l.DiscountAmount),
             SalesNet = totalNet,
