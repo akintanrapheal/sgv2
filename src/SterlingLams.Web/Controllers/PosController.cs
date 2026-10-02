@@ -944,11 +944,19 @@ public class PosController : Controller
         var giftCard = sales.Sum(o => o.GiftCardAmount);
 
         // "Website orders": this store's ONLINE takings during the session window (informational tender).
-        // Exclude orders still Awaiting Transfer — the stock is coming from another branch and hasn't
-        // arrived, so this store hasn't handled them yet; they shouldn't inflate its end-of-day until the
-        // transfer is received (at which point the order leaves AwaitingTransfer and counts normally).
+        // Exclude anything this store hasn't actually received yet: orders in Awaiting Transfer status AND
+        // any order with an incoming stock transfer to this store that hasn't been fully received. The
+        // stock is still coming from another branch, so it must not inflate this store's end-of-day until
+        // it arrives (once received, the transfer closes and the order counts normally).
+        var incomingOrderIds = await _db.StockTransfers
+            .Where(st => st.OrderId != null && st.ToStoreId == storeId
+                && (st.Status == TransferStatus.PendingApproval || st.Status == TransferStatus.Approved
+                    || st.Status == TransferStatus.InTransit || st.Status == TransferStatus.PartiallyReceived))
+            .Select(st => st.OrderId!.Value).Distinct().ToListAsync();
+
         var website = await _db.Orders.Where(o => o.IsPaid && o.Channel == OrderChannel.Online
                 && o.Status != OrderStatus.AwaitingTransfer
+                && !incomingOrderIds.Contains(o.Id)
                 && (o.PickupStoreId == storeId || o.FulfillingStoreId == storeId)
                 && (o.PaidAt ?? o.CreatedAt) >= session.OpenedAt && (o.PaidAt ?? o.CreatedAt) < winEnd)
             .SumAsync(o => (decimal?)o.Total) ?? 0;

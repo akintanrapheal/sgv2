@@ -1362,7 +1362,7 @@ public class FinanceController : AdminBaseController
     { public decimal Line => Qty * UnitPrice; }
     public record CtRow(int Id, string Number, DateTime When, string Staff, string Location, string Device,
         string Customer, decimal Discount, string DiscountReason, decimal Total, string Tender, decimal Change,
-        List<CtItem> Items);
+        List<CtItem> Items, bool IsRefund = false);
 
     public class CompletedTxnVm
     {
@@ -1377,7 +1377,9 @@ public class FinanceController : AdminBaseController
         public List<CtRow> Rows { get; set; } = new();   // current page only
         // Totals are over the WHOLE filtered set (all pages), not just the rows on screen.
         public int Count { get; set; }
-        public decimal Total { get; set; }
+        public decimal Total { get; set; }         // gross sales
+        public decimal RefundsTotal { get; set; }  // approved refunds (positive)
+        public decimal Net { get; set; }           // Total − RefundsTotal (end-of-day balance)
         public decimal Discount { get; set; }
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 50;
@@ -1419,7 +1421,29 @@ public class FinanceController : AdminBaseController
             .GroupBy(p => p.OrderId)
             .ToDictionary(g => g.Key, g => string.Join(" + ",
                 g.Select(x => string.IsNullOrWhiteSpace(x.Method) ? "Other" : x.Method.Trim()).Distinct()));
-        var staffNames = await UserNamesAsync(raw.Select(r => r.StaffId));
+        // Approved refunds in the same window/filters — money OUT, added as NEGATIVE rows so the report
+        // (and every export) nets plus/minus for an end-of-day balance.
+        var refQ = _db.Refunds.Where(rf => rf.Status == RefundStatus.Approved
+            && (rf.DecisionAt ?? rf.CreatedAt) >= f && (rf.DecisionAt ?? rf.CreatedAt) < t);
+        if (storeId.HasValue) refQ = refQ.Where(rf => rf.OriginalOrder.PickupStoreId == storeId || rf.OriginalOrder.FulfillingStoreId == storeId);
+        if (registerId.HasValue) refQ = refQ.Where(rf => rf.RegisterId == registerId);
+        if (channel == "Online") refQ = refQ.Where(rf => rf.OriginalOrder.Channel == OrderChannel.Online);
+        else if (channel == "Pos") refQ = refQ.Where(rf => rf.OriginalOrder.Channel == OrderChannel.Pos);
+
+        var refRaw = await refQ.OrderByDescending(rf => rf.DecisionAt ?? rf.CreatedAt).Select(rf => new
+        {
+            rf.Id, rf.RefundNumber, When = rf.DecisionAt ?? rf.CreatedAt, rf.CashierUserId, rf.RegisterId,
+            rf.RefundMethod, rf.Amount, rf.Reason, Channel = rf.OriginalOrder.Channel,
+            StoreName = rf.OriginalOrder.PickupStore != null ? rf.OriginalOrder.PickupStore.Name
+                       : (rf.OriginalOrder.FulfillingStore != null ? rf.OriginalOrder.FulfillingStore.Name : null),
+            PosCustName = rf.OriginalOrder.Customer != null ? (rf.OriginalOrder.Customer.FirstName + " " + rf.OriginalOrder.Customer.LastName) : null,
+            PosCustPhone = rf.OriginalOrder.Customer != null ? rf.OriginalOrder.Customer.PhoneNumber : null,
+            OnlineCustName = rf.OriginalOrder.User != null ? (rf.OriginalOrder.User.FirstName + " " + rf.OriginalOrder.User.LastName) : null,
+            Items = rf.Items.Select(i => new CtItem(i.ProductName, i.VariantName, null, i.Quantity, i.UnitPrice)).ToList()
+        }).ToListAsync();
+
+        var staffNames = await UserNamesAsync(raw.Select(r => r.StaffId).Concat(refRaw.Select(r => r.CashierUserId)));
+        var regNames = await _db.Registers.Select(r => new { r.Id, r.Name }).ToDictionaryAsync(r => r.Id, r => r.Name);
 
         var rows = raw.Select(r =>
         {
@@ -1437,15 +1461,33 @@ public class FinanceController : AdminBaseController
                 r.Total, tender, r.ChangeGiven ?? 0, r.Items);
         }).ToList();
 
+        var refRows = refRaw.Select(rf =>
+        {
+            var staff = string.IsNullOrEmpty(rf.CashierUserId) ? "" : staffNames.GetValueOrDefault(rf.CashierUserId, "—");
+            var name = (rf.Channel == OrderChannel.Pos ? rf.PosCustName : rf.OnlineCustName)?.Trim();
+            if (string.IsNullOrWhiteSpace(name)) name = "Walk-in";
+            var phone = rf.Channel == OrderChannel.Pos ? rf.PosCustPhone : null;
+            var customer = "Refund — " + (string.IsNullOrWhiteSpace(phone) ? name : $"{name} · {phone}");
+            var device = rf.RegisterId.HasValue ? regNames.GetValueOrDefault(rf.RegisterId.Value, "—")
+                        : (rf.Channel == OrderChannel.Online ? "Website" : "—");
+            var tender = "Refund · " + (string.IsNullOrWhiteSpace(rf.RefundMethod) ? "—" : rf.RefundMethod.Trim());
+            // Negative Id so the "Show items" toggle never collides with a sale order's id.
+            return new CtRow(-rf.Id, rf.RefundNumber, rf.When, staff, rf.StoreName ?? "Online / Unassigned",
+                device, customer, 0m, string.IsNullOrWhiteSpace(rf.Reason) ? "—" : rf.Reason!,
+                -rf.Amount, tender, 0m, rf.Items, IsRefund: true);
+        }).ToList();
+
+        var combined = rows.Concat(refRows).OrderByDescending(r => r.When).ToList();
+
         if (!string.IsNullOrWhiteSpace(q))
         {
             var s = q.Trim();
             const StringComparison oic = StringComparison.OrdinalIgnoreCase;
-            rows = rows.Where(r => r.Number.Contains(s, oic) || r.Customer.Contains(s, oic)
+            combined = combined.Where(r => r.Number.Contains(s, oic) || r.Customer.Contains(s, oic)
                 || r.Staff.Contains(s, oic) || r.Tender.Contains(s, oic)).ToList();
         }
 
-        return (rows, fLocal, tLocal);
+        return (combined, fLocal, tLocal);
     }
 
     public async Task<IActionResult> CompletedTransactions(string? from, string? to, int? storeId,
@@ -1469,8 +1511,10 @@ public class FinanceController : AdminBaseController
             Registers = await _db.Registers.Include(r => r.Store).OrderBy(r => r.Store.Name).ThenBy(r => r.Name).ToListAsync(),
             Rows = pageRows,
             Count = total,
-            Total = rows.Sum(r => r.Total),
-            Discount = rows.Sum(r => r.Discount),
+            Total = rows.Where(r => !r.IsRefund).Sum(r => r.Total),      // gross sales
+            RefundsTotal = rows.Where(r => r.IsRefund).Sum(r => -r.Total), // refunds as a positive figure
+            Net = rows.Sum(r => r.Total),                                 // sales minus refunds (EOD balance)
+            Discount = rows.Where(r => !r.IsRefund).Sum(r => r.Discount),
             Page = page, PageSize = pageSize, TotalPages = totalPages
         });
     }
