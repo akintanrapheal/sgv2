@@ -1559,11 +1559,16 @@ public class PosController : Controller
         if (register == null) return Json(new { orders = Array.Empty<object>() });
         var storeId = register.StoreId;
 
+        // A delivery order appears here as soon as THIS branch PACKS it (PackedAt set, status moved to
+        // Processing), not only once it's Shipped — the admin Logistics board dispatches it later, so
+        // between packing and dispatch it would otherwise vanish from the till. Shipped/Delivered are
+        // included too so an order marked sent straight from the admin (without POS packing) still shows.
         var orders = await _db.Orders
             .Where(o => o.Channel == OrderChannel.Online
-                && ((o.FulfillmentType == FulfillmentType.Delivery && o.FulfillingStoreId == storeId && o.Status == OrderStatus.Shipped)
+                && ((o.FulfillmentType == FulfillmentType.Delivery && o.FulfillingStoreId == storeId
+                        && (o.PackedAt != null || o.Status == OrderStatus.Shipped || o.Status == OrderStatus.Delivered))
                     || (o.FulfillmentType == FulfillmentType.StorePickup && o.PickupStoreId == storeId && o.PickupReadyEmailedAt != null)))
-            .OrderByDescending(o => o.FulfillmentType == FulfillmentType.Delivery ? o.PackedAt : o.PickupReadyEmailedAt)
+            .OrderByDescending(o => o.FulfillmentType == FulfillmentType.Delivery ? (o.PackedAt ?? o.UpdatedAt) : o.PickupReadyEmailedAt)
             .Take(100)
             .Select(o => new
             {
@@ -1576,7 +1581,7 @@ public class PosController : Controller
                 fulfillmentType = o.FulfillmentType.ToString(),
                 status = o.Status.ToString(),
                 packedBy = o.PackedByName,
-                actionedAt = o.FulfillmentType == FulfillmentType.Delivery ? o.PackedAt : o.PickupReadyEmailedAt
+                actionedAt = o.FulfillmentType == FulfillmentType.Delivery ? (o.PackedAt ?? o.UpdatedAt) : o.PickupReadyEmailedAt
             })
             .ToListAsync();
 
