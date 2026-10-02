@@ -212,6 +212,7 @@
                             </label>
                         }
                     </div>
+                    <p id="pickup-error" class="text-xs text-red-500 mt-2 hidden">Please choose a store to collect from.</p>
                 </section>
 
                 <!-- Step 3: Order notes + newsletter -->
@@ -643,6 +644,9 @@ function validateDeliveryFields() {
             setOptionSelected(r.closest('.fulfillment-option'), true);
             document.getElementById('fulfillment-error')?.classList.add('hidden');
         }));
+    // Clear the pickup-store error as soon as a store is chosen.
+    document.querySelectorAll('input[name="SelectedStoreId"]').forEach(r =>
+        r.addEventListener('change', () => document.getElementById('pickup-error')?.classList.add('hidden')));
     // Reflect a pre-checked choice on redisplay (after a validation error). A fresh visit has none.
     var checkedFf = document.querySelector('input[name="FulfillmentType"]:checked');
     if (checkedFf) {
@@ -785,6 +789,13 @@ function validateDeliveryFields() {
             e.preventDefault();
             const derr = document.getElementById('delivery-error');
             if (derr) { derr.classList.remove('hidden'); derr.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+            return;
+        }
+        // Store Pickup needs an actual store chosen — otherwise the server rejected it silently.
+        if (ffChecked.value === 'StorePickup' && !form.querySelector('input[name="SelectedStoreId"]:checked')) {
+            e.preventDefault();
+            const perr = document.getElementById('pickup-error');
+            if (perr) { perr.classList.remove('hidden'); perr.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
             return;
         }
 

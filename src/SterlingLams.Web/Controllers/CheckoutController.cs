@@ -536,7 +536,7 @@ public class CheckoutController : Controller
         {
             if (vm.SelectedStoreId == null || !await _db.Stores.AnyAsync(s => s.Id == vm.SelectedStoreId && s.IsActive))
             {
-                ModelState.AddModelError("SelectedStoreId", "Please select a valid store for pickup.");
+                ModelState.AddModelError("", "Please select a valid store for pickup.");
                 vm.Cart = cart;
                 vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
                     .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
