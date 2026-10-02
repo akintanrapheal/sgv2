@@ -253,7 +253,14 @@ public class ProductsController : Controller
             .Include(p => p.Tags)
             .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive);
 
-        if (product == null) return NotFound();
+        if (product == null)
+        {
+            // Old /shop/{slug} links (redirected here) whose slug no longer matches the new catalogue
+            // — e.g. duplicate-name "-2" suffixes or manually edited WooCommerce slugs — would otherwise
+            // dead-end in a 404. Send the shopper to a search for those words so they still find the item.
+            var terms = slug.Replace('-', ' ').Replace('_', ' ').Trim();
+            return terms.Length > 0 ? Redirect($"/products?search={Uri.EscapeDataString(terms)}") : NotFound();
+        }
 
         // Admin toggle: a product that's out of stock everywhere is hidden from the storefront
         // entirely — a direct link returns Not Found (matches it being absent from listings).
