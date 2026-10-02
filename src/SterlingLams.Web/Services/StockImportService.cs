@@ -51,6 +51,16 @@ public class StockImportService
         return sp > 0 ? (raw[..sp].Trim(), raw[(sp + 1)..].Trim()) : (raw, "");
     }
 
+    /// <summary>Barcode key for leading-zero-tolerant matching: trims whitespace then leading zeros,
+    /// so "010118" and "10118" compare equal. All-zero / empty collapses to "".</summary>
+    private static string NormalizeBarcode(string? b)
+    {
+        b = (b ?? "").Trim();
+        if (b.Length == 0) return "";
+        var t = b.TrimStart('0');
+        return t;   // "" when the code was all zeros — treated as no usable key
+    }
+
     private static int ToQty(string? s)
         => int.TryParse((s ?? "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var q) ? q
          : (double.TryParse((s ?? "").Trim(), NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? (int)Math.Round(d) : 0);
@@ -185,6 +195,20 @@ public class StockImportService
                      .Select(v => new { v.Id, v.ProductId, v.Barcode }).ToListAsync())
             map[v.Barcode!.Trim()] = (v.ProductId, v.Id);
 
+        // Leading-zero tolerance: the catalogue sometimes stores a barcode with a leading zero
+        // (e.g. "010118" from an earlier load) while the stock sheet has it bare ("10118"). Build a
+        // second index keyed by the zero-stripped barcode so the two match. A normalised key that two
+        // DIFFERENT products share is marked ambiguous and never used, so we can't mis-assign.
+        var normMap = new Dictionary<string, (int pid, int? vid)>();
+        var normAmbig = new HashSet<string>();
+        foreach (var kv in map)
+        {
+            var n = NormalizeBarcode(kv.Key);
+            if (n.Length == 0) continue;
+            if (normMap.TryGetValue(n, out var ex)) { if (!ex.Equals(kv.Value)) normAmbig.Add(n); }
+            else normMap[n] = kv.Value;
+        }
+
         // Barcodes that appear on more than one row in the file — ambiguous, so we skip them (which
         // product would the quantity belong to?) and list them for the owner to fix.
         var dupBc = rows.Where(r => !string.IsNullOrWhiteSpace(r.Barcode))
@@ -202,8 +226,13 @@ public class StockImportService
             { issues.Add(new Issue(r.Sku, r.Name, bc, r.Qty, r.SalePrice, "No barcode in this row")); continue; }
             if (dupBc.TryGetValue(bc, out var n))
             { issues.Add(new Issue(r.Sku, r.Name, bc, r.Qty, r.SalePrice, $"Duplicate barcode in file ({n}×) — skipped")); continue; }
+            // Exact barcode first; then the leading-zero-tolerant index (e.g. file "10118" ↔ stored "010118").
             if (!map.TryGetValue(bc, out var t))
-            { issues.Add(new Issue(r.Sku, r.Name, bc, r.Qty, r.SalePrice, "Barcode not found in catalogue")); continue; }
+            {
+                var nb = NormalizeBarcode(bc);
+                if (nb.Length == 0 || normAmbig.Contains(nb) || !normMap.TryGetValue(nb, out t))
+                { issues.Add(new Issue(r.Sku, r.Name, bc, r.Qty, r.SalePrice, "Barcode not found in catalogue")); continue; }
+            }
             matched++; matchedRows.Add((r, t.pid, t.vid));
         }
         int unmatched = issues.Count;
