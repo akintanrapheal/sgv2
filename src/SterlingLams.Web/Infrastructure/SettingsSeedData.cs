@@ -479,5 +479,9 @@ public static class SettingsSeedData
         new() { Key = "ga.ads_conversion_id",    Group = "Google Analytics", Label = "Google Ads Conversion ID (optional)", Type = "text", Value = "", Description = "Google Ads tag ID, e.g. AW-XXXXXXXXX. Fires alongside GA4 through the same tag for ad conversion tracking. Leave blank if not running Google Ads.", SortOrder = 2 },
         new() { Key = "ga.property_id",          Group = "Google Analytics", Label = "GA4 Property ID",         Type = "text",    Value = "", Description = "Numeric GA4 property id (GA Admin → Property Settings) — used to pull reports into the console.", SortOrder = 2 },
         new() { Key = "ga.service_account_json",  Group = "Google Analytics", Label = "Service Account Key (JSON)", Type = "secret", Value = "", Description = "A Google service-account key JSON with the Analytics Data API enabled and Viewer access to the property. Stored encrypted; used only to read reports.", SortOrder = 3 },
+
+        new() { Key = "meta.enabled",             Group = "Meta Pixel", Label = "Enable Meta Pixel", Type = "boolean", Value = "false", Description = "Master switch for the Facebook/Instagram (Meta) Pixel on the storefront — tracks page views and purchases for Meta ad conversions and retargeting.", SortOrder = 0 },
+        new() { Key = "meta.pixel_id",            Group = "Meta Pixel", Label = "Pixel ID", Type = "text", Value = "", Description = "Your Meta Pixel / dataset ID (numbers only), from Meta Events Manager. Loads Meta's pixel on the storefront and fires a Purchase event on checkout.", SortOrder = 1 },
+        new() { Key = "meta.domain_verification", Group = "Meta Pixel", Label = "Domain verification code (optional)", Type = "text", Value = "", Description = "The facebook-domain-verification code from Meta Business Settings → Brand safety → Domains. Emitted as a meta tag so Meta can verify sterlinglams.com.", SortOrder = 2 },
     };
 }

@@ -1,0 +1,33 @@
+@inject SterlingLams.Web.Services.ISettingsService SettingsService
+@{
+    var metaEnabled = await SettingsService.GetBoolAsync("meta.enabled");
+    var pixelId = (await SettingsService.GetAsync("meta.pixel_id")).Trim();           // numeric dataset/pixel id
+    var domainVerify = (await SettingsService.GetAsync("meta.domain_verification")).Trim();
+    // Only well-formed values are emitted so nothing user-entered can break out of the attribute.
+    bool PixelOk(string id) => System.Text.RegularExpressions.Regex.IsMatch(id, "^[0-9]{8,20}$");
+    bool TokenOk(string t) => System.Text.RegularExpressions.Regex.IsMatch(t, "^[A-Za-z0-9_-]{8,128}$");
+    var pixelOk = metaEnabled && PixelOk(pixelId);
+}
+@* Meta (Facebook/Instagram) domain verification — safe to emit whenever set, independent of the pixel. *@
+@if (TokenOk(domainVerify))
+{
+    <meta name="facebook-domain-verification" content="@domainVerify" />
+}
+@* Meta Pixel (base + PageView) — storefront only. Off unless enabled + a valid numeric pixel id is set.
+   The CSP allows connect.facebook.net only while the pixel is enabled (see Program.cs). *@
+@if (pixelOk)
+{
+    <script nonce="@Context.Items["csp-nonce"]">
+        !function(f,b,e,v,n,t,s)
+        {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+        n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t,s)}(window, document,'script',
+        'https://connect.facebook.net/en_US/fbevents.js');
+        fbq('init', '@pixelId');
+        fbq('track', 'PageView');
+    </script>
+    <noscript><img height="1" width="1" style="display:none" src="https://www.facebook.com/tr?id=@pixelId&ev=PageView&noscript=1" alt="" /></noscript>
+}
