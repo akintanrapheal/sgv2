@@ -204,7 +204,8 @@ public class PosController : Controller
         {
             var cashiers = await Infrastructure.DbRead.RetryAsync(() => _db.Users.Where(u => u.PinHash != null)
                 .OrderBy(u => u.FirstName)
-                .Select(u => new TillCashier { Id = u.Id, Name = (u.FirstName + " " + u.LastName).Trim() })
+                .Select(u => new TillCashier { Id = u.Id, Name = (u.FirstName + " " + u.LastName).Trim(),
+                                               PinPending = u.PinHash == ApplicationUser.PinPendingMarker })
                 .ToListAsync());
             return View("Login", cashiers);
         }
@@ -1352,6 +1353,9 @@ public class PosController : Controller
     public async Task<IActionResult> Login(string userId, string pin)
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.PinHash != null);
+        // A cashier who hasn't chosen a PIN yet must set one first — never try to verify the marker.
+        if (user != null && user.PinPending)
+            return Json(new { success = false, pinPending = true, message = "Please choose your PIN to continue." });
         if (user != null && !string.IsNullOrEmpty(pin) &&
             _hasher.VerifyHashedPassword(user, user.PinHash!, pin) != PasswordVerificationResult.Failed)
         {
@@ -1384,6 +1388,36 @@ public class PosController : Controller
         }
         catch { }
         return Json(new { success = false, message = "Wrong PIN." });
+    }
+
+    // First-login / after-reset PIN setup: a cashier flagged "pending" chooses their own PIN here, which
+    // is hashed and stored, then they're signed straight in. Rate-limited like Login (ids are exposed).
+    [AllowAnonymous, HttpPost, ValidateAntiForgeryToken]
+    [Microsoft.AspNetCore.RateLimiting.EnableRateLimiting("auth")]
+    public async Task<IActionResult> SetOwnPin(string userId, string pin)
+    {
+        // Only a cashier still awaiting a PIN may self-set one (first login, or after an admin reset).
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.PinHash == ApplicationUser.PinPendingMarker);
+        if (user == null)
+            return Json(new { success = false, message = "This cashier isn't awaiting a PIN. Ask an admin to reset it." });
+
+        pin = (pin ?? "").Trim();
+        if (pin.Length < 4 || pin.Length > 8 || !pin.All(char.IsDigit))
+            return Json(new { success = false, message = "PIN must be 4–8 digits." });
+
+        // Same branch gate as sign-in: only let them set up + sign in at a till in a branch they're assigned to.
+        var reg = await BoundRegisterAsync();
+        if (reg != null && !await CanWorkAtStoreAsync(user, reg.StoreId))
+        {
+            try { await _audit.LogAsync("LoginBlocked", "POS", user.Id, $"{user.FullName} blocked from POS ({reg.Name}) — not assigned to {reg.Store?.Name}"); } catch { }
+            return Json(new { success = false, message = "You are not assigned to this branch. Please contact your administrator." });
+        }
+
+        user.PinHash = _hasher.HashPassword(user, pin);
+        await _db.SaveChangesAsync();
+        await _signIn.SignInAsync(user, isPersistent: false);
+        try { await _audit.LogAsync("Login", "POS", user.Id, $"{user.FullName} set their PIN and signed in to POS{(reg != null ? $" ({reg.Name})" : "")}"); } catch { }
+        return Json(new { success = true });
     }
 
     [Authorize, HttpPost, ValidateAntiForgeryToken]
@@ -2703,7 +2737,7 @@ public class PosController : Controller
         /// <summary>Manager PIN, supplied when discount approval is required (pos.approval_discounts).</summary>
         public string? ManagerPin { get; set; }
     }
-    public class TillCashier { public string Id { get; set; } = ""; public string Name { get; set; } = ""; }
+    public class TillCashier { public string Id { get; set; } = ""; public string Name { get; set; } = ""; public bool PinPending { get; set; } }
 
     // Builds the per-tender rows for a POS order. Cash change is deducted from the cash row so the
     // recorded cash equals what stays in the drawer (keeps cash-up accurate). Returns the rows plus
