@@ -101,8 +101,10 @@ public class CheckoutViewModel : IValidatableObject
         }
         else // Store Pickup
         {
+            // Model-level key ("") so it shows in the checkout error box — a field key had no visible
+            // message near the store radios, which made the page reload silently.
             if (SelectedStoreId == null)
-                yield return new ValidationResult("Please select a store for pickup.", new[] { "SelectedStoreId" });
+                yield return new ValidationResult("Please select a store for pickup.", new[] { "" });
         }
 
         if (!AcceptTerms)

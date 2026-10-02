@@ -200,7 +200,7 @@
                         @foreach (var store in Model.AvailableStores)
                         {
                             <label class="flex gap-4 border border-neutral-200 p-5 cursor-pointer hover:border-neutral-900 transition-colors has-[:checked]:border-neutral-900 has-[:checked]:bg-neutral-50">
-                                <input type="radio" name="SelectedStoreId" value="@store.StoreId" class="mt-1 text-neutral-900 focus:ring-0" />
+                                <input type="radio" name="SelectedStoreId" value="@store.StoreId" class="mt-1 text-neutral-900 focus:ring-0" @(Model.SelectedStoreId == store.StoreId ? "checked" : "") />
                                 <div>
                                     <p class="text-sm font-medium text-neutral-800">@store.StoreName</p>
                                     <p class="text-xs text-neutral-400 font-light mt-0.5">@store.Address</p>
