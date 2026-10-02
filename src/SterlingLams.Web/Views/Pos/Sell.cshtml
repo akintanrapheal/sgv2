@@ -345,7 +345,7 @@
                     <!-- Payment method -->
                     <div class="px-3 pb-2 bg-neutral-50">
                         <div class="flex gap-1.5" id="till-methods">
-                            <button type="button" data-method="Cash" class="till-method flex-1 border-2 border-brand-500 bg-brand-50 text-brand-700 rounded-lg py-1.5 text-xs font-medium">Cash</button>
+                            <button type="button" data-method="Cash" class="till-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-1.5 text-xs font-medium hover:border-neutral-300">Cash</button>
                             <button type="button" data-method="Card" class="till-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-1.5 text-xs font-medium hover:border-neutral-300">Card</button>
                             <button type="button" data-method="Transfer" class="till-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-1.5 text-xs font-medium hover:border-neutral-300">Transfer</button>
                             <button type="button" data-method="Split" class="till-method flex-1 border border-neutral-200 text-neutral-600 rounded-lg py-1.5 text-xs font-medium hover:border-neutral-300">Split</button>
@@ -1366,7 +1366,7 @@
     const changeEl = document.getElementById('till-change');
     const payBtn = document.getElementById('till-pay');
     const voidBtn = document.getElementById('till-void-btn');
-    let cart = [], method = 'Cash', customer = null, splitPayments = null;
+    let cart = [], method = '', customer = null, splitPayments = null;  // no payment type pre-selected — cashier must choose
     let loyalty = { enabled: false, balance: 0, pointValue: 0, redeem: 0 };
 
     // ── Cart persistence ────────────────────────────────────────────────────────
@@ -1664,7 +1664,7 @@
         return paid + 0.001 >= cartTotal();
     }
     function updatePayState() {
-        payBtn.disabled = !cart.length || !customer || (method === 'Split' && !splitOk());
+        payBtn.disabled = !cart.length || !customer || !method || (method === 'Split' && !splitOk());
         const hint = document.getElementById('till-customer-hint');
         if (hint) hint.classList.toggle('hidden', !(cart.length && !customer));
     }
@@ -1675,7 +1675,7 @@
         c.qty += d; if (c.qty <= 0) cart.splice(i, 1); renderCart();
     }
 
-    voidBtn.addEventListener('click', () => { cart = []; tenderedEl.value = ''; setCustomer(null); selectMethod('Cash'); renderCart(); });
+    voidBtn.addEventListener('click', () => { cart = []; tenderedEl.value = ''; setCustomer(null); selectMethod(''); renderCart(); });
 
     // ── Hold / recall ─────────────────────────────────────────────────────────
     const holdBtn = document.getElementById('till-hold-btn');
@@ -1816,7 +1816,7 @@
     splitAmts.forEach(el => el.addEventListener('input', renderSplit));
     document.getElementById('split-cancel').addEventListener('click', () => {
         splitModal.classList.add('hidden');
-        selectMethod('Cash'); updateChange(); saveCart(); updatePayState(); // revert if they back out
+        selectMethod(''); updateChange(); saveCart(); updatePayState(); // revert to no selection if they back out
     });
     splitConfirm.addEventListener('click', () => {
         const parts = splitAmts.map(el => ({ method: el.dataset.pm, amount: parseFloat(el.value) || 0 })).filter(p => p.amount > 0);
@@ -1956,14 +1956,14 @@
                     receiptBtn.href = window.__posBase + '/Receipt/' + data.orderId;
                     receiptBtn.classList.remove('hidden');
                 }
-                cart = []; tenderedEl.value = ''; setCustomer(null); selectMethod('Cash'); clearSavedCart(); renderCart();
+                cart = []; tenderedEl.value = ''; setCustomer(null); selectMethod(''); clearSavedCart(); renderCart();
                 document.getElementById('till-done').classList.remove('hidden');
             } else showError(data.message || 'Could not complete the sale.');
         } finally { payBtn.querySelector('span').textContent = 'Pay'; updatePayState(); }
     });
 
     document.getElementById('till-new').addEventListener('click', () => {
-        cart = []; tenderedEl.value = ''; setCustomer(null); selectMethod('Cash');
+        cart = []; tenderedEl.value = ''; setCustomer(null); selectMethod('');
         document.getElementById('till-done').classList.add('hidden');
         renderCart();
     });
