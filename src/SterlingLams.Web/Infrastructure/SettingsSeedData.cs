@@ -80,6 +80,15 @@ public static class SettingsSeedData
         var nairaPerPoint = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "loyalty.naira_per_point");
         if (nairaPerPoint != null && nairaPerPoint.Value == "100") nairaPerPoint.Value = "40";
 
+        // Standardise the email footer to ONE no-reply line everywhere: set the no-reply notice to the
+        // agreed wording, and clear the duplicate footer-text line so the sentence isn't shown twice (the
+        // notice above now carries it). A custom footer-text the admin typed is left alone.
+        const string noReplyMsg = "This is an automated message — please don't reply.";
+        var nrNotice = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "email.noreply_notice");
+        if (nrNotice != null && nrNotice.Value != noReplyMsg) nrNotice.Value = noReplyMsg;
+        var ftText = await db.SiteSettings.FirstOrDefaultAsync(s => s.Key == "email.footer_text");
+        if (ftText != null && ftText.Value == noReplyMsg) ftText.Value = "";
+
         // A point is worth ₦1 on redemption. The 2.5% reward is already in the EARN rate (₦40/point),
         // so a ₦2.5 redemption value stacked on top (6.25% back) and inflated every "worth" figure.
         // Reset the old ₦2.5 value to ₦1; leave ₦1 or any other deliberate value alone.
@@ -282,8 +291,8 @@ public static class SettingsSeedData
         new() { Key = "email.from_name",    Group = "Emails", Label = "Sender Name",          Type = "text",     Value = "Sterlin Glams", Description = "Display name on the From line of every email.",            SortOrder = 1 },
         new() { Key = "email.reply_to",     Group = "Emails", Label = "Reply-To Address",     Type = "email",    Value = "",              Description = "Where customer replies go (optional). Blank = no reply-to.", SortOrder = 2 },
         new() { Key = "email.header_color", Group = "Emails", Label = "Header Colour",         Type = "color",    Value = "#0a0a0a",       Description = "Background colour of the email header band.",             SortOrder = 3 },
-        new() { Key = "email.footer_text",  Group = "Emails", Label = "Footer Text",           Type = "textarea", Value = "This is an automated message — please don't reply.", Description = "Small print at the bottom of every email.", SortOrder = 4 },
-        new() { Key = "email.noreply_notice", Group = "Emails", Label = "\"Do not reply\" notice", Type = "text",   Value = "This is an automatic email — please do not reply.", Description = "Shown on its own line at the bottom of every email (above the footer text). Blank = hide it. Rebrand the wording as you like.", SortOrder = 5 },
+        new() { Key = "email.footer_text",  Group = "Emails", Label = "Footer Text",           Type = "textarea", Value = "", Description = "Extra small print after the copyright line (optional). The no-reply notice below is the main footer line.", SortOrder = 4 },
+        new() { Key = "email.noreply_notice", Group = "Emails", Label = "\"Do not reply\" notice", Type = "text",   Value = "This is an automated message — please don't reply.", Description = "The footer no-reply line shown at the bottom of every email. Blank = hide it. Rebrand the wording as you like.", SortOrder = 5 },
         new() { Key = "email.from_reports",   Group = "Emails", Label = "Reports sender address",  Type = "email",   Value = "", Description = "Sender (From) address for finance/report emails, e.g. reports@sterlinglams.com. Blank = use the main SMTP From. Any @your-domain address works once the domain is email-authenticated.", SortOrder = 6 },
         new() { Key = "email.from_alerts",    Group = "Emails", Label = "Alerts sender address",   Type = "email",   Value = "", Description = "Sender (From) address for admin alerts (low stock, fulfilment needed, new-order alert), e.g. notifications@sterlinglams.com. Blank = use the main SMTP From.", SortOrder = 7 },
         new() { Key = "email.logo_height",  Group = "Emails", Label = "Logo Size (px)",         Type = "number",   Value = "72",            Description = "Height of the logo in the email header (16–300px).",      SortOrder = 5 },

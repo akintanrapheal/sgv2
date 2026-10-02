@@ -57,7 +57,7 @@ public class EmailCustomizerController : AdminBaseController
             FromName = await _settings.GetAsync("email.from_name", "Sterlin Glams"),
             ReplyTo = await _settings.GetAsync("email.reply_to", ""),
             HeaderColor = await _settings.GetAsync("email.header_color", "#0a0a0a"),
-            FooterText = await _settings.GetAsync("email.footer_text", "This is an automated message — please don't reply."),
+            FooterText = await _settings.GetAsync("email.footer_text", ""),
             LogoHeight = (int)await _settings.GetDecimalAsync("email.logo_height", 72),
         };
         return View(vm);
