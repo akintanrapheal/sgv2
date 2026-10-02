@@ -153,6 +153,16 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
 
+// Make role / permission changes take effect almost immediately for already-signed-in users. Identity
+// bakes a user's roles into their auth cookie at sign-in; by default it only re-reads them from the DB
+// every 30 minutes (the security-stamp validation interval). That's why granting someone a new role
+// (e.g. Finance → Admin) didn't give them access until they signed out and back in. Dropping the
+// interval to 30s means the cookie is refreshed with the user's current roles within ~30 seconds of
+// any request — no re-login needed. (The stamp isn't changed here, so users stay signed in; they're
+// just re-issued an up-to-date principal.)
+builder.Services.Configure<Microsoft.AspNetCore.Identity.SecurityStampValidatorOptions>(o =>
+    o.ValidationInterval = TimeSpan.FromSeconds(30));
+
 // Let customers migrated from the old WooCommerce/WordPress site sign in with their existing password;
 // the WordPress hash is verified once and transparently upgraded to Identity's format on first login.
 // Must be registered AFTER AddIdentity so it overrides the default IPasswordHasher.
