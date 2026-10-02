@@ -154,6 +154,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     Status = o.Status.ToString(),
                     IsPaid = o.IsPaid,
                     FulfillmentType = o.FulfillmentType.ToString(),
+                    IsPos = o.Channel == OrderChannel.Pos,
                     CreatedAt = o.CreatedAt
                 })
                 .ToListAsync();

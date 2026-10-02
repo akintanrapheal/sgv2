@@ -127,7 +127,7 @@
                         <p class="text-[10px] text-neutral-400">@o.CustomerEmail</p>
                     </td>
                     <td class="px-4 py-3 text-xs font-medium">₦@o.Total.ToString("N0")</td>
-                    <td class="px-4 py-3 text-xs text-neutral-600">@o.FulfillmentType</td>
+                    <td class="px-4 py-3 text-xs text-neutral-600">@(o.IsPos ? "In-store" : o.FulfillmentType == "StorePickup" ? "Store pickup" : o.FulfillmentType)</td>
                     <td class="px-4 py-3">
                         @if (o.IsPaid)
                         {
@@ -150,7 +150,14 @@
                                 _ => "bg-neutral-100 text-neutral-600"
                             };
                         }
-                        <span class="text-[10px] px-2 py-0.5 rounded-full @bc">@(o.Status == "AwaitingTransfer" ? "Awaiting transfer" : o.Status)</span>
+                        @{
+                            // A completed POS sale reads as "Paid & collected", not "Delivered". Other POS
+                            // states (Cancelled/Refunded) keep their real label.
+                            var statusLabel = (o.IsPos && (o.Status == "Delivered" || o.Status == "Collected"))
+                                ? "Paid & collected"
+                                : (o.Status == "AwaitingTransfer" ? "Awaiting transfer" : o.Status);
+                        }
+                        <span class="text-[10px] px-2 py-0.5 rounded-full @bc">@statusLabel</span>
                     </td>
                     <td class="px-4 py-3 text-xs text-neutral-400">@o.CreatedAt.ToLocalTime().ToString("dd MMM yy")</td>
                 </tr>

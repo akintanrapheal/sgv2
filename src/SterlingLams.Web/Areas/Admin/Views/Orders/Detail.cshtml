@@ -89,7 +89,7 @@
         <!-- Fulfillment info -->
         <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
             <h2 class="text-sm font-medium mb-3">Fulfillment</h2>
-            <p class="text-xs text-neutral-600 mb-1"><span class="text-neutral-400">Type:</span> @Model.Order.FulfillmentType</p>
+            <p class="text-xs text-neutral-600 mb-1"><span class="text-neutral-400">Type:</span> @(Model.Order.Channel == SterlingLams.Web.Models.Domain.OrderChannel.Pos ? "In-store" : Model.Order.FulfillmentType == SterlingLams.Web.Models.Domain.FulfillmentType.StorePickup ? "Store pickup" : Model.Order.FulfillmentType.ToString())</p>
             @if (Model.Order.PickupStore != null)
             {
                 <p class="text-xs text-neutral-600"><span class="text-neutral-400">Pickup at:</span> @Model.Order.PickupStore.Name — @Model.Order.PickupStore.Address</p>
@@ -329,8 +329,13 @@
         <!-- Update Status -->
         <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
             <h2 class="text-sm font-medium mb-1">Update Status</h2>
+            @{
+                var isPosOrder = Model.Order.Channel == SterlingLams.Web.Models.Domain.OrderChannel.Pos;
+                var statusText = (isPosOrder && (Model.Order.Status == SterlingLams.Web.Models.Domain.OrderStatus.Delivered || Model.Order.Status == SterlingLams.Web.Models.Domain.OrderStatus.Collected))
+                    ? "Paid & collected" : Model.Order.Status.ToString();
+            }
             <p class="text-xs text-neutral-500 mb-3">Current:
-                <span class="font-medium @(Model.Order.Status == SterlingLams.Web.Models.Domain.OrderStatus.Refunded ? "text-rose-600" : "text-neutral-800")">@Model.Order.Status</span>
+                <span class="font-medium @(Model.Order.Status == SterlingLams.Web.Models.Domain.OrderStatus.Refunded ? "text-rose-600" : "text-neutral-800")">@statusText</span>
             </p>
             <form asp-area="Admin" asp-controller="Orders" asp-action="UpdateStatus"
                   asp-route-id="@Model.Order.Id" method="post" class="space-y-3">
