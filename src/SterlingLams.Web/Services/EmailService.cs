@@ -131,10 +131,10 @@ public class SmtpEmailService : IEmailService
         if (string.IsNullOrWhiteSpace(fromName)) fromName = _opt.FromName;
         var replyTo = await _settings.GetAsync("email.reply_to", "");
         var headerColor = await _settings.GetAsync("email.header_color", "#0a0a0a");
-        var footerText = await _settings.GetAsync("email.footer_text", "This is an automated message — please don't reply.");
+        var footerText = await _settings.GetAsync("email.footer_text", "");
         // Dedicated "do not reply" notice, shown on its own line in every email footer. Kept separate
         // from footerText so it survives a rebrand of that line; blank = hidden. Rebrandable in Admin → Emails.
-        var noReplyNotice = await _settings.GetAsync("email.noreply_notice", "This is an automatic email — please do not reply.");
+        var noReplyNotice = await _settings.GetAsync("email.noreply_notice", "This is an automated message — please don't reply.");
         var logoHeight = (int)await _settings.GetDecimalAsync("email.logo_height", 72);
         if (logoHeight is < 16 or > 300) logoHeight = 72;
 
