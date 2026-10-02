@@ -107,5 +107,31 @@ public static class RoleSeedData
             });
             await db.SaveChangesAsync();
         }
+
+        // Give the Admin role FULL Finance (view + manage) so every admin can process refunds — the
+        // approval step is gated on Finance:manage. The first-run FullGrants seed is skipped on existing
+        // DBs (the role already has grants), so Admin may be missing Finance; add it here. Marker-gated so
+        // it runs exactly once — if the owner later removes Finance from Admin, it stays removed.
+        const string adminFinanceMarker = "seed.finance_granted_to_admin";
+        var adminFinanceSeeded = await db.SiteSettings.AnyAsync(s => s.Key == adminFinanceMarker);
+        if (!adminFinanceSeeded)
+        {
+            if (await roleManager.RoleExistsAsync("Admin"))
+            {
+                foreach (var key in new[] { "Finance", "Finance:manage" })
+                    if (!await db.RolePermissions.AnyAsync(rp => rp.RoleName == "Admin" && rp.Section == key))
+                        db.RolePermissions.Add(new RolePermission { RoleName = "Admin", Section = key });
+                logger.LogInformation("Granted Finance (view + manage) to the Admin role so admins can process refunds.");
+            }
+            db.SiteSettings.Add(new SiteSetting
+            {
+                Key = adminFinanceMarker,
+                Value = "true",
+                Group = "System",
+                Label = "Finance granted to Admin (seed marker)",
+                Type = "hidden"
+            });
+            await db.SaveChangesAsync();
+        }
     }
 }
