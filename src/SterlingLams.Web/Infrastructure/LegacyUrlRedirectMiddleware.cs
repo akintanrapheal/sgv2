@@ -15,11 +15,22 @@ public sealed class LegacyUrlRedirectMiddleware
     {
         if (HttpMethods.IsGet(ctx.Request.Method))
         {
-            var target = MapLegacy(ctx.Request.Path.Value ?? "");
-            if (target != null)
+            string? target = null;
+            try { target = MapLegacy(ctx.Request.Path.Value ?? ""); }
+            catch { target = null; }  // never let a redirect-mapping error break the request
+            if (!string.IsNullOrEmpty(target))
             {
-                ctx.Response.Redirect(target, permanent: true); // 301
-                return;
+                try
+                {
+                    ctx.Response.Redirect(target, permanent: true); // 301
+                    return;
+                }
+                catch
+                {
+                    // A malformed Location (e.g. an un-escaped non-ASCII char) must not 500 the request —
+                    // fall through to normal handling (which 404s) instead.
+                    ctx.Response.Clear();
+                }
             }
         }
         await _next(ctx);
@@ -101,12 +112,14 @@ public sealed class LegacyUrlRedirectMiddleware
         if (lower.StartsWith("/shop/"))
         {
             var slug = p["/shop/".Length..];
-            return slug.Length == 0 || slug.Contains('/') ? "/products" : $"/products/{slug}";
+            // Encode the slug: old product URLs can contain non-ASCII (e.g. ₦) which must be %-escaped in
+            // the Location header, or setting it throws "Invalid non-ASCII character in header".
+            return slug.Length == 0 || slug.Contains('/') ? "/products" : $"/products/{Uri.EscapeDataString(slug)}";
         }
         if (lower.StartsWith("/product/"))
         {
             var slug = p["/product/".Length..];
-            return slug.Length == 0 || slug.Contains('/') ? "/products" : $"/products/{slug}";
+            return slug.Length == 0 || slug.Contains('/') ? "/products" : $"/products/{Uri.EscapeDataString(slug)}";
         }
         if (lower.StartsWith("/product-category/"))
         {

@@ -25,7 +25,7 @@
 </div>
 <p class="text-xs text-neutral-400 mb-6">
     Live GA4 data via the Google Analytics Data API@(string.IsNullOrEmpty(Model.MeasurementId) ? "" : $" · tag {Model.MeasurementId}").
-    Full reports are in <a href="https://analytics.google.com" target="_blank" rel="noopener" class="text-brand-600 hover:underline">Google Analytics</a>.
+    Full reports are in <a href="@(string.IsNullOrEmpty(Model.PropertyId) ? "https://analytics.google.com" : $"https://analytics.google.com/analytics/web/#/p{Model.PropertyId}/reports/intelligenthome")" target="_blank" rel="noopener" class="text-brand-600 hover:underline">Google Analytics</a>.
 </p>
 
 @if (!r.Configured)
