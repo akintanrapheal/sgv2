@@ -129,6 +129,7 @@ public class CheckoutController : Controller
                 cart.DiscountDescription = auto.Description;
                 cart.DiscountAmount      = auto.Amount;
                 cart.FreeShipping        = auto.FreeShipping;
+                cart.FreeShippingLagosAbujaOnly = auto.FreeShippingLagosAbujaOnly;
                 cart.IsAutomaticDiscount = true;
                 SaveCart(cart);
             }
@@ -589,9 +590,12 @@ public class CheckoutController : Controller
         string? discountCode   = null;
         if (!string.IsNullOrEmpty(cart.AppliedDiscountCode))
         {
+            // Pass the delivery state so a location-restricted code (e.g. free delivery for Lagos/Abuja
+            // only) is enforced here — the authoritative point where the fee is charged.
+            var discountState = vm.FulfillmentType == FulfillmentChoice.Delivery ? vm.DeliveryAddress?.State : null;
             var dr = cart.IsAutomaticDiscount
-                ? await _discounts.FindAutomaticAsync(cart, user.Id)
-                : await _discounts.EvaluateAsync(cart.AppliedDiscountCode, cart, user.Id);
+                ? await _discounts.FindAutomaticAsync(cart, user.Id, discountState)
+                : await _discounts.EvaluateAsync(cart.AppliedDiscountCode, cart, user.Id, discountState);
             if (dr != null && dr.Success)
             {
                 discountCode   = dr.Code;

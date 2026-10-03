@@ -306,6 +306,7 @@ public class CartController : Controller
         cart.DiscountDescription  = result.Description;
         cart.DiscountAmount       = result.Amount;
         cart.FreeShipping         = result.FreeShipping;
+        cart.FreeShippingLagosAbujaOnly = result.FreeShippingLagosAbujaOnly;
         cart.IsAutomaticDiscount  = false;
         SaveCart(cart);
 
@@ -328,6 +329,7 @@ public class CartController : Controller
         cart.DiscountDescription = null;
         cart.DiscountAmount = 0;
         cart.FreeShipping = false;
+        cart.FreeShippingLagosAbujaOnly = false;
         cart.IsAutomaticDiscount = false;
         SaveCart(cart);
         return Json(new { success = true, total = cart.FormattedTotal });
@@ -354,6 +356,7 @@ public class CartController : Controller
             cart.DiscountDescription = auto.Description;
             cart.DiscountAmount      = auto.Amount;
             cart.FreeShipping        = auto.FreeShipping;
+            cart.FreeShippingLagosAbujaOnly = auto.FreeShippingLagosAbujaOnly;
             cart.IsAutomaticDiscount = true;
             SaveCart(cart);
         }
@@ -364,6 +367,7 @@ public class CartController : Controller
             cart.DiscountDescription = null;
             cart.DiscountAmount = 0;
             cart.FreeShipping = false;
+            cart.FreeShippingLagosAbujaOnly = false;
             cart.IsAutomaticDiscount = false;
             SaveCart(cart);
         }

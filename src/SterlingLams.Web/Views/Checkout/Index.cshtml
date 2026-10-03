@@ -384,6 +384,14 @@ const PRICING = @Html.Raw(Model.DeliveryPricingJson);
 const SUBTOTAL = @Model.Subtotal.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 const DISCOUNT = @Model.DiscountAmount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 const FREE_SHIPPING = @(Model.Cart.FreeShipping ? "true" : "false");
+const FREE_SHIPPING_LA_ONLY = @(Model.Cart.FreeShippingLagosAbujaOnly ? "true" : "false");
+// Free shipping applies to this address? A Lagos/Abuja-only voucher only waives the fee for those zones.
+function freeShippingAppliesHere() {
+    if (!FREE_SHIPPING) return false;
+    if (!FREE_SHIPPING_LA_ONLY) return true;
+    var k = stateKeyFor(currentStateValue() || '');
+    return k === 'Lagos' || k === 'Abuja';
+}
 const LOYALTY_DISCOUNT = @Model.LoyaltyMaxDiscount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 let CURRENT_FEE = 0;
 
@@ -599,7 +607,7 @@ function selectDeliveryType(type, fee) {
 }
 
 function updateSummary(fee, unchosen) {
-    if (FREE_SHIPPING) fee = 0;   // free-shipping promo waives the delivery fee
+    if (freeShippingAppliesHere()) fee = 0;   // free-shipping promo waives the delivery fee (Lagos/Abuja-only aware)
     CURRENT_FEE = fee;
     const redeem = document.getElementById('redeem-points');
     const loyalty = (redeem && redeem.checked) ? parseFloat(LOYALTY_DISCOUNT) : 0;
