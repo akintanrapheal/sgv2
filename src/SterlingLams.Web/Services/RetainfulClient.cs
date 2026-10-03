@@ -25,6 +25,9 @@ public interface IRetainfulClient
     /// <summary>Fire an "Abandoned Cart" event so Retainful's automation can email the shopper. Only used
     /// when the owner has handed abandoned-cart over to Retainful (the built-in sequence is then off).</summary>
     Task SendAbandonedCartAsync(string email, string uniqueId, int itemCount, decimal subtotal, string? recoveryUrl);
+
+    /// <summary>Live connection test for the Integrations status panel. Returns (ok, human-readable detail).</summary>
+    Task<(bool ok, string detail)> TestAsync();
 }
 
 public class RetainfulClient : IRetainfulClient
@@ -163,5 +166,27 @@ public class RetainfulClient : IRetainfulClient
             });
         }
         catch (Exception ex) { _log.LogWarning(ex, "Retainful abandoned-cart event failed."); }
+    }
+
+    public async Task<(bool ok, string detail)> TestAsync()
+    {
+        if (!await _settings.GetBoolAsync("retainful.enabled", false))
+            return (false, "Not enabled.");
+        var key = _secrets.Reveal(await _settings.GetAsync("retainful.api_key", ""));
+        if (string.IsNullOrWhiteSpace(key)) return (false, "No API key set.");
+        var baseUrl = (await _settings.GetAsync("retainful.base_url", DefaultBase)).Trim().TrimEnd('/');
+        if (baseUrl.Length == 0) baseUrl = DefaultBase;
+        try
+        {
+            // Lightweight authenticated GET — lists are the cheapest read and confirm the key + scopes.
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"{baseUrl}/contact-groups?limit=1");
+            req.Headers.TryAddWithoutValidation("X-API-Key", key);
+            using var resp = await _http.SendAsync(req);
+            if (resp.IsSuccessStatusCode) return (true, "Connected — API key valid.");
+            if ((int)resp.StatusCode == 401) return (false, "API key rejected (401). Re-copy the key from Retainful.");
+            if ((int)resp.StatusCode == 403) return (false, "Key lacks the Lists/Contacts scope (403).");
+            return (false, $"Retainful returned {(int)resp.StatusCode}.");
+        }
+        catch (Exception ex) { return (false, "Couldn't reach Retainful: " + ex.Message); }
     }
 }

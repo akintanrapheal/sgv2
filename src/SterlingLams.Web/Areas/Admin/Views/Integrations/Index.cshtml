@@ -13,6 +13,44 @@
         </p>
     </div>
 
+    @* ─── Connection status panel ─────────────────────────────────────────── *@
+    @{
+        var statusItems = new (string Name, string Label, bool Configured)[]
+        {
+            ("payments",         "Payments",          Model.PaystackSecretSet || Model.StripeSecretSet || Model.FlutterwaveSecretSet),
+            ("smtp",             "Email (SMTP)",      Model.SmtpEnabled && Model.SmtpPasswordSet),
+            ("whatsapp",         "WhatsApp",          Model.WaEnabled && Model.WaAuthTokenSet),
+            ("google analytics", "Google Analytics",  Model.GaEnabled && Model.GaServiceAccountSet),
+            ("meta pixel",       "Meta Pixel",        Model.MetaEnabled && !string.IsNullOrEmpty(Model.MetaPixelId)),
+            ("posthog",          "PostHog",           Model.PhEnabled && !string.IsNullOrEmpty(Model.PhProjectKey)),
+            ("cloudinary",       "Cloudinary",        Model.CloudinaryApiSecretSet),
+            ("retainful",        "Retainful",         Model.RetainfulEnabled && Model.RetainfulApiKeySet),
+        };
+    }
+    <section id="status-panel" class="bg-white rounded-sm border border-neutral-100 p-6 mb-8">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h2 class="text-sm font-semibold text-neutral-800">Connection status</h2>
+                <p class="text-xs text-neutral-400 mt-0.5">Green = connected &amp; verified · Red = problem (hover for the error) · Grey = not set up.</p>
+            </div>
+            <button type="button" id="test-all-btn"
+                    class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">Test all connections</button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1">
+            @foreach (var it in statusItems)
+            {
+                <div class="flex items-center justify-between py-2 border-b border-neutral-50 status-row" data-test="@it.Name">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="status-dot inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 @(it.Configured ? "bg-neutral-300" : "bg-neutral-200")"></span>
+                        <span class="text-sm text-neutral-700">@it.Label</span>
+                        <span class="status-detail text-[11px] text-neutral-400 truncate"></span>
+                    </div>
+                    <button type="button" class="status-test text-[11px] text-brand-600 hover:underline flex-shrink-0">Test</button>
+                </div>
+            }
+        </div>
+    </section>
+
     <form asp-area="Admin" asp-controller="Integrations" asp-action="Save" method="post" class="space-y-8">
         @Html.AntiForgeryToken()
 
@@ -490,6 +528,51 @@
         }).catch(function () {
             out.className = 'text-xs text-red-600'; out.textContent = '✕ Could not reach the server.';
         }).finally(function () { btn.disabled = false; });
+    });
+}());
+
+// ── Connection status panel ──────────────────────────────────────────────
+(function () {
+    var panel = document.getElementById('status-panel');
+    if (!panel) return;
+    var token = document.querySelector('input[name="__RequestVerificationToken"]');
+    var testUrl = '@Url.Action("TestConnection", "Integrations", new { area = "Admin" })';
+    var DOT = {
+        ok:    'bg-emerald-500', error: 'bg-red-500',
+        off:   'bg-neutral-300', busy:  'bg-amber-400 animate-pulse'
+    };
+    function setDot(row, state) {
+        var dot = row.querySelector('.status-dot');
+        dot.className = 'status-dot inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 ' + (DOT[state] || DOT.off);
+    }
+    function testRow(row) {
+        var name = row.getAttribute('data-test');
+        var detail = row.querySelector('.status-detail');
+        setDot(row, 'busy'); detail.textContent = 'Checking…'; detail.className = 'status-detail text-[11px] text-neutral-400 truncate';
+        return fetch(testUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'RequestVerificationToken': token ? token.value : '' },
+            body: 'name=' + encodeURIComponent(name)
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            var state = d.status || (d.ok ? 'ok' : 'error');
+            setDot(row, state);
+            detail.textContent = d.detail || '';
+            detail.title = d.detail || '';
+            detail.className = 'status-detail text-[11px] truncate ' +
+                (state === 'ok' ? 'text-emerald-600' : state === 'error' ? 'text-red-600' : 'text-neutral-400');
+        }).catch(function () {
+            setDot(row, 'error');
+            detail.textContent = 'Could not reach the server.'; detail.className = 'status-detail text-[11px] text-red-600 truncate';
+        });
+    }
+    panel.querySelectorAll('.status-test').forEach(function (b) {
+        b.addEventListener('click', function () { testRow(b.closest('.status-row')); });
+    });
+    var allBtn = document.getElementById('test-all-btn');
+    allBtn.addEventListener('click', function () {
+        allBtn.disabled = true; allBtn.textContent = 'Testing…';
+        var rows = Array.prototype.slice.call(panel.querySelectorAll('.status-row'));
+        Promise.all(rows.map(testRow)).finally(function () { allBtn.disabled = false; allBtn.textContent = 'Test all connections'; });
     });
 }());
 </script>
