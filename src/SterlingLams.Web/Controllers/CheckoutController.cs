@@ -36,6 +36,7 @@ public class CheckoutController : Controller
     private readonly SterlingLams.Web.Services.IOrderNumberService _orderNumbers;
     private readonly SterlingLams.Web.Services.IZephielClient _zephiel;
     private readonly SterlingLams.Web.Services.IPostHogClient _posthog;
+    private readonly SterlingLams.Web.Services.IRetainfulClient _retainful;
     private readonly IDataProtector _confirmTokenProtector;
 
     public CheckoutController(
@@ -59,7 +60,8 @@ public class CheckoutController : Controller
         SterlingLams.Web.Services.IOrderNumberService orderNumbers,
         IDataProtectionProvider dataProtection,
         SterlingLams.Web.Services.IZephielClient zephiel,
-        SterlingLams.Web.Services.IPostHogClient posthog)
+        SterlingLams.Web.Services.IPostHogClient posthog,
+        SterlingLams.Web.Services.IRetainfulClient retainful)
     {
         _db = db;
         _payment = payment;
@@ -81,6 +83,7 @@ public class CheckoutController : Controller
         _orderNumbers = orderNumbers;
         _zephiel = zephiel;
         _posthog = posthog;
+        _retainful = retainful;
         _confirmTokenProtector = dataProtection.CreateProtector("Checkout.Confirmation.v1");
     }
 
@@ -863,12 +866,18 @@ public class CheckoutController : Controller
             await _db.SaveChangesAsync();
             // Payment landed → close this buyer's abandoned-cart snapshot so they get no more
             // "you left something in your bag" reminders for a bag they've already paid for.
-            var buyerEmail = await _db.Users.Where(u => u.Id == order.UserId).Select(u => u.Email).FirstOrDefaultAsync();
+            var buyer = await _db.Users.Where(u => u.Id == order.UserId)
+                .Select(u => new { u.Email, u.FirstName, u.LastName, u.PhoneNumber }).FirstOrDefaultAsync();
+            var buyerEmail = buyer?.Email;
             await MarkAbandonedRecoveredAsync(buyerEmail);
             if (wasUnpaid)
             {
                 try { await _audit.LogAsync("Payment", "Order", order.Id.ToString(), $"Payment received for {order.OrderNumber} — ₦{order.Total:N0} ({_payment.ProviderName})"); } catch { }
                 _ = _whatsapp.NotifyOrderAsync(order.Id, SterlingLams.Web.Services.WhatsAppOrderEvent.PaymentReceived);
+                // Retainful "Placed Order" event (win-back / post-purchase automations). Fire-and-forget.
+                var itemQty = await _db.OrderItems.Where(i => i.OrderId == order.Id).SumAsync(i => (int?)i.Quantity) ?? 0;
+                _ = _retainful.SendOrderPlacedAsync(buyerEmail, buyer?.PhoneNumber, buyer?.FirstName, buyer?.LastName,
+                    order.OrderNumber, order.Total, itemQty);
                 // Authoritative funnel completion (guarded by wasUnpaid, so it fires once across the
                 // return + webhook paths — whichever flips the order to paid first).
                 await _posthog.CaptureAsync(order.UserId ?? $"order_{order.OrderNumber}", "order_paid", new
