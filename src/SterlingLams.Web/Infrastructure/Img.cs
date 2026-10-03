@@ -12,6 +12,20 @@ public static partial class Img
 {
     private const string Marker = "/image/upload/";
 
+    // Snap every requested size to one of a few standard "buckets". Cloudinary bills a credit per 1,000
+    // distinct transformations, and each unique width/height makes a new one — so a storefront asking for
+    // 72/80/96/112/120/150/192/200/224/400/480/600/700/1000/1080… px all over the place multiplies the
+    // credit cost. Rounding every request UP to the nearest bucket collapses that long tail into a handful
+    // of shared, cached derivatives (never smaller than asked, so images stay crisp). The two hottest sizes
+    // (96, 160) are kept exact so the most common thumbnails don't upsize. Change buckets here only.
+    private static readonly int[] Buckets = { 96, 160, 256, 400, 512, 800, 1280, 1920 };
+    private static int Snap(int px)
+    {
+        if (px <= 0) return Buckets[0];
+        foreach (var b in Buckets) if (px <= b) return b;
+        return ((px + 319) / 320) * 320; // beyond the largest bucket: round up to the next 320
+    }
+
     /// <param name="url">The stored image URL.</param>
     /// <param name="width">Target display width in px (never upscales beyond the original).</param>
     /// <param name="height">Optional target height. When set, the image is cropped to fill w×h.</param>
@@ -32,9 +46,10 @@ public static partial class Img
         var isTransform = end > 0 && (firstSeg.Contains(',') || TransformSeg().IsMatch(firstSeg));
         var basePart = isTransform ? url[(end + 1)..] : url[at..];
 
+        var w = Snap(width);
         var t = height is int h
-            ? $"f_auto,q_auto,w_{width},h_{h},c_{(fill ? "fill" : "fit")}"
-            : $"f_auto,q_auto,w_{width},c_limit"; // width-only: keep aspect, never upscale
+            ? $"f_auto,q_auto,w_{w},h_{Snap(h)},c_{(fill ? "fill" : "fit")}"
+            : $"f_auto,q_auto,w_{w},c_limit"; // width-only: keep aspect, never upscale
         return url[..at] + t + "/" + basePart;
     }
 
