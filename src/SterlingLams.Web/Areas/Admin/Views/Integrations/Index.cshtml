@@ -427,6 +427,15 @@
                     <p class="text-[11px] text-neutral-400 mt-1">Which list newsletter sign-ups join. Blank = contacts only.</p>
                 </div>
             </div>
+
+            <label class="flex items-start gap-3 cursor-pointer border-t border-neutral-100 pt-4">
+                <input type="checkbox" name="retainful.handle_abandoned_cart" value="true" @(Model.RetainfulHandleAbandonedCart ? "checked" : "")
+                       class="mt-0.5 rounded accent-neutral-900" />
+                <span>
+                    <p class="text-sm font-medium text-neutral-800">Let Retainful handle abandoned carts</p>
+                    <p class="text-[11px] text-neutral-400">Turns <b>off</b> the built-in abandoned-cart reminder emails and instead sends each abandoned cart to Retainful as an <b>Abandoned Cart</b> event, so Retainful's flow emails them. Prevents double emails. Needs Retainful enabled + an abandoned-cart automation set up in Retainful.</p>
+                </span>
+            </label>
         </section>
 
         <div class="flex items-center gap-3">

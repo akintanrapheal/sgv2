@@ -21,6 +21,10 @@ public interface IRetainfulClient
     /// <summary>Fire a "Placed Order" event (drives win-back / post-purchase automations).</summary>
     Task SendOrderPlacedAsync(string? email, string? phone, string? firstName, string? lastName,
         string orderNumber, decimal total, int itemCount);
+
+    /// <summary>Fire an "Abandoned Cart" event so Retainful's automation can email the shopper. Only used
+    /// when the owner has handed abandoned-cart over to Retainful (the built-in sequence is then off).</summary>
+    Task SendAbandonedCartAsync(string email, string uniqueId, int itemCount, decimal subtotal, string? recoveryUrl);
 }
 
 public class RetainfulClient : IRetainfulClient
@@ -132,5 +136,32 @@ public class RetainfulClient : IRetainfulClient
             });
         }
         catch (Exception ex) { _log.LogWarning(ex, "Retainful order event failed."); }
+    }
+
+    public async Task SendAbandonedCartAsync(string email, string uniqueId, int itemCount, decimal subtotal, string? recoveryUrl)
+    {
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@')) return;
+        try
+        {
+            var (on, key, baseUrl, _) = await ConfigAsync();
+            if (!on) return;
+
+            var eventData = new Dictionary<string, string>
+            {
+                ["item_count"] = itemCount.ToString(),
+                ["cart_total"] = subtotal.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
+                ["currency"] = "NGN",
+            };
+            if (!string.IsNullOrWhiteSpace(recoveryUrl)) eventData["recovery_url"] = recoveryUrl!;
+
+            await PostAsync(key, $"{baseUrl}/events", new
+            {
+                eventName = "Abandoned Cart",
+                uniqueIdentifier = string.IsNullOrWhiteSpace(uniqueId) ? email : uniqueId,  // per-cart idempotency
+                contact = new Dictionary<string, object> { ["email"] = email, ["email_opt_in"] = "SUBSCRIBED" },
+                eventData,
+            });
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Retainful abandoned-cart event failed."); }
     }
 }

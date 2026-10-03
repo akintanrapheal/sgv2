@@ -45,7 +45,12 @@ public class AbandonedCartService : BackgroundService
     {
         using var scope = _sp.CreateScope();
         var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
-        if (!await settings.GetBoolAsync("notifications.abandoned_cart", true)) return;
+        // If the owner has handed abandoned carts over to Retainful, this built-in sequence hands each
+        // cart off (one event) instead of emailing, regardless of the built-in master switch. Otherwise
+        // it only runs when the built-in reminders are enabled.
+        var retainfulOwns = await settings.GetBoolAsync("retainful.enabled", false)
+                         && await settings.GetBoolAsync("retainful.handle_abandoned_cart", false);
+        if (!retainfulOwns && !await settings.GetBoolAsync("notifications.abandoned_cart", true)) return;
 
         // Reminder schedule — delays (hours from abandonment). Later steps 0/≤previous = disabled.
         var h1 = await settings.GetIntAsync("notifications.abandoned_cart_hours", 4);
@@ -96,6 +101,19 @@ public class AbandonedCartService : BackgroundService
             var stepIndex = ab.RemindersSent;               // 0-based next step
             if (stepIndex >= delays.Count) continue;
             if (now < ab.CreatedAt + TimeSpan.FromHours(delays[stepIndex])) continue; // not due yet
+
+            // Retainful mode: hand the cart off once (fire one event) and mark it done so the built-in
+            // never emails it. Retainful's own flow then runs the reminder sequence.
+            if (retainfulOwns)
+            {
+                var retainful = scope.ServiceProvider.GetRequiredService<SterlingLams.Web.Services.IRetainfulClient>();
+                var recoverUrl = string.IsNullOrEmpty(baseUrl) ? null : $"{baseUrl}/cart/recover?token={ab.Token}";
+                await retainful.SendAbandonedCartAsync(ab.Email, ab.Token, ab.ItemCount, ab.Subtotal, recoverUrl);
+                ab.RemindersSent = maxSteps;   // handed off — excluded from future sweeps
+                ab.EmailedAt = now;
+                sent++;
+                continue;
+            }
 
             var emailNo = stepIndex + 1;                    // 1-based
             var (subject, intro) = StepCopy(emailNo, s1Subject, s1Intro);
