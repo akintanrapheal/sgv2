@@ -316,7 +316,9 @@ public class CartController : Controller
             code = cart.AppliedDiscountCode,
             description = cart.DiscountDescription,
             discount = cart.FormattedDiscount,
+            discountAmount = cart.DiscountAmount,                       // numeric, for client total recompute (checkout)
             freeShipping = cart.FreeShipping,
+            freeShippingLaOnly = cart.FreeShippingLagosAbujaOnly,       // Lagos/Abuja-only free-shipping voucher
             total = cart.FormattedTotal
         });
     }
