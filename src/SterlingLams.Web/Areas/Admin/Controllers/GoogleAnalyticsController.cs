@@ -30,6 +30,7 @@ public class GoogleAnalyticsController : AdminBaseController
         {
             Days = days,
             MeasurementId = (await _settings.GetAsync("ga.measurement_id", "")).Trim(),
+            PropertyId = new string((await _settings.GetAsync("ga.property_id", "")).Trim().Where(char.IsDigit).ToArray()),
             Result = await _ga.GetAsync(days),
         };
         return View(vm);
@@ -39,6 +40,7 @@ public class GoogleAnalyticsController : AdminBaseController
     {
         public int Days { get; set; }
         public string MeasurementId { get; set; } = "";
+        public string PropertyId { get; set; } = "";
         public GaResult Result { get; set; } = new();
     }
 }
