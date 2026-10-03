@@ -27,7 +27,11 @@ public class GaStats
     public List<string> DayLabels { get; } = new();
     public List<long> DayUsers { get; } = new();
     public List<long> DayViews { get; } = new();
+    public List<long> DaySessions { get; } = new();
     public List<(string Path, long Views)> TopPages { get; } = new();
+    public List<(string Name, long Sessions)> Channels { get; } = new();   // traffic sources (channel group)
+    public List<(string Name, long Sessions)> Devices { get; } = new();    // desktop / mobile / tablet
+    public List<(string Name, long Sessions)> Countries { get; } = new();  // top countries
 }
 
 public class GaResult
@@ -91,7 +95,7 @@ public class GoogleAnalyticsService : IGoogleAnalytics
                             new{name="bounceRate"}, new{name="averageSessionDuration"} },
                           dateRanges = new[] { new { startDate = $"{days - 1}daysAgo", endDate = "today" } } },
                     new { dimensions = new[] { new{name="date"} },
-                          metrics = new[] { new{name="totalUsers"}, new{name="screenPageViews"} },
+                          metrics = new[] { new{name="totalUsers"}, new{name="screenPageViews"}, new{name="sessions"} },
                           dateRanges = new[] { new { startDate = $"{days - 1}daysAgo", endDate = "today" } },
                           orderBys = new[] { new { dimension = new { dimensionName = "date" } } } },
                     new { dimensions = new[] { new{name="pagePath"} },
@@ -102,22 +106,50 @@ public class GoogleAnalyticsService : IGoogleAnalytics
                 }
             };
 
-            using var req = new HttpRequestMessage(HttpMethod.Post,
-                $"https://analyticsdata.googleapis.com/v1beta/properties/{propertyId}:batchRunReports");
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            req.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-            using var resp = await _http.SendAsync(req);
-            var payload = await resp.Content.ReadAsStringAsync();
-            if (!resp.IsSuccessStatusCode)
+            // Post a batchRunReports body (max 5 reports per batch) → raw JSON, or (null, status) on error.
+            async Task<(string? payload, int status)> RunBatchAsync(object b)
             {
-                _log.LogWarning("GA Data API {Status}: {Body}", (int)resp.StatusCode, Truncate(payload));
-                var msg = resp.StatusCode == System.Net.HttpStatusCode.Forbidden
-                    ? "Access denied — add the service-account email as a Viewer on the GA4 property."
-                    : $"Google Analytics returned {(int)resp.StatusCode}.";
-                return new GaResult { Configured = true, Error = msg };
+                using var r = new HttpRequestMessage(HttpMethod.Post,
+                    $"https://analyticsdata.googleapis.com/v1beta/properties/{propertyId}:batchRunReports");
+                r.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                r.Content = new StringContent(JsonSerializer.Serialize(b), Encoding.UTF8, "application/json");
+                using var rp = await _http.SendAsync(r);
+                var body2 = await rp.Content.ReadAsStringAsync();
+                if (!rp.IsSuccessStatusCode) { _log.LogWarning("GA Data API {Status}: {Body}", (int)rp.StatusCode, Truncate(body2)); return (null, (int)rp.StatusCode); }
+                return (body2, 200);
             }
 
-            return new GaResult { Configured = true, Stats = Parse(payload) };
+            var (payload, status) = await RunBatchAsync(body);
+            if (payload == null)
+                return new GaResult
+                {
+                    Configured = true,
+                    Error = status == 403
+                        ? "Access denied — add the service-account email as a Viewer on the GA4 property."
+                        : $"Google Analytics returned {status}."
+                };
+
+            var stats = Parse(payload);
+
+            // Second batch: breakdowns (traffic sources, devices, countries). Optional — if it fails we
+            // still show the headline numbers, so a hiccup here never blanks the whole page.
+            var range = new[] { new { startDate = $"{days - 1}daysAgo", endDate = "today" } };
+            var breakdownBody = new
+            {
+                requests = new object[]
+                {
+                    new { dimensions = new[] { new{name="sessionDefaultChannelGroup"} }, metrics = new[] { new{name="sessions"} },
+                          dateRanges = range, orderBys = new[] { new { metric = new { metricName = "sessions" }, desc = true } }, limit = 8 },
+                    new { dimensions = new[] { new{name="deviceCategory"} }, metrics = new[] { new{name="sessions"} },
+                          dateRanges = range, orderBys = new[] { new { metric = new { metricName = "sessions" }, desc = true } }, limit = 5 },
+                    new { dimensions = new[] { new{name="country"} }, metrics = new[] { new{name="sessions"} },
+                          dateRanges = range, orderBys = new[] { new { metric = new { metricName = "sessions" }, desc = true } }, limit = 8 },
+                }
+            };
+            var (bPayload, _) = await RunBatchAsync(breakdownBody);
+            if (bPayload != null) ParseBreakdowns(bPayload, stats);
+
+            return new GaResult { Configured = true, Stats = stats };
         }
         catch (Exception ex)
         {
@@ -150,7 +182,7 @@ public class GoogleAnalyticsService : IGoogleAnalytics
                 var d = DimVal(r, 0);   // yyyyMMdd
                 st.DayLabels.Add(d.Length == 8 ? $"{d[6..8]}/{d[4..6]}" : d);
                 var m = r.GetProperty("metricValues");
-                st.DayUsers.Add(L(m, 0)); st.DayViews.Add(L(m, 1));
+                st.DayUsers.Add(L(m, 0)); st.DayViews.Add(L(m, 1)); st.DaySessions.Add(L(m, 2));
             }
         // Report 2 — top pages.
         if (arr.Count > 2 && arr[2].TryGetProperty("rows", out var pageRows))
@@ -160,6 +192,28 @@ public class GoogleAnalyticsService : IGoogleAnalytics
                 st.TopPages.Add((path, L(r.GetProperty("metricValues"), 0)));
             }
         return st;
+    }
+
+    // Second batch (breakdowns): report 0 = channels, 1 = devices, 2 = countries. Each is
+    // dimension(name) + sessions. Optional, so tolerate any missing report.
+    private static void ParseBreakdowns(string payload, GaStats st)
+    {
+        using var doc = JsonDocument.Parse(payload);
+        if (!doc.RootElement.TryGetProperty("reports", out var reports)) return;
+        var arr = reports.EnumerateArray().ToList();
+        void Fill(int idx, List<(string, long)> into)
+        {
+            if (arr.Count <= idx || !arr[idx].TryGetProperty("rows", out var rows)) return;
+            foreach (var r in rows.EnumerateArray())
+            {
+                var name = DimVal(r, 0);
+                if (string.IsNullOrWhiteSpace(name) || name == "(not set)") name = "Other";
+                into.Add((name, L(r.GetProperty("metricValues"), 0)));
+            }
+        }
+        Fill(0, st.Channels);
+        Fill(1, st.Devices);
+        Fill(2, st.Countries);
     }
 
     // A GA4 dimensionValues entry is an object { "value": "..." }, not a bare string.

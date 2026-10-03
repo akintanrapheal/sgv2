@@ -10,7 +10,7 @@
         var t = TimeSpan.FromSeconds(secs);
         return t.TotalHours >= 1 ? $"{(int)t.TotalHours}h {t.Minutes}m" : $"{t.Minutes}m {t.Seconds}s";
     }
-    var pills = new[] { (7, "7 days"), (28, "28 days"), (90, "90 days") };
+    var pills = new[] { (1, "Today"), (2, "2 days"), (3, "3 days"), (7, "7 days"), (28, "28 days"), (90, "90 days") };
 }
 
 <div class="flex items-center justify-between mb-1 gap-3 flex-wrap">
@@ -74,7 +74,16 @@ else if (s != null)
     </div>
 
     <div class="mb-6">
-        <partial name="_ChartCard" model='new ChartCard { Id = "gaChart", Title = "Users & page views", Subtitle = $"last {Model.Days} days", Height = 90, Empty = !s.DayLabels.Any(), EmptyText = "No data in this range." }' />
+        <partial name="_ChartCard" model='new ChartCard { Id = "gaChart", Title = "Users, sessions & page views", Subtitle = $"last {Model.Days} days · drag to zoom", Height = 90, Empty = !s.DayLabels.Any(), EmptyText = "No data in this range." }' />
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+        <partial name="_ChartCard" model='new ChartCard { Id = "gaChannels", Title = "Traffic sources", Subtitle = "sessions by channel", Height = 90, Empty = !s.Channels.Any(), EmptyText = "No source data in this range." }' />
+        <partial name="_ChartCard" model='new ChartCard { Id = "gaDevices", Title = "Devices", Subtitle = "sessions by device", Height = 90, Empty = !s.Devices.Any(), EmptyText = "No device data in this range." }' />
+    </div>
+
+    <div class="mb-6">
+        <partial name="_ChartCard" model='new ChartCard { Id = "gaCountries", Title = "Top countries", Subtitle = "sessions by country", Height = 90, Empty = !s.Countries.Any(), EmptyText = "No country data in this range." }' />
     </div>
 
     <div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
@@ -107,8 +116,27 @@ else if (s != null)
             <text>
             SLCharts.area('gaChart', @Html.Raw(J(s.DayLabels)), [
                 { label: 'Users',      data: @Html.Raw(J(s.DayUsers)) },
+                { label: 'Sessions',   data: @Html.Raw(J(s.DaySessions)) },
                 { label: 'Page views', data: @Html.Raw(J(s.DayViews)) }
             ]);
+            </text>
+        }
+        @if (s != null && s.Channels.Any())
+        {
+            <text>
+            SLCharts.doughnut('gaChannels', @Html.Raw(J(s.Channels.Select(c => c.Name))), @Html.Raw(J(s.Channels.Select(c => c.Sessions))), {});
+            </text>
+        }
+        @if (s != null && s.Devices.Any())
+        {
+            <text>
+            SLCharts.doughnut('gaDevices', @Html.Raw(J(s.Devices.Select(c => c.Name))), @Html.Raw(J(s.Devices.Select(c => c.Sessions))), {});
+            </text>
+        }
+        @if (s != null && s.Countries.Any())
+        {
+            <text>
+            SLCharts.hbar('gaCountries', @Html.Raw(J(s.Countries.Select(c => c.Name))), @Html.Raw(J(s.Countries.Select(c => c.Sessions))), {});
             </text>
         }
     </script>

@@ -24,7 +24,7 @@ public class GoogleAnalyticsController : AdminBaseController
     public async Task<IActionResult> Index(int days = 28)
     {
         ViewData["Title"] = "Google Analytics";
-        if (days is not (7 or 28 or 90)) days = 28;
+        if (days is not (1 or 2 or 3 or 7 or 28 or 90)) days = 28;
 
         var vm = new GaPageVm
         {
