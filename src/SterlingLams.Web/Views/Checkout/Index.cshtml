@@ -259,13 +259,30 @@
                             <span class="text-neutral-500 font-light">Subtotal</span>
                             <span>@Model.FormattedSubtotal</span>
                         </div>
-                        @if (Model.HasDiscount)
-                        {
-                            <div class="flex justify-between text-sm">
-                                <span class="text-emerald-600 font-light">Discount (@Model.AppliedDiscountCode)</span>
-                                <span class="text-emerald-600">@Model.FormattedDiscount</span>
+                        <div id="co-discount-line" class="flex justify-between text-sm @(Model.HasDiscount ? "" : "hidden")">
+                            <span class="text-emerald-600 font-light">Discount (<span id="co-discount-label">@Model.AppliedDiscountCode</span>)</span>
+                            <span id="co-discount-amount" class="text-emerald-600">@(Model.Cart.FreeShipping && Model.DiscountAmount == 0 ? "Free shipping" : Model.FormattedDiscount)</span>
+                        </div>
+
+                        @* Discount-code entry — so a customer who skipped the cart can still apply a code here. *@
+                        <div class="pt-1">
+                            <label class="block text-[11px] tracking-[0.12em] uppercase text-neutral-400 mb-1.5">Discount code</label>
+                            <div id="co-discount-applied" class="@(Model.HasDiscount && !Model.Cart.IsAutomaticDiscount ? "" : "hidden") flex items-center justify-between bg-emerald-50 border border-emerald-200 px-3 py-2">
+                                <div>
+                                    <span id="co-applied-label" class="text-xs font-medium text-emerald-800 tracking-wide">@Model.AppliedDiscountCode</span>
+                                    <p id="co-applied-desc" class="text-[11px] text-emerald-600">@Model.DiscountDescription</p>
+                                </div>
+                                <button type="button" id="co-remove-discount" class="text-xs text-emerald-700 hover:text-emerald-900 transition-colors">✕</button>
                             </div>
-                        }
+                            <div id="co-discount-input-wrap" class="@(Model.HasDiscount && !Model.Cart.IsAutomaticDiscount ? "hidden" : "")">
+                                <div class="flex gap-2">
+                                    <input id="co-discount-code" type="text" placeholder="Enter code" maxlength="50" autocomplete="off" autocapitalize="characters"
+                                           class="flex-1 border border-neutral-200 text-sm px-3 py-2 uppercase tracking-wider focus:outline-none focus:border-neutral-400" />
+                                    <button type="button" id="co-apply-discount" class="bg-brand-500 text-white text-xs tracking-widest px-4 py-2 hover:bg-brand-600 transition-colors">Apply</button>
+                                </div>
+                                <p id="co-discount-error" class="text-xs text-red-500 mt-1 hidden"></p>
+                            </div>
+                        </div>
                         @if (Model.LoyaltyAvailable)
                         {
                             <div class="flex items-start justify-between text-sm gap-3 pt-1">
@@ -382,9 +399,9 @@
 // ── Pricing data from server ───────────────────────────────────────────────
 const PRICING = @Html.Raw(Model.DeliveryPricingJson);
 const SUBTOTAL = @Model.Subtotal.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
-const DISCOUNT = @Model.DiscountAmount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
-const FREE_SHIPPING = @(Model.Cart.FreeShipping ? "true" : "false");
-const FREE_SHIPPING_LA_ONLY = @(Model.Cart.FreeShippingLagosAbujaOnly ? "true" : "false");
+let DISCOUNT = @Model.DiscountAmount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+let FREE_SHIPPING = @(Model.Cart.FreeShipping ? "true" : "false");
+let FREE_SHIPPING_LA_ONLY = @(Model.Cart.FreeShippingLagosAbujaOnly ? "true" : "false");
 // Free shipping applies to this address? A Lagos/Abuja-only voucher only waives the fee for those zones.
 function freeShippingAppliesHere() {
     if (!FREE_SHIPPING) return false;
@@ -671,6 +688,71 @@ function validateDeliveryFields() {
     document.getElementById('state-select')?.addEventListener('change', e => onStateChanged(e.target.value));
     document.getElementById('lagos-lga-select')?.addEventListener('change', () => onAreaChanged());
     document.getElementById('redeem-points')?.addEventListener('change', () => updateSummary(CURRENT_FEE));
+
+    // ── Discount code (for customers who skipped the cart page) ──────────────────
+    // Applies against the same session cart as the cart page, then refreshes the summary in place.
+    // The server always re-validates the code (and the Lagos/Abuja rule) when the order is placed.
+    (function () {
+        var tok = function () { return document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''; };
+        var applyBtn = document.getElementById('co-apply-discount');
+        var removeBtn = document.getElementById('co-remove-discount');
+        var input = document.getElementById('co-discount-code');
+        var errorEl = document.getElementById('co-discount-error');
+        var appliedEl = document.getElementById('co-discount-applied');
+        var inputWrap = document.getElementById('co-discount-input-wrap');
+        var line = document.getElementById('co-discount-line');
+        var lineLabel = document.getElementById('co-discount-label');
+        var lineAmt = document.getElementById('co-discount-amount');
+        var appliedLabel = document.getElementById('co-applied-label');
+        var appliedDesc = document.getElementById('co-applied-desc');
+
+        function post(url, body) {
+            return fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body + '__RequestVerificationToken=' + encodeURIComponent(tok())
+            }).then(function (r) { return r.json(); });
+        }
+
+        if (applyBtn && input) {
+            applyBtn.addEventListener('click', function () {
+                var code = input.value.trim();
+                if (!code) return;
+                applyBtn.disabled = true; applyBtn.textContent = '…';
+                errorEl && errorEl.classList.add('hidden');
+                post('/Cart/ApplyDiscount', 'code=' + encodeURIComponent(code) + '&').then(function (data) {
+                    applyBtn.disabled = false; applyBtn.textContent = 'Apply';
+                    if (!data.success) { if (errorEl) { errorEl.textContent = data.message || 'Invalid code.'; errorEl.classList.remove('hidden'); } return; }
+                    DISCOUNT = String(data.discountAmount || 0);
+                    FREE_SHIPPING = !!data.freeShipping;
+                    FREE_SHIPPING_LA_ONLY = !!data.freeShippingLaOnly;
+                    if (lineLabel) lineLabel.textContent = data.code;
+                    if (lineAmt) lineAmt.textContent = (data.freeShipping && (!data.discountAmount)) ? 'Free shipping' : data.discount;
+                    if (line) line.classList.remove('hidden');
+                    if (appliedLabel) appliedLabel.textContent = data.code;
+                    if (appliedDesc) appliedDesc.textContent = data.description || '';
+                    if (appliedEl) appliedEl.classList.remove('hidden');
+                    if (inputWrap) inputWrap.classList.add('hidden');
+                    updateSummary(CURRENT_FEE);
+                }).catch(function () { applyBtn.disabled = false; applyBtn.textContent = 'Apply'; if (errorEl) { errorEl.textContent = 'Could not apply the code. Try again.'; errorEl.classList.remove('hidden'); } });
+            });
+            input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); applyBtn.click(); } });
+        }
+
+        if (removeBtn) {
+            removeBtn.addEventListener('click', function () {
+                post('/Cart/RemoveDiscount', '').then(function (data) {
+                    if (!data.success) return;
+                    DISCOUNT = '0'; FREE_SHIPPING = false; FREE_SHIPPING_LA_ONLY = false;
+                    if (line) line.classList.add('hidden');
+                    if (appliedEl) appliedEl.classList.add('hidden');
+                    if (inputWrap) inputWrap.classList.remove('hidden');
+                    if (input) input.value = '';
+                    updateSummary(CURRENT_FEE);
+                });
+            });
+        }
+    })();
 
     // Saved-address picker: fill the form from the chosen saved address (or clear for a new one).
     function setVal(id, v) { var el = document.getElementById(id); if (el) el.value = v || ''; }
