@@ -61,6 +61,7 @@
     function render(d) {
         var grid = '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">'
             + stat('', d.applied ? 'Imported' : 'Will import', d.wouldCreate, 'text-emerald-600')
+            + stat('', d.applied ? 'Password linked' : 'Will link password', d.wouldLink, 'text-emerald-600')
             + stat('', 'Already exist', d.existing)
             + stat('', 'Staff skipped', d.staff)
             + stat('', 'With address', d.withAddress)
@@ -101,11 +102,11 @@
                 if (!d.ok) { statusEl.textContent = d.error || 'Failed.'; return; }
                 render(d);
                 if (applying) {
-                    statusEl.textContent = 'Done — imported ' + d.created + ' customer(s).';
+                    statusEl.textContent = 'Done — imported ' + d.created + ' new, linked password to ' + d.linked + ' existing.';
                     applyBtn.disabled = true;
                 } else {
-                    statusEl.textContent = d.wouldCreate + ' customer(s) ready to import.';
-                    applyBtn.disabled = d.wouldCreate === 0;
+                    statusEl.textContent = d.wouldCreate + ' to import + ' + d.wouldLink + ' to link, ready.';
+                    applyBtn.disabled = (d.wouldCreate + d.wouldLink) === 0;
                 }
             })
             .catch(function () { previewBtn.disabled = false; statusEl.textContent = 'Request failed.'; });
