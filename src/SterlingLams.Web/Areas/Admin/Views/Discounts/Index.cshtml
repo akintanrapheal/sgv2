@@ -95,6 +95,18 @@
                         {
                             <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Live</span>
                         }
+                        @* Live countdown. Times are stored UTC — emit a UTC ISO instant and let the browser tick. *@
+                        @if (d.IsActive && !d.IsUsedUp && d.IsScheduled && d.StartsAt.HasValue)
+                        {
+                            <p class="slc-countdown text-[11px] text-amber-600 mt-1 font-medium tabular-nums"
+                               data-starts="@DateTime.SpecifyKind(d.StartsAt.Value, DateTimeKind.Utc).ToString("yyyy-MM-ddTHH:mm:ss'Z'")"
+                               data-ends="@(d.ExpiresAt.HasValue ? DateTime.SpecifyKind(d.ExpiresAt.Value, DateTimeKind.Utc).ToString("yyyy-MM-ddTHH:mm:ss'Z'") : "")">…</p>
+                        }
+                        else if (d.IsActive && !d.IsExpired && !d.IsUsedUp && d.ExpiresAt.HasValue)
+                        {
+                            <p class="slc-countdown text-[11px] text-emerald-600 mt-1 font-medium tabular-nums"
+                               data-ends="@DateTime.SpecifyKind(d.ExpiresAt.Value, DateTimeKind.Utc).ToString("yyyy-MM-ddTHH:mm:ss'Z'")">…</p>
+                        }
                     </td>
                     <td class="px-5 py-3 text-right">
                         <div class="flex items-center justify-end gap-3 whitespace-nowrap">
@@ -120,3 +132,55 @@
 </div>
 
 <partial name="_Pager" model="((int)ViewBag.Page, (int)ViewBag.TotalPages)" />
+
+@section Scripts {
+<script>
+(function () {
+    var els = Array.prototype.slice.call(document.querySelectorAll('.slc-countdown'));
+    if (!els.length) return;
+
+    function fmt(ms) {
+        var s = Math.floor(ms / 1000);
+        var d = Math.floor(s / 86400); s -= d * 86400;
+        var h = Math.floor(s / 3600);  s -= h * 3600;
+        var m = Math.floor(s / 60);    s -= m * 60;
+        var out = [];
+        if (d) out.push(d + 'd');
+        if (d || h) out.push(h + 'h');
+        out.push(m + 'm');
+        if (!d) out.push(s + 's');        // show seconds only under a day, so it doesn't flicker on long runs
+        return out.join(' ');
+    }
+    function paint(el, cls) {
+        el.classList.remove('text-emerald-600', 'text-amber-600', 'text-red-600', 'text-neutral-400');
+        el.classList.add(cls);
+    }
+    function tick() {
+        var now = Date.now();
+        els.forEach(function (el) {
+            var starts = el.getAttribute('data-starts');
+            var ends = el.getAttribute('data-ends');
+            var startMs = starts ? Date.parse(starts) : null;
+            var endMs = ends ? Date.parse(ends) : null;
+
+            if (startMs && now < startMs) {                     // scheduled — not started yet
+                paint(el, 'text-amber-600');
+                el.textContent = 'Starts in ' + fmt(startMs - now);
+                return;
+            }
+            if (endMs == null) { el.textContent = 'No end date'; paint(el, 'text-neutral-400'); return; }
+            var left = endMs - now;
+            if (left <= 0) {                                    // just expired while watching
+                el.textContent = 'Ended — refresh';
+                paint(el, 'text-red-600');
+                return;
+            }
+            el.textContent = 'Ends in ' + fmt(left);
+            paint(el, left < 3600000 ? 'text-red-600' : (left < 21600000 ? 'text-amber-600' : 'text-emerald-600'));
+        });
+    }
+    tick();
+    setInterval(tick, 1000);
+})();
+</script>
+}
