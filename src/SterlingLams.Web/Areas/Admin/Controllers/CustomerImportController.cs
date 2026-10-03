@@ -61,13 +61,18 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 return Json(new { ok = false, error = "Couldn't read the CSV: " + ex.Message });
             }
 
-            // Dedupe against accounts that already exist (by normalised email) + within the file itself.
-            var existing = new HashSet<string>(
-                await _db.Users.Where(u => u.NormalizedEmail != null).Select(u => u.NormalizedEmail!).ToListAsync(),
-                StringComparer.Ordinal);
+            // Existing accounts by normalised email → whether they already have a usable password. An
+            // account with NO password (e.g. one created by the EposNow import) gets the old WordPress
+            // password linked so the customer can finally sign in; one that already has a password is left
+            // untouched. Also dedupe within the file itself.
+            var existingByEmail = (await _db.Users.Where(u => u.NormalizedEmail != null)
+                    .Select(u => new { u.NormalizedEmail, HasPw = u.PasswordHash != null })
+                    .ToListAsync())
+                .GroupBy(x => x.NormalizedEmail!)
+                .ToDictionary(g => g.Key, g => g.Any(x => x.HasPw), StringComparer.Ordinal);
             var seenInFile = new HashSet<string>(StringComparer.Ordinal);
 
-            int wouldCreate = 0, created = 0, skippedExisting = 0, skippedStaff = 0,
+            int wouldCreate = 0, created = 0, wouldLink = 0, linked = 0, skippedExisting = 0, skippedStaff = 0,
                 skippedNoEmail = 0, skippedNoHash = 0, failed = 0, withAddress = 0;
             var samples = new List<object>();
             var rowNum = 0;
@@ -92,12 +97,36 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 var hash = G("user_pass");
                 if (!IsSupportedHash(hash)) { skippedNoHash++; continue; }
 
-                var norm = _users.NormalizeEmail(email);
-                if (existing.Contains(norm) || !seenInFile.Add(norm)) { skippedExisting++; continue; }
-
                 var first = G("first_name", "billing_first_name");
                 var last = G("last_name", "billing_last_name");
                 var phone = G("billing_phone", "shipping_phone");
+
+                var norm = _users.NormalizeEmail(email);
+                if (!seenInFile.Add(norm)) { skippedExisting++; continue; }   // same email twice in the file
+
+                // Account already exists (website sign-up, POS, or the EposNow import)?
+                if (existingByEmail.TryGetValue(norm, out var hasPw))
+                {
+                    if (hasPw) { skippedExisting++; continue; }   // already has a password — never touch it
+                    // No password yet → link the old WordPress password so they can finally sign in, and
+                    // fill any blank name/phone. This is what fixes "wrong password" for old customers.
+                    if (samples.Count < 12) samples.Add(new { email, name = $"{first} {last}".Trim(), phone, action = "link" });
+                    if (!apply) { wouldLink++; continue; }
+                    var ex = await _db.Users.FirstOrDefaultAsync(x => x.NormalizedEmail == norm);
+                    if (ex != null)
+                    {
+                        ex.PasswordHash = hash;
+                        if (string.IsNullOrWhiteSpace(ex.FirstName) && first.Length > 0) ex.FirstName = first;
+                        if (string.IsNullOrWhiteSpace(ex.LastName) && last.Length > 0) ex.LastName = last;
+                        if (string.IsNullOrWhiteSpace(ex.PhoneNumber) && phone.Length > 0) ex.PhoneNumber = phone;
+                        if (string.IsNullOrEmpty(ex.SecurityStamp)) ex.SecurityStamp = Guid.NewGuid().ToString("N");
+                        await _db.SaveChangesAsync();
+                        linked++;
+                        existingByEmail[norm] = true;
+                    }
+                    continue;
+                }
+
                 var hasAddr = G("billing_address_1").Length > 0;
                 if (hasAddr) withAddress++;
 
@@ -153,14 +182,15 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     await _db.SaveChangesAsync();
                 }
 
-                existing.Add(norm);
+                existingByEmail[norm] = true;
                 created++;
             }
 
             if (apply)
                 await LogAsync("Import", "Customer", null,
-                    $"Imported {created} customer(s) from CSV (skipped {skippedExisting} existing, "
-                    + $"{skippedStaff} staff, {skippedNoEmail} no-email, {skippedNoHash} no-hash, {failed} failed).");
+                    $"Imported {created} new customer(s) + linked password to {linked} existing from CSV "
+                    + $"(skipped {skippedExisting} existing, {skippedStaff} staff, {skippedNoEmail} no-email, "
+                    + $"{skippedNoHash} no-hash, {failed} failed).");
 
             return Json(new
             {
@@ -168,7 +198,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 applied = apply,
                 totalRows = rows.Count,
                 wouldCreate = apply ? created : wouldCreate,
+                wouldLink = apply ? linked : wouldLink,
                 created,
+                linked,
                 existing = skippedExisting,
                 staff = skippedStaff,
                 noEmail = skippedNoEmail,
@@ -397,7 +429,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private static bool IsSupportedHash(string h) =>
             h.StartsWith("$P$", StringComparison.Ordinal) || h.StartsWith("$H$", StringComparison.Ordinal)
             || h.StartsWith("$2a$", StringComparison.Ordinal) || h.StartsWith("$2b$", StringComparison.Ordinal)
-            || h.StartsWith("$2y$", StringComparison.Ordinal);
+            || h.StartsWith("$2y$", StringComparison.Ordinal)
+            || h.StartsWith("$wp$", StringComparison.Ordinal);   // WordPress 6.8+ bcrypt variant
 
         // Robust CSV parse (quoted fields, embedded commas/newlines) — same approach as the product importer.
         private static List<Dictionary<string, string>> ParseCsv(Stream stream)

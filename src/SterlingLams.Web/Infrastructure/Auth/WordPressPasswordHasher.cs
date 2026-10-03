@@ -13,13 +13,11 @@ namespace SterlingLams.Web.Infrastructure.Auth;
 ///   • a WordPress "portable" hash (<c>$P$</c> / <c>$H$</c>, phpass) is checked with the phpass algorithm;
 ///   • a bcrypt hash (<c>$2a$</c>/<c>$2b$</c>/<c>$2y$</c>, used by newer WP + WooCommerce setups) is
 ///     checked with BCrypt;
-/// and when either matches we return <see cref="PasswordVerificationResult.SuccessRehashNeeded"/> so
+///   • a WordPress 6.8+ <c>$wp$</c> hash (HMAC-SHA384 pre-hash, base64, then bcrypt) is checked too;
+/// and when any matches we return <see cref="PasswordVerificationResult.SuccessRehashNeeded"/> so
 /// Identity re-hashes and stores the password natively — the WordPress hash is used exactly once, on the
 /// user's first login. Anything else (a normal Identity hash) is delegated to the default hasher, so
 /// native accounts and new sign-ups are completely unaffected.
-///
-/// Note: WordPress 6.8+ introduces a <c>$wp$</c>-prefixed bcrypt variant with a pre-hash step; it is not
-/// handled here yet because it needs validating against a real sample from the source site.
 /// </summary>
 public sealed class WordPressPasswordHasher : IPasswordHasher<ApplicationUser>
 {
@@ -42,6 +40,21 @@ public sealed class WordPressPasswordHasher : IPasswordHasher<ApplicationUser>
             return PhpassVerify(providedPassword, hashedPassword)
                 ? PasswordVerificationResult.SuccessRehashNeeded
                 : PasswordVerificationResult.Failed;
+        }
+
+        // WordPress 6.8+ "$wp$" scheme: the password is pre-hashed with HMAC-SHA384 (key "wp-sha384"),
+        // base64-encoded, then bcrypted. Stored as "$wp$" + a normal bcrypt hash ($2y$…). Verified against
+        // a real sample from the source site. (This pre-hash also sidesteps bcrypt's 72-byte input limit.)
+        if (hashedPassword.StartsWith("$wp$", StringComparison.Ordinal))
+        {
+            var bcryptPart = hashedPassword[4..];
+            string preHash;
+            using (var hmac = new HMACSHA384(Encoding.UTF8.GetBytes("wp-sha384")))
+                preHash = Convert.ToBase64String(hmac.ComputeHash(Encoding.UTF8.GetBytes(providedPassword)));
+            bool wpOk;
+            try { wpOk = BCrypt.Net.BCrypt.Verify(preHash, bcryptPart); }
+            catch { wpOk = false; } // malformed hash → failed attempt, never throw
+            return wpOk ? PasswordVerificationResult.SuccessRehashNeeded : PasswordVerificationResult.Failed;
         }
 
         // bcrypt (newer WordPress / WooCommerce, and some plugins).
