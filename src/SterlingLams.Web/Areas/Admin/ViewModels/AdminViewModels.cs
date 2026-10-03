@@ -608,6 +608,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
 
         public decimal? MinimumOrderAmount { get; set; }
         public int? MinimumQuantity { get; set; }
+        public bool LagosAbujaOnly { get; set; }
         public int? MaxUses { get; set; }
         public int? MaxUsesPerCustomer { get; set; }
         public bool FirstOrderOnly { get; set; }

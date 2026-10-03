@@ -81,6 +81,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 IsAutomatic = code.IsAutomatic,
                 MinimumOrderAmount = code.MinimumOrderAmount,
                 MinimumQuantity = code.MinimumQuantity,
+                LagosAbujaOnly = code.LagosAbujaOnly,
                 MaxUses = code.MaxUses,
                 MaxUsesPerCustomer = code.MaxUsesPerCustomer,
                 FirstOrderOnly = code.FirstOrderOnly,
@@ -158,6 +159,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             code.IsAutomatic       = vm.IsAutomatic;
             code.MinimumOrderAmount = vm.MinimumOrderAmount;
             code.MinimumQuantity   = vm.MinimumQuantity;
+            code.LagosAbujaOnly    = vm.LagosAbujaOnly;
             code.MaxUses           = vm.MaxUses;
             code.MaxUsesPerCustomer = vm.MaxUsesPerCustomer;
             code.FirstOrderOnly    = vm.FirstOrderOnly;

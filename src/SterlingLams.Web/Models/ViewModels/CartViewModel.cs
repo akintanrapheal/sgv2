@@ -32,6 +32,8 @@ public class CartViewModel
     public string? DiscountDescription { get; set; }
     public decimal DiscountAmount { get; set; }
     public bool FreeShipping { get; set; }
+    /// <summary>The applied free-shipping discount only waives the fee for Lagos/Abuja deliveries.</summary>
+    public bool FreeShippingLagosAbujaOnly { get; set; }
     public bool IsAutomaticDiscount { get; set; }
     public bool HasDiscount => DiscountAmount > 0 || FreeShipping;
     public string FormattedDiscount => $"-₦{DiscountAmount:N0}";

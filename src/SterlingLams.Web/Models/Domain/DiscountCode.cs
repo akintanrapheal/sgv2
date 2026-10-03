@@ -31,6 +31,11 @@ public class DiscountCode
 
     public decimal? MinimumOrderAmount { get; set; }
     public int? MinimumQuantity { get; set; }
+
+    /// <summary>When true, the discount only applies to deliveries to Lagos &amp; Abuja (FCT). Mainly for
+    /// free-delivery vouchers, where we only waive the fee for the zones we can deliver cheaply to.</summary>
+    public bool LagosAbujaOnly { get; set; }
+
     public int? MaxUses { get; set; }
     public int? MaxUsesPerCustomer { get; set; }
     public bool FirstOrderOnly { get; set; }
