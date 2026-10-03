@@ -22,14 +22,21 @@ public class IntegrationsController : AdminBaseController
     private readonly ISettingsSecretProtector _secrets;
     private readonly IConfiguration _config;
     private readonly IWhatsAppService _whatsapp;
+    private readonly IHttpClientFactory _httpFactory;
+    private readonly IGoogleAnalytics _ga;
+    private readonly IRetainfulClient _retainful;
 
     public IntegrationsController(ISettingsService settings, ISettingsSecretProtector secrets,
-        IConfiguration config, IWhatsAppService whatsapp)
+        IConfiguration config, IWhatsAppService whatsapp, IHttpClientFactory httpFactory,
+        IGoogleAnalytics ga, IRetainfulClient retainful)
     {
         _settings = settings;
         _secrets = secrets;
         _config = config;
         _whatsapp = whatsapp;
+        _httpFactory = httpFactory;
+        _ga = ga;
+        _retainful = retainful;
     }
 
     public async Task<IActionResult> Index()
@@ -133,6 +140,143 @@ public class IntegrationsController : AdminBaseController
             "✅ Test from Sterlin Glams — your WhatsApp integration is working.");
         await LogAsync("Update", "Setting", null, $"Sent test WhatsApp to {toPhone}: {(ok ? "ok" : "failed")}");
         return Json(new { ok, message });
+    }
+
+    /// <summary>Live connection test for one integration, for the status panel. Returns
+    /// { ok, status: "ok"|"error"|"off", detail }. Non-destructive (read-only pings) except none send
+    /// anything. Client-side integrations (Meta Pixel, PostHog) report config state only.</summary>
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> TestConnection(string name)
+    {
+        // Reveal a stored secret, falling back to appsettings/env (same precedence as the page).
+        async Task<string> Val(string key, string? configKey)
+        {
+            var raw = await _settings.GetAsync(key, "");
+            if (!string.IsNullOrWhiteSpace(raw)) return _secrets.Reveal(raw);
+            return configKey is null ? "" : (_config[configKey] ?? "");
+        }
+        IActionResult R(bool ok, string detail, string? status = null)
+            => Json(new { ok, status = status ?? (ok ? "ok" : "error"), detail });
+
+        try
+        {
+            switch ((name ?? "").ToLowerInvariant())
+            {
+                case "retainful":
+                {
+                    var (ok, detail) = await _retainful.TestAsync();
+                    return R(ok, detail, ok ? "ok" : (detail.Contains("Not enabled") || detail.Contains("No API key") ? "off" : "error"));
+                }
+
+                case "google analytics":
+                {
+                    var r = await _ga.GetAsync(7);
+                    if (!r.Configured) return R(false, "Not set up (add Property ID + service-account key).", "off");
+                    if (!string.IsNullOrEmpty(r.Error)) return R(false, r.Error, "error");
+                    return R(true, $"Connected — {r.Stats?.Users ?? 0} users in the last 7 days.");
+                }
+
+                case "cloudinary":
+                {
+                    var cloud = await Val("cloudinary.cloud_name", "Cloudinary:CloudName");
+                    var k = await Val("cloudinary.api_key", "Cloudinary:ApiKey");
+                    var s = await Val("cloudinary.api_secret", "Cloudinary:ApiSecret");
+                    if (cloud.Length == 0 || k.Length == 0 || s.Length == 0) return R(false, "Cloud name, API key and secret are required.", "off");
+                    using var http = _httpFactory.CreateClient(); http.Timeout = TimeSpan.FromSeconds(12);
+                    using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.cloudinary.com/v1_1/{cloud}/ping");
+                    req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic",
+                        Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes($"{k}:{s}")));
+                    using var resp = await http.SendAsync(req);
+                    return resp.IsSuccessStatusCode
+                        ? R(true, "Connected — credentials valid.")
+                        : R(false, (int)resp.StatusCode == 401 ? "API key/secret rejected (401)." : $"Cloudinary returned {(int)resp.StatusCode}.");
+                }
+
+                case "payments":
+                {
+                    var provider = (await _settings.GetAsync("payment.provider", _config["Payment:Provider"] ?? "paystack")).ToLowerInvariant();
+                    using var http = _httpFactory.CreateClient(); http.Timeout = TimeSpan.FromSeconds(12);
+                    if (provider == "paystack")
+                    {
+                        var sk = await Val("payment.paystack.secret_key", "Payment:Paystack:SecretKey");
+                        if (sk.Length == 0) return R(false, "No Paystack secret key.", "off");
+                        using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.paystack.co/bank?perPage=1");
+                        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", sk);
+                        using var resp = await http.SendAsync(req);
+                        return resp.IsSuccessStatusCode ? R(true, "Connected — Paystack secret key valid.")
+                            : R(false, (int)resp.StatusCode == 401 ? "Paystack secret key rejected (401)." : $"Paystack returned {(int)resp.StatusCode}.");
+                    }
+                    if (provider == "stripe")
+                    {
+                        var sk = await Val("payment.stripe.secret_key", "Payment:Stripe:SecretKey");
+                        if (sk.Length == 0) return R(false, "No Stripe secret key.", "off");
+                        using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.stripe.com/v1/balance");
+                        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", sk);
+                        using var resp = await http.SendAsync(req);
+                        return resp.IsSuccessStatusCode ? R(true, "Connected — Stripe secret key valid.")
+                            : R(false, (int)resp.StatusCode == 401 ? "Stripe secret key rejected (401)." : $"Stripe returned {(int)resp.StatusCode}.");
+                    }
+                    var fk = await Val("payment.flutterwave.secret_key", "Payment:Flutterwave:SecretKey");
+                    return fk.Length > 0 ? R(true, "Flutterwave secret key is set (live verification not supported here).", "ok")
+                        : R(false, "No Flutterwave secret key.", "off");
+                }
+
+                case "whatsapp":
+                {
+                    if (!await _settings.GetBoolAsync("whatsapp.enabled", false)) return R(false, "Not enabled.", "off");
+                    var sid = await Val("whatsapp.twilio.account_sid", "WhatsApp:Twilio:AccountSid");
+                    var tok = await Val("whatsapp.twilio.auth_token", "WhatsApp:Twilio:AuthToken");
+                    if (sid.Length == 0 || tok.Length == 0) return R(false, "Twilio Account SID + Auth Token required.", "off");
+                    using var http = _httpFactory.CreateClient(); http.Timeout = TimeSpan.FromSeconds(12);
+                    using var req = new HttpRequestMessage(HttpMethod.Get, $"https://api.twilio.com/2010-04-01/Accounts/{sid}.json");
+                    req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic",
+                        Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes($"{sid}:{tok}")));
+                    using var resp = await http.SendAsync(req);
+                    return resp.IsSuccessStatusCode ? R(true, "Connected — Twilio credentials valid.")
+                        : R(false, (int)resp.StatusCode == 401 ? "Twilio SID/token rejected (401)." : $"Twilio returned {(int)resp.StatusCode}.");
+                }
+
+                case "smtp":
+                {
+                    if (!await _settings.GetBoolAsync("email.smtp.enabled", false)) return R(false, "Not enabled.", "off");
+                    var host = await Val("email.smtp.host", "Email:Host");
+                    var port = await _settings.GetIntAsync("email.smtp.port", 587);
+                    if (host.Length == 0) return R(false, "No SMTP host set.", "off");
+                    try
+                    {
+                        using var tcp = new System.Net.Sockets.TcpClient();
+                        var connect = tcp.ConnectAsync(host, port);
+                        if (await Task.WhenAny(connect, Task.Delay(8000)) != connect || !tcp.Connected)
+                            return R(false, $"Couldn't reach {host}:{port} (timed out).");
+                        return R(true, $"Reachable — {host}:{port} accepts connections. Use ‘Send a test’ below to confirm login.", "ok");
+                    }
+                    catch (Exception ex) { return R(false, $"Couldn't reach {host}:{port}: {ex.Message}"); }
+                }
+
+                case "meta pixel":
+                {
+                    var on = await _settings.GetBoolAsync("meta.enabled", false);
+                    var id = await Val("meta.pixel_id", null);
+                    if (!on || id.Length == 0) return R(false, "Not set up.", "off");
+                    return R(true, $"Pixel {id} is live on the storefront (client-side — can’t be pinged from here).", "ok");
+                }
+
+                case "posthog":
+                {
+                    var on = await _settings.GetBoolAsync("posthog.enabled", false);
+                    var k = await Val("posthog.project_api_key", null);
+                    if (!on || k.Length == 0) return R(false, "Not set up.", "off");
+                    return R(true, "Enabled on the storefront (client-side — can’t be pinged from here).", "ok");
+                }
+
+                default:
+                    return R(false, "Unknown integration.", "error");
+            }
+        }
+        catch (Exception ex)
+        {
+            return R(false, "Test failed: " + ex.Message, "error");
+        }
     }
 
     [HttpPost, ValidateAntiForgeryToken]
