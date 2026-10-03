@@ -114,6 +114,7 @@ public class IntegrationsController : AdminBaseController
             RetainfulApiKeySet = Set("retainful.api_key", null),
             RetainfulBaseUrl   = string.IsNullOrWhiteSpace(Plain("retainful.base_url", null)) ? "https://api.retainful.net/api/v1" : Plain("retainful.base_url", null),
             RetainfulListId    = Plain("retainful.list_id", null),
+            RetainfulHandleAbandonedCart = await _settings.GetBoolAsync("retainful.handle_abandoned_cart", false),
 
             BaseUrl = baseUrl,
         };
@@ -242,6 +243,7 @@ public class IntegrationsViewModel
     public bool RetainfulApiKeySet { get; set; }
     public string RetainfulBaseUrl { get; set; } = "https://api.retainful.net/api/v1";
     public string RetainfulListId { get; set; } = "";
+    public bool RetainfulHandleAbandonedCart { get; set; }
 
     public string BaseUrl { get; set; } = "";
 }
