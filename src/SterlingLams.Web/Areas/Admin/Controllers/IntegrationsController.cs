@@ -15,7 +15,7 @@ public class IntegrationsController : AdminBaseController
     // A previously granted "Integrations" permission can no longer open this screen either.
     protected override string? Section => null;
 
-    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog", "Google Analytics", "Meta Pixel", "Cloudinary" };
+    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog", "Google Analytics", "Meta Pixel", "Cloudinary", "Retainful" };
     private static readonly string[] Providers = { "paystack", "stripe", "flutterwave" };
 
     private readonly ISettingsService _settings;
@@ -109,6 +109,11 @@ public class IntegrationsController : AdminBaseController
             CloudinaryCloudName  = Plain("cloudinary.cloud_name", "Cloudinary:CloudName"),
             CloudinaryApiKeySet  = Set("cloudinary.api_key", "Cloudinary:ApiKey"),
             CloudinaryApiSecretSet = Set("cloudinary.api_secret", "Cloudinary:ApiSecret"),
+
+            RetainfulEnabled   = await _settings.GetBoolAsync("retainful.enabled", false),
+            RetainfulApiKeySet = Set("retainful.api_key", null),
+            RetainfulBaseUrl   = string.IsNullOrWhiteSpace(Plain("retainful.base_url", null)) ? "https://api.retainful.net/api/v1" : Plain("retainful.base_url", null),
+            RetainfulListId    = Plain("retainful.list_id", null),
 
             BaseUrl = baseUrl,
         };
@@ -231,6 +236,12 @@ public class IntegrationsViewModel
     public string CloudinaryCloudName { get; set; } = "";
     public bool CloudinaryApiKeySet { get; set; }
     public bool CloudinaryApiSecretSet { get; set; }
+
+    // Retainful (email marketing / win-back). API key is secret.
+    public bool RetainfulEnabled { get; set; }
+    public bool RetainfulApiKeySet { get; set; }
+    public string RetainfulBaseUrl { get; set; } = "https://api.retainful.net/api/v1";
+    public string RetainfulListId { get; set; } = "";
 
     public string BaseUrl { get; set; } = "";
 }

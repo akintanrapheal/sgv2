@@ -12,17 +12,20 @@ public class HomeController : Controller
     private readonly SterlingLams.Web.Services.IMerchandisingService _merch;
     private readonly SterlingLams.Web.Services.ISettingsService _settings;
     private readonly SterlingLams.Web.Services.Marketing.IMarketingService _marketing;
+    private readonly SterlingLams.Web.Services.IRetainfulClient _retainful;
 
     public HomeController(ILogger<HomeController> logger, ApplicationDbContext db,
         SterlingLams.Web.Services.IMerchandisingService merch,
         SterlingLams.Web.Services.ISettingsService settings,
-        SterlingLams.Web.Services.Marketing.IMarketingService marketing)
+        SterlingLams.Web.Services.Marketing.IMarketingService marketing,
+        SterlingLams.Web.Services.IRetainfulClient retainful)
     {
         _logger = logger;
         _db = db;
         _merch = merch;
         _settings = settings;
         _marketing = marketing;
+        _retainful = retainful;
     }
 
     [Microsoft.AspNetCore.OutputCaching.OutputCache(PolicyName = "Storefront")]
@@ -111,6 +114,7 @@ public class HomeController : Controller
             _db.NewsletterSubscribers.Add(new Models.Domain.NewsletterSubscriber { Email = email, CreatedAt = DateTime.UtcNow });
             await _db.SaveChangesAsync();
         }
+        _ = _retainful.SubscribeNewsletterAsync(email);   // sync to Retainful list (fire-and-forget)
         return Json(new { success = true, message = "Thank you for subscribing!" });
     }
 
@@ -137,6 +141,7 @@ public class HomeController : Controller
             _db.NewsletterSubscribers.Add(new Models.Domain.NewsletterSubscriber { Email = email, CreatedAt = DateTime.UtcNow });
             await _db.SaveChangesAsync();
         }
+        _ = _retainful.SubscribeNewsletterAsync(email);   // sync to Retainful list (fire-and-forget)
 
         string? code = null;
         if (enabled && pct > 0 && isNew)

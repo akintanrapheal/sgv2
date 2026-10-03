@@ -390,6 +390,45 @@
             </div>
         </section>
 
+        @* ─── Retainful (email marketing / win-back) ───────────────────────────── *@
+        <section class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
+            <div>
+                <h2 class="text-sm font-semibold text-neutral-800">Retainful (email marketing)</h2>
+                <p class="text-xs text-neutral-400 mt-0.5">Syncs newsletter sign-ups to Retainful and sends a <b>Placed Order</b> event after each paid order, so you can run win-back / post-purchase automations there. Create the key in Retainful → <b>Integrations → REST API</b> (needs Contacts + Lists + Events read/write). <span class="text-amber-600">Abandoned-cart emails stay with the built-in system</span> to avoid double emails.</p>
+            </div>
+
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" name="retainful.enabled" value="true" @(Model.RetainfulEnabled ? "checked" : "")
+                       class="mt-0.5 rounded accent-neutral-900" />
+                <span>
+                    <p class="text-sm font-medium text-neutral-800">Enable Retainful</p>
+                    <p class="text-[11px] text-neutral-400">When off, nothing is sent to Retainful.</p>
+                </span>
+            </label>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">API Key @if (Model.RetainfulApiKeySet) {<span class="text-emerald-600 font-normal">· configured</span>}</label>
+                    <input type="password" name="retainful.api_key" value="" autocomplete="off"
+                           placeholder="@(Model.RetainfulApiKeySet ? "•••••••• leave blank to keep" : "Retainful API key")"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">Stored encrypted; never shown back.</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">API Base URL</label>
+                    <input type="text" name="retainful.base_url" value="@Model.RetainfulBaseUrl" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">Leave as the default unless your account differs.</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Newsletter List ID (optional)</label>
+                    <input type="text" name="retainful.list_id" value="@Model.RetainfulListId" placeholder="Audience → Lists" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">Which list newsletter sign-ups join. Blank = contacts only.</p>
+                </div>
+            </div>
+        </section>
+
         <div class="flex items-center gap-3">
             <button type="submit" class="bg-neutral-900 text-white text-sm px-6 py-2.5 rounded-sm hover:bg-neutral-700 transition-colors">
                 Save changes
