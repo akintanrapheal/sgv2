@@ -122,7 +122,10 @@ public class GoogleAnalyticsService : IGoogleAnalytics
         catch (Exception ex)
         {
             _log.LogError(ex, "GA Data API call failed.");
-            return new GaResult { Configured = true, Error = "Couldn't reach Google Analytics. Please try again." };
+            // Surface the real cause on this admin-only page so the owner can self-diagnose without digging
+            // through Sentry. The likely exceptions here (malformed service-account JSON, a bad private key)
+            // carry no secret material in their messages.
+            return new GaResult { Configured = true, Error = $"Couldn't reach Google Analytics — {ex.GetType().Name}: {Truncate(ex.Message, 180)}" };
         }
     }
 
@@ -165,7 +168,8 @@ public class GoogleAnalyticsService : IGoogleAnalytics
         => i < metrics.GetArrayLength() && double.TryParse(metrics[i].GetProperty("value").GetString(),
                System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : 0;
 
-    private static string Truncate(string s) => s.Length > 400 ? s[..400] : s;
+    private static string Truncate(string s) => Truncate(s, 400);
+    private static string Truncate(string s, int max) => s.Length > max ? s[..max] : s;
 
     // ── Service-account auth: signed JWT → cached access token ──────────────────────────────────
     private async Task<string?> GetAccessTokenAsync(string saJson)
@@ -189,7 +193,10 @@ public class GoogleAnalyticsService : IGoogleAnalytics
         var signingInput = header + "." + claims;
 
         using var rsa = RSA.Create();
-        rsa.ImportFromPem(privateKey);
+        // Service-account keys arrive as PEM with newlines. If the JSON was ever stored/re-encoded with the
+        // newlines left as literal "\n" two-char sequences, the base64 body won't decode — normalise first.
+        if (privateKey.Contains("\\n")) privateKey = privateKey.Replace("\\r", "").Replace("\\n", "\n");
+        rsa.ImportFromPem(privateKey.Trim());
         var sig = B64Url(rsa.SignData(Encoding.ASCII.GetBytes(signingInput), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
         var jwt = signingInput + "." + sig;
 
