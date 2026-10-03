@@ -1,0 +1,151 @@
+@model SterlingLams.Web.Services.CloseSummaryVm
+@{
+    ViewData["Title"] = "End of Day";
+    var s = Model.Session;
+    string N(decimal v) => "₦" + v.ToString("N2");
+    string VarCls(decimal v) => v == 0 ? "text-neutral-500" : (v < 0 ? "text-red-600" : "text-emerald-600");
+}
+
+<div class="flex items-start justify-between mb-6 gap-4 flex-wrap">
+    <div>
+        <a asp-area="Inventory" asp-controller="Till" asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← Back to sessions</a>
+        <h1 class="text-lg font-semibold text-neutral-900 mt-1">End of Day — @s.Register?.Name</h1>
+        <p class="text-xs text-neutral-500">
+            @s.Register?.Store?.Name ·
+            Opened @s.OpenedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm") by @Model.OpenedByName
+            @if (Model.Closed)
+            {
+                <text> · Closed @(s.ClosedAt!.Value.ToLocalTime().ToString("dd MMM yyyy, HH:mm"))@(string.IsNullOrEmpty(Model.ClosedByName) ? "" : " by " + Model.ClosedByName)</text>
+            }
+        </p>
+    </div>
+    <div class="flex items-center gap-2">
+        <span class="text-[10px] px-2 py-0.5 rounded-full @(Model.Closed ? "bg-neutral-100 text-neutral-500" : "bg-emerald-50 text-emerald-700")">@(Model.Closed ? "Closed" : "Open")</span>
+        <button onclick="window.print()" class="px-3 py-1.5 border border-neutral-200 rounded-sm text-xs text-neutral-600 hover:bg-neutral-50">Print</button>
+    </div>
+</div>
+
+<p class="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-sm px-3 py-2 mb-5">View only — this is a record of the till's end-of-day. Nothing here can be edited.</p>
+
+<!-- Tiles -->
+<div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+    <div class="bg-white border border-neutral-100 rounded-sm p-4"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Transactions</p><p class="text-xl font-semibold mt-1">@Model.Transactions</p></div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Counted</p><p class="text-xl font-semibold mt-1">@N(Model.Counted)</p></div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Takings</p><p class="text-xl font-semibold mt-1">@N(Model.Takings)</p></div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Float</p><p class="text-xl font-semibold mt-1">@N(Model.OpeningFloat)</p></div>
+    <div class="bg-white border border-neutral-100 rounded-sm p-4"><p class="text-[11px] uppercase tracking-wide text-neutral-400">Total Variance</p><p class="text-xl font-semibold mt-1 @VarCls(Model.Variance)">@N(Model.Variance)</p></div>
+</div>
+
+<!-- Cash Up -->
+<div class="bg-white border border-neutral-100 rounded-sm overflow-hidden mb-6">
+    <div class="px-5 py-3 border-b border-neutral-100"><h2 class="text-sm font-semibold text-neutral-800">Cash Up</h2></div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm min-w-[560px]">
+            <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+                <tr>
+                    <th class="text-left font-medium px-5 py-2.5">Tender</th>
+                    <th class="text-right font-medium px-5 py-2.5">Counted</th>
+                    <th class="text-right font-medium px-5 py-2.5">Expected</th>
+                    <th class="text-right font-medium px-5 py-2.5">Variance</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-50">
+                @foreach (var t in Model.Tenders)
+                {
+                    <tr>
+                        <td class="px-5 py-2.5 text-neutral-700">@t.Label</td>
+                        <td class="px-5 py-2.5 text-right">@(Model.Closed ? N(t.Counted ?? 0) : "—")</td>
+                        <td class="px-5 py-2.5 text-right text-neutral-600">@N(t.Expected)</td>
+                        <td class="px-5 py-2.5 text-right @VarCls(t.Variance)">@(Model.Closed ? N(t.Variance) : "—")</td>
+                    </tr>
+                }
+                <tr class="bg-neutral-50 font-medium">
+                    <td class="px-5 py-2.5">Sub-Total</td>
+                    <td class="px-5 py-2.5 text-right">@(Model.Closed ? N(Model.Counted) : "—")</td>
+                    <td class="px-5 py-2.5 text-right">@N(Model.Takings)</td>
+                    <td class="px-5 py-2.5 text-right @VarCls(Model.Variance)">@(Model.Closed ? N(Model.Variance) : "—")</td>
+                </tr>
+                <tr>
+                    <td class="px-5 py-2.5 text-neutral-500">Float</td>
+                    <td class="px-5 py-2.5 text-right text-neutral-400">—</td>
+                    <td class="px-5 py-2.5 text-right text-neutral-600">@N(Model.OpeningFloat)</td>
+                    <td class="px-5 py-2.5 text-right text-neutral-400">—</td>
+                </tr>
+                <tr class="font-semibold border-t border-neutral-200">
+                    <td class="px-5 py-2.5">Total</td>
+                    <td class="px-5 py-2.5 text-right">@(Model.Closed ? N(Model.Counted) : "—")</td>
+                    <td class="px-5 py-2.5 text-right">@N(Model.Takings)</td>
+                    <td class="px-5 py-2.5 text-right @VarCls(Model.Variance)">@(Model.Closed ? N(Model.Variance) : "—")</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Cash drawer / float -->
+    <div class="bg-white border border-neutral-100 rounded-sm p-5">
+        <h2 class="text-sm font-semibold text-neutral-800 mb-3">Cash drawer</h2>
+        <dl class="text-sm divide-y divide-neutral-50">
+            <div class="flex justify-between py-2"><dt class="text-neutral-500">Opening float</dt><dd>@N(Model.OpeningFloat)</dd></div>
+            <div class="flex justify-between py-2"><dt class="text-neutral-500">Cash paid in</dt><dd>@N(Model.Deposited)</dd></div>
+            <div class="flex justify-between py-2"><dt class="text-neutral-500">Cash withdrawn / refunds</dt><dd>@N(Model.Withdrawn)</dd></div>
+            <div class="flex justify-between py-2 font-medium"><dt>Expected in drawer</dt><dd>@N(Model.ExpectedCashDrawer)</dd></div>
+            <div class="flex justify-between py-2"><dt class="text-neutral-500">Counted cash</dt><dd>@(s.CountedCash.HasValue ? N(s.CountedCash.Value) : "—")</dd></div>
+        </dl>
+    </div>
+
+    <!-- Sales summary -->
+    <div class="bg-white border border-neutral-100 rounded-sm p-5">
+        <h2 class="text-sm font-semibold text-neutral-800 mb-3">Sales</h2>
+        <dl class="text-sm divide-y divide-neutral-50">
+            <div class="flex justify-between py-2"><dt class="text-neutral-500">Items sold</dt><dd>@Model.SalesQtyItems</dd></div>
+            <div class="flex justify-between py-2"><dt class="text-neutral-500">Discounts</dt><dd>@N(Model.SalesDiscount)</dd></div>
+            <div class="flex justify-between py-2"><dt class="text-neutral-500">Net sales</dt><dd>@N(Model.SalesNet)</dd></div>
+            <div class="flex justify-between py-2 font-medium"><dt>Total sales</dt><dd>@N(Model.SalesTotal)</dd></div>
+            <div class="flex justify-between py-2"><dt class="text-neutral-500">Average sale</dt><dd>@N(Model.SalesAverage)</dd></div>
+        </dl>
+    </div>
+</div>
+
+@if (Model.ByCategory.Any())
+{
+    <div class="bg-white border border-neutral-100 rounded-sm overflow-hidden mt-6">
+        <div class="px-5 py-3 border-b border-neutral-100"><h2 class="text-sm font-semibold text-neutral-800">Sales by category</h2></div>
+        <table class="w-full text-sm">
+            <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+                <tr><th class="text-left font-medium px-5 py-2.5">Category</th><th class="text-right font-medium px-5 py-2.5">Qty</th><th class="text-right font-medium px-5 py-2.5">Total</th></tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-50">
+                @foreach (var r in Model.ByCategory)
+                {
+                    <tr><td class="px-5 py-2 text-neutral-700">@r.Name</td><td class="px-5 py-2 text-right text-neutral-600">@r.Qty</td><td class="px-5 py-2 text-right">@N(r.Total)</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (Model.Refunds.Any())
+{
+    <div class="bg-white border border-neutral-100 rounded-sm overflow-hidden mt-6">
+        <div class="px-5 py-3 border-b border-neutral-100"><h2 class="text-sm font-semibold text-neutral-800">Refunds</h2></div>
+        <table class="w-full text-sm">
+            <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
+                <tr><th class="text-left font-medium px-5 py-2.5">Refund</th><th class="text-left font-medium px-5 py-2.5">When</th><th class="text-left font-medium px-5 py-2.5">Reason</th><th class="text-left font-medium px-5 py-2.5">Method</th><th class="text-right font-medium px-5 py-2.5">Amount</th></tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-50">
+                @foreach (var r in Model.Refunds)
+                {
+                    <tr>
+                        <td class="px-5 py-2 text-neutral-700">@r.Number</td>
+                        <td class="px-5 py-2 text-neutral-600 whitespace-nowrap">@r.When.ToLocalTime().ToString("dd MMM, HH:mm")</td>
+                        <td class="px-5 py-2 text-neutral-600">@r.Reason</td>
+                        <td class="px-5 py-2 text-neutral-600">@r.Method</td>
+                        <td class="px-5 py-2 text-right text-red-600">@N(r.Amount)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

@@ -10,14 +10,18 @@ public class TillController : InventoryAreaController
 {
     private readonly ApplicationDbContext _db;
     private readonly ISettingsService _settings;
-    public TillController(ApplicationDbContext db, ISettingsService settings)
+    private readonly ICashUpService _cashUp;
+    public TillController(ApplicationDbContext db, ISettingsService settings, ICashUpService cashUp)
     {
         _db = db;
         _settings = settings;
+        _cashUp = cashUp;
     }
 
     // Till oversight: cash-up sessions across all branches + today's POS totals.
-    public async Task<IActionResult> Index(int? storeId = null, string status = "all")
+    // `date` (yyyy-MM-dd, Lagos day) narrows the list to sessions OPENED that day — a date picker lets
+    // the owner pull up any past day's end-of-day across every store. Blank = the 100 most recent.
+    public async Task<IActionResult> Index(int? storeId = null, string status = "all", string? date = null)
     {
         ViewData["Title"] = "POS";
         var today = DateTime.UtcNow.Date;
@@ -25,6 +29,7 @@ public class TillController : InventoryAreaController
         ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
         ViewBag.StoreId = storeId;
         ViewBag.Status = status;
+        ViewBag.Date = date;
 
         var sessionsQuery = _db.TillSessions
             .Include(s => s.Register).ThenInclude(r => r.Store)
@@ -32,6 +37,14 @@ public class TillController : InventoryAreaController
 
         if (storeId.HasValue)
             sessionsQuery = sessionsQuery.Where(s => s.Register.StoreId == storeId.Value);
+
+        // Filter to a specific Lagos day when one is picked (UTC range avoids the Kind=Unspecified pitfall).
+        if (!string.IsNullOrWhiteSpace(date) && DateTime.TryParse(date, out var day))
+        {
+            var startUtc = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(day.Date);
+            var endUtc = startUtc.AddDays(1);
+            sessionsQuery = sessionsQuery.Where(s => s.OpenedAt >= startUtc && s.OpenedAt < endUtc);
+        }
 
         sessionsQuery = status switch
         {
@@ -96,6 +109,19 @@ public class TillController : InventoryAreaController
         vm.SalesToday = await posToday.SumAsync(o => (decimal?)o.Total) ?? 0;
         vm.TxToday = await posToday.CountAsync();
 
+        return View(vm);
+    }
+
+    // Read-only end-of-day / cash-up for one till session — the same EposNow-style "Sales & Operation"
+    // summary the POS shows at close, but view-only (no inputs, no close button) for owner oversight.
+    public async Task<IActionResult> Eod(int id)
+    {
+        var session = await _db.TillSessions
+            .Include(s => s.Register).ThenInclude(r => r.Store)
+            .FirstOrDefaultAsync(s => s.Id == id);
+        if (session == null) return NotFound();
+        // currentUserId "" — this is a read-only report, staff names come from the session itself.
+        var vm = await _cashUp.BuildAsync(session, interim: false, currentUserId: "");
         return View(vm);
     }
 
