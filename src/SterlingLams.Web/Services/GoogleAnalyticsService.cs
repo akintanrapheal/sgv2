@@ -147,7 +147,7 @@ public class GoogleAnalyticsService : IGoogleAnalytics
         if (arr.Count > 1 && arr[1].TryGetProperty("rows", out var dayRows))
             foreach (var r in dayRows.EnumerateArray())
             {
-                var d = r.GetProperty("dimensionValues")[0].GetString() ?? "";   // yyyyMMdd
+                var d = DimVal(r, 0);   // yyyyMMdd
                 st.DayLabels.Add(d.Length == 8 ? $"{d[6..8]}/{d[4..6]}" : d);
                 var m = r.GetProperty("metricValues");
                 st.DayUsers.Add(L(m, 0)); st.DayViews.Add(L(m, 1));
@@ -156,11 +156,16 @@ public class GoogleAnalyticsService : IGoogleAnalytics
         if (arr.Count > 2 && arr[2].TryGetProperty("rows", out var pageRows))
             foreach (var r in pageRows.EnumerateArray())
             {
-                var path = r.GetProperty("dimensionValues")[0].GetString() ?? "";
+                var path = DimVal(r, 0);
                 st.TopPages.Add((path, L(r.GetProperty("metricValues"), 0)));
             }
         return st;
     }
+
+    // A GA4 dimensionValues entry is an object { "value": "..." }, not a bare string.
+    private static string DimVal(JsonElement row, int i)
+        => row.TryGetProperty("dimensionValues", out var dv) && i < dv.GetArrayLength()
+           && dv[i].TryGetProperty("value", out var v) ? (v.GetString() ?? "") : "";
 
     private static long L(JsonElement metrics, int i)
         => i < metrics.GetArrayLength() && long.TryParse(metrics[i].GetProperty("value").GetString(), out var v) ? v : 0;
