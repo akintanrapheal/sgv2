@@ -17,6 +17,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<SeoDescriptionGenerator>();
         services.AddScoped<JournalPostGenerator>();
         services.AddScoped<IOrderFulfilmentService, OrderFulfilmentService>();
+        services.AddScoped<ICashUpService, CashUpService>();
         services.AddScoped<IOrderStatusService, OrderStatusService>();
         services.AddScoped<ICloudinaryProvider, CloudinaryProvider>();
         services.AddScoped<ITransferWorkflowService, TransferWorkflowService>();

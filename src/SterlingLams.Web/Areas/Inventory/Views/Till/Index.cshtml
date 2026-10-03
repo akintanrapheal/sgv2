@@ -4,6 +4,7 @@
     var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
     int? storeId = ViewBag.StoreId;
     string status = ViewBag.Status ?? "all";
+    string? date = ViewBag.Date as string;
     var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
 }
 
@@ -30,9 +31,24 @@
         <option value="open" selected="@(status == "open")">Open</option>
         <option value="closed" selected="@(status == "closed")">Closed</option>
     </select>
+    <input type="date" name="date" value="@date" onchange="this.form.submit()" class="@selectCls" title="View a specific day" />
+    @if (!string.IsNullOrWhiteSpace(date))
+    {
+        <a asp-area="Inventory" asp-controller="Till" asp-action="Index" asp-route-storeId="@storeId" asp-route-status="@status"
+           class="px-3 py-2 text-sm text-neutral-500 hover:text-neutral-800 self-center">Clear date</a>
+    }
 </form>
 
-<p class="text-xs text-neutral-400 mb-3">Cash-ups across all registers.</p>
+<p class="text-xs text-neutral-400 mb-3">
+    @if (!string.IsNullOrWhiteSpace(date) && DateTime.TryParse(date, out var dsel))
+    {
+        <text>Till sessions opened on <span class="text-neutral-600 font-medium">@dsel.ToString("dddd, dd MMM yyyy")</span>.</text>
+    }
+    else
+    {
+        <text>Cash-ups across all registers (100 most recent). Pick a date to see any day's end-of-day.</text>
+    }
+</p>
 <div class="bg-white border border-neutral-100 rounded-sm overflow-x-auto">
     <table class="w-full text-sm min-w-[800px]">
         <thead class="bg-neutral-50 text-neutral-500 text-xs uppercase tracking-wide">
@@ -80,8 +96,9 @@
                         }
                         else { <span class="text-neutral-300">—</span> }
                     </td>
-                    <td class="px-4 py-3 text-right">
-                        <a href="@($"/{SterlingLams.Web.Infrastructure.StaffPaths.Pos}/Zreport/{r.Session.Id}")" target="_blank" class="text-xs text-neutral-500 hover:text-emerald-600">EOD Report</a>
+                    <td class="px-4 py-3 text-right whitespace-nowrap">
+                        <a asp-area="Inventory" asp-controller="Till" asp-action="Eod" asp-route-id="@r.Session.Id"
+                           class="text-xs text-neutral-500 hover:text-emerald-600">End of day</a>
                     </td>
                 </tr>
             }

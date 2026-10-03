@@ -1,4 +1,4 @@
-@model SterlingLams.Web.Controllers.PosController.CloseSummaryVm
+@model SterlingLams.Web.Services.CloseSummaryVm
 @{
     // Window title shows the staff at the till (like EposNow), not "Sales & Operation".
     ViewData["Title"] = string.IsNullOrWhiteSpace(Model.StaffName) ? "POS" : Model.StaffName;
@@ -215,7 +215,7 @@
             </div>
 
             @{
-                (string Title, List<SterlingLams.Web.Controllers.PosController.SalesGroupRow> Rows, string Col, bool Pct)[] blocks =
+                (string Title, List<SterlingLams.Web.Services.SalesGroupRow> Rows, string Col, bool Pct)[] blocks =
                 {
                     ("Sales by product", Model.ByProduct, "Product", false),
                     ("Sales by employee", Model.ByEmployee, "Name", true),
