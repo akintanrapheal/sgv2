@@ -28,6 +28,21 @@ public static partial class Img
         _ikOn = imageKitOn && ep.Length > 0;
     }
 
+    /// <summary>Scheme+host of the ACTIVE image CDN (ImageKit when enabled, else Cloudinary). Used for a
+    /// &lt;link rel="preconnect"&gt; in the page head so the browser opens the TLS connection to the image
+    /// host up front, instead of only after it parses the HTML and discovers the first &lt;img&gt; — which
+    /// is what makes the first product images appear to "load slowly".</summary>
+    public static string CdnOrigin
+    {
+        get
+        {
+            if (_ikOn && _ikEndpoint.Length > 0 &&
+                Uri.TryCreate(_ikEndpoint, UriKind.Absolute, out var u))
+                return $"{u.Scheme}://{u.Authority}";
+            return "https://res.cloudinary.com";
+        }
+    }
+
     // Snap every requested size to one of a few standard "buckets". Cloudinary bills a credit per 1,000
     // distinct transformations, and each unique width/height makes a new one — so a storefront asking for
     // 72/80/96/112/120/150/192/200/224/400/480/600/700/1000/1080… px all over the place multiplies the

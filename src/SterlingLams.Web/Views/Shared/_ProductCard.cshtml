@@ -10,6 +10,9 @@
 *@
 @{
     var cardLowThreshold = ViewData["CardLowThreshold"] as int? ?? 0;
+    // Above-the-fold cards (set by _ProductCards for the first row) load their primary image eagerly
+    // with high priority; everything else stays lazy. Defaults to lazy for all other callers.
+    var cardEager = ViewData["CardEager"] as bool? ?? false;
 }
 <div class="group flex flex-col h-full">
     <!-- Image -->
@@ -18,7 +21,7 @@
         @if (!string.IsNullOrWhiteSpace(Model.PrimaryImageUrl))
         {
             <img src="@Img.Cld(Model.PrimaryImageUrl, 600, 600)" alt="@Model.Name"
-                 loading="lazy" width="600" height="600"
+                 loading="@(cardEager ? "eager" : "lazy")" fetchpriority="@(cardEager ? "high" : "auto")" width="600" height="600"
                  class="w-full h-full object-cover transition-all duration-700 group-hover:scale-105 @(Model.SecondaryImageUrl != null ? "group-hover:opacity-0" : "")" />
             @if (Model.SecondaryImageUrl != null)
             {

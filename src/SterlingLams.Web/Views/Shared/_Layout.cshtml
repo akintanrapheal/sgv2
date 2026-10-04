@@ -92,6 +92,12 @@
     <script type="application/ld+json" nonce="@Context.Items["csp-nonce"]">@Html.Raw(orgLd)</script>
     <script type="application/ld+json" nonce="@Context.Items["csp-nonce"]">@Html.Raw(websiteLd)</script>
 
+    <!-- Image CDN (ImageKit/Cloudinary): open the connection up front so the first product images
+         start downloading sooner instead of waiting on a late DNS+TLS handshake. No crossorigin —
+         plain <img> loads aren't CORS requests. -->
+    <link rel="preconnect" href="@SterlingLams.Web.Infrastructure.Img.CdnOrigin">
+    <link rel="dns-prefetch" href="@SterlingLams.Web.Infrastructure.Img.CdnOrigin">
+
     <!-- Fonts: Cormorant Garamond (luxury serif) + Inter + Lato (product-card CTA buttons) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
