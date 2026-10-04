@@ -3,6 +3,14 @@
     ViewData["Title"] = Model.PageTitle ?? "Collections";
     Layout = "_Layout";
 
+    // Imported SEO (from the old site) for the plain shop listing only — category/search pages keep their
+    // own dynamic title + description.
+    if (string.IsNullOrWhiteSpace(Model.Filters.Category) && string.IsNullOrWhiteSpace(Model.Filters.Search))
+    {
+        ViewData["TitleFull"] = "Shop Jewellery | All Offers at Sterlin Glams";
+        ViewData["Description"] = "Shop elegant jewellery online at Sterlin Glams. Find earrings, necklaces, bracelets, rings, and fashionable accessories.";
+    }
+
     // Base URL (current filters, minus page) for the "View more" progressive-load button.
     var qsParts = new List<string>();
     if (!string.IsNullOrWhiteSpace(Model.Filters.Category)) { qsParts.Add("category=" + Uri.EscapeDataString(Model.Filters.Category)); }

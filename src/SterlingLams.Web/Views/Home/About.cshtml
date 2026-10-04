@@ -2,7 +2,8 @@
 @inject ISettingsService SettingsService
 @{
     ViewData["Title"] = "Our Story";
-    ViewData["Description"] = "Discover the story behind Sterlin Glams — luxury jewellery crafted for the discerning Nigerian woman.";
+    ViewData["TitleFull"] = "About Sterlin Glams | Our Story & Mission";
+    ViewData["Description"] = "Learn about Sterlin Glams, a trusted jewellery brand offering elegant, affordable accessories with stores in Lagos and Abuja.";
     Layout = "_Layout";
     var bodyOverride = await SettingsService.GetAsync("pages.about_body", "");
 }

@@ -1,11 +1,13 @@
 # Sterlin Glams — crawl rules
-# Block the retired WooCommerce URLs (bots still crawl thousands of faceted
-# /shop and /product-category permutations) and non-indexable app pages, so
-# crawler traffic stops hammering the database. The live catalogue is /products.
+#
+# The old WooCommerce URLs (/shop, /product/…, /product-category/…) are STILL in Google's index and
+# carry the site's ranking. They now 301-redirect to the new catalogue, so we MUST let crawlers reach
+# them — a redirect is cheap (no DB hit) and is how the old pages' ranking transfers to the new ones.
+# Blocking them here previously stopped Google from seeing those redirects, which cost rankings.
+#
+# We still block genuine crawl traps: faceted query-string permutations (they explode into thousands of
+# combinations) and non-indexable app pages (cart/checkout/account).
 User-agent: *
-Disallow: /shop
-Disallow: /product-category/
-Disallow: /product/
 Disallow: /cart
 Disallow: /checkout
 Disallow: /account
@@ -15,3 +17,5 @@ Disallow: /*max_price=
 Disallow: /*per_page=
 Disallow: /*shop_view=
 Allow: /products
+
+Sitemap: https://sterlinglams.com/sitemap.xml

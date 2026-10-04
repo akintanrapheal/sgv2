@@ -5,7 +5,10 @@
     var seoBaseUrl  = $"{seoReq.Scheme}://{seoReq.Host}";
     var seoSiteName = await SettingsService.GetAsync("general.site_name", "Sterlin Glams");
     var seoDesc     = (ViewData["Description"]?.ToString()) ?? "Sterlin Glams — Luxury Jewellery. Timeless elegance crafted for you.";
-    var seoTitle    = ViewData["Title"] != null ? $"{ViewData["Title"]} — {seoSiteName}" : seoSiteName;
+    // ViewData["TitleFull"] = the exact <title> to use verbatim (e.g. an imported SEO title that already
+    // includes the brand); otherwise ViewData["Title"] gets the "— {site}" suffix as before.
+    var seoTitle    = ViewData["TitleFull"]?.ToString()
+                      ?? (ViewData["Title"] != null ? $"{ViewData["Title"]} — {seoSiteName}" : seoSiteName);
     var seoCanonical= (ViewData["Canonical"]?.ToString()) ?? (seoBaseUrl + seoReq.Path);
     var seoOgType   = (ViewData["OgType"]?.ToString()) ?? "website";
     var seoRobots   = (ViewData["Robots"]?.ToString()) ?? "index, follow";

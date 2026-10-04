@@ -1,6 +1,8 @@
 @model List<SterlingLams.Web.Models.Domain.BlogPost>
 @{
     ViewData["Title"] = "Journal";
+    ViewData["TitleFull"] = "Jewellery Blog | Styling Tips & Guides";
+    ViewData["Description"] = "Explore jewellery styling tips, gift ideas, care guides, and fashion inspiration from the Sterlin Glams blog.";
     Layout = "_Layout";
     int page = ViewBag.Page ?? 1;
     int totalPages = ViewBag.TotalPages ?? 1;
