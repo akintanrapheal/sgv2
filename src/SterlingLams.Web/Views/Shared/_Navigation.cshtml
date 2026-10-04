@@ -32,7 +32,7 @@
 
 @if (minimalHeader)
 {
-    <header class="fixed top-0 left-0 right-0 z-50 bg-white border-b border-neutral-100">
+    <header id="site-header" class="fixed top-0 left-0 right-0 z-50 bg-white border-b border-neutral-100">
         @* justify-between on mobile so the three items never overlap; the logo only becomes
            absolutely-centred from sm up, where there's room. *@
         <div class="relative flex items-center justify-between gap-2 px-4 sm:px-6 py-4">
@@ -53,13 +53,12 @@
             </button>
         </div>
     </header>
-    <div style="height:62px;" aria-hidden="true"></div>
     <partial name="_ContactPanel" />
 }
 else
 {
 
-<header class="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-neutral-100">
+<header id="site-header" class="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-neutral-100">
     <!-- Top bar -->
     @if (announcementEnabled)
     {
@@ -275,8 +274,24 @@ else
     </div>
 </div>
 
-<!-- Spacer for fixed nav (shrinks when announcement bar is hidden) -->
-<div style="height: @(announcementEnabled ? "90px" : "62px");" class="md:hidden" aria-hidden="true"></div>
-<div style="height: @(announcementEnabled ? "126px" : "98px");" class="hidden md:block" aria-hidden="true"></div>
-
 }
+
+@* Spacer for the fixed header — sized to the header's ACTUAL height so page content never hides behind
+   it. The header height varies (announcement on/off, announcement text wrapping on narrow screens, the
+   large logo at desktop widths), which a hardcoded height can't track — that mismatch was clipping the
+   greeting banner. The inline fallback prevents any overlap before the script runs; the script then keeps
+   it exact on load / resize / font-settle. Covers both the main and minimal header (same id). *@
+<div id="nav-spacer" style="height:150px" aria-hidden="true"></div>
+<script nonce="@Context.Items["csp-nonce"]">
+(function () {
+    var header = document.getElementById('site-header');
+    var spacer = document.getElementById('nav-spacer');
+    if (!header || !spacer) return;
+    function sync() { spacer.style.height = header.offsetHeight + 'px'; }
+    sync();
+    window.addEventListener('resize', sync);
+    window.addEventListener('load', sync);
+    if (window.ResizeObserver) { try { new ResizeObserver(sync).observe(header); } catch (e) {} }
+    setTimeout(sync, 300); setTimeout(sync, 1200);
+})();
+</script>
