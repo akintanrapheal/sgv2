@@ -641,6 +641,17 @@ try
     await SterlingLams.Web.Infrastructure.AttributeSeedData.SeedAdminUserAsync(attrUserManager, attrRoleManager, attrLogger, app.Configuration, app.Environment.IsDevelopment());
     await SterlingLams.Web.Infrastructure.AttributeSeedData.SeedAsync(attrDb, attrLogger);
     await SterlingLams.Web.Infrastructure.SettingsSeedData.SeedAsync(attrDb, attrLogger);
+
+    // Initialise the image-delivery switch (Cloudinary vs ImageKit) from settings so Img.Cld routes
+    // correctly from the first request. It's also refreshed whenever Integrations settings are saved.
+    try
+    {
+        var imgSettings = attrScope.ServiceProvider.GetRequiredService<SterlingLams.Web.Services.ISettingsService>();
+        SterlingLams.Web.Infrastructure.Img.ConfigureDelivery(
+            await imgSettings.GetBoolAsync("imagekit.enabled", false),
+            await imgSettings.GetAsync("imagekit.url_endpoint", ""));
+    }
+    catch { /* leave delivery on the Cloudinary default if settings aren't readable yet */ }
 }
 catch (Exception ex)
 {

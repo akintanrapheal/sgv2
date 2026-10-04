@@ -12,6 +12,22 @@ public static partial class Img
 {
     private const string Marker = "/image/upload/";
 
+    // ── Delivery provider switch (Cloudinary → ImageKit) ────────────────────────────────────────────
+    // ImageKit's free tier charges NO per-transformation credit (only bandwidth/storage), so moving
+    // delivery there removes Cloudinary's credit cliff. Configured once at startup and whenever the
+    // Integrations settings are saved (see Program.cs + IntegrationsController). When ImageKit is OFF the
+    // Cloudinary path below is byte-for-byte unchanged, so this is a safe, dormant addition until enabled.
+    // ImageKit must have a URL-endpoint whose origin is the Cloudinary delivery base
+    // (https://res.cloudinary.com/<cloud>/image/upload/), so the same asset path resolves through it.
+    private static volatile bool _ikOn;
+    private static volatile string _ikEndpoint = "";
+    public static void ConfigureDelivery(bool imageKitOn, string? imageKitEndpoint)
+    {
+        var ep = (imageKitEndpoint ?? "").Trim().TrimEnd('/');
+        _ikEndpoint = ep;
+        _ikOn = imageKitOn && ep.Length > 0;
+    }
+
     // Snap every requested size to one of a few standard "buckets". Cloudinary bills a credit per 1,000
     // distinct transformations, and each unique width/height makes a new one — so a storefront asking for
     // 72/80/96/112/120/150/192/200/224/400/480/600/700/1000/1080… px all over the place multiplies the
@@ -47,6 +63,17 @@ public static partial class Img
         var basePart = isTransform ? url[(end + 1)..] : url[at..];
 
         var w = Snap(width);
+
+        // ImageKit delivery (free transformations). Same asset path, resolved via ImageKit's origin.
+        if (_ikOn)
+        {
+            string tr = height is int hk
+                ? (fill ? $"w-{w},h-{Snap(hk)},c-maintain_ratio,fo-auto" // crop to fill w×h (square cards)
+                        : $"w-{w},h-{Snap(hk)},c-at_max")                 // fit within w×h, no crop
+                : $"w-{w}";                                               // width-only, keep aspect
+            return $"{_ikEndpoint}/{basePart}?tr={tr},f-auto,q-auto";
+        }
+
         var t = height is int h
             ? $"f_auto,q_auto,w_{w},h_{Snap(h)},c_{(fill ? "fill" : "fit")}"
             : $"f_auto,q_auto,w_{w},c_limit"; // width-only: keep aspect, never upscale

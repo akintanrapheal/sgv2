@@ -25,6 +25,7 @@
             ("posthog",          "PostHog",           Model.PhEnabled && !string.IsNullOrEmpty(Model.PhProjectKey)),
             ("cloudinary",       "Cloudinary",        Model.CloudinaryApiSecretSet),
             ("retainful",        "Retainful",         Model.RetainfulEnabled && Model.RetainfulApiKeySet),
+            ("imagekit",         "ImageKit",          Model.ImageKitEnabled && !string.IsNullOrEmpty(Model.ImageKitEndpoint)),
         };
     }
     <section id="status-panel" class="bg-white rounded-sm border border-neutral-100 p-6 mb-8">
@@ -474,6 +475,45 @@
                     <p class="text-[11px] text-neutral-400">Turns <b>off</b> the built-in abandoned-cart reminder emails and instead sends each abandoned cart to Retainful as an <b>Abandoned Cart</b> event, so Retainful's flow emails them. Prevents double emails. Needs Retainful enabled + an abandoned-cart automation set up in Retainful.</p>
                 </span>
             </label>
+        </section>
+
+        @* ─── ImageKit (image hosting / CDN — no per-transformation cost) ───────── *@
+        <section class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
+            <div>
+                <h2 class="text-sm font-semibold text-neutral-800">ImageKit (image hosting)</h2>
+                <p class="text-xs text-neutral-400 mt-0.5">Alternative to Cloudinary for resizing + serving images, with <b>no per-transformation cost</b> on its free tier. When enabled, the storefront delivers every image through ImageKit instead of Cloudinary. In ImageKit, set this endpoint's <b>origin</b> to <span class="font-mono">https://res.cloudinary.com/dxmadm7vj/image/upload</span> so your existing images resolve. Turn <b>off</b> to instantly revert to Cloudinary.</p>
+            </div>
+
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" name="imagekit.enabled" value="true" @(Model.ImageKitEnabled ? "checked" : "")
+                       class="mt-0.5 rounded accent-neutral-900" />
+                <span>
+                    <p class="text-sm font-medium text-neutral-800">Deliver images via ImageKit</p>
+                    <p class="text-[11px] text-neutral-400">Only turn on once the URL-endpoint below is set and its origin points at Cloudinary.</p>
+                </span>
+            </label>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">URL Endpoint</label>
+                    <input type="text" name="imagekit.url_endpoint" value="@Model.ImageKitEndpoint" placeholder="https://ik.imagekit.io/yourid" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">From ImageKit → URL-endpoints.</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Public Key</label>
+                    <input type="text" name="imagekit.public_key" value="@Model.ImageKitPublicKey" placeholder="public_…" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">Not secret (uploads only).</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Private Key @if (Model.ImageKitPrivateSet) {<span class="text-emerald-600 font-normal">· configured</span>}</label>
+                    <input type="password" name="imagekit.private_key" value="" autocomplete="off"
+                           placeholder="@(Model.ImageKitPrivateSet ? "•••••••• leave blank to keep" : "private_…")"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">Stored encrypted; never shown back.</p>
+                </div>
+            </div>
         </section>
 
         <div class="flex items-center gap-3">

@@ -15,7 +15,7 @@ public class IntegrationsController : AdminBaseController
     // A previously granted "Integrations" permission can no longer open this screen either.
     protected override string? Section => null;
 
-    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog", "Google Analytics", "Meta Pixel", "Cloudinary", "Retainful" };
+    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog", "Google Analytics", "Meta Pixel", "Cloudinary", "Retainful", "ImageKit" };
     private static readonly string[] Providers = { "paystack", "stripe", "flutterwave" };
 
     private readonly ISettingsService _settings;
@@ -122,6 +122,11 @@ public class IntegrationsController : AdminBaseController
             RetainfulBaseUrl   = string.IsNullOrWhiteSpace(Plain("retainful.base_url", null)) ? "https://api.retainful.net/api/v1" : Plain("retainful.base_url", null),
             RetainfulListId    = Plain("retainful.list_id", null),
             RetainfulHandleAbandonedCart = await _settings.GetBoolAsync("retainful.handle_abandoned_cart", false),
+
+            ImageKitEnabled     = await _settings.GetBoolAsync("imagekit.enabled", false),
+            ImageKitEndpoint    = Plain("imagekit.url_endpoint", null),
+            ImageKitPublicKey   = Plain("imagekit.public_key", null),
+            ImageKitPrivateSet  = Set("imagekit.private_key", null),
 
             BaseUrl = baseUrl,
         };
@@ -269,6 +274,20 @@ public class IntegrationsController : AdminBaseController
                     return R(true, "Enabled on the storefront (client-side — can’t be pinged from here).", "ok");
                 }
 
+                case "imagekit":
+                {
+                    var on = await _settings.GetBoolAsync("imagekit.enabled", false);
+                    var ep = (await Val("imagekit.url_endpoint", null)).TrimEnd('/');
+                    if (ep.Length == 0) return R(false, "No URL-endpoint set.", "off");
+                    // Fetch a tiny transformed image through the endpoint — proves the endpoint + its origin work.
+                    using var http = _httpFactory.CreateClient(); http.Timeout = TimeSpan.FromSeconds(12);
+                    using var resp = await http.GetAsync($"{ep}/tr:w-1,h-1/");
+                    if (resp.IsSuccessStatusCode || resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+                        // 200 = reachable; 404 = endpoint live but that path has no image — endpoint itself is valid.
+                        return R(true, on ? "Connected — ImageKit endpoint reachable (delivery is ON)." : "Reachable — endpoint valid (delivery is currently OFF).", on ? "ok" : "off");
+                    return R(false, $"ImageKit endpoint returned {(int)resp.StatusCode}.");
+                }
+
                 default:
                     return R(false, "Unknown integration.", "error");
             }
@@ -315,6 +334,13 @@ public class IntegrationsController : AdminBaseController
         }
 
         await _settings.SaveManyAsync(updates);
+
+        // Apply the image-delivery switch immediately (no redeploy) so enabling/disabling ImageKit or
+        // changing its endpoint takes effect on the next image rendered.
+        SterlingLams.Web.Infrastructure.Img.ConfigureDelivery(
+            await _settings.GetBoolAsync("imagekit.enabled", false),
+            await _settings.GetAsync("imagekit.url_endpoint", ""));
+
         await LogAsync("Update", "Setting", null,
             $"Updated Integrations settings ({updates.Count} fields, {secretsUpdated} secret(s) changed)");
         TempData["Success"] = "Integration settings saved.";
@@ -388,6 +414,12 @@ public class IntegrationsViewModel
     public string RetainfulBaseUrl { get; set; } = "https://api.retainful.net/api/v1";
     public string RetainfulListId { get; set; } = "";
     public bool RetainfulHandleAbandonedCart { get; set; }
+
+    // ImageKit (image hosting / CDN) — private key is secret.
+    public bool ImageKitEnabled { get; set; }
+    public string ImageKitEndpoint { get; set; } = "";
+    public string ImageKitPublicKey { get; set; } = "";
+    public bool ImageKitPrivateSet { get; set; }
 
     public string BaseUrl { get; set; } = "";
 }
