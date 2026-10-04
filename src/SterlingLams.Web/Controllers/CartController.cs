@@ -45,7 +45,7 @@ public class CartController : Controller
 
     public async Task<IActionResult> Index()
     {
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         await ApplyAutomaticDiscountAsync(cart);
         return View(cart);
     }
@@ -67,7 +67,7 @@ public class CartController : Controller
         if (available <= 0)
             return Json(new { success = false, message = "This item is out of stock." });
 
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         var existing = cart.Items.FirstOrDefault(i => i.ProductId == productId && i.VariantId == variantId);
 
         if (existing != null)
@@ -119,7 +119,7 @@ public class CartController : Controller
             .FirstOrDefaultAsync(o => o.Id == orderId && o.UserId == userId);
         if (order == null) return NotFound();
 
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         int added = 0, skipped = 0;
         foreach (var it in order.Items)
         {
@@ -164,7 +164,7 @@ public class CartController : Controller
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateQuantity(int productId, int quantity, int? variantId = null)
     {
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         var item = cart.Items.FirstOrDefault(i => i.ProductId == productId && i.VariantId == variantId);
 
         var capped = false;
@@ -218,7 +218,7 @@ public class CartController : Controller
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Remove(int productId, int? variantId = null)
     {
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         var item = cart.Items.FirstOrDefault(i => i.ProductId == productId && i.VariantId == variantId);
         if (item != null) cart.Items.Remove(item);
         SaveCart(cart);
@@ -232,7 +232,7 @@ public class CartController : Controller
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> SaveForLater(int productId, int? variantId = null)
     {
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         var item = cart.Items.FirstOrDefault(i => i.ProductId == productId && i.VariantId == variantId);
         if (item != null)
         {
@@ -248,7 +248,7 @@ public class CartController : Controller
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> MoveToBag(int productId, int? variantId = null)
     {
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         var saved = cart.SavedItems.FirstOrDefault(i => i.ProductId == productId && i.VariantId == variantId);
         if (saved != null)
         {
@@ -282,9 +282,9 @@ public class CartController : Controller
     }
 
     [HttpPost, ValidateAntiForgeryToken]
-    public IActionResult RemoveSaved(int productId, int? variantId = null)
+    public async Task<IActionResult> RemoveSaved(int productId, int? variantId = null)
     {
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         var saved = cart.SavedItems.FirstOrDefault(i => i.ProductId == productId && i.VariantId == variantId);
         if (saved != null) cart.SavedItems.Remove(saved);
         SaveCart(cart);
@@ -294,7 +294,7 @@ public class CartController : Controller
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> ApplyDiscount(string code)
     {
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         var userId = _userManager.GetUserId(User);
 
         var result = await _discounts.EvaluateAsync(code, cart, userId);
@@ -323,9 +323,9 @@ public class CartController : Controller
     }
 
     [HttpPost, ValidateAntiForgeryToken]
-    public IActionResult RemoveDiscount()
+    public async Task<IActionResult> RemoveDiscount()
     {
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         cart.AppliedDiscountCode = null;
         cart.DiscountDescription = null;
         cart.DiscountAmount = 0;
@@ -375,16 +375,16 @@ public class CartController : Controller
     }
 
     // Partial for mini-cart in nav dropdown
-    public IActionResult MiniCart()
+    public async Task<IActionResult> MiniCart()
     {
-        return PartialView("_MiniCart", GetCart());
+        return PartialView("_MiniCart", await GetCartAsync());
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     // Cart is persisted in a durable 30-day cookie (see CartStore), not volatile server session,
     // so it survives redeploys and long browsing sessions.
-    private CartViewModel GetCart() => CartStore.Load(HttpContext);
+    private Task<CartViewModel> GetCartAsync() => CartStore.LoadAsync(HttpContext, _db);
 
     private void SaveCart(CartViewModel cart) => CartStore.Save(HttpContext, cart);
 
@@ -406,7 +406,7 @@ public class CartController : Controller
         }
 
         var snapshot = JsonSerializer.Deserialize<List<SnapshotItem>>(ab.ItemsJson) ?? new();
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         int added = 0;
         foreach (var s in snapshot)
         {

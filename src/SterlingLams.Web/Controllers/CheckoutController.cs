@@ -110,7 +110,7 @@ public class CheckoutController : Controller
     [HttpGet]
     public async Task<IActionResult> Index()
     {
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         if (cart.IsEmpty) return RedirectToAction("Index", "Cart");
 
         if (!await _settings.GetBoolAsync("store.accepting_orders", true))
@@ -379,7 +379,7 @@ public class CheckoutController : Controller
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> FulfilmentPreview(string? fulfillmentType, string? state, string? city, int? storeId)
     {
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         var choice = string.Equals(fulfillmentType, "StorePickup", StringComparison.OrdinalIgnoreCase)
             ? FulfillmentChoice.StorePickup : FulfillmentChoice.Delivery;
         var delayed = await ComputeDelayedItemsAsync(cart, choice, state, city, storeId);
@@ -400,7 +400,7 @@ public class CheckoutController : Controller
     // options and order summary all come back empty.
     private async Task RehydrateCheckoutDisplayAsync(CheckoutViewModel vm)
     {
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         var user = await _userManager.GetUserAsync(User);
 
         vm.Cart                = cart;
@@ -475,7 +475,7 @@ public class CheckoutController : Controller
 
         if (!ModelState.IsValid) return await RedisplayCheckoutAsync(vm);
 
-        var cart = GetCart();
+        var cart = await GetCartAsync();
         if (cart.IsEmpty) return RedirectToAction("Index", "Cart");
 
         // Store-level gates (admin-toggled in Settings → Store).
@@ -1188,7 +1188,7 @@ public class CheckoutController : Controller
 
     // Cart is persisted in a durable 30-day cookie (see CartStore), not volatile server session,
     // so it survives redeploys and long browsing sessions.
-    private CartViewModel GetCart() => CartStore.Load(HttpContext);
+    private Task<CartViewModel> GetCartAsync() => CartStore.LoadAsync(HttpContext, _db);
 
     private void SaveCart(CartViewModel cart) => CartStore.Save(HttpContext, cart);
 

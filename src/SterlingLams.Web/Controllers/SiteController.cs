@@ -31,8 +31,8 @@ public class SiteController : Controller
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> HeaderState()
     {
-        // Cart count from the durable cart cookie (same store CartController uses).
-        var cartCount = SterlingLams.Web.Services.CartStore.Load(HttpContext).TotalItems;
+        // Cart count straight from the durable cart cookie — no DB hit (same store CartController uses).
+        var cartCount = SterlingLams.Web.Services.CartStore.Count(HttpContext);
 
         var authed = User.Identity?.IsAuthenticated == true;
         var wishlistCount = 0;
