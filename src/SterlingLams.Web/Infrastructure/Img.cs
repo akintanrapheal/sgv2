@@ -54,13 +54,7 @@ public static partial class Img
         if (i < 0) return url; // not a Cloudinary /image/upload/ URL — leave untouched
 
         var at = i + Marker.Length;
-        var end = url.IndexOf('/', at);
-        var firstSeg = end < 0 ? url[at..] : url[at..end];
-        // Detect an existing delivery-transform block right after /upload/ (has commas, or starts with
-        // a short "xx_" param like f_/q_/w_/h_/c_). A version segment ("v1712…") has no underscore, so
-        // it's treated as the base, not a transform. When present, drop it and re-apply our own size.
-        var isTransform = end > 0 && (firstSeg.Contains(',') || TransformSeg().IsMatch(firstSeg));
-        var basePart = isTransform ? url[(end + 1)..] : url[at..];
+        var basePart = CloudinaryAssetPath(url)!;  // path after /upload/, minus any baked-in transform
 
         var w = Snap(width);
 
@@ -78,6 +72,22 @@ public static partial class Img
             ? $"f_auto,q_auto,w_{w},h_{Snap(h)},c_{(fill ? "fill" : "fit")}"
             : $"f_auto,q_auto,w_{w},c_limit"; // width-only: keep aspect, never upscale
         return url[..at] + t + "/" + basePart;
+    }
+
+    /// <summary>The asset path of a Cloudinary image URL — everything after <c>/image/upload/</c> with any
+    /// baked-in delivery transform removed (e.g. "sterlinglams/products/abc.jpg"). This is the exact path
+    /// Img.Cld requests from ImageKit, so the migration tool uploads originals to the Media Library under
+    /// the same path and the same URLs then resolve from ImageKit's own storage. Null for non-Cloudinary.</summary>
+    public static string? CloudinaryAssetPath(string? url)
+    {
+        if (string.IsNullOrEmpty(url)) return null;
+        var i = url.IndexOf(Marker, StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return null;
+        var at = i + Marker.Length;
+        var end = url.IndexOf('/', at);
+        var firstSeg = end < 0 ? url[at..] : url[at..end];
+        var isTransform = end > 0 && (firstSeg.Contains(',') || TransformSeg().IsMatch(firstSeg));
+        return isTransform ? url[(end + 1)..] : url[at..];
     }
 
     [System.Text.RegularExpressions.GeneratedRegex("^[a-z]{1,3}_[^/]")]

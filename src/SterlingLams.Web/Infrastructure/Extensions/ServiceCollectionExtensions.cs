@@ -56,6 +56,7 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<ICloudflareAnalytics, CloudflareAnalyticsService>(c => c.Timeout = TimeSpan.FromSeconds(15));
         services.AddHttpClient<IGoogleAnalytics, GoogleAnalyticsService>(c => c.Timeout = TimeSpan.FromSeconds(20));
         services.AddHttpClient<IRetainfulClient, RetainfulClient>(c => c.Timeout = TimeSpan.FromSeconds(15));
+        services.AddHttpClient<IImageKitUploader, ImageKitUploader>(c => c.Timeout = TimeSpan.FromSeconds(60));
 
         // PostHog reverse proxy (/ingest → PostHog EU/US). Passes bytes straight through, so
         // decompression is OFF (we forward Content-Encoding as-is) and redirects are not auto-followed.

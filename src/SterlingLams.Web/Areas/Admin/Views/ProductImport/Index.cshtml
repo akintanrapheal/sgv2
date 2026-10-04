@@ -44,6 +44,24 @@
     </div>
 
     <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
+        <h2 class="text-sm font-semibold text-neutral-800">Copy images into ImageKit (Phase 2)</h2>
+        <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
+            Copies every product / variant / category image from Cloudinary into <b>ImageKit's own storage</b>,
+            at the same path — so your site no longer depends on Cloudinary and you can close that account.
+            Safe to run anytime and to re-run (it overwrites in place). Requires ImageKit configured in
+            <a asp-controller="Integrations" asp-action="Index" class="text-brand-600 hover:underline">Admin → Integrations</a>.
+            Runs in batches — <b>keep this tab open</b> until it says done.
+        </p>
+        <div class="flex items-center gap-2 mt-4">
+            <button type="button" id="pi-ikmigrate" class="px-5 py-2 bg-neutral-900 text-white text-sm rounded-md hover:bg-neutral-700">Copy images into ImageKit</button>
+            <span id="pi-ikmigrate-status" class="text-sm text-neutral-500"></span>
+        </div>
+        <div id="pi-ikmigrate-bar-wrap" class="hidden mt-3 h-2 w-full max-w-md bg-neutral-100 rounded-full overflow-hidden">
+            <div id="pi-ikmigrate-bar" class="h-full bg-emerald-500 transition-all" style="width:0%"></div>
+        </div>
+    </div>
+
+    <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
         <h2 class="text-sm font-semibold text-neutral-800">Import barcodes (EposNow)</h2>
         <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
             Upload an EposNow <strong>ProductList</strong> CSV (<span class="font-mono">Name;CategoryId;Barcode</span>).
@@ -232,6 +250,48 @@
         }
         step();
     });
+
+    // ── Copy images into ImageKit (Phase 2) — batched loop until done ──
+    var ikBtn = document.getElementById('pi-ikmigrate');
+    var ikStatus = document.getElementById('pi-ikmigrate-status');
+    var ikBarWrap = document.getElementById('pi-ikmigrate-bar-wrap');
+    var ikBar = document.getElementById('pi-ikmigrate-bar');
+    if (ikBtn) {
+        ikBtn.addEventListener('click', function () {
+            ikBtn.disabled = true;
+            var total = 0, copied = 0, failed = 0, cursor = 'pi:0';
+            ikBarWrap.classList.remove('hidden');
+            // Get the total first so we can show a progress bar.
+            fetch(base + 'ImageKitMigrationStatus').then(function (r) { return r.json(); }).then(function (s) {
+                if (!s.ok) { ikStatus.textContent = 'Could not read status.'; ikBtn.disabled = false; return; }
+                if (!s.configured) { ikStatus.textContent = 'Add the ImageKit URL endpoint + private key in Admin → Integrations first.'; ikBtn.disabled = false; return; }
+                total = s.total || 0;
+                if (total === 0) { ikStatus.textContent = 'No Cloudinary images found to copy.'; ikBtn.disabled = false; return; }
+                step();
+            }).catch(function () { ikStatus.textContent = 'Request failed.'; ikBtn.disabled = false; });
+
+            function step() {
+                var fd = new FormData();
+                fd.append('__RequestVerificationToken', token ? token.value : '');
+                fd.append('cursor', cursor);
+                fetch(base + 'MigrateToImageKit', { method: 'POST', body: fd, headers: { 'RequestVerificationToken': token ? token.value : '' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (!d.ok) { ikStatus.textContent = d.error || 'Failed.'; ikBtn.disabled = false; return; }
+                        copied += d.uploaded; failed += d.failed; cursor = d.cursor;
+                        var pct = total ? Math.min(100, Math.round((total - d.remaining) / total * 100)) : 100;
+                        ikBar.style.width = pct + '%';
+                        ikStatus.textContent = 'Copying… ' + copied + ' of ' + total + ' done' + (failed ? (' · ' + failed + ' failed') : '') + ' (' + pct + '%)';
+                        if (d.done) {
+                            ikBar.style.width = '100%';
+                            ikStatus.textContent = 'Done — copied ' + copied + ' image(s) into ImageKit' + (failed ? (' · ' + failed + ' failed (re-run to retry)') : '') + '. Verify the storefront, then you can remove the Cloudinary origin.';
+                            ikBtn.disabled = false;
+                        } else { step(); }
+                    })
+                    .catch(function () { ikStatus.textContent = 'A batch failed — click again to resume (already-copied images are overwritten safely).'; ikBtn.disabled = false; });
+            }
+        });
+    }
 
     // ── Import barcodes (EposNow ProductList) — preview then apply ──
     var bcFile = document.getElementById('pi-bc-file');
