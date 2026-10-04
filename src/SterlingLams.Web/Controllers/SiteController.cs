@@ -31,14 +31,8 @@ public class SiteController : Controller
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<IActionResult> HeaderState()
     {
-        // Cart count from the session cart (same key + shape CartController uses).
-        var cartCount = 0;
-        var cartJson = HttpContext.Session.GetString("cart");
-        if (!string.IsNullOrEmpty(cartJson))
-        {
-            try { cartCount = JsonSerializer.Deserialize<CartViewModel>(cartJson)?.TotalItems ?? 0; }
-            catch { /* malformed cart — treat as empty */ }
-        }
+        // Cart count from the durable cart cookie (same store CartController uses).
+        var cartCount = SterlingLams.Web.Services.CartStore.Load(HttpContext).TotalItems;
 
         var authed = User.Identity?.IsAuthenticated == true;
         var wishlistCount = 0;

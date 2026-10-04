@@ -11,7 +11,6 @@ namespace SterlingLams.Web.Controllers;
 
 public class CartController : Controller
 {
-    private const string CartSessionKey = "cart";
     private readonly ApplicationDbContext _db;
     private readonly IDiscountService _discounts;
     private readonly UserManager<ApplicationUser> _userManager;
@@ -383,17 +382,11 @@ public class CartController : Controller
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
-    private CartViewModel GetCart()
-    {
-        var json = HttpContext.Session.GetString(CartSessionKey);
-        if (string.IsNullOrEmpty(json)) return new CartViewModel();
-        return JsonSerializer.Deserialize<CartViewModel>(json) ?? new CartViewModel();
-    }
+    // Cart is persisted in a durable 30-day cookie (see CartStore), not volatile server session,
+    // so it survives redeploys and long browsing sessions.
+    private CartViewModel GetCart() => CartStore.Load(HttpContext);
 
-    private void SaveCart(CartViewModel cart)
-    {
-        HttpContext.Session.SetString(CartSessionKey, JsonSerializer.Serialize(cart));
-    }
+    private void SaveCart(CartViewModel cart) => CartStore.Save(HttpContext, cart);
 
     private class SnapshotItem { public int ProductId { get; set; } public int? VariantId { get; set; } public int Quantity { get; set; } }
 
