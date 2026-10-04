@@ -11,6 +11,10 @@ User-agent: *
 Disallow: /cart
 Disallow: /checkout
 Disallow: /account
+# Old WooCommerce "add to cart" action links (often tagged with utm_/gclid/fbclid from past ads) —
+# not real pages, so keep them out of the index and off the crawl budget. The real content URLs
+# (/product/… and /product-category/…) carry no add-to-cart param, so they stay crawlable + redirect.
+Disallow: /*add-to-cart=
 Disallow: /*filter_color=
 Disallow: /*min_price=
 Disallow: /*max_price=
