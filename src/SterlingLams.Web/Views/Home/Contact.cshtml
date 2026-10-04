@@ -5,7 +5,8 @@
 @inject ApplicationDbContext Db
 @{
     ViewData["Title"] = "Contact Us";
-    ViewData["Description"] = "Get in touch with Sterlin Glams. Visit any of our stores or reach us by phone and email.";
+    ViewData["TitleFull"] = "Contact Sterlin Glams | Get in Touch";
+    ViewData["Description"] = "Get in touch with Sterlin Glams for product enquiries, order support, store information, and customer assistance.";
     Layout = "_Layout";
 
     var contactEmail = await SettingsService.GetAsync("general.contact_email", "info@sterlinglams.com");

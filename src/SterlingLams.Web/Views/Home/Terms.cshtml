@@ -2,7 +2,8 @@
 @inject ISettingsService SettingsService
 @{
     ViewData["Title"] = "Terms & Conditions";
-    ViewData["Description"] = "Sterlin Glams Terms and Conditions of Sale — your rights and obligations when purchasing from us.";
+    ViewData["TitleFull"] = "Terms & Conditions | Sterlin Glams";
+    ViewData["Description"] = "Read the Sterlin Glams terms and conditions covering website use, orders, payments, deliveries, and customer rights.";
     Layout = "_Layout";
     var bodyOverride = await SettingsService.GetAsync("pages.terms_body", "");
 }
