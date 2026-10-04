@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SterlingLams.Web.Models.ViewModels;
 
 public class CartItemViewModel
@@ -10,9 +12,11 @@ public class CartItemViewModel
     public string Slug { get; set; } = string.Empty;
     public decimal UnitPrice { get; set; }
     public int Quantity { get; set; }
-    public decimal LineTotal => UnitPrice * Quantity;
-    public string FormattedLineTotal => $"₦{LineTotal:N0}";
-    public string FormattedUnitPrice => $"₦{UnitPrice:N0}";
+    // Computed fields are recomputed from the stored values above, so they're kept out of the
+    // persisted cart cookie (keeps it small — see CartStore).
+    [JsonIgnore] public decimal LineTotal => UnitPrice * Quantity;
+    [JsonIgnore] public string FormattedLineTotal => $"₦{LineTotal:N0}";
+    [JsonIgnore] public string FormattedUnitPrice => $"₦{UnitPrice:N0}";
     public int MaxQuantity { get; set; } = 10;
 }
 
@@ -22,10 +26,10 @@ public class CartViewModel
     /// <summary>Items the shopper moved out of the bag to "save for later" — kept in the session
     /// cart but not counted toward totals or checkout.</summary>
     public List<CartItemViewModel> SavedItems { get; set; } = new();
-    public decimal Subtotal => Items.Sum(i => i.LineTotal);
-    public string FormattedSubtotal => $"₦{Subtotal:N0}";
-    public int TotalItems => Items.Sum(i => i.Quantity);
-    public bool IsEmpty => !Items.Any();
+    [JsonIgnore] public decimal Subtotal => Items.Sum(i => i.LineTotal);
+    [JsonIgnore] public string FormattedSubtotal => $"₦{Subtotal:N0}";
+    [JsonIgnore] public int TotalItems => Items.Sum(i => i.Quantity);
+    [JsonIgnore] public bool IsEmpty => !Items.Any();
 
     // Discount
     public string? AppliedDiscountCode { get; set; }
@@ -35,9 +39,9 @@ public class CartViewModel
     /// <summary>The applied free-shipping discount only waives the fee for Lagos/Abuja deliveries.</summary>
     public bool FreeShippingLagosAbujaOnly { get; set; }
     public bool IsAutomaticDiscount { get; set; }
-    public bool HasDiscount => DiscountAmount > 0 || FreeShipping;
-    public string FormattedDiscount => $"-₦{DiscountAmount:N0}";
+    [JsonIgnore] public bool HasDiscount => DiscountAmount > 0 || FreeShipping;
+    [JsonIgnore] public string FormattedDiscount => $"-₦{DiscountAmount:N0}";
 
-    public decimal Total => Subtotal - DiscountAmount;
-    public string FormattedTotal => $"₦{Total:N0}";
+    [JsonIgnore] public decimal Total => Subtotal - DiscountAmount;
+    [JsonIgnore] public string FormattedTotal => $"₦{Total:N0}";
 }

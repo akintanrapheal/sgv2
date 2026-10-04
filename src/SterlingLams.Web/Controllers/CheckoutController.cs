@@ -7,6 +7,7 @@ using System.Text.Json;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.Domain;
 using SterlingLams.Web.Models.ViewModels;
+using SterlingLams.Web.Services;
 using SterlingLams.Web.Services.Payment;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,8 +15,6 @@ namespace SterlingLams.Web.Controllers;
 
 public class CheckoutController : Controller
 {
-    private const string CartSessionKey = "cart";
-
     private readonly ApplicationDbContext _db;
     private readonly IPaymentService _payment;
     private readonly UserManager<ApplicationUser> _userManager;
@@ -895,7 +894,7 @@ public class CheckoutController : Controller
                 // Stock was committed first-come-first-served; this payment lost the race. The
                 // fulfilment service already cancelled + refunded — just tell the customer.
                 TempData["Error"] = $"Sorry — an item in order {order.OrderNumber} sold out just before your payment completed. You've been refunded in full.";
-                HttpContext.Session.Remove(CartSessionKey);
+                CartStore.Clear(HttpContext);
                 return RedirectToAction("Confirmation", new { orderNumber = result.OrderNumber, token = ConfirmationToken(result.OrderNumber!) });
             }
 
@@ -909,7 +908,7 @@ public class CheckoutController : Controller
         }
 
         // Clear cart
-        HttpContext.Session.Remove(CartSessionKey);
+        CartStore.Clear(HttpContext);
 
         return RedirectToAction("Confirmation", new { orderNumber = result.OrderNumber, token = ConfirmationToken(result.OrderNumber!) });
     }
@@ -947,7 +946,7 @@ public class CheckoutController : Controller
         if (outcome == SterlingLams.Web.Services.FulfilOutcome.SoldOut)
         {
             TempData["Error"] = $"Sorry — an item in order {order.OrderNumber} sold out just before your payment completed. You've been refunded in full.";
-            HttpContext.Session.Remove(CartSessionKey);
+            CartStore.Clear(HttpContext);
             return RedirectToAction("Confirmation", new { orderNumber = order.OrderNumber, token = ConfirmationToken(order.OrderNumber) });
         }
 
@@ -959,7 +958,7 @@ public class CheckoutController : Controller
 
         await SendOrderEmailsAsync(order.Id);
 
-        HttpContext.Session.Remove(CartSessionKey);
+        CartStore.Clear(HttpContext);
         return RedirectToAction("Confirmation", new { orderNumber = order.OrderNumber, token = ConfirmationToken(order.OrderNumber) });
     }
 
@@ -1187,15 +1186,11 @@ public class CheckoutController : Controller
         return View(order);
     }
 
-    private CartViewModel GetCart()
-    {
-        var json = HttpContext.Session.GetString(CartSessionKey);
-        if (string.IsNullOrEmpty(json)) return new CartViewModel();
-        return JsonSerializer.Deserialize<CartViewModel>(json) ?? new CartViewModel();
-    }
+    // Cart is persisted in a durable 30-day cookie (see CartStore), not volatile server session,
+    // so it survives redeploys and long browsing sessions.
+    private CartViewModel GetCart() => CartStore.Load(HttpContext);
 
-    private void SaveCart(CartViewModel cart) =>
-        HttpContext.Session.SetString(CartSessionKey, JsonSerializer.Serialize(cart));
+    private void SaveCart(CartViewModel cart) => CartStore.Save(HttpContext, cart);
 
     /// <summary>Upserts the abandoned-cart snapshot at checkout — now shared with add-to-cart capture
     /// via <see cref="SterlingLams.Web.Services.IAbandonedCartCapture"/>.</summary>
