@@ -87,7 +87,19 @@ public static partial class Img
         var end = url.IndexOf('/', at);
         var firstSeg = end < 0 ? url[at..] : url[at..end];
         var isTransform = end > 0 && (firstSeg.Contains(',') || TransformSeg().IsMatch(firstSeg));
-        return isTransform ? url[(end + 1)..] : url[at..];
+        var basePart = isTransform ? url[(end + 1)..] : url[at..];
+
+        // Drop a Cloudinary version segment ("v1781727801/") so the path is clean + stable:
+        // "sterlinglams/products/abc.jpg" instead of a per-version folder. Cloudinary serves the latest
+        // version for a version-less public id, and ImageKit then stores ONE tidy path per asset (no
+        // thousands of v… folders). Upload + delivery both use this, so they always match.
+        if (basePart.Length > 2 && basePart[0] == 'v')
+        {
+            var k = 1;
+            while (k < basePart.Length && char.IsDigit(basePart[k])) k++;
+            if (k > 1 && k < basePart.Length && basePart[k] == '/') basePart = basePart[(k + 1)..];
+        }
+        return basePart;
     }
 
     [System.Text.RegularExpressions.GeneratedRegex("^[a-z]{1,3}_[^/]")]
