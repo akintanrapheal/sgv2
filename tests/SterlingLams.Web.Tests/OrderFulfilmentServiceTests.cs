@@ -188,7 +188,7 @@ public class OrderFulfilmentServiceTests
     // ── Minimal stubs for the dependencies the fulfilment service doesn't exercise here ──
     private sealed class FakeEmail : IEmailService
     {
-        public Task<bool> SendAsync(string toEmail, string subject, string innerHtml, string? toName = null, System.Threading.CancellationToken ct = default)
+        public Task<bool> SendAsync(string toEmail, string subject, string innerHtml, string? toName = null, System.Threading.CancellationToken ct = default, string? fromOverride = null)
             => Task.FromResult(true);
         public Task<string> RenderAsync(string subject, string innerHtml, int? logoHeight = null)
             => Task.FromResult(innerHtml);
