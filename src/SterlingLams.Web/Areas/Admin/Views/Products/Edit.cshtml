@@ -377,10 +377,31 @@
                 }
 
                 function filterAttr(slug, query) {
-                    const q = query.toLowerCase();
-                    document.querySelectorAll('.attr-item-' + slug).forEach(item => {
-                        item.style.display = item.dataset.label.includes(q) ? '' : 'none';
+                    const q = query.trim().toLowerCase();
+                    const list = document.getElementById('list-' + slug);
+                    if (!list) return;
+                    const items = Array.from(list.querySelectorAll('.attr-item-' + slug));
+                    // Remember the original order once, so clearing the box restores it.
+                    items.forEach((it, i) => { if (it.dataset.ord === undefined) it.dataset.ord = i; });
+
+                    const scored = items.map(it => {
+                        const label = it.dataset.label || '';
+                        const show = q === '' || label.includes(q);
+                        it.style.display = show ? '' : 'none';
+                        // Lower score floats to the top: exact match, then starts-with, then
+                        // earliest contained position. Empty query keeps the original order.
+                        let score;
+                        if (q === '') score = Number(it.dataset.ord);
+                        else if (label === q) score = -1000;
+                        else if (label.startsWith(q)) score = -500 + label.length / 1000;
+                        else score = label.indexOf(q);
+                        return { it, show, score, label };
                     });
+
+                    const visible = scored.filter(s => s.show)
+                        .sort((a, b) => a.score - b.score || a.label.localeCompare(b.label));
+                    const hidden = scored.filter(s => !s.show);
+                    visible.concat(hidden).forEach(s => list.appendChild(s.it)); // reorder: best matches first
                 }
 
                 function selectAllAttr(slug, check) {
