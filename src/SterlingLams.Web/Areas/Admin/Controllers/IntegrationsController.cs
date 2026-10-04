@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using SterlingLams.Web.Data;
 using SterlingLams.Web.Services;
 
 namespace SterlingLams.Web.Areas.Admin.Controllers;
@@ -25,10 +27,11 @@ public class IntegrationsController : AdminBaseController
     private readonly IHttpClientFactory _httpFactory;
     private readonly IGoogleAnalytics _ga;
     private readonly IRetainfulClient _retainful;
+    private readonly ApplicationDbContext _db;
 
     public IntegrationsController(ISettingsService settings, ISettingsSecretProtector secrets,
         IConfiguration config, IWhatsAppService whatsapp, IHttpClientFactory httpFactory,
-        IGoogleAnalytics ga, IRetainfulClient retainful)
+        IGoogleAnalytics ga, IRetainfulClient retainful, ApplicationDbContext db)
     {
         _settings = settings;
         _secrets = secrets;
@@ -37,6 +40,7 @@ public class IntegrationsController : AdminBaseController
         _httpFactory = httpFactory;
         _ga = ga;
         _retainful = retainful;
+        _db = db;
     }
 
     public async Task<IActionResult> Index()
@@ -279,13 +283,25 @@ public class IntegrationsController : AdminBaseController
                     var on = await _settings.GetBoolAsync("imagekit.enabled", false);
                     var ep = (await Val("imagekit.url_endpoint", null)).TrimEnd('/');
                     if (ep.Length == 0) return R(false, "No URL-endpoint set.", "off");
-                    // Fetch a tiny transformed image through the endpoint — proves the endpoint + its origin work.
-                    using var http = _httpFactory.CreateClient(); http.Timeout = TimeSpan.FromSeconds(12);
-                    using var resp = await http.GetAsync($"{ep}/tr:w-1,h-1/");
-                    if (resp.IsSuccessStatusCode || resp.StatusCode == System.Net.HttpStatusCode.NotFound)
-                        // 200 = reachable; 404 = endpoint live but that path has no image — endpoint itself is valid.
-                        return R(true, on ? "Connected — ImageKit endpoint reachable (delivery is ON)." : "Reachable — endpoint valid (delivery is currently OFF).", on ? "ok" : "off");
-                    return R(false, $"ImageKit endpoint returned {(int)resp.StatusCode}.");
+
+                    // Real end-to-end check: take an actual stored Cloudinary image and fetch it THROUGH
+                    // ImageKit (which pulls it from the configured origin). A transformation-only URL with no
+                    // image returns 400, so we must use a real asset path.
+                    const string marker = "/image/upload/";
+                    var sampleUrl = await _db.ProductImages.Select(i => i.Url)
+                        .FirstOrDefaultAsync(u => u != null && u.Contains(marker));
+                    if (string.IsNullOrEmpty(sampleUrl))
+                        return R(true, on ? "Delivery is ON (no product image on file to test-fetch)." : "Endpoint set (no product image on file to test-fetch).", on ? "ok" : "off");
+
+                    var pathPart = sampleUrl[(sampleUrl.IndexOf(marker, StringComparison.OrdinalIgnoreCase) + marker.Length)..];
+                    var firstSeg = pathPart.Split('/')[0];
+                    if (firstSeg.Contains(',')) pathPart = pathPart[(pathPart.IndexOf('/') + 1)..]; // drop a baked-in transform
+
+                    using var http = _httpFactory.CreateClient(); http.Timeout = TimeSpan.FromSeconds(15);
+                    using var resp = await http.GetAsync($"{ep}/{pathPart}?tr=w-50,f-auto,q-auto");
+                    if (resp.IsSuccessStatusCode)
+                        return R(true, on ? "Connected — serving your images via ImageKit (delivery ON)." : "Verified — a real image loaded through ImageKit (delivery is currently OFF).", on ? "ok" : "off");
+                    return R(false, $"ImageKit couldn't serve a test image ({(int)resp.StatusCode}). Check the origin Base URL is https://res.cloudinary.com/dxmadm7vj/image/upload");
                 }
 
                 default:
