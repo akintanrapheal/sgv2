@@ -38,13 +38,15 @@ public class ProductImportController : AdminBaseController
     private readonly SterlingLams.Web.Services.StockImportService _stockImport;
     private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<ProductImportController> _log;
+    private readonly SterlingLams.Web.Services.IImageKitUploader _imagekit;
 
     public ProductImportController(ApplicationDbContext db, SterlingLams.Web.Services.ICloudinaryProvider cloud,
         SterlingLams.Web.Services.IStorefrontCache cache, SterlingLams.Web.Services.BarcodeImportService barcodes,
         SterlingLams.Web.Services.StockImportService stockImport,
-        IHttpClientFactory httpFactory, ILogger<ProductImportController> log)
+        IHttpClientFactory httpFactory, ILogger<ProductImportController> log,
+        SterlingLams.Web.Services.IImageKitUploader imagekit)
     {
-        _db = db; _cloud = cloud; _cache = cache; _barcodes = barcodes; _stockImport = stockImport; _httpFactory = httpFactory; _log = log;
+        _db = db; _cloud = cloud; _cache = cache; _barcodes = barcodes; _stockImport = stockImport; _httpFactory = httpFactory; _log = log; _imagekit = imagekit;
     }
 
     public async Task<IActionResult> Index()
@@ -256,6 +258,91 @@ public class ProductImportController : AdminBaseController
             await LogAsync("Update", "Product", null, $"Re-hosted {converted + vConverted} image(s) to Cloudinary ({remaining} remaining).");
 
         return Json(new { ok = true, converted = converted + vConverted, failed, remaining });
+    }
+
+    // ── Phase 2: copy every Cloudinary image INTO ImageKit's Media Library, at the same asset path, so
+    // the same URLs resolve from ImageKit's own storage and Cloudinary can be dropped. Bounded batches
+    // (the page repeats until done) across three sources: product images, variant images, category images.
+    // Idempotent (overwriteFile) + resumable (cursor "phase:lastId"). ImageKit fetches each original by URL.
+    private const string CldMark = "res.cloudinary.com";
+
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> MigrateToImageKit(string? cursor)
+    {
+        if (!await _imagekit.IsConfiguredAsync())
+            return Json(new { ok = false, error = "ImageKit isn't configured. Add the URL endpoint + private key in Admin → Integrations, save, then try again." });
+
+        const int Batch = 15;
+        var parts = (cursor ?? "pi:0").Split(':');
+        var phase = parts.Length > 0 && parts[0].Length > 0 ? parts[0] : "pi";
+        var lastId = parts.Length > 1 && int.TryParse(parts[1], out var lv) ? lv : 0;
+
+        int uploaded = 0, failed = 0;
+        string sample = "";
+
+        async Task<int> Do(IEnumerable<(int Id, string Url)> rows)
+        {
+            int maxId = lastId;
+            foreach (var r in rows)
+            {
+                maxId = r.Id;
+                var path = SterlingLams.Web.Infrastructure.Img.CloudinaryAssetPath(r.Url);
+                if (string.IsNullOrEmpty(path)) continue;
+                var (ok, detail) = await _imagekit.UploadByUrlAsync(path, r.Url);
+                if (ok) { uploaded++; if (sample.Length == 0) sample = path; }
+                else { failed++; if (sample.Length == 0) sample = $"FAILED {path}: {detail}"; }
+            }
+            return maxId;
+        }
+
+        string nextCursor = cursor ?? "pi:0";
+        if (phase == "pi")
+        {
+            var rows = await _db.ProductImages.Where(i => i.Id > lastId && i.Url.Contains(CldMark))
+                .OrderBy(i => i.Id).Take(Batch).Select(i => new { i.Id, i.Url }).ToListAsync();
+            if (rows.Count > 0) nextCursor = "pi:" + await Do(rows.Select(r => (r.Id, r.Url)));
+            else { phase = "pv"; lastId = 0; nextCursor = "pv:0"; }
+        }
+        if (phase == "pv" && uploaded + failed == 0)
+        {
+            var rows = await _db.ProductVariants.Where(v => v.Id > lastId && v.ImageUrl != null && v.ImageUrl.Contains(CldMark))
+                .OrderBy(v => v.Id).Take(Batch).Select(v => new { v.Id, Url = v.ImageUrl! }).ToListAsync();
+            if (rows.Count > 0) nextCursor = "pv:" + await Do(rows.Select(r => (r.Id, r.Url)));
+            else { phase = "cat"; lastId = 0; nextCursor = "cat:0"; }
+        }
+        if (phase == "cat" && uploaded + failed == 0)
+        {
+            var rows = await _db.Categories.Where(c => c.Id > lastId && c.ImageUrl != null && c.ImageUrl.Contains(CldMark))
+                .OrderBy(c => c.Id).Take(Batch).Select(c => new { c.Id, Url = c.ImageUrl! }).ToListAsync();
+            if (rows.Count > 0) nextCursor = "cat:" + await Do(rows.Select(r => (r.Id, r.Url)));
+            else { nextCursor = "done:0"; }
+        }
+
+        var done = nextCursor.StartsWith("done");
+        // Remaining = everything not yet passed by the cursor, across the three sources.
+        var curPhase = nextCursor.Split(':')[0];
+        var curId = int.TryParse(nextCursor.Split(':')[1], out var ci) ? ci : 0;
+        int remaining = 0;
+        if (!done)
+        {
+            if (curPhase == "pi") remaining += await _db.ProductImages.CountAsync(i => i.Id > curId && i.Url.Contains(CldMark));
+            if (curPhase == "pi" || curPhase == "pv")
+                remaining += await _db.ProductVariants.CountAsync(v => v.ImageUrl != null && v.ImageUrl.Contains(CldMark) && (curPhase == "pi" || v.Id > curId));
+            remaining += await _db.Categories.CountAsync(c => c.ImageUrl != null && c.ImageUrl.Contains(CldMark) && (curPhase != "cat" || c.Id > curId));
+        }
+
+        if (uploaded > 0) await LogAsync("Update", "Product", null, $"Copied {uploaded} image(s) into ImageKit ({remaining} remaining).");
+        return Json(new { ok = true, uploaded, failed, remaining, cursor = nextCursor, done, sample });
+    }
+
+    // Count of Cloudinary images across all three sources — for the migration progress total.
+    [HttpGet]
+    public async Task<IActionResult> ImageKitMigrationStatus()
+    {
+        var total = await _db.ProductImages.CountAsync(i => i.Url.Contains(CldMark))
+                  + await _db.ProductVariants.CountAsync(v => v.ImageUrl != null && v.ImageUrl.Contains(CldMark))
+                  + await _db.Categories.CountAsync(c => c.ImageUrl != null && c.ImageUrl.Contains(CldMark));
+        return Json(new { ok = true, total, configured = await _imagekit.IsConfiguredAsync() });
     }
 
     private async Task<IActionResult> RunAsync(IFormFile? file, bool apply)
