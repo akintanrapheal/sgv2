@@ -292,6 +292,7 @@
             else
             {
                 <div id="product-grid" class="grid grid-cols-2 md:grid-cols-3 gap-6">
+                    @{ ViewData["EagerFirstCards"] = 4; /* first row above the fold → load eagerly */ }
                     <partial name="_ProductCards" model="Model.Products" />
                 </div>
 

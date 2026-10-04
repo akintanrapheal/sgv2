@@ -10,8 +10,16 @@
     ViewData["CardLowThreshold"] = await SettingsService.GetBoolAsync("inventory.show_low_stock_nudge", true)
         ? (int)await SettingsService.GetDecimalAsync("inventory.low_stock_threshold", 5)
         : 0;
+
+    // The caller (first grid paint) can mark the first N cards as above-the-fold so their images load
+    // eagerly instead of lazily — lazy-loading what the shopper sees first is what makes the grid feel
+    // slow. 0 (the "View more" appends + other callers) keeps everything lazy.
+    var eagerCount = ViewData["EagerFirstCards"] as int? ?? 0;
+    var cardIndex = 0;
 }
 @foreach (var product in Model)
 {
+    ViewData["CardEager"] = cardIndex < eagerCount;
+    cardIndex++;
     <partial name="_ProductCard" model="product" />
 }
