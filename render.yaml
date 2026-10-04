@@ -19,7 +19,7 @@ services:
   - type: web
     name: sterlinglams
     runtime: docker
-    plan: starter      # Starter: always-on (no spin-down/cold starts), 512 MB. Pre-launch cost-saver — bump to Pro before launch.
+    plan: standard     # Standard: always-on, 1 CPU / 2 GB — bumped from starter 2026-10-04 for faster TTFB (SEO + conversions). Matches the dashboard (1c-2g).
     region: oregon
     dockerfilePath: ./Dockerfile
     dockerContext: .
