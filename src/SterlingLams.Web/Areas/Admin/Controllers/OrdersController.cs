@@ -227,8 +227,18 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == customerId);
                 custOrders = await theirOrders.CountAsync();
                 var paid = theirOrders.Where(o => o.IsPaid);
-                custRevenue = await paid.SumAsync(o => (decimal?)o.Total) ?? 0;
+                var grossPaid = await paid.SumAsync(o => (decimal?)o.Total) ?? 0;
                 var paidCount = await paid.CountAsync();
+
+                // A refunded order stays IsPaid = true, so net out APPROVED refunds against this
+                // customer's orders (pending/rejected refunds move no money — see RefundStatus).
+                // Handles partial refunds too: revenue drops by exactly what was refunded.
+                var theirOrderIds = theirOrders.Select(o => o.Id);
+                var refundedAmt = await _db.Refunds
+                    .Where(r => r.Status == RefundStatus.Approved && theirOrderIds.Contains(r.OriginalOrderId))
+                    .SumAsync(r => (decimal?)r.Amount) ?? 0;
+
+                custRevenue = grossPaid - refundedAmt;
                 custAov = paidCount > 0 ? custRevenue / paidCount : 0;
             }
 

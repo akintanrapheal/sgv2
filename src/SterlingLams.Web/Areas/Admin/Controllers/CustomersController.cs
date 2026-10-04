@@ -140,14 +140,22 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             // credit every till sale to the cashier as well, and counting only UserId (the old
             // u.Orders navigation) made in-store regulars look like they had never bought anything.
             var allOrders = _db.Orders.AsQueryable();
+            // Spend is NET of approved refunds: a refunded order stays IsPaid = true, so its revenue
+            // must be reduced by what was actually refunded (approved refunds only — see RefundStatus).
+            var allRefunds = _db.Refunds.AsQueryable();
 
             // Segment filters mirror the derived badges on AdminCustomerRow.
             var lapsedCutoff = DateTime.UtcNow.AddDays(-CustomerSegments.LapsedDays);
             query = segment switch
             {
-                "vip" => query.Where(u => (allOrders
+                "vip" => query.Where(u => ((allOrders
                         .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id && o.IsPaid)
-                        .Sum(o => (decimal?)o.Total) ?? 0) >= CustomerSegments.VipSpend),
+                        .Sum(o => (decimal?)o.Total) ?? 0)
+                      - (allRefunds
+                        .Where(r => r.Status == RefundStatus.Approved && allOrders
+                            .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id)
+                            .Select(o => o.Id).Contains(r.OriginalOrderId))
+                        .Sum(r => (decimal?)r.Amount) ?? 0)) >= CustomerSegments.VipSpend),
                 "repeat" => query.Where(u => allOrders
                         .Count(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id) >= 2),
                 "lapsed" => query.Where(u => allOrders
@@ -172,9 +180,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     Phone = u.PhoneNumber,
                     OrderCount = allOrders
                         .Count(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id),
-                    TotalSpend = allOrders
+                    TotalSpend = (allOrders
                         .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id && o.IsPaid)
-                        .Sum(o => (decimal?)o.Total) ?? 0,
+                        .Sum(o => (decimal?)o.Total) ?? 0)
+                      - (allRefunds
+                        .Where(r => r.Status == RefundStatus.Approved && allOrders
+                            .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id)
+                            .Select(o => o.Id).Contains(r.OriginalOrderId))
+                        .Sum(r => (decimal?)r.Amount) ?? 0),
                     JoinedAt = u.CreatedAt,
                     LastOrderAt = allOrders
                         .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id)
@@ -230,7 +243,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 Phone = user.PhoneNumber,
                 JoinedAt = user.CreatedAt,
                 OrderCount = await theirOrders.CountAsync(),
-                TotalSpend = await theirOrders.Where(o => o.IsPaid).SumAsync(o => (decimal?)o.Total) ?? 0,
+                // Net of approved refunds (a refunded order stays IsPaid = true — see RefundStatus).
+                TotalSpend = (await theirOrders.Where(o => o.IsPaid).SumAsync(o => (decimal?)o.Total) ?? 0)
+                    - (await _db.Refunds
+                        .Where(r => r.Status == RefundStatus.Approved
+                            && theirOrders.Select(o => o.Id).Contains(r.OriginalOrderId))
+                        .SumAsync(r => (decimal?)r.Amount) ?? 0),
                 RecentOrders = orders,
                 Tags = user.Tags,
                 ImportedTransactions = user.TotalTransactions,
@@ -287,6 +305,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             // Online + in-store, matching the figures on the list and detail screens.
             var allOrders = _db.Orders.AsQueryable();
+            var allRefunds = _db.Refunds.AsQueryable();   // net approved refunds out of spend
             var customers = await query
                 .OrderByDescending(u => u.CreatedAt)
                 .Select(u => new
@@ -296,9 +315,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     Phone     = u.PhoneNumber ?? "",
                     Orders    = allOrders
                         .Count(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id),
-                    TotalSpend = allOrders
+                    TotalSpend = (allOrders
                         .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id && o.IsPaid)
-                        .Sum(o => (decimal?)o.Total) ?? 0,
+                        .Sum(o => (decimal?)o.Total) ?? 0)
+                      - (allRefunds
+                        .Where(r => r.Status == RefundStatus.Approved && allOrders
+                            .Where(o => (o.Channel == OrderChannel.Pos ? o.CustomerUserId : o.UserId) == u.Id)
+                            .Select(o => o.Id).Contains(r.OriginalOrderId))
+                        .Sum(r => (decimal?)r.Amount) ?? 0),
                     Joined    = u.CreatedAt.ToString("yyyy-MM-dd")
                 })
                 .ToListAsync();
