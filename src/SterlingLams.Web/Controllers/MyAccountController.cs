@@ -26,15 +26,15 @@ public class MyAccountController : Controller
     private readonly IWebHostEnvironment _env;
     private readonly IConfiguration _config;
 
-    private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
+    private readonly SterlingLams.Web.Services.IImageStorageService _imageStorage;
     public MyAccountController(UserManager<ApplicationUser> users, SignInManager<ApplicationUser> signIn,
-        IWebHostEnvironment env, IConfiguration config, SterlingLams.Web.Services.ICloudinaryProvider cloud)
+        IWebHostEnvironment env, IConfiguration config, SterlingLams.Web.Services.IImageStorageService imageStorage)
     {
         _users = users;
         _signIn = signIn;
         _env = env;
         _config = config;
-        _cloud = cloud;
+        _imageStorage = imageStorage;
     }
 
     // Any backend role (i.e. anything other than the storefront "Customer" role) counts as staff —
@@ -142,35 +142,10 @@ public class MyAccountController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    // Cloudinary when configured (persistent + CDN), else local disk (dev only). Returns null on failure.
+    // R2 → Cloudinary → local disk, via the shared storage service. Returns null on failure.
     private async Task<string?> UploadAsync(IFormFile file, string ext)
     {
-        var cloudinary = await _cloud.BuildAsync();
-        if (cloudinary != null)
-        {
-            try
-            {
-                await using var s = file.OpenReadStream();
-                var res = await cloudinary.UploadAsync(new ImageUploadParams
-                {
-                    File = new FileDescription(file.FileName, s),
-                    Folder = "sterlinglams/avatars",
-                    PublicId = Guid.NewGuid().ToString("N"),
-                    UniqueFilename = false, Overwrite = false
-                });
-                return res.SecureUrl?.ToString();
-            }
-            catch { return null; }
-        }
-        try
-        {
-            var dir = Path.Combine(_env.WebRootPath, "uploads", "avatars");
-            Directory.CreateDirectory(dir);
-            var name = $"{Guid.NewGuid():N}{ext.ToLowerInvariant()}";
-            await using var stream = System.IO.File.Create(Path.Combine(dir, name));
-            await file.CopyToAsync(stream);
-            return $"/uploads/avatars/{name}";
-        }
+        try { return await _imageStorage.UploadAsync(file, "avatars"); }
         catch { return null; }
     }
 

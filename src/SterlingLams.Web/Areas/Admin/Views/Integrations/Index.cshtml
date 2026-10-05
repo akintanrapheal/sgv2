@@ -516,6 +516,64 @@
             </div>
         </section>
 
+        @* ─── Cloudflare R2 (image storage) + Image Transformations (resizing) ──── *@
+        <section class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
+            <div>
+                <h2 class="text-sm font-semibold text-neutral-800">Cloudflare R2 (image storage)</h2>
+                <p class="text-xs text-neutral-400 mt-0.5">Stores images in your own Cloudflare R2 bucket (<b>zero egress fees</b>) and resizes them on the fly with <b>Cloudflare Image Transformations</b> — replacing Cloudinary and ImageKit. Enter the bucket details from Cloudflare → R2, then turn on the two switches. Turning them off reverts instantly.</p>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">S3 API endpoint</label>
+                    <input type="text" name="r2.s3_endpoint" value="@Model.R2Endpoint" placeholder="https://<account-id>.r2.cloudflarestorage.com" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">R2 → bucket → Settings (the part up to <span class="font-mono">.com</span>).</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Bucket name</label>
+                    <input type="text" name="r2.bucket" value="@Model.R2Bucket" placeholder="sterlinglams-images" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Public base URL</label>
+                    <input type="text" name="r2.public_base" value="@Model.R2PublicBase" placeholder="https://img.sterlinglams.com" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">The bucket's connected custom domain.</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Access Key ID</label>
+                    <input type="text" name="r2.access_key_id" value="@Model.R2AccessKeyId" placeholder="R2 token Access Key ID" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Secret Access Key @if (Model.R2SecretSet) {<span class="text-emerald-600 font-normal">· configured</span>}</label>
+                    <input type="password" name="r2.secret_access_key" value="" autocomplete="off"
+                           placeholder="@(Model.R2SecretSet ? "•••••••• leave blank to keep" : "R2 token Secret Access Key")"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">Stored encrypted; never shown back.</p>
+                </div>
+            </div>
+
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" name="r2.enabled" value="true" @(Model.R2Enabled ? "checked" : "")
+                       class="mt-0.5 rounded accent-neutral-900" />
+                <span>
+                    <p class="text-sm font-medium text-neutral-800">Store new images in R2</p>
+                    <p class="text-[11px] text-neutral-400">New uploads go to the bucket above instead of Cloudinary. Existing images are moved separately (Import Products → migrate to R2).</p>
+                </span>
+            </label>
+
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" name="cloudflare.transforms_enabled" value="true" @(Model.CfTransformsEnabled ? "checked" : "")
+                       class="mt-0.5 rounded accent-neutral-900" />
+                <span>
+                    <p class="text-sm font-medium text-neutral-800">Resize images via Cloudflare</p>
+                    <p class="text-[11px] text-neutral-400">Serve resized images from the public base URL above. Turn on only after enabling Transformations for your domain in Cloudflare and moving images to R2.</p>
+                </span>
+            </label>
+        </section>
+
         <div class="flex items-center gap-3">
             <button type="submit" class="bg-neutral-900 text-white text-sm px-6 py-2.5 rounded-sm hover:bg-neutral-700 transition-colors">
                 Save changes

@@ -21,14 +21,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly IWebHostEnvironment _env;
         private readonly IConfiguration _config;
 
-        private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
+        private readonly SterlingLams.Web.Services.IImageStorageService _imageStorage;
         public CategoriesController(ApplicationDbContext db, IWebHostEnvironment env, IConfiguration config,
-            SterlingLams.Web.Services.ICloudinaryProvider cloud)
+            SterlingLams.Web.Services.IImageStorageService imageStorage)
         {
             _db = db;
             _env = env;
             _config = config;
-            _cloud = cloud;
+            _imageStorage = imageStorage;
         }
 
         public async Task<IActionResult> Index()
@@ -157,32 +157,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         /// <summary>Persists a category image — Cloudinary when configured (survives redeploys on
         /// ephemeral hosts like Render), otherwise the local wwwroot/uploads folder (dev only).</summary>
         private async Task<string> SaveCategoryImageAsync(IFormFile file)
-        {
-            var cloudinary = await _cloud.BuildAsync();
-            if (cloudinary != null)
-            {
-                await using var s = file.OpenReadStream();
-                var result = await cloudinary.UploadAsync(new ImageUploadParams
-                {
-                    File = new FileDescription(file.FileName, s),
-                    Folder = "sterlinglams/categories",
-                    PublicId = Guid.NewGuid().ToString("N"),
-                    UniqueFilename = false,
-                    Overwrite = false
-                });
-                if (result.StatusCode == System.Net.HttpStatusCode.OK && result.SecureUrl != null)
-                    return result.SecureUrl.ToString();
-            }
-
-            // Fallback: local disk (Cloudinary not configured — dev only, NOT persistent on Render).
-            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-            var dir = Path.Combine(_env.WebRootPath, "uploads", "categories");
-            Directory.CreateDirectory(dir);
-            var fileName = $"{Guid.NewGuid():N}{ext}";
-            await using var stream = System.IO.File.Create(Path.Combine(dir, fileName));
-            await file.CopyToAsync(stream);
-            return $"/uploads/categories/{fileName}";
-        }
+            => await _imageStorage.UploadAsync(file, "categories") ?? "";
 
         [HttpPost]
         [ValidateAntiForgeryToken]

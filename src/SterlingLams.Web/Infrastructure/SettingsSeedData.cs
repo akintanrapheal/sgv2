@@ -505,5 +505,16 @@ public static class SettingsSeedData
         new() { Key = "imagekit.url_endpoint", Group = "ImageKit", Label = "URL Endpoint", Type = "text", Value = "", Description = "Your ImageKit URL-endpoint, e.g. https://ik.imagekit.io/yourid . In ImageKit set this endpoint's origin to https://res.cloudinary.com/dxmadm7vj/image/upload (web-folder origin) so existing images resolve.", SortOrder = 1 },
         new() { Key = "imagekit.public_key",   Group = "ImageKit", Label = "Public Key", Type = "text", Value = "", Description = "ImageKit public API key (for uploads). Not secret.", SortOrder = 2 },
         new() { Key = "imagekit.private_key",  Group = "ImageKit", Label = "Private Key", Type = "secret", Value = "", Description = "ImageKit private API key (for uploads). Stored encrypted; used server-side only.", SortOrder = 3 },
+
+        // Cloudflare R2 (image storage) + Cloudflare Image Transformations (resizing). R2 is S3-compatible
+        // object storage with zero egress fees; Transformations resize its objects on the fly via
+        // /cdn-cgi/image/ on the same zone. The target home for images (replacing Cloudinary + ImageKit).
+        new() { Key = "r2.enabled",            Group = "Cloudflare R2", Label = "Store new images in R2", Type = "boolean", Value = "false", Description = "When ON, newly uploaded product/category/avatar/social images are stored in your Cloudflare R2 bucket instead of Cloudinary. Needs the endpoint, bucket, public base, access key and secret below. Existing images are moved separately (Admin → Import Products → migrate to R2).", SortOrder = 0 },
+        new() { Key = "r2.s3_endpoint",        Group = "Cloudflare R2", Label = "S3 API endpoint", Type = "text", Value = "", Description = "Your R2 S3 endpoint, e.g. https://<account-id>.r2.cloudflarestorage.com (R2 → Manage API Tokens shows it).", SortOrder = 1 },
+        new() { Key = "r2.bucket",             Group = "Cloudflare R2", Label = "Bucket name", Type = "text", Value = "", Description = "The R2 bucket name, e.g. sterlinglams-images.", SortOrder = 2 },
+        new() { Key = "r2.public_base",        Group = "Cloudflare R2", Label = "Public base URL", Type = "text", Value = "", Description = "The bucket's public custom domain, e.g. https://img.sterlinglams.com (R2 bucket → Settings → Public access → Connect Domain). Images are served from here and resized by Cloudflare.", SortOrder = 3 },
+        new() { Key = "r2.access_key_id",      Group = "Cloudflare R2", Label = "Access Key ID", Type = "text", Value = "", Description = "R2 API token Access Key ID (Object Read & Write).", SortOrder = 4 },
+        new() { Key = "r2.secret_access_key",  Group = "Cloudflare R2", Label = "Secret Access Key", Type = "secret", Value = "", Description = "R2 API token Secret Access Key. Stored encrypted; used server-side only.", SortOrder = 5 },
+        new() { Key = "cloudflare.transforms_enabled", Group = "Cloudflare R2", Label = "Resize images via Cloudflare", Type = "boolean", Value = "false", Description = "When ON, images are resized on the fly by Cloudflare Image Transformations (served from the Public base URL above) instead of Cloudinary/ImageKit. Turn this on only after enabling Transformations for your domain in Cloudflare and moving images to R2. Turn OFF to revert instantly.", SortOrder = 6 },
     };
 }

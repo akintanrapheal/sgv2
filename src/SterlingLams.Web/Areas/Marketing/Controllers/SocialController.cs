@@ -1,6 +1,4 @@
 using System.Security.Claims;
-using CloudinaryDotNet;
-using CloudinaryDotNet.Actions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Data;
@@ -21,15 +19,15 @@ public class SocialController : MarketingAreaController
     private static readonly HashSet<string> _allowedExt = new(StringComparer.OrdinalIgnoreCase)
         { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
 
-    private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
+    private readonly SterlingLams.Web.Services.IImageStorageService _imageStorage;
     public SocialController(ApplicationDbContext db, ISocialPublisher publisher,
-        IWebHostEnvironment env, IConfiguration config, SterlingLams.Web.Services.ICloudinaryProvider cloud)
+        IWebHostEnvironment env, IConfiguration config, SterlingLams.Web.Services.IImageStorageService imageStorage)
     {
         _db = db;
         _publisher = publisher;
         _env = env;
         _config = config;
-        _cloud = cloud;
+        _imageStorage = imageStorage;
     }
 
     public async Task<IActionResult> Index()
@@ -89,30 +87,9 @@ public class SocialController : MarketingAreaController
         if (!_allowedExt.Contains(ext))
             return BadRequest(new { error = "Invalid file type. Allowed: JPG, PNG, WEBP, GIF." });
 
-        var cloudinary = await _cloud.BuildAsync();
-        if (cloudinary != null)
-        {
-            await using var s = file.OpenReadStream();
-            var result = await cloudinary.UploadAsync(new ImageUploadParams
-            {
-                File = new FileDescription(file.FileName, s),
-                Folder = "sterlinglams/social",
-                PublicId = Guid.NewGuid().ToString("N"),
-                UniqueFilename = false,
-                Overwrite = false
-            });
-            if (result.StatusCode != System.Net.HttpStatusCode.OK || result.SecureUrl == null)
-                return BadRequest(new { error = "Image upload failed. Please try again." });
-            return Ok(new { url = result.SecureUrl.ToString() });
-        }
-
-        // Dev fallback: local disk (NOT persistent on Render — configure Cloudinary for production).
-        var dir = Path.Combine(_env.WebRootPath, "uploads", "social");
-        Directory.CreateDirectory(dir);
-        var fileName = $"{Guid.NewGuid():N}{ext.ToLowerInvariant()}";
-        await using var stream = System.IO.File.Create(Path.Combine(dir, fileName));
-        await file.CopyToAsync(stream);
-        return Ok(new { url = $"/uploads/social/{fileName}" });
+        var url = await _imageStorage.UploadAsync(file, "social");
+        if (url == null) return BadRequest(new { error = "Image upload failed. Please try again." });
+        return Ok(new { url });
     }
 
     [HttpPost, ValidateAntiForgeryToken]

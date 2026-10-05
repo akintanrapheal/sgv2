@@ -15,17 +15,17 @@ public class ProductsController : InventoryAreaController
     private readonly SterlingLams.Web.Services.IStockService _stock;
     private readonly SterlingLams.Web.Services.IStoreAccessService _access;
     private const int PageSize = 30;
-    private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
+    private readonly SterlingLams.Web.Services.IImageStorageService _imageStorage;
     public ProductsController(ApplicationDbContext db, IWebHostEnvironment env, IConfiguration config,
         SterlingLams.Web.Services.IStockService stock, SterlingLams.Web.Services.IStoreAccessService access,
-        SterlingLams.Web.Services.ICloudinaryProvider cloud)
+        SterlingLams.Web.Services.IImageStorageService imageStorage)
     {
         _db = db;
         _env = env;
         _config = config;
         _stock = stock;
         _access = access;
-        _cloud = cloud;
+        _imageStorage = imageStorage;
     }
 
     // List — search matches name, SKU OR barcode (so a scanner finds the product). The "Current" tab
@@ -754,31 +754,8 @@ public class ProductsController : InventoryAreaController
         var allowed = new[] { ".jpg", ".jpeg", ".png", ".webp", ".gif" };
         if (!allowed.Contains(ext)) return Json(new { ok = false, error = "Invalid type — use JPG, PNG, WEBP or GIF." });
 
-        string url;
-        var cloudinary = await _cloud.BuildAsync();
-        if (cloudinary != null)
-        {
-            await using var s = file.OpenReadStream();
-            var result = await cloudinary.UploadAsync(new CloudinaryDotNet.Actions.ImageUploadParams
-            {
-                File = new CloudinaryDotNet.FileDescription(file.FileName, s),
-                Folder = "sterlinglams/products",
-                PublicId = Guid.NewGuid().ToString("N"),
-                UniqueFilename = false, Overwrite = false
-            });
-            if (result.StatusCode != System.Net.HttpStatusCode.OK || result.SecureUrl == null)
-                return Json(new { ok = false, error = "Image upload failed — try again." });
-            url = result.SecureUrl.ToString();
-        }
-        else
-        {
-            var dir = Path.Combine(_env.WebRootPath, "uploads", "products");
-            Directory.CreateDirectory(dir);
-            var fileName = $"{Guid.NewGuid():N}{ext}";
-            await using var stream = System.IO.File.Create(Path.Combine(dir, fileName));
-            await file.CopyToAsync(stream);
-            url = $"/uploads/products/{fileName}";
-        }
+        var url = await _imageStorage.UploadAsync(file, "products");
+        if (url == null) return Json(new { ok = false, error = "Image upload failed — try again." });
 
         var isFirst = !p.Images.Any();
         _db.ProductImages.Add(new ProductImage

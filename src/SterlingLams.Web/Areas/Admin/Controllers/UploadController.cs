@@ -1,5 +1,3 @@
-using CloudinaryDotNet;
-using CloudinaryDotNet.Actions;
 using Microsoft.AspNetCore.Mvc;
 
 namespace SterlingLams.Web.Areas.Admin.Controllers;
@@ -9,15 +7,11 @@ public class UploadController : AdminBaseController
     // Gated on "Settings" — the screens that post here (Settings image picker, product/category images).
     protected override string Section => "Settings";
 
-    private readonly IWebHostEnvironment _env;
-    private readonly IConfiguration _config;
-    private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
+    private readonly SterlingLams.Web.Services.IImageStorageService _imageStorage;
 
-    public UploadController(IWebHostEnvironment env, IConfiguration config, SterlingLams.Web.Services.ICloudinaryProvider cloud)
+    public UploadController(SterlingLams.Web.Services.IImageStorageService imageStorage)
     {
-        _env = env;
-        _config = config;
-        _cloud = cloud;
+        _imageStorage = imageStorage;
     }
 
     [HttpPost, ValidateAntiForgeryToken]
@@ -27,9 +21,7 @@ public class UploadController : AdminBaseController
         var invalid = SterlingLams.Web.Services.ImageUploadRules.Validate(file);
         if (invalid != null) return BadRequest(new { error = invalid });
 
-        var ext = Path.GetExtension(file.FileName);
-
-        // Sanitise the subfolder (reused for the Cloudinary folder and the local path).
+        // Sanitise the subfolder.
         var safeSubfolder = "";
         if (!string.IsNullOrWhiteSpace(subfolder))
         {
@@ -38,38 +30,9 @@ public class UploadController : AdminBaseController
                 return BadRequest(new { error = "Invalid subfolder." });
         }
 
-        // ── Cloudinary (persistent + CDN) when configured. Required on ephemeral hosts like Render,
-        //    where local disk is wiped on every redeploy/restart. ──
-        var cloudinary = await _cloud.BuildAsync();
-        if (cloudinary != null)
-        {
-            await using var s = file.OpenReadStream();
-            var folder = string.IsNullOrEmpty(safeSubfolder) ? "sterlinglams" : $"sterlinglams/{safeSubfolder}";
-            var result = await cloudinary.UploadAsync(new ImageUploadParams
-            {
-                File = new FileDescription(file.FileName, s),
-                Folder = folder,
-                PublicId = Guid.NewGuid().ToString("N"),
-                UniqueFilename = false,
-                Overwrite = false
-            });
-            if (result.StatusCode != System.Net.HttpStatusCode.OK || result.SecureUrl == null)
-                return BadRequest(new { error = "Image upload failed. Please try again." });
-            return Ok(new { url = result.SecureUrl.ToString() });
-        }
-
-        // ── Fallback: local disk (development only — NOT persistent on Render). ──
-        var uploadsRoot = Path.GetFullPath(Path.Combine(_env.WebRootPath, "uploads"));
-        var folderPath = string.IsNullOrEmpty(safeSubfolder) ? "uploads" : $"uploads/{safeSubfolder}";
-        var dir = Path.GetFullPath(Path.Combine(_env.WebRootPath, folderPath));
-        if (!dir.Equals(uploadsRoot, StringComparison.OrdinalIgnoreCase) &&
-            !dir.StartsWith(uploadsRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-            return BadRequest(new { error = "Invalid subfolder." });
-
-        Directory.CreateDirectory(dir);
-        var fileName = $"{Guid.NewGuid():N}{ext.ToLowerInvariant()}";
-        await using var stream = System.IO.File.Create(Path.Combine(dir, fileName));
-        await file.CopyToAsync(stream);
-        return Ok(new { url = $"/{folderPath}/{fileName}" });
+        // R2 → Cloudinary → local disk, all handled by the shared storage service.
+        var url = await _imageStorage.UploadAsync(file, safeSubfolder);
+        if (url == null) return BadRequest(new { error = "Image upload failed. Please try again." });
+        return Ok(new { url });
     }
 }
