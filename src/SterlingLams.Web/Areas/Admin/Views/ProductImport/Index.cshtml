@@ -62,6 +62,25 @@
     </div>
 
     <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
+        <h2 class="text-sm font-semibold text-neutral-800">Migrate images to Cloudflare R2 (Phase 2)</h2>
+        <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
+            Copies every product / variant / category image from Cloudinary into your <b>Cloudflare R2 bucket</b>
+            and repoints the database to serve each one from <b>img.sterlinglams.com</b> — so the site no longer
+            depends on Cloudinary. Safe to run anytime and to re-run (already-moved images are skipped). Requires
+            R2 configured in <a asp-controller="Integrations" asp-action="Index" class="text-brand-600 hover:underline">Admin → Integrations</a>.
+            Runs in batches — <b>keep this tab open</b> until it says done. The storefront keeps working throughout;
+            turn on <b>"Resize images via Cloudflare"</b> only after this finishes.
+        </p>
+        <div class="flex items-center gap-2 mt-4">
+            <button type="button" id="pi-r2migrate" class="px-5 py-2 bg-neutral-900 text-white text-sm rounded-md hover:bg-neutral-700">Migrate images to R2</button>
+            <span id="pi-r2migrate-status" class="text-sm text-neutral-500"></span>
+        </div>
+        <div id="pi-r2migrate-bar-wrap" class="hidden mt-3 h-2 w-full max-w-md bg-neutral-100 rounded-full overflow-hidden">
+            <div id="pi-r2migrate-bar" class="h-full bg-emerald-500 transition-all" style="width:0%"></div>
+        </div>
+    </div>
+
+    <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
         <h2 class="text-sm font-semibold text-neutral-800">Import barcodes (EposNow)</h2>
         <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
             Upload an EposNow <strong>ProductList</strong> CSV (<span class="font-mono">Name;CategoryId;Barcode</span>).
@@ -289,6 +308,47 @@
                         } else { step(); }
                     })
                     .catch(function () { ikStatus.textContent = 'A batch failed — click again to resume (already-copied images are overwritten safely).'; ikBtn.disabled = false; });
+            }
+        });
+    }
+
+    // ── Migrate images to Cloudflare R2 (Phase 2) — batched loop until done ──
+    var r2Btn = document.getElementById('pi-r2migrate');
+    var r2Status = document.getElementById('pi-r2migrate-status');
+    var r2BarWrap = document.getElementById('pi-r2migrate-bar-wrap');
+    var r2Bar = document.getElementById('pi-r2migrate-bar');
+    if (r2Btn) {
+        r2Btn.addEventListener('click', function () {
+            r2Btn.disabled = true;
+            var total = 0, copied = 0, failed = 0, cursor = 'pi:0';
+            r2BarWrap.classList.remove('hidden');
+            fetch(base + 'R2MigrationStatus').then(function (r) { return r.json(); }).then(function (s) {
+                if (!s.ok) { r2Status.textContent = 'Could not read status.'; r2Btn.disabled = false; return; }
+                if (!s.configured) { r2Status.textContent = "Fill in the R2 details and turn on 'Store new images in R2' in Admin → Integrations first."; r2Btn.disabled = false; return; }
+                total = s.total || 0;
+                if (total === 0) { r2Status.textContent = 'No Cloudinary images left to move — all done.'; r2Btn.disabled = false; return; }
+                step();
+            }).catch(function () { r2Status.textContent = 'Request failed.'; r2Btn.disabled = false; });
+
+            function step() {
+                var fd = new FormData();
+                fd.append('__RequestVerificationToken', token ? token.value : '');
+                fd.append('cursor', cursor);
+                fetch(base + 'MigrateToR2', { method: 'POST', body: fd, headers: { 'RequestVerificationToken': token ? token.value : '' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (!d.ok) { r2Status.textContent = d.error || 'Failed.'; r2Btn.disabled = false; return; }
+                        copied += d.uploaded; failed += d.failed; cursor = d.cursor;
+                        var pct = total ? Math.min(100, Math.round((total - d.remaining) / total * 100)) : 100;
+                        r2Bar.style.width = pct + '%';
+                        r2Status.textContent = 'Moving… ' + copied + ' of ' + total + ' done' + (failed ? (' · ' + failed + ' failed') : '') + ' (' + pct + '%)';
+                        if (d.done) {
+                            r2Bar.style.width = '100%';
+                            r2Status.textContent = 'Done — moved ' + copied + ' image(s) into R2' + (failed ? (' · ' + failed + ' failed (re-run to retry)') : '') + '. Now turn on "Resize images via Cloudflare" in Integrations.';
+                            r2Btn.disabled = false;
+                        } else { step(); }
+                    })
+                    .catch(function () { r2Status.textContent = 'A batch failed — click again to resume (already-moved images are skipped).'; r2Btn.disabled = false; });
             }
         });
     }
