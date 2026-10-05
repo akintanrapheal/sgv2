@@ -435,8 +435,11 @@ app.Use(async (context, next) =>
     if (!staffArea && await settingsSvc.GetBoolAsync("ga.enabled", false))
     {
         scriptSrc += " https://www.googletagmanager.com";
-        // GA4 beacons + (if configured) Google Ads conversion pings.
-        gaHosts = " https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://www.googleadservices.com https://www.google.com https://googleads.g.doubleclick.net";
+        // GA4 beacons + Google Ads conversion/remarketing pings. *.doubleclick.net covers the
+        // ad-measurement subdomains (stats.g / googleads.g / ad.) and pagead2.googlesyndication.com is
+        // Google Ads remarketing. Conversions already record via GA4; these just let the Ads
+        // remarketing/measurement beacons through (and clear their CSP console errors).
+        gaHosts = " https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com https://*.analytics.google.com https://www.googletagmanager.com https://www.googleadservices.com https://www.google.com https://*.doubleclick.net https://pagead2.googlesyndication.com";
     }
 
     // Meta Pixel (Facebook/Instagram ads) needs connect.facebook.net (script) + facebook.com (beacons).
