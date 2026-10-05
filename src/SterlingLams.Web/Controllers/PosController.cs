@@ -661,23 +661,22 @@ public class PosController : Controller
         return Json(new { outgoing, incoming });
     }
 
-    /// <summary>Past transfers a cashier handles at this branch (completed/partial/rejected/cancelled),
-    /// both directions. Excludes automatic online-order (System) transfers so the till history stays the
-    /// branch-to-branch moves staff actually pack/receive — POS-raised and Inventory-raised alike.</summary>
+    /// <summary>Past transfers a cashier handles at this branch, both directions. Includes the ones raised
+    /// automatically to fulfil an online order — a branch that packs + dispatches an item toward another
+    /// store's order still did real work and needs the record (labelled by the order via the Note). A
+    /// transfer this branch has DISPATCHED (now in transit to the destination) is shown too, so the sender
+    /// sees it in history the moment it's sent, not only after the far branch receives it.</summary>
     [Authorize, HttpGet]
     public async Task<IActionResult> TransferHistory()
     {
         var reg = await BoundRegisterAsync();
         if (reg == null) return Json(Array.Empty<object>());
         var done = new[] { TransferStatus.Completed, TransferStatus.PartiallyReceived, TransferStatus.Rejected, TransferStatus.Cancelled };
-        // Exclude online-order transfers: new ones carry an OrderId; legacy ones (pre-OrderId wiring)
-        // are identified by the fulfilment engine's "Online order …" note. No POS/Inventory reason
-        // uses that prefix, so this reliably keeps the till history to staff-packed branch moves.
         var rows = await _db.StockTransfers
             .Where(t => (t.FromStoreId == reg.StoreId || t.ToStoreId == reg.StoreId)
-                     && t.OrderId == null
-                     && (t.Note == null || !t.Note.StartsWith("Online order"))
-                     && done.Contains(t.Status))
+                     && (done.Contains(t.Status)
+                         // a transfer THIS branch dispatched is in history straight away (still in transit)
+                         || (t.FromStoreId == reg.StoreId && t.Status == TransferStatus.InTransit)))
             .Include(t => t.Items).Include(t => t.FromStore).Include(t => t.ToStore)
             .OrderByDescending(t => t.Id).Take(40).ToListAsync();
 
@@ -686,7 +685,7 @@ public class PosController : Controller
             outgoing = t.FromStoreId == reg.StoreId,
             otherStore = t.FromStoreId == reg.StoreId ? t.ToStore!.Name : t.FromStore!.Name,
             reason = t.Note,
-            when = (t.ReceivedAt ?? t.CancelledAt ?? t.RejectedAt ?? t.CreatedAt).ToLocalTime().ToString("dd MMM yyyy, HH:mm"),
+            when = (t.ReceivedAt ?? t.CancelledAt ?? t.RejectedAt ?? t.DispatchedAt ?? t.CreatedAt).ToLocalTime().ToString("dd MMM yyyy, HH:mm"),
             lines = t.Items.Sum(i => i.ReceivedQty ?? i.ApprovedQty ?? i.RequestedQty),
             manifestUrl = t.ApprovedAt != null ? ManifestUrl(t.Id) : null,
             items = t.Items.Select(i => i.ProductName + (i.VariantName == null ? "" : " (" + i.VariantName + ")") + " ×" + (i.ReceivedQty ?? i.ApprovedQty ?? i.RequestedQty)).ToList()
