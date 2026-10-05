@@ -110,6 +110,10 @@ public class SubscribeController : AdminBaseController
         ViewBag.ZephBaseUrl = await _settings.GetAsync("zephiel.base_url", "https://www.zephiel.com");
         ViewBag.ZephApiSlug = await _settings.GetAsync("zephiel.api_slug", "multistore");
         ViewBag.ZephAccountKeySet = !string.IsNullOrWhiteSpace(await _settings.GetAsync("zephiel.account_key", ""));
+        // Billing is handled in Zephiel now: once the connector is enabled AND keyed, the stores are on a
+        // paid Zephiel subscription, so the page (and the staff trial banner) treat it as active.
+        ViewBag.ConnectorActive = await _settings.GetBoolAsync("zephiel.enabled", false)
+            && !string.IsNullOrWhiteSpace(await _settings.GetAsync("zephiel.account_key", ""));
 
         ViewBag.Subscribed = await _settings.GetBoolAsync("subscription.active", false);
         ViewBag.Plan = await _settings.GetAsync("subscription.plan", "monthly");
