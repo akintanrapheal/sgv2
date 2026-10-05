@@ -1003,7 +1003,7 @@ public class CheckoutController : Controller
 
                 var items = order.Items.Select(i =>
                     new SterlingLams.Web.Services.OrderEmailTemplate.Item(
-                        i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId))).ToList();
+                        i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId), i.ProductSku)).ToList();
 
                 var custName = order.User?.FullName ?? order.DeliveryAddress?.FullName ?? "";
                 var a = order.DeliveryAddress;
@@ -1028,7 +1028,12 @@ public class CheckoutController : Controller
                 {
                     shipping = new List<string> { custName };
                     if (a != null) { shipping.Add(a.Line1 + (string.IsNullOrWhiteSpace(a.Line2) ? "" : ", " + a.Line2)); shipping.Add($"{a.City}, {a.State}".Trim(' ', ',')); }
-                    shippingLabel = order.DeliveryFee > 0 ? $"Delivery — ₦{order.DeliveryFee:N0}" : "Delivery";
+                    // Show the chosen delivery method + its timeframe, e.g.
+                    // "₦4,000.00 via Glams Priority Delivery (within 48 hrs)".
+                    var method = await _zones.DescribeOptionAsync(order.DeliveryType, a?.State, a?.City);
+                    shippingLabel = order.DeliveryFee > 0
+                        ? $"₦{order.DeliveryFee:N2} via {method}"
+                        : $"Free delivery — {method}";
                 }
 
                 var introHtml = SterlingLams.Web.Services.OrderEmailTemplate.ApplyPlaceholders(
@@ -1042,7 +1047,10 @@ public class CheckoutController : Controller
                     subtotal: order.Subtotal,
                     shippingLabel: shippingLabel,
                     total: order.Total,
-                    paymentMethod: order.PaymentProvider ?? "—",
+                    // Friendly payment line like the old site: the Paystack channels the customer could use.
+                    paymentMethod: (order.PaymentProvider ?? "").Contains("Paystack", StringComparison.OrdinalIgnoreCase)
+                        ? "Debit/Credit Card, Bank Transfer, USSD, Opay"
+                        : (string.IsNullOrWhiteSpace(order.PaymentProvider) ? "—" : order.PaymentProvider),
                     billingLines: billing,
                     shippingLines: shipping);
                 await _email.SendAsync(customerEmail!, subject, body, ct: HttpContext.RequestAborted);
