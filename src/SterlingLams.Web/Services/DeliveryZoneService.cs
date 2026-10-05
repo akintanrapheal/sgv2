@@ -191,6 +191,33 @@ public class DeliveryZoneService
         return national;
     }
 
+    /// <summary>Human description of a chosen delivery option for emails/receipts — the branded method
+    /// name plus its timeframe, e.g. "Glams Priority Delivery (within 48 hrs)" or
+    /// "Glams Standard Delivery (3 - 5 working days)". Resolves the label + timeframe from the live zone
+    /// config for the order's state/area; falls back to a sensible label if the option isn't configured.</summary>
+    public async Task<string> DescribeOptionAsync(string? deliveryType, string? state, string? area)
+    {
+        var type = (deliveryType ?? "").Trim();
+        if (type.Length == 0) return "Delivery";
+
+        if (type.Equals("SameDay", StringComparison.OrdinalIgnoreCase))
+        {
+            var sd = await GetSameDayAsync();
+            var tf = string.IsNullOrWhiteSpace(sd.Timeframe) ? "same day" : sd.Timeframe;
+            return $"Glams Same-Day Delivery ({tf})";
+        }
+
+        var match = (await GetOptionsAsync(state ?? "", area))
+            .FirstOrDefault(o => o.Type.Equals(type, StringComparison.OrdinalIgnoreCase));
+        if (match != null)
+            return string.IsNullOrWhiteSpace(match.Timeframe) ? match.Label : $"{match.Label} ({match.Timeframe})";
+
+        // Option not in the current config — fall back to the branded names so the email still reads well.
+        if (type.Equals("Express", StringComparison.OrdinalIgnoreCase)) return "Glams Priority Delivery (within 48 hrs)";
+        if (type.Equals("Standard", StringComparison.OrdinalIgnoreCase)) return "Glams Standard Delivery (3 - 5 working days)";
+        return "Delivery";
+    }
+
     // ── Calculate fee from state + area + type (server-side, at order placement) ─
     public async Task<decimal> CalculateFeeAsync(string state, string? area, string deliveryType)
     {

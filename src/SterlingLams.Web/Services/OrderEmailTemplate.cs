@@ -12,7 +12,7 @@ namespace SterlingLams.Web.Services;
 /// </summary>
 public static class OrderEmailTemplate
 {
-    public record Item(string Name, string? Variant, int Quantity, decimal LineTotal, string? ImageUrl);
+    public record Item(string Name, string? Variant, int Quantity, decimal LineTotal, string? ImageUrl, string? Sku = null);
 
     /// <summary>Replaces {order}, {date}, {name} tokens in the editable intro (HTML-encoded values).</summary>
     public static string ApplyPlaceholders(string intro, string orderNumber, DateTime date, string customerName)
@@ -101,7 +101,8 @@ public static class OrderEmailTemplate
         foreach (var it in items)
         {
             var img = Thumb(it.ImageUrl);
-            var name = $@"<strong style=""color:#1c1917;"">{E(it.Name)}</strong>{(string.IsNullOrWhiteSpace(it.Variant) ? "" : $@" <span style=""color:#78716c;"">- {E(it.Variant)}</span>")}";
+            var sku = string.IsNullOrWhiteSpace(it.Sku) ? "" : $@" <span style=""color:#a8a29e;"">(#{E(it.Sku)})</span>";
+            var name = $@"<strong style=""color:#1c1917;"">{E(it.Name)}</strong>{(string.IsNullOrWhiteSpace(it.Variant) ? "" : $@" <span style=""color:#78716c;"">- {E(it.Variant)}</span>")}{sku}";
             sb.Append($@"
   <tr style=""border-bottom:1px solid {Line};"">
     <td style=""padding:12px 10px;"">{img}{name}</td>
