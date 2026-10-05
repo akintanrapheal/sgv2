@@ -17,8 +17,10 @@
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
             </a>
             <div class="min-w-0">
-                <h1 class="text-sm font-semibold uppercase tracking-wide text-neutral-800">Sales &amp; Operation</h1>
-                <p class="text-xs text-neutral-400 truncate">@s.Register?.Name · @s.Register?.Store?.Name · @DateTime.UtcNow.ToLocalTime().ToString("dd MMM HH:mm")</p>
+                @* Lead with WHO is at the till (the cashier closing, or who closed it) — like EposNow —
+                   so every store's close screen is identifiable by person, not a generic title. *@
+                <h1 class="text-sm font-semibold uppercase tracking-wide text-neutral-800">@(string.IsNullOrWhiteSpace(Model.StaffName) ? "Sales & Operation" : Model.StaffName)</h1>
+                <p class="text-xs text-neutral-400 truncate">Sales &amp; Operation · @s.Register?.Name · @s.Register?.Store?.Name · @DateTime.UtcNow.ToLocalTime().ToString("dd MMM HH:mm")</p>
             </div>
         </div>
         @if (Model.Closed)
