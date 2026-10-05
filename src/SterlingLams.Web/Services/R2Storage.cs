@@ -104,7 +104,7 @@ public sealed class R2Storage : IR2Storage
             }
             catch (Exception ex)
             {
-                _log.LogWarning(ex, "R2 PutObject failed for {Key}", key);
+                _log.LogWarning(ex, "R2 PutObject failed for {Key}", LogSafe(key));
                 return null;
             }
         }
@@ -131,6 +131,10 @@ public sealed class R2Storage : IR2Storage
         var url = await PutAsync(key, bytes, contentType);
         return url != null ? (true, url) : (false, "R2 put failed");
     }
+
+    // Strip CR/LF from a value before it goes into a log line, so a crafted object key can't forge extra
+    // log entries (CWE-117 log injection).
+    private static string LogSafe(string s) => (s ?? "").Replace("\r", "").Replace("\n", "");
 
     public static string ContentTypeFor(string pathOrExt)
     {
