@@ -562,12 +562,12 @@
                 <p class="text-xs text-neutral-400 mb-1">The <span class="text-neutral-600 font-medium">primary</span> image shows on cards &amp; the product page. The <span class="text-emerald-600 font-medium">hover</span> image is revealed when a shopper hovers a card (Tiffany-style swap).</p>
                 <p class="text-xs text-neutral-400 mb-3 flex items-center gap-1">
                     <svg class="w-3.5 h-3.5 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 9h8M8 15h8"/></svg>
-                    Drag the images to reorder them — the order here is the order shown on the product page. <span id="img-order-status" class="text-emerald-600"></span>
+                    Drag the images to reorder them — the order here is the order shown on the product page. Or drag an image onto a variant row below to set that variant's picture (then Save All Variants). <span id="img-order-status" class="text-emerald-600"></span>
                 </p>
                 <div id="product-images" class="flex flex-wrap gap-3 mb-5">
                     @foreach (var img in Model.Images)
                     {
-                        <div class="relative group w-24 cursor-move" draggable="true" data-img-id="@img.Id">
+                        <div class="relative group w-24 cursor-move" draggable="true" data-img-id="@img.Id" data-img-url="@img.Url">
                             <img src="@Img.Cld(img.Url, 200, 200)" alt="@img.AltText" loading="lazy"
                                  class="w-24 h-24 object-cover rounded border @(img.IsPrimary ? "border-neutral-900 ring-1 ring-neutral-900" : img.IsHover ? "border-emerald-500 ring-1 ring-emerald-500" : "border-neutral-200")" />
                             @if (img.IsPrimary)
@@ -711,17 +711,48 @@
             var pid    = '@Model.Id';
             var status = document.getElementById('img-order-status');
             var dragEl = null;
+            var variantDropHandled = false;   // set when a drag ends on a variant cell (skip the reorder save)
 
             grid.querySelectorAll('[data-img-id]').forEach(function (card) {
                 card.addEventListener('dragstart', function (e) {
                     dragEl = card;
                     card.classList.add('opacity-40');
-                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.effectAllowed = 'copyMove';
                     try { e.dataTransfer.setData('text/plain', card.dataset.imgId); } catch (_) {}
                 });
                 card.addEventListener('dragend', function () {
                     card.classList.remove('opacity-40');
+                    if (variantDropHandled) { variantDropHandled = false; return; } // assigned to a variant, not reordered
                     persist();
+                });
+            });
+
+            // Drag a gallery image onto a variant row → set that variant's image (saved with "Save All Variants").
+            document.querySelectorAll('.vimg-file').forEach(function (fileInput) {
+                var vid  = fileInput.dataset.vid;
+                var cell = fileInput.closest('td');
+                if (!cell || !vid) return;
+                cell.addEventListener('dragover', function (e) {
+                    if (!dragEl) return;                       // only react to a gallery-image drag
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    cell.classList.add('ring-1', 'ring-neutral-900', 'rounded');
+                });
+                cell.addEventListener('dragleave', function () {
+                    cell.classList.remove('ring-1', 'ring-neutral-900', 'rounded');
+                });
+                cell.addEventListener('drop', function (e) {
+                    cell.classList.remove('ring-1', 'ring-neutral-900', 'rounded');
+                    if (!dragEl) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var imgUrl = dragEl.dataset.imgUrl;
+                    if (!imgUrl) return;
+                    var urlInput = document.getElementById('vimg-' + vid);
+                    var prev     = document.getElementById('vimg-prev-' + vid);
+                    if (urlInput) urlInput.value = imgUrl;
+                    if (prev) { prev.src = imgUrl; prev.classList.remove('hidden'); }
+                    variantDropHandled = true;                 // don't trigger a gallery-reorder save
                 });
             });
 
