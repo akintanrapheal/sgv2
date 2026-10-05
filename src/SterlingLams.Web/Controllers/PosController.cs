@@ -1451,7 +1451,7 @@ public class PosController : Controller
         // Processing), not only once it's Shipped — the admin Logistics board dispatches it later, so
         // between packing and dispatch it would otherwise vanish from the till. Shipped/Delivered are
         // included too so an order marked sent straight from the admin (without POS packing) still shows.
-        var orders = await _db.Orders
+        var orderRows = await _db.Orders
             .Where(o => o.Channel == OrderChannel.Online
                 && ((o.FulfillmentType == FulfillmentType.Delivery && o.FulfillingStoreId == storeId
                         && (o.PackedAt != null || o.Status == OrderStatus.Shipped || o.Status == OrderStatus.Delivered))
@@ -1473,7 +1473,48 @@ public class PosController : Controller
             })
             .ToListAsync();
 
-        return Json(new { orders });
+        // Transfers THIS branch packed + dispatched for another store's online order (the "To send" items).
+        // On dispatch they leave "To send" (status → in transit), so without this they'd vanish from the
+        // till entirely — the sending branch still did real work and needs the record here.
+        var sent = await _db.StockTransfers
+            .Where(t => t.FromStoreId == storeId && t.OrderId != null
+                && (t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived
+                    || t.Status == TransferStatus.Completed))
+            .Include(t => t.ToStore).Include(t => t.Items)
+            .OrderByDescending(t => t.DispatchedAt ?? t.CreatedAt)
+            .Take(100)
+            .ToListAsync();
+        var sentOrderNums = await _db.Orders
+            .Where(o => sent.Select(x => x.OrderId!.Value).Contains(o.Id))
+            .Select(o => new { o.Id, o.OrderNumber })
+            .ToDictionaryAsync(o => o.Id, o => o.OrderNumber);
+        static string SentStatus(TransferStatus s) => s == TransferStatus.Completed ? "Sent — received"
+            : s == TransferStatus.PartiallyReceived ? "Sent — part received" : "Sent — in transit";
+
+        // Merge orders + dispatched transfers into one history feed, newest first.
+        var merged = orderRows.Select(o => new
+            {
+                id = o.id, kind = "order", o.orderNumber, o.customer, o.phone,
+                o.itemCount, o.total, o.fulfillmentType, o.status, o.packedBy, o.actionedAt
+            })
+            .Concat(sent.Select(t => new
+            {
+                id = t.Id, kind = "transfer",
+                orderNumber = sentOrderNums.GetValueOrDefault(t.OrderId!.Value, t.TransferNumber),
+                customer = "To " + t.ToStore!.Name,
+                phone = (string?)null,
+                itemCount = t.Items.Sum(i => i.DispatchedQty ?? i.ApprovedQty ?? i.RequestedQty),
+                total = 0m,
+                fulfillmentType = "Transfer",
+                status = SentStatus(t.Status),
+                packedBy = (string?)null,
+                actionedAt = (DateTime?)(t.DispatchedAt ?? t.CreatedAt)
+            }))
+            .OrderByDescending(x => x.actionedAt)
+            .Take(100)
+            .ToList();
+
+        return Json(new { orders = merged });
     }
 
     // Receipt-roll printout of ONE packed order — a paper record the cashier keeps per order. 80mm

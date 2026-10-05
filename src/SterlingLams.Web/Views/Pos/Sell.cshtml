@@ -2951,8 +2951,20 @@
         renderList();
     }
     function historyCard(o) {
-        const isPickup = o.fulfillmentType === 'StorePickup';
         const when = o.actionedAt ? new Date(o.actionedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+        // A stock transfer this branch packed + sent toward another store's order — a read-only record
+        // (not clickable: no .fulfil-card class, so it opens nothing).
+        if (o.kind === 'transfer') {
+            return `<div class="w-full text-left bg-white border border-neutral-200 border-l-4 border-l-amber-400 rounded-xl p-3.5">
+                <div class="flex items-center justify-between gap-2">
+                    <span class="font-semibold text-neutral-900 truncate">${esc(o.orderNumber)}</span>
+                    <span class="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 flex-shrink-0">Transfer sent</span>
+                </div>
+                <div class="text-sm text-neutral-700 truncate mt-0.5">${esc(o.customer)}</div>
+                <div class="text-[11px] text-neutral-400 mt-1 truncate">${o.itemCount} item${o.itemCount === 1 ? '' : 's'} · ${esc(o.status)}${when ? ' · ' + when : ''}</div>
+            </div>`;
+        }
+        const isPickup = o.fulfillmentType === 'StorePickup';
         const kind = isPickup ? 'Pickup' : 'Delivery';
         return `<button type="button" class="fulfil-card w-full text-left bg-white border border-neutral-200 rounded-xl p-3.5 hover:border-neutral-300 transition" data-id="${o.id}">
             <div class="flex items-center justify-between gap-2">
