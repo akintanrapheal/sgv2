@@ -1741,6 +1741,8 @@ public class PosController : Controller
             note = order?.Notes,
             status = t.Status.ToString(),
             canDispatch = t.Status == TransferStatus.Approved,
+            requestedAt = t.CreatedAt,       // when it was queued to pack (shown in WAT on the client)
+            dispatchedAt = t.DispatchedAt,   // when it was packed & sent
             manifestUrl = ManifestUrl(t.Id),
             items
         });

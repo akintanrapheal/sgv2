@@ -2955,14 +2955,14 @@
         // A stock transfer this branch packed + sent toward another store's order — a read-only record
         // (not clickable: no .fulfil-card class, so it opens nothing).
         if (o.kind === 'transfer') {
-            return `<div class="w-full text-left bg-white border border-neutral-200 border-l-4 border-l-amber-400 rounded-xl p-3.5">
+            return `<button type="button" data-tdetail="${o.id}" class="w-full text-left bg-white border border-neutral-200 border-l-4 border-l-amber-400 rounded-xl p-3.5 hover:border-neutral-300 hover:shadow-sm transition">
                 <div class="flex items-center justify-between gap-2">
                     <span class="font-semibold text-neutral-900 truncate">${esc(o.orderNumber)}</span>
                     <span class="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 flex-shrink-0">Transfer sent</span>
                 </div>
                 <div class="text-sm text-neutral-700 truncate mt-0.5">${esc(o.customer)}</div>
                 <div class="text-[11px] text-neutral-400 mt-1 truncate">${o.itemCount} item${o.itemCount === 1 ? '' : 's'} · ${esc(o.status)}${when ? ' · ' + when : ''}</div>
-            </div>`;
+            </button>`;
         }
         const isPickup = o.fulfillmentType === 'StorePickup';
         const kind = isPickup ? 'Pickup' : 'Delivery';
@@ -2982,6 +2982,7 @@
             if (!historyCache.length) { listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Nothing packed or processed yet.</p>'; return; }
             listEl.innerHTML = historyCache.map(historyCard).join('');
             listEl.querySelectorAll('.fulfil-card').forEach(b => b.addEventListener('click', () => openDetail(+b.dataset.id)));
+            listEl.querySelectorAll('[data-tdetail]').forEach(b => b.addEventListener('click', () => openTransferDetail(+b.dataset.tdetail)));
         } catch { listEl.innerHTML = '<p class="text-center text-neutral-400 py-10 text-sm">Could not load history.</p>'; }
     }
     function orderCard(o, packable) {
@@ -3227,6 +3228,13 @@
             const dispatchBtn = d.canDispatch
                 ? `<button type="button" id="fulfil-dispatch-btn" data-id="${d.transferId}" class="w-full bg-brand-500 text-white rounded-lg py-3 text-sm font-semibold hover:bg-brand-600 transition-colors">Pack &amp; dispatch to ${esc(d.toStore)}</button>`
                 : `<p class="text-center text-[12px] text-neutral-400">${esc(d.status)}</p>`;
+            const tfmt = (s) => s ? new Date(s).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+            const timeline = `
+                <div class="border border-neutral-200 rounded-xl p-3">
+                    <p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1.5">Timeline</p>
+                    <div class="flex items-center justify-between text-sm"><span class="text-neutral-500">Queued to pack</span><span class="text-neutral-800">${tfmt(d.requestedAt)}</span></div>
+                    ${d.dispatchedAt ? `<div class="flex items-center justify-between text-sm mt-1"><span class="text-neutral-500">Packed &amp; sent</span><span class="text-neutral-800 font-medium">${tfmt(d.dispatchedAt)}</span></div>` : ''}
+                </div>`;
             detailView.innerHTML = `
                 <div class="max-w-2xl mx-auto p-4 space-y-4">
                     <div class="flex items-center justify-between">
@@ -3237,6 +3245,7 @@
                         <p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Items to send</p>
                         ${items}
                     </div>
+                    ${timeline}
                     <div class="border border-neutral-200 rounded-xl p-3 flex items-center justify-between">
                         <div><p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-0.5">Delivery option</p>
                         <p class="text-sm text-neutral-800">${d.deliveryType ? esc(d.deliveryType) : (d.fulfillmentType === 'StorePickup' ? 'Store pickup' : 'Standard')}</p></div>
