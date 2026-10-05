@@ -17,7 +17,7 @@ public class IntegrationsController : AdminBaseController
     // A previously granted "Integrations" permission can no longer open this screen either.
     protected override string? Section => null;
 
-    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog", "Google Analytics", "Meta Pixel", "Cloudinary", "Retainful", "ImageKit" };
+    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog", "Google Analytics", "Meta Pixel", "Cloudinary", "Retainful", "ImageKit", "Cloudflare R2" };
     private static readonly string[] Providers = { "paystack", "stripe", "flutterwave" };
 
     private readonly ISettingsService _settings;
@@ -131,6 +131,14 @@ public class IntegrationsController : AdminBaseController
             ImageKitEndpoint    = Plain("imagekit.url_endpoint", null),
             ImageKitPublicKey   = Plain("imagekit.public_key", null),
             ImageKitPrivateSet  = Set("imagekit.private_key", null),
+
+            R2Enabled          = await _settings.GetBoolAsync("r2.enabled", false),
+            R2Endpoint         = Plain("r2.s3_endpoint", null),
+            R2Bucket           = Plain("r2.bucket", null),
+            R2PublicBase       = Plain("r2.public_base", null),
+            R2AccessKeyId      = Plain("r2.access_key_id", null),
+            R2SecretSet        = Set("r2.secret_access_key", null),
+            CfTransformsEnabled = await _settings.GetBoolAsync("cloudflare.transforms_enabled", false),
 
             BaseUrl = baseUrl,
         };
@@ -356,6 +364,10 @@ public class IntegrationsController : AdminBaseController
         SterlingLams.Web.Infrastructure.Img.ConfigureDelivery(
             await _settings.GetBoolAsync("imagekit.enabled", false),
             await _settings.GetAsync("imagekit.url_endpoint", ""));
+        // Same for the Cloudflare transforms / R2 delivery switch.
+        SterlingLams.Web.Infrastructure.Img.ConfigureCloudflare(
+            await _settings.GetBoolAsync("cloudflare.transforms_enabled", false),
+            await _settings.GetAsync("r2.public_base", ""));
 
         await LogAsync("Update", "Setting", null,
             $"Updated Integrations settings ({updates.Count} fields, {secretsUpdated} secret(s) changed)");
@@ -436,6 +448,15 @@ public class IntegrationsViewModel
     public string ImageKitEndpoint { get; set; } = "";
     public string ImageKitPublicKey { get; set; } = "";
     public bool ImageKitPrivateSet { get; set; }
+
+    // Cloudflare R2 (image storage) + Image Transformations (resizing) — secret key is encrypted.
+    public bool R2Enabled { get; set; }
+    public string R2Endpoint { get; set; } = "";
+    public string R2Bucket { get; set; } = "";
+    public string R2PublicBase { get; set; } = "";
+    public string R2AccessKeyId { get; set; } = "";
+    public bool R2SecretSet { get; set; }
+    public bool CfTransformsEnabled { get; set; }
 
     public string BaseUrl { get; set; } = "";
 }

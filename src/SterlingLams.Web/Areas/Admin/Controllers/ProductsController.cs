@@ -26,7 +26,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly SeoDescriptionGenerator _seo;
         private const int PageSize = 30;
 
-        private readonly SterlingLams.Web.Services.ICloudinaryProvider _cloud;
+        private readonly SterlingLams.Web.Services.IImageStorageService _imageStorage;
         public ProductsController(
             ApplicationDbContext db,
             IWooCommerceImportService wooImporter,
@@ -34,7 +34,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             IConfiguration config,
             IStorefrontCache storefrontCache,
             SeoDescriptionGenerator seo,
-            SterlingLams.Web.Services.ICloudinaryProvider cloud)
+            SterlingLams.Web.Services.IImageStorageService imageStorage)
         {
             _db = db;
             _wooImporter = wooImporter;
@@ -42,7 +42,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             _config = config;
             _storefrontCache = storefrontCache;
             _seo = seo;
-            _cloud = cloud;
+            _imageStorage = imageStorage;
         }
 
         public async Task<IActionResult> Index(
@@ -937,33 +937,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         // on ephemeral hosts like Render, where /wwwroot/uploads is wiped on every redeploy (which is
         // why locally-saved product images broke on the storefront after a deploy). Falls back to local
         // disk only in dev/when Cloudinary isn't configured. Returns the URL, or null on failure.
-        private async Task<string?> SaveProductImageAsync(IFormFile file)
-        {
-            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-            var cloudinary = await _cloud.BuildAsync();
-            if (cloudinary != null)
-            {
-                await using var s = file.OpenReadStream();
-                var result = await cloudinary.UploadAsync(new ImageUploadParams
-                {
-                    File = new FileDescription(file.FileName, s),
-                    Folder = "sterlinglams/products",
-                    PublicId = Guid.NewGuid().ToString("N"),
-                    UniqueFilename = false,
-                    Overwrite = false
-                });
-                if (result.StatusCode != System.Net.HttpStatusCode.OK || result.SecureUrl == null) return null;
-                return result.SecureUrl.ToString();
-            }
-
-            // Dev fallback: local disk (NOT persistent on Render).
-            var dir = Path.Combine(_env.WebRootPath, "uploads", "products");
-            Directory.CreateDirectory(dir);
-            var fileName = $"{Guid.NewGuid():N}{ext}";
-            await using var stream = System.IO.File.Create(Path.Combine(dir, fileName));
-            await file.CopyToAsync(stream);
-            return $"/uploads/products/{fileName}";
-        }
+        private Task<string?> SaveProductImageAsync(IFormFile file)
+            => _imageStorage.UploadAsync(file, "products");
 
         [HttpPost]
         [ValidateAntiForgeryToken]

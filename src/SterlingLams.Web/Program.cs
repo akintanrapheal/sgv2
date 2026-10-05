@@ -653,6 +653,9 @@ try
         SterlingLams.Web.Infrastructure.Img.ConfigureDelivery(
             await imgSettings.GetBoolAsync("imagekit.enabled", false),
             await imgSettings.GetAsync("imagekit.url_endpoint", ""));
+        SterlingLams.Web.Infrastructure.Img.ConfigureCloudflare(
+            await imgSettings.GetBoolAsync("cloudflare.transforms_enabled", false),
+            await imgSettings.GetAsync("r2.public_base", ""));
     }
     catch { /* leave delivery on the Cloudinary default if settings aren't readable yet */ }
 }

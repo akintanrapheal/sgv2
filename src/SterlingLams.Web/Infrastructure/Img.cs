@@ -28,6 +28,38 @@ public static partial class Img
         _ikOn = imageKitOn && ep.Length > 0;
     }
 
+    // ── Cloudflare Image Transformations (R2 era) ───────────────────────────────────────────────────
+    // When ON, images are resized on the fly by Cloudflare via a /cdn-cgi/image/<opts>/<source> URL on the
+    // R2 public domain (same zone, so no origin allow-list needed for R2 objects). Takes priority over
+    // ImageKit/Cloudinary. Works for both the new R2 URLs and, during the transition, legacy Cloudinary
+    // URLs (passed as an absolute source — which requires that host be allow-listed in the zone). OFF by
+    // default, so this is a dormant addition until enabled in Admin → Integrations.
+    private static volatile bool _cfOn;
+    private static volatile string _cfHost = "";   // scheme+authority of the R2 public domain, e.g. https://img.sterlinglams.com
+    private static volatile string _r2Base = "";   // full R2 public base, e.g. https://img.sterlinglams.com
+    public static void ConfigureCloudflare(bool enabled, string? r2PublicBase)
+    {
+        var b = (r2PublicBase ?? "").Trim().TrimEnd('/');
+        _r2Base = b;
+        _cfHost = b.Length > 0 && Uri.TryCreate(b, UriKind.Absolute, out var u) ? $"{u.Scheme}://{u.Authority}" : "";
+        _cfOn = enabled && _cfHost.Length > 0;
+    }
+
+    // Builds a /cdn-cgi/image/ transform URL. R2 objects on the same zone use a relative source (no
+    // allow-list); any other absolute URL is passed whole as the source.
+    private static string CfTransform(string url, int w, int? height, bool fill)
+    {
+        var opts = height is int h
+            ? $"width={w},height={Snap(h)},fit={(fill ? "cover" : "scale-down")},format=auto,quality=82"
+            : $"width={w},fit=scale-down,format=auto,quality=82";
+
+        if (_r2Base.Length > 0 && url.StartsWith(_r2Base, StringComparison.OrdinalIgnoreCase))
+            return $"{_cfHost}/cdn-cgi/image/{opts}{url[_cfHost.Length..]}"; // relative source keeps its leading '/'
+        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return $"{_cfHost}/cdn-cgi/image/{opts}/{url}";
+        return url; // local/relative (dev) path — can't transform through Cloudflare
+    }
+
     /// <summary>Scheme+host of the ACTIVE image CDN (ImageKit when enabled, else Cloudinary). Used for a
     /// &lt;link rel="preconnect"&gt; in the page head so the browser opens the TLS connection to the image
     /// host up front, instead of only after it parses the HTML and discovers the first &lt;img&gt; — which
@@ -36,6 +68,7 @@ public static partial class Img
     {
         get
         {
+            if (_cfOn && _cfHost.Length > 0) return _cfHost;
             if (_ikOn && _ikEndpoint.Length > 0 &&
                 Uri.TryCreate(_ikEndpoint, UriKind.Absolute, out var u))
                 return $"{u.Scheme}://{u.Authority}";
@@ -64,6 +97,10 @@ public static partial class Img
     public static string? Cld(string? url, int width, int? height = null, bool fill = true)
     {
         if (string.IsNullOrEmpty(url)) return url;
+
+        // Cloudflare transforms take priority and handle non-Cloudinary (R2) URLs too, so run this before
+        // the Cloudinary-specific marker check below.
+        if (_cfOn) return CfTransform(url, Snap(width), height, fill);
 
         var i = url.IndexOf(Marker, StringComparison.OrdinalIgnoreCase);
         if (i < 0) return url; // not a Cloudinary /image/upload/ URL — leave untouched
