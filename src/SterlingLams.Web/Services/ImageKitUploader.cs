@@ -57,26 +57,62 @@ public class ImageKitUploader : IImageKitUploader
         var folder = slash >= 0 ? "/" + assetPath[..slash] : "/";
         if (fileName.Length == 0) return (false, "Empty file name.");
 
-        try
+        var auth = new AuthenticationHeaderValue("Basic",
+            Convert.ToBase64String(Encoding.ASCII.GetBytes(key + ":")));
+
+        // Retry transient failures (429 rate-limit, 5xx, network) with exponential backoff — a burst of
+        // 429s is what made the bulk Phase-2 copy fail en masse. Honour ImageKit's Retry-After when given.
+        const int MaxAttempts = 4;
+        string lastDetail = "unknown error";
+        for (var attempt = 1; attempt <= MaxAttempts; attempt++)
         {
-            using var form = new MultipartFormDataContent
+            try
             {
-                { new StringContent(sourceUrl), "file" },        // ImageKit fetches the original from this URL
-                { new StringContent(fileName), "fileName" },
-                { new StringContent(folder), "folder" },
-                { new StringContent("false"), "useUniqueFileName" }, // keep the exact name so the path matches
-                { new StringContent("true"), "overwriteFile" },      // idempotent: re-running updates in place
-            };
-            using var req = new HttpRequestMessage(HttpMethod.Post, UploadUrl) { Content = form };
-            req.Headers.Authorization = new AuthenticationHeaderValue("Basic",
-                Convert.ToBase64String(Encoding.ASCII.GetBytes(key + ":")));
-            using var resp = await _http.SendAsync(req);
-            if (resp.IsSuccessStatusCode) return (true, "ok");
-            var body = await resp.Content.ReadAsStringAsync();
-            _log.LogWarning("ImageKit upload {Status} for {Path}: {Body}", (int)resp.StatusCode, assetPath,
-                body.Length > 200 ? body[..200] : body);
-            return (false, $"{(int)resp.StatusCode}: {(body.Length > 120 ? body[..120] : body)}");
+                using var form = new MultipartFormDataContent
+                {
+                    { new StringContent(sourceUrl), "file" },        // ImageKit fetches the original from this URL
+                    { new StringContent(fileName), "fileName" },
+                    { new StringContent(folder), "folder" },
+                    { new StringContent("false"), "useUniqueFileName" }, // keep the exact name so the path matches
+                    { new StringContent("true"), "overwriteFile" },      // idempotent: re-running updates in place
+                };
+                using var req = new HttpRequestMessage(HttpMethod.Post, UploadUrl) { Content = form };
+                req.Headers.Authorization = auth;
+                using var resp = await _http.SendAsync(req);
+                if (resp.IsSuccessStatusCode) return (true, "ok");
+
+                var body = await resp.Content.ReadAsStringAsync();
+                var status = (int)resp.StatusCode;
+                lastDetail = $"{status}: {(body.Length > 120 ? body[..120] : body)}";
+
+                // 4xx other than 429 (bad path/auth/missing original) won't improve on retry — give up now.
+                var transient = status == 429 || status >= 500;
+                if (!transient || attempt == MaxAttempts)
+                {
+                    _log.LogWarning("ImageKit upload {Status} for {Path}: {Body}", status, assetPath,
+                        body.Length > 200 ? body[..200] : body);
+                    return (false, lastDetail);
+                }
+                await Task.Delay(BackoffMs(resp, attempt));
+            }
+            catch (Exception ex)
+            {
+                lastDetail = ex.Message;
+                if (attempt == MaxAttempts) return (false, lastDetail);
+                await Task.Delay(BackoffMs(null, attempt));
+            }
         }
-        catch (Exception ex) { return (false, ex.Message); }
+        return (false, lastDetail);
+    }
+
+    // Exponential backoff (0.5s, 1s, 2s), capped at 5s; prefers the server's Retry-After header on a 429.
+    private static int BackoffMs(HttpResponseMessage? resp, int attempt)
+    {
+        var retryAfter = resp?.Headers.RetryAfter;
+        double ms = 0;
+        if (retryAfter?.Delta is TimeSpan d) ms = d.TotalMilliseconds;
+        else if (retryAfter?.Date is DateTimeOffset until) ms = Math.Max(0, (until - DateTimeOffset.UtcNow).TotalMilliseconds);
+        if (ms <= 0) ms = 500 * Math.Pow(2, attempt - 1);
+        return (int)Math.Min(5000, ms);
     }
 }

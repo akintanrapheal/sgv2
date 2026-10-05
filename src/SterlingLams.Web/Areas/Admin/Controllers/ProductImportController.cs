@@ -272,7 +272,9 @@ public class ProductImportController : AdminBaseController
         if (!await _imagekit.IsConfiguredAsync())
             return Json(new { ok = false, error = "ImageKit isn't configured. Add the URL endpoint + private key in Admin → Integrations, save, then try again." });
 
-        const int Batch = 15;
+        // Small batch so one HTTP request stays well under any proxy timeout even when several uploads
+        // hit the retry/backoff path (the uploader now retries 429/5xx). The page loops until done.
+        const int Batch = 8;
         var parts = (cursor ?? "pi:0").Split(':');
         var phase = parts.Length > 0 && parts[0].Length > 0 ? parts[0] : "pi";
         var lastId = parts.Length > 1 && int.TryParse(parts[1], out var lv) ? lv : 0;
