@@ -12,7 +12,11 @@
     var subActive = await Settings.GetBoolAsync("subscription.active", false);
     var renewsRaw = await Settings.GetAsync("subscription.renews_on", "");
     var subCurrent = subActive && DateTime.TryParse(renewsRaw, out var rd) && rd.Date >= DateTime.UtcNow.Date;
-    var trialEnabled = !subCurrent && await Settings.GetBoolAsync("general.trial_notice_enabled", true);
+    // Billing is in Zephiel now: a configured connector (enabled + account key) means the stores are on a
+    // paid Zephiel subscription, so the trial reminder is dropped too.
+    var connectorActive = await Settings.GetBoolAsync("zephiel.enabled", false)
+        && !string.IsNullOrWhiteSpace(await Settings.GetAsync("zephiel.account_key", ""));
+    var trialEnabled = !subCurrent && !connectorActive && await Settings.GetBoolAsync("general.trial_notice_enabled", true);
     string? trialMsg = null;
     if (trialEnabled)
     {

@@ -24,8 +24,9 @@
     string Money(decimal a) => "$" + a.ToString("N0");   // prices shown in USD
     string Ngn(decimal a) => "₦" + a.ToString("N0");
 
+    bool connectorActive = ViewBag.ConnectorActive ?? false;  // paid via Zephiel (connector enabled + keyed)
     var renewCurrent = DateTime.TryParse(renewsOn, out var rr) && rr.Date >= DateTime.UtcNow.Date;
-    var activeNow = subscribed && renewCurrent; // active AND within the paid period
+    var activeNow = connectorActive || (subscribed && renewCurrent); // Zephiel connector OR a local paid period
 }
 @Html.AntiForgeryToken()
 
@@ -51,9 +52,9 @@
             <svg class="w-6 h-6 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
             <div class="flex-1">
                 <p class="text-sm font-semibold text-emerald-900">Subscription active — all stores synchronising.</p>
-                <p class="text-xs text-emerald-700 mt-0.5">@(plan == "yearly" ? "Yearly" : "Monthly") plan · @stores.Count store@(stores.Count == 1 ? "" : "s") @(string.IsNullOrWhiteSpace(renewsOn) ? "" : $"· renews {Nice(renewsOn)}")</p>
+                <p class="text-xs text-emerald-700 mt-0.5">@stores.Count store@(stores.Count == 1 ? "" : "s") synchronising · plan &amp; billing managed in <a href="https://www.zephiel.com" target="_blank" class="underline">Zephiel</a></p>
             </div>
-            @if (canManage)
+            @if (canManage && !connectorActive)
             {
                 <form asp-action="Cancel" method="post" onsubmit="return confirm('Cancel the connector subscription? Your stores will return to the trial connector.');">
                     @Html.AntiForgeryToken()
@@ -173,49 +174,7 @@
         </div>
     </div>
 
-    @* ── Plan + Paystack checkout ───────────────────────────────────────── *@
-    @if (stores.Any() && !activeNow)
-    {
-        <form asp-action="Pay" method="post" class="bg-white border border-neutral-200 rounded-sm p-5">
-            @Html.AntiForgeryToken()
-            <h2 class="text-sm font-semibold text-neutral-800 mb-3">Choose a plan</h2>
-            <div class="grid sm:grid-cols-2 gap-3 mb-5">
-                <label class="plan-opt cursor-pointer border rounded-sm px-4 py-3 flex items-start gap-3 border-brand-500" data-plan="monthly">
-                    <input type="radio" name="plan" value="monthly" checked class="mt-1 accent-pink-600" />
-                    <div>
-                        <div class="text-sm font-medium text-neutral-800">Monthly</div>
-                        <div class="text-xs text-neutral-500">@Money(perMonthly) per store, billed monthly</div>
-                    </div>
-                </label>
-                <label class="plan-opt cursor-pointer border rounded-sm px-4 py-3 flex items-start gap-3 border-neutral-200" data-plan="yearly">
-                    <input type="radio" name="plan" value="yearly" class="mt-1 accent-pink-600" />
-                    <div>
-                        <div class="text-sm font-medium text-neutral-800">Yearly <span class="text-[10px] bg-brand-50 text-brand-600 px-1.5 py-0.5 rounded-full ml-1">1 month free</span></div>
-                        <div class="text-xs text-neutral-500">@Money(perYearly) per store, billed yearly</div>
-                    </div>
-                </label>
-            </div>
-
-            <div class="flex flex-wrap items-center justify-between gap-4 border-t border-neutral-100 pt-4">
-                <div class="text-sm text-neutral-600">
-                    <span class="font-medium text-neutral-900">@stores.Count</span> store@(stores.Count == 1 ? "" : "s")
-                    &times; <span id="per-amt">@Money(perMonthly)</span>
-                    = <span class="font-semibold text-neutral-900" id="total-amt">@Money(monthlyTotal)</span><span id="period-lbl" class="text-neutral-400"> / month</span>
-                    <div class="text-xs text-neutral-400 mt-1">Charged in Naira: <span id="ngn-amt" class="font-medium text-neutral-600">@Ngn(monthlyTotalNgn)</span> <span class="text-neutral-400">(at ₦@rate.ToString("N0")/$1)</span></div>
-                </div>
-                <button type="submit" class="px-5 py-2.5 text-sm bg-brand-500 text-white rounded-sm font-medium">
-                    Pay &amp; subscribe &mdash; <span id="btn-amt">@Money(monthlyTotal)</span><span id="btn-period">/month</span>
-                </button>
-            </div>
-            <p class="text-[11px] text-neutral-400 mt-3">
-                Prices are in US dollars; you'll be charged the equivalent in Naira at today's rate on Paystack's secure checkout. Your subscription activates automatically once payment is confirmed.
-                @if (!payConfigured && canManage)
-                {
-                    <span class="text-amber-600">Add your Paystack secret key below to accept payments.</span>
-                }
-            </p>
-        </form>
-    }
+    @* Plans & payment are handled in Zephiel now — no plan picker or Paystack checkout here. *@
 
     @* ── Contact ────────────────────────────────────────────────────────── *@
     <p class="text-xs text-neutral-500 mt-6">
@@ -278,39 +237,6 @@
             </form>
         </details>
 
-        <!-- Payment settings -->
-        <details class="mt-6 bg-white border border-neutral-200 rounded-sm">
-            <summary class="cursor-pointer list-none px-5 py-4 flex items-center justify-between">
-                <span class="text-sm font-semibold text-neutral-800">Payment settings</span>
-                <span class="text-xs @(secretSet ? "text-emerald-600" : "text-amber-600")">@(secretSet ? "Paystack key set" : "Paystack key not set")</span>
-            </summary>
-            <form asp-action="SaveBilling" method="post" class="px-5 pb-5 border-t border-neutral-100 pt-4 space-y-4">
-                @Html.AntiForgeryToken()
-                <div>
-                    <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Developer Paystack secret key</label>
-                    <input type="password" name="paystackSecret" autocomplete="off" placeholder="@(secretSet ? "•••••••••• (leave blank to keep)" : "sk_live_… or sk_test_…")"
-                           class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white w-full font-mono" />
-                    <p class="text-[11px] text-neutral-400 mt-1">The Paystack account that receives subscription payments. Stored encrypted. Use a <strong>test</strong> key first to try the flow.</p>
-                </div>
-                <div class="grid sm:grid-cols-3 gap-4">
-                    <div>
-                        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Price / store / month ($)</label>
-                        <input type="number" step="0.01" min="0" name="priceMonthly" value="@perMonthly.ToString("0.##")" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white w-full" />
-                    </div>
-                    <div>
-                        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Price / store / year ($)</label>
-                        <input type="number" step="0.01" min="0" name="priceYearly" value="@perYearly.ToString("0.##")" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white w-full" />
-                    </div>
-                    <div>
-                        <label class="block text-[10px] text-neutral-400 uppercase tracking-widest mb-1">USD → NGN rate</label>
-                        <input type="number" step="0.01" min="0" name="usdToNgn" value="@rateOverride" placeholder="live (@rate.ToString("N0"))" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white w-full" />
-                    </div>
-                </div>
-                <p class="text-[11px] text-neutral-400">Prices are in USD. Cards are charged in Naira — leave the rate blank to use the live rate (currently ₦@rate.ToString("N0")/$1), or pin your own.</p>
-                <button type="submit" class="px-4 py-2 text-sm bg-neutral-900 text-white rounded-sm hover:bg-neutral-700">Save payment settings</button>
-            </form>
-        </details>
-
         <!-- Backend reminder banner -->
         <details class="mt-4 bg-white border border-neutral-200 rounded-sm">
             <summary class="cursor-pointer list-none px-5 py-4 flex items-center justify-between">
@@ -351,32 +277,6 @@
         });
     });
 
-    // Plan toggle → update USD totals + button + the Naira equivalent.
-    var usd = function (n) { return '$' + Number(n).toLocaleString(); };
-    var ngn = function (n) { return '₦' + Number(n).toLocaleString(); };
-    var monthly = { per: @perMonthly.ToString("0.##"), total: @monthlyTotal.ToString("0.##"), ngn: @monthlyTotalNgn.ToString("0"), period: ' / month', btnPeriod: '/month' };
-    var yearly  = { per: @perYearly.ToString("0.##"),  total: @yearlyTotal.ToString("0.##"),  ngn: @yearlyTotalNgn.ToString("0"),  period: ' / year',  btnPeriod: '/year'  };
-    function set(p) {
-        var d = p === 'yearly' ? yearly : monthly;
-        var perAmt = document.getElementById('per-amt'), totalAmt = document.getElementById('total-amt'),
-            periodLbl = document.getElementById('period-lbl'), btnAmt = document.getElementById('btn-amt'),
-            btnPeriod = document.getElementById('btn-period'), ngnAmt = document.getElementById('ngn-amt');
-        if (!perAmt) return;
-        perAmt.textContent = usd(d.per);
-        totalAmt.textContent = usd(d.total);
-        periodLbl.textContent = d.period;
-        btnAmt.textContent = usd(d.total);
-        btnPeriod.textContent = d.btnPeriod;
-        if (ngnAmt) ngnAmt.textContent = ngn(d.ngn);
-        document.querySelectorAll('.plan-opt').forEach(function (el) {
-            var on = el.getAttribute('data-plan') === p;
-            el.classList.toggle('border-brand-500', on);
-            el.classList.toggle('border-neutral-200', !on);
-        });
-    }
-    document.querySelectorAll('input[name="plan"]').forEach(function (r) {
-        r.addEventListener('change', function () { set(r.value); });
-    });
 })();
 </script>
 
