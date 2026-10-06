@@ -20,7 +20,10 @@
                 @* Lead with WHO is at the till (the cashier closing, or who closed it) — like EposNow —
                    so every store's close screen is identifiable by person, not a generic title. *@
                 <h1 class="text-sm font-semibold uppercase tracking-wide text-neutral-800">@(string.IsNullOrWhiteSpace(Model.StaffName) ? "Sales & Operation" : Model.StaffName)</h1>
-                <p class="text-xs text-neutral-400 truncate">Sales &amp; Operation · @s.Register?.Name · @s.Register?.Store?.Name · @DateTime.UtcNow.ToLocalTime().ToString("dd MMM HH:mm")</p>
+                @* No "Sales & Operation" label here: the heading above already names the person, and the
+                   screen's own title is the report name — repeating it just pushed the till, store and
+                   time along and truncated them on narrow tills. The paper header below still carries it. *@
+                <p class="text-xs text-neutral-400 truncate">@s.Register?.Name · @s.Register?.Store?.Name · @DateTime.UtcNow.ToLocalTime().ToString("dd MMM HH:mm")</p>
             </div>
         </div>
         @if (Model.Closed)
