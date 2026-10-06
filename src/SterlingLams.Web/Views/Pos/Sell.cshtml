@@ -1149,15 +1149,22 @@
         }
         resultsEl.innerHTML = items.map(p => {
             const out = p.stock <= 0;
-            return `<button type="button" class="till-prod text-left bg-white border border-neutral-200 rounded-xl overflow-hidden hover:border-brand-400 hover:shadow-md transition-all ${out ? 'opacity-40' : ''}" data-p='${encodeURIComponent(JSON.stringify(p)).replace(/'/g, '%27')}'>
-                <div class="aspect-square bg-neutral-50 relative">${p.image ? `<img src="${p.image}" class="w-full h-full object-cover">` : '<div class="w-full h-full flex items-center justify-center text-neutral-300"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></div>'}
+            const isSimple = !p.variants || !p.variants.length;   // variable products carry barcodes per-variant in the picker
+            const chevron = '<svg class="w-3.5 h-3.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>';
+            return `<button type="button" class="till-prod text-left bg-white border border-neutral-200 rounded-xl overflow-hidden hover:border-brand-400 hover:shadow-md transition-all" data-p='${encodeURIComponent(JSON.stringify(p)).replace(/'/g, '%27')}'>
+                <div class="aspect-square bg-neutral-50 relative ${out ? 'opacity-40' : ''}">${p.image ? `<img src="${p.image}" class="w-full h-full object-cover">` : '<div class="w-full h-full flex items-center justify-center text-neutral-300"><svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></div>'}
                     ${out ? '<div class="absolute inset-0 bg-white/60 flex items-center justify-center"><span class="text-[10px] text-red-500 font-medium">Out of stock</span></div>' : ''}
                 </div>
                 <div class="p-2.5">
                     ${p.sku ? `<p class="text-[10px] text-neutral-400 font-mono leading-none mb-0.5">${p.sku}</p>` : ''}
-                    <p class="text-xs text-neutral-800 leading-snug line-clamp-2 font-medium">${p.name}</p>
-                    <p class="text-sm text-neutral-700 mt-1 font-semibold">${fmt(p.price)}</p>
-                    <p class="text-[10px] ${out ? 'text-red-400' : 'text-emerald-600'} mt-0.5">${out ? 'Out of stock' : p.stock + ' in stock'}</p>
+                    <p class="text-xs text-neutral-800 leading-snug line-clamp-2 font-medium ${out ? 'opacity-50' : ''}">${p.name}</p>
+                    <div class="flex items-end justify-between gap-1 mt-1">
+                        <p class="text-sm text-neutral-700 font-semibold">${fmt(p.price)}</p>
+                        ${isSimple ? `<span class="prod-stock-toggle flex-shrink-0 -mr-1 -mb-0.5 inline-flex items-center justify-center w-6 h-6 rounded text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600" role="button" tabindex="0" title="Stock at all branches" data-pid="${p.id}">${chevron}</span>` : ''}
+                    </div>
+                    <p class="text-[10px] ${out ? 'text-red-400' : 'text-emerald-600'} mt-0.5">${out ? 'Out of stock here' : p.stock + ' in stock'}</p>
+                    ${isSimple && p.barcode ? `<p class="text-[10px] text-neutral-400 font-mono leading-none mt-0.5 truncate">${p.barcode}</p>` : ''}
+                    ${isSimple ? `<div class="prod-branch hidden mt-1.5 pt-1.5 border-t border-neutral-100 text-xs" data-pid="${p.id}"><span class="text-neutral-400">Loading stock…</span></div>` : ''}
                 </div>
             </button>`;
         }).join('');
@@ -1175,6 +1182,32 @@
                 if ((p.stock || 0) <= 0) return;                   // out of stock: don't add
                 add(p);
             });
+            // Simple-product "stock by branch" chevron (to the right of the price). Tapping it expands a
+            // per-branch panel inline instead of adding to cart — works even when out of stock here, so a
+            // cashier can see which other branch has it. stopPropagation keeps the card's add/long-press off.
+            const toggle = b.querySelector('.prod-stock-toggle');
+            if (toggle) {
+                const stop = e => e.stopPropagation();
+                ['pointerdown', 'pointerup', 'pointermove', 'pointerleave', 'pointercancel'].forEach(ev => toggle.addEventListener(ev, stop));
+                const doToggle = async (e) => {
+                    e.stopPropagation(); e.preventDefault();
+                    const pid = +toggle.dataset.pid;
+                    const panel = b.querySelector('.prod-branch[data-pid="' + pid + '"]');
+                    if (!panel) return;
+                    const chev = toggle.querySelector('svg');
+                    if (!panel.classList.contains('hidden')) {
+                        panel.classList.add('hidden');
+                        if (chev) chev.style.transform = '';
+                        return;
+                    }
+                    panel.classList.remove('hidden');
+                    if (chev) chev.style.transform = 'rotate(180deg)';
+                    const data = await loadVariantStock(pid);
+                    renderSimpleBranchPanel(panel, data);
+                };
+                toggle.addEventListener('click', doToggle);
+                toggle.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') doToggle(e); });
+            }
         });
     }
 
@@ -1257,13 +1290,10 @@
         variantStockCache[productId] = promise;
         return promise;
     }
-    function renderBranchPanel(panel, data, vid) {
-        if (!data || !data.variants) { panel.innerHTML = '<span class="text-neutral-400">Couldn\'t load stock.</span>'; return; }
-        const v = data.variants.find(x => x.variantId === vid);
-        const stores = (v && v.stores) || [];
-        if (!stores.length) { panel.innerHTML = '<span class="text-neutral-400">No branch stock recorded.</span>'; return; }
-        panel.innerHTML = '<p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Stock by branch</p>' + stores.map(s => {
-            const here = data.currentStoreId != null && s.storeId === data.currentStoreId;
+    // Shared "Stock by branch" rows (used by the variant picker and the simple-product card dropdown).
+    function branchStockRows(stores, currentStoreId) {
+        return '<p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Stock by branch</p>' + stores.map(s => {
+            const here = currentStoreId != null && s.storeId === currentStoreId;
             const label = s.store.replace('Sterlin Glams ', '');
             const qtyCls = s.avail <= 0 ? 'text-red-500' : (s.avail <= 3 ? 'text-amber-600' : 'text-emerald-600');
             return `<div class="flex justify-between py-0.5 ${here ? 'font-semibold text-neutral-800' : 'text-neutral-600'}">
@@ -1271,6 +1301,20 @@
                         <span class="${qtyCls}">${s.avail <= 0 ? 'Out' : s.avail + ' in stock'}</span>
                     </div>`;
         }).join('');
+    }
+    function renderBranchPanel(panel, data, vid) {
+        if (!data || !data.variants) { panel.innerHTML = '<span class="text-neutral-400">Couldn\'t load stock.</span>'; return; }
+        const v = data.variants.find(x => x.variantId === vid);
+        const stores = (v && v.stores) || [];
+        if (!stores.length) { panel.innerHTML = '<span class="text-neutral-400">No branch stock recorded.</span>'; return; }
+        panel.innerHTML = branchStockRows(stores, data.currentStoreId);
+    }
+    // Simple product (no variants): the non-variant pool per branch.
+    function renderSimpleBranchPanel(panel, data) {
+        if (!data || !data.simple) { panel.innerHTML = '<span class="text-neutral-400">Couldn\'t load stock.</span>'; return; }
+        const stores = data.simple;
+        if (!stores.length) { panel.innerHTML = '<span class="text-neutral-400">No branch stock recorded.</span>'; return; }
+        panel.innerHTML = branchStockRows(stores, data.currentStoreId);
     }
     function closeVariant() {
         variantModal.classList.add('hidden');
@@ -1306,6 +1350,7 @@
                             ${vimg}
                             <span class="flex flex-col gap-0.5 flex-1 min-w-0">
                                 <span class="text-sm text-neutral-800">${v.name}</span>
+                                ${v.barcode ? `<span class="text-[10px] text-neutral-400 font-mono leading-none truncate">${v.barcode}</span>` : ''}
                                 ${stockLabel}
                             </span>
                             <span class="text-sm font-medium text-neutral-700">${fmt(price)}</span>

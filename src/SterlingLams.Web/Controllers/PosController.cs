@@ -2681,7 +2681,16 @@ public class PosController : Controller
             stores = stores.Select(s => new { storeId = s.Id, store = s.Name, avail = Avail(s.Id, v.Id) }).ToList()
         }).ToList();
 
-        return Json(new { productId, currentStoreId = register?.StoreId, variants = result });
+        // Per-branch stock for a SIMPLE product (no variants) — the non-variant pool at each store.
+        // Lets the till show "stock by branch" for simple products too, like the variant picker does.
+        var simple = stores.Select(s => new
+        {
+            storeId = s.Id,
+            store = s.Name,
+            avail = Math.Max(0, inv.FirstOrDefault(i => i.StoreId == s.Id && i.ProductVariantId == null)?.avail ?? 0)
+        }).ToList();
+
+        return Json(new { productId, currentStoreId = register?.StoreId, variants = result, simple });
     }
 
     public class PosVisibilityRequest { public int ProductId { get; set; } public bool Hidden { get; set; } }
