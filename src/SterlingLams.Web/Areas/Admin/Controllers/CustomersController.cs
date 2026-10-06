@@ -243,6 +243,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 Phone = user.PhoneNumber,
                 JoinedAt = user.CreatedAt,
                 OrderCount = await theirOrders.CountAsync(),
+                // AOV denominator: paid orders that aren't fully refunded (Refunded status), so refunded
+                // and unpaid orders don't understate the average.
+                PaidOrderCount = await theirOrders.CountAsync(o => o.IsPaid && o.Status != OrderStatus.Refunded),
                 // Net of approved refunds (a refunded order stays IsPaid = true — see RefundStatus).
                 TotalSpend = (await theirOrders.Where(o => o.IsPaid).SumAsync(o => (decimal?)o.Total) ?? 0)
                     - (await _db.Refunds
