@@ -251,15 +251,25 @@ public class CashUpService : ICashUpService
                     Math.Round(branchRefund, 2)));
         }
 
+        // A sales channel must never read NEGATIVE: that happens when a channel's refunds exceed its sales
+        // this session (typically refunding a website order sold on an earlier day). Floor each auto-recorded
+        // channel at 0 and carry the excess into one explicit "Refunds (earlier sales)" line, so no sales
+        // row goes negative and the Takings total is unchanged. (Cash is left netted — the drawer section
+        // already shows cash refunds via "Cash withdrawn / refunds".)
+        decimal overflow = 0m;
+        decimal ClampNet(decimal net) { if (net < 0) { overflow += net; return 0m; } return net; }
+
         var tenders = new List<TenderLine>
         {
             new("Cash",            "Cash",                    SumOf("Cash")     - cashRefunds,     C("Cash"), Countable: true),
-            new("Card",            "Card",                    SumOf("Card")     - cardRefunds,     null),
-            new("Transfer",        "Bank transfer",           SumOf("Transfer") - transferRefunds, null),
+            new("Card",            "Card",                    ClampNet(SumOf("Card")     - cardRefunds),     null),
+            new("Transfer",        "Bank transfer",           ClampNet(SumOf("Transfer") - transferRefunds), null),
             new("GiftCard",        "Gift card",               giftCard,                            null),
-            new("WebsiteOnline",   "Website – paid online",   wOnlineGross   - wOnlineRefund,   null),
-            new("WebsiteTransfer", "Website – bank transfer", wTransferGross - wTransferRefund, null),
+            new("WebsiteOnline",   "Website – paid online",   ClampNet(wOnlineGross   - wOnlineRefund),   null),
+            new("WebsiteTransfer", "Website – bank transfer", ClampNet(wTransferGross - wTransferRefund), null),
         };
+        if (overflow < 0)
+            tenders.Add(new("RefundsBeyondSales", "Refunds (earlier sales)", overflow, null));
 
         // Cash drawer / float movements.
         var moves = await _db.CashMovements.Where(m => m.TillSessionId == session.Id)
