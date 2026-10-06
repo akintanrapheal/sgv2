@@ -54,9 +54,9 @@
                 {
                     <tr>
                         <td class="px-5 py-2.5 text-neutral-700">@t.Label</td>
-                        <td class="px-5 py-2.5 text-right">@(Model.Closed ? N(t.Counted ?? 0) : "—")</td>
+                        <td class="px-5 py-2.5 text-right">@(t.Countable ? (Model.Closed ? N(t.Counted ?? 0) : "—") : "—")</td>
                         <td class="px-5 py-2.5 text-right text-neutral-600">@N(t.Expected)</td>
-                        <td class="px-5 py-2.5 text-right @VarCls(t.Variance)">@(Model.Closed ? N(t.Variance) : "—")</td>
+                        <td class="px-5 py-2.5 text-right @(t.Countable ? VarCls(t.Variance) : "")">@(t.Countable ? (Model.Closed ? N(t.Variance) : "—") : "—")</td>
                     </tr>
                 }
                 <tr class="bg-neutral-50 font-medium">
