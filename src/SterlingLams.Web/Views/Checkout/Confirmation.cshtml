@@ -146,6 +146,9 @@
     @{
         var fbContents = Model.Items.Select(i => new { id = i.ProductId.ToString(), quantity = i.Quantity, item_price = i.UnitPrice });
         var fbContentIds = Model.Items.Select(i => i.ProductId.ToString()).Distinct();
+        // Must be byte-for-byte the id the server sends for this same sale (see MetaCapi), or Meta
+        // treats the browser and server copies as two purchases and doubles the reported revenue.
+        var fbEventId = SterlingLams.Web.Services.Marketing.MetaCapi.PurchaseEventId(Model.OrderNumber);
     }
     <script nonce="@Context.Items["csp-nonce"]">
         (function () {
@@ -159,7 +162,7 @@
                     content_ids: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(fbContentIds)),
                     contents: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(fbContents)),
                     num_items: @Model.Items.Sum(i => i.Quantity)
-                });
+                }, { eventID: '@fbEventId' });
                 sessionStorage.setItem(key, '1');
             } catch (e) { /* analytics must never break the confirmation page */ }
         })();

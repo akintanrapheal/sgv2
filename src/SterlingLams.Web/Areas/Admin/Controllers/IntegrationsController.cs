@@ -116,6 +116,9 @@ public class IntegrationsController : AdminBaseController
             MetaEnabled            = await _settings.GetBoolAsync("meta.enabled", false),
             MetaPixelId            = Plain("meta.pixel_id", null),
             MetaDomainVerification = Plain("meta.domain_verification", null),
+            MetaCapiEnabled        = await _settings.GetBoolAsync("meta.capi_enabled", false),
+            MetaCapiTokenSet       = Set("meta.capi_token", null),
+            MetaCapiTestCode       = Plain("meta.capi_test_code", null),
 
             CloudinaryCloudName  = Plain("cloudinary.cloud_name", "Cloudinary:CloudName"),
             CloudinaryApiKeySet  = Set("cloudinary.api_key", "Cloudinary:ApiKey"),
@@ -276,7 +279,19 @@ public class IntegrationsController : AdminBaseController
                     var on = await _settings.GetBoolAsync("meta.enabled", false);
                     var id = await Val("meta.pixel_id", null);
                     if (!on || id.Length == 0) return R(false, "Not set up.", "off");
-                    return R(true, $"Pixel {id} is live on the storefront (client-side — can’t be pinged from here).", "ok");
+
+                    // The pixel itself is client-side and can't be pinged from here, but the Conversions
+                    // API token can be — and a wrong token is otherwise invisible until you notice sales
+                    // going unattributed, so check it whenever one is saved.
+                    var capi = HttpContext.RequestServices
+                        .GetRequiredService<SterlingLams.Web.Services.Marketing.IMetaConversionsApi>();
+                    var capiOn = await _settings.GetBoolAsync("meta.capi_enabled", false);
+                    var tokenSet = (await Val("meta.capi_token", null)).Length > 0;
+                    if (!capiOn && !tokenSet)
+                        return R(true, $"Pixel {id} is live on the storefront (client-side — can’t be pinged from here). Server-side purchases are off.", "ok");
+
+                    var (ok, msg) = await capi.ValidateAsync();
+                    return R(ok, $"Pixel {id} is live on the storefront. {msg}", ok ? "ok" : "warn");
                 }
 
                 case "posthog":
@@ -433,6 +448,9 @@ public class IntegrationsViewModel
     public bool MetaEnabled { get; set; }
     public string MetaPixelId { get; set; } = "";
     public string MetaDomainVerification { get; set; } = "";
+    public bool MetaCapiEnabled { get; set; }
+    public bool MetaCapiTokenSet { get; set; }
+    public string MetaCapiTestCode { get; set; } = "";
     public bool GaServiceAccountSet { get; set; }
 
     // Cloudinary (image hosting). Cloud name is not secret; the API key + secret are.
