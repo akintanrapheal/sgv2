@@ -397,6 +397,33 @@
                     <p class="text-[11px] text-neutral-400 mt-1">From Meta Business Settings → Brand safety → Domains. Added as a meta tag to verify sterlinglams.com.</p>
                 </div>
             </div>
+
+            <div class="pt-4 border-t border-neutral-100 space-y-4">
+                <label class="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" name="meta.capi_enabled" value="true" @(Model.MetaCapiEnabled ? "checked" : "")
+                           class="mt-0.5 rounded border-neutral-300 accent-neutral-900 w-4 h-4" />
+                    <div>
+                        <p class="text-sm font-medium text-neutral-800">Also send purchases from the server (Conversions API)</p>
+                        <p class="text-xs text-neutral-400 mt-0.5">Ad blockers and iPhone tracking protection stop the pixel for a large share of shoppers, so those sales never get credited to the ads that won them. This reports each completed order from our own server as well. Meta counts the sale once, not twice. Needs the token below.</p>
+                    </div>
+                </label>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-neutral-700 mb-1">Conversions API access token @if (Model.MetaCapiTokenSet) {<span class="text-emerald-600 font-normal">· configured</span>}</label>
+                        <input type="password" name="meta.capi_token" value="" autocomplete="off"
+                               placeholder="@(Model.MetaCapiTokenSet ? "•••••••• leave blank to keep" : "EAAG… from Events Manager")"
+                               class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                        <p class="text-[11px] text-neutral-400 mt-1">Events Manager → your dataset → Settings → Conversions API → Generate access token. Stored encrypted; never shown back.</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-neutral-700 mb-1">Test event code <span class="text-neutral-400 font-normal">(leave blank in normal use)</span></label>
+                        <input type="text" name="meta.capi_test_code" value="@Model.MetaCapiTestCode" placeholder="TEST12345" autocomplete="off"
+                               class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                        <p class="text-[11px] text-neutral-400 mt-1">Only while watching Events Manager → Test Events. <b>Clear it afterwards</b> — sales sent with a test code stay in the test stream and aren't counted as real conversions.</p>
+                    </div>
+                </div>
+            </div>
         </section>
 
         @* ─── Cloudinary (image hosting / CDN) ─────────────────────────────────── *@

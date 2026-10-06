@@ -14,6 +14,14 @@
     var store = Model.Register?.Store ?? Model.PickupStore;
     var when = (Model.PackedAt ?? Model.UpdatedAt).ToLocalTime().ToString("dd/MM/yyyy HH:mm");
     var a = Model.DeliveryAddress;
+    // Friendly label for the delivery tier the customer chose (internal keys: Standard/Express/SameDay).
+    string DeliveryLabel() => (Model.DeliveryType ?? "").Trim().ToLowerInvariant() switch
+    {
+        "sameday" or "same-day" or "same day" => "Same-Day Delivery",
+        "express" or "priority"               => "Priority Delivery (within 48 hrs)",
+        "standard"                            => "Standard Delivery (3–5 working days)",
+        _ => string.IsNullOrWhiteSpace(Model.DeliveryType) ? "Delivery" : Model.DeliveryType!
+    };
     string? Barcode(SterlingLams.Web.Models.Domain.OrderItem i) =>
         !string.IsNullOrWhiteSpace(i.ProductVariant?.Barcode) ? i.ProductVariant!.Barcode : i.Product?.Barcode;
 }
@@ -62,11 +70,9 @@
         <hr />
 
         <div class="row"><span class="ordno">@Model.OrderNumber</span><span class="b">@(isPickup ? "PICKUP" : "DELIVERY")</span></div>
+        <div class="row"><span>@(isPickup ? "Collection" : "Delivery option")</span><span class="b">@(isPickup ? "Store pickup" : DeliveryLabel())</span></div>
         <div class="row"><span>Packed</span><span>@when</span></div>
-        @if (!string.IsNullOrWhiteSpace(Model.PackedByName))
-        {
-            <div class="row"><span>By</span><span>@Model.PackedByName</span></div>
-        }
+        <div class="row"><span>Packed &amp; checked by</span><span class="b">@(string.IsNullOrWhiteSpace(Model.PackedByName) ? "—" : Model.PackedByName)</span></div>
         <hr />
 
         <div class="lbl">Items (@Model.Items.Sum(i => i.Quantity))</div>
@@ -108,6 +114,14 @@
 
         <hr />
         <div class="row b"><span>TOTAL</span><span>&#8358;@Model.Total.ToString("N0")</span></div>
+        <hr />
+
+        @* Physical sign-off: whoever packs/checks the order signs here before it leaves the branch. *@
+        <div class="lbl">Order signed off by</div>
+        <div style="margin-top:12px;">______________________________</div>
+        <div style="font-size:10px; font-weight:600;">Name &amp; signature</div>
+        <div style="margin-top:8px;" class="row"><span style="font-size:10px;">Date</span><span style="font-size:10px;">______________</span></div>
+
         <hr />
         <div class="c" style="font-size:11px;">@Model.OrderNumber</div>
     </div>

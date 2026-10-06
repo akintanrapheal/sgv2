@@ -1179,6 +1179,7 @@ public class CheckoutController : Controller
             .Include(o => o.Items)
             .Include(o => o.PickupStore)
             .Include(o => o.DeliveryAddress)
+            .Include(o => o.User)   // email, for the Meta server-side purchase match below
             .FirstOrDefaultAsync(o => o.OrderNumber == orderNumber);
 
         if (order == null) return NotFound();
@@ -1191,7 +1192,31 @@ public class CheckoutController : Controller
         if (!isOwner && !ConfirmationTokenValid(orderNumber, token))
             return NotFound();
 
+        await ReportPurchaseToMetaAsync(order);
         return View(order);
+    }
+
+    /// <summary>
+    /// Reports the sale to Meta from the server, as well as the pixel firing in the page. The browser
+    /// copy is lost to ad blockers and iOS tracking protection on a large share of visitors; this one
+    /// leaves our own machine, so the conversion is still credited to the ad that earned it. Both carry
+    /// the same event id, so Meta counts the sale once however many copies reach it — which also makes
+    /// this safe if the customer refreshes or revisits the page.
+    /// </summary>
+    private async Task ReportPurchaseToMetaAsync(Order order)
+    {
+        try
+        {
+            // Capped well under Meta's own timeout: this runs before the confirmation page is returned,
+            // and someone who has just paid should never be left waiting on an ad platform. Losing the
+            // event costs attribution; delaying the page costs trust.
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted);
+            cts.CancelAfter(TimeSpan.FromSeconds(3));
+            await HttpContext.RequestServices
+                .GetRequiredService<SterlingLams.Web.Services.Marketing.IMetaConversionsApi>()
+                .SendPurchaseAsync(order, HttpContext, cts.Token);
+        }
+        catch { /* analytics must never break the confirmation page */ }
     }
 
     // Cart is persisted in a durable 30-day cookie (see CartStore), not volatile server session,

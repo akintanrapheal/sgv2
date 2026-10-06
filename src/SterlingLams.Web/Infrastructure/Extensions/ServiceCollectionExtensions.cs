@@ -63,6 +63,17 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<IRetainfulClient, RetainfulClient>(c => c.Timeout = TimeSpan.FromSeconds(15));
         services.AddHttpClient<IImageKitUploader, ImageKitUploader>(c => c.Timeout = TimeSpan.FromSeconds(60));
 
+        // Meta Conversions API (server-side Purchase, deduplicated against the browser pixel). Short
+        // timeout on purpose: it is kicked off from the confirmation page, and a slow or unreachable
+        // Graph API must not hold a paying customer on a spinner. A dropped event costs attribution,
+        // never the order.
+        services.AddHttpClient<SterlingLams.Web.Services.Marketing.IMetaConversionsApi,
+                               SterlingLams.Web.Services.Marketing.MetaConversionsApi>(c =>
+        {
+            c.BaseAddress = new Uri("https://graph.facebook.com/");
+            c.Timeout = TimeSpan.FromSeconds(10);
+        });
+
         // PostHog reverse proxy (/ingest → PostHog EU/US). Passes bytes straight through, so
         // decompression is OFF (we forward Content-Encoding as-is) and redirects are not auto-followed.
         // Longer timeout tolerates session-replay uploads.
