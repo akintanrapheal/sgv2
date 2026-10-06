@@ -40,6 +40,11 @@ public class FinanceController : AdminBaseController
     // Revenue is dated by when a sale was PAID — `o.PaidAt ?? o.CreatedAt` throughout, the fallback
     // covering older rows written before PaidAt existed. Keying off CreatedAt booked a bank transfer
     // confirmed on Wednesday against Monday, i.e. money showing up before it actually arrived.
+    //
+    // EndOfDay is the deliberate exception: it reports a branch's work for one day, not when money
+    // landed, so a website order counts on the day it was packed rather than the day it was paid. See
+    // the day rule there. Every other report on this controller stays on the paid date, so a figure
+    // from EndOfDay will not tie back to Sales for the same day — that is expected, not a bug.
 
     public record ChannelPoint(string Channel, decimal Amount, int Count);
     // Order revenue = merchandise (Total minus the delivery charge); Logistics = the in-house
@@ -1225,8 +1230,9 @@ public class FinanceController : AdminBaseController
         var (f, t, fLocal, _) = Range(day.ToString("yyyy-MM-dd"), day.ToString("yyyy-MM-dd"));
         var stores = await _db.Stores.OrderBy(s => s.Name).ToListAsync();
 
-        // Paid orders that day, bucketed to the selling/fulfilling branch (null = online/unassigned).
-        var paidQ = _db.Orders.Where(o => o.IsPaid && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t);
+        // Counter sales count on the day they were paid; website orders on the day they were packed.
+        // See EodDayRule for why, and for the one place that rule is defined.
+        var paidQ = _db.Orders.Where(Services.EodDayRule.InWindow(f, t));
         if (storeId.HasValue) paidQ = paidQ.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
         var orderRows = await paidQ.Select(o => new
         {
@@ -1268,10 +1274,9 @@ public class FinanceController : AdminBaseController
         if (storeId.HasValue) expQ = expQ.Where(e => e.StoreId == storeId);
         var expRows = await expQ.Select(e => new { e.StoreId, e.Amount }).ToListAsync();
 
-        // Line items sold that day, by branch (for items-sold count/amount).
-        var itemQ = _db.OrderItems.Where(i => i.Order.IsPaid
-            && (i.Order.PaidAt ?? i.Order.CreatedAt) >= f && (i.Order.PaidAt ?? i.Order.CreatedAt) < t);
-        if (storeId.HasValue) itemQ = itemQ.Where(i => i.Order.PickupStoreId == storeId || i.Order.FulfillingStoreId == storeId);
+        // Line items for exactly the orders counted above, keyed off the same ids rather than repeating
+        // the day rule — otherwise items-sold could drift out of step with the sales they belong to.
+        var itemQ = _db.OrderItems.Where(i => oids.Contains(i.OrderId));
         var itemRows = await itemQ.Select(i => new
         {
             Sid = i.Order.PickupStoreId ?? i.Order.FulfillingStoreId,
