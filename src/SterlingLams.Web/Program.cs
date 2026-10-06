@@ -679,6 +679,9 @@ try
         SterlingLams.Web.Infrastructure.Img.ConfigureCloudflare(
             await imgSettings.GetBoolAsync("cloudflare.transforms_enabled", false),
             await imgSettings.GetAsync("r2.public_base", ""));
+        SterlingLams.Web.Infrastructure.Img.ConfigurePresized(
+            await imgSettings.GetBoolAsync("images.presized", false),
+            await imgSettings.GetAsync("r2.public_base", ""));
     }
     catch { /* leave delivery on the Cloudinary default if settings aren't readable yet */ }
 }

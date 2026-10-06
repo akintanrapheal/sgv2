@@ -37,12 +37,45 @@ public static partial class Img
     private static volatile bool _cfOn;
     private static volatile string _cfHost = "";   // scheme+authority of the R2 public domain, e.g. https://img.sterlinglams.com
     private static volatile string _r2Base = "";   // full R2 public base, e.g. https://img.sterlinglams.com
-    public static void ConfigureCloudflare(bool enabled, string? r2PublicBase)
+    private static void SetR2Base(string? r2PublicBase)
     {
         var b = (r2PublicBase ?? "").Trim().TrimEnd('/');
+        if (b.Length == 0) return;
         _r2Base = b;
-        _cfHost = b.Length > 0 && Uri.TryCreate(b, UriKind.Absolute, out var u) ? $"{u.Scheme}://{u.Authority}" : "";
+        _cfHost = Uri.TryCreate(b, UriKind.Absolute, out var u) ? $"{u.Scheme}://{u.Authority}" : "";
+    }
+    public static void ConfigureCloudflare(bool enabled, string? r2PublicBase)
+    {
+        SetR2Base(r2PublicBase);
         _cfOn = enabled && _cfHost.Length > 0;
+    }
+
+    // ── Pre-sized R2 renditions (the zero-cost path) ─────────────────────────────────────────────────
+    // When ON, an R2 image is served as a fixed-width WebP file we generated at upload time
+    // (…/<name>_800.webp) — a plain static download, so NO Cloudflare transformation is consumed (no
+    // per-transform cost or quota). Takes priority over Cloudflare transforms. Only rewrites R2 URLs;
+    // non-R2 URLs (e.g. Cloudinary Settings images) fall through to the transform/Cloudinary path. Turn on
+    // ONLY after the renditions exist for every image (upload generates them; the batch backfills the rest),
+    // or a missing …_<w>.webp would 404. OFF by default — dormant until enabled in Admin → Integrations.
+    private static readonly int[] PreWidths = { 160, 400, 800, 1280 }; // must match ImageResizer.Widths
+    private static volatile bool _presizedOn;
+    public static void ConfigurePresized(bool enabled, string? r2PublicBase)
+    {
+        SetR2Base(r2PublicBase);
+        _presizedOn = enabled && _r2Base.Length > 0;
+    }
+
+    // The pre-sized variant URL for an R2 image at a requested width, or null when it's not an R2 image
+    // (so the caller falls through to the transform/Cloudinary path).
+    private static string? Presized(string url, int width)
+    {
+        if (_r2Base.Length == 0 || !url.StartsWith(_r2Base, StringComparison.OrdinalIgnoreCase)) return null;
+        var slash = url.LastIndexOf('/');
+        var dot = url.LastIndexOf('.');
+        if (dot <= slash) return null; // no file extension to swap
+        var w = PreWidths[^1];
+        foreach (var b in PreWidths) if (width <= b) { w = b; break; }
+        return $"{url[..dot]}_{w}.webp";
     }
 
     // Builds a /cdn-cgi/image/ transform URL. R2 objects on the same zone use a relative source (no
@@ -68,7 +101,7 @@ public static partial class Img
     {
         get
         {
-            if (_cfOn && _cfHost.Length > 0) return _cfHost;
+            if ((_presizedOn || _cfOn) && _cfHost.Length > 0) return _cfHost;
             if (_ikOn && _ikEndpoint.Length > 0 &&
                 Uri.TryCreate(_ikEndpoint, UriKind.Absolute, out var u))
                 return $"{u.Scheme}://{u.Authority}";
@@ -101,6 +134,14 @@ public static partial class Img
     public static string? Cld(string? url, int width, int? height = null, bool fill = true)
     {
         if (string.IsNullOrEmpty(url)) return url;
+
+        // Pre-sized static R2 renditions first (zero transformation cost). Returns null for non-R2 URLs,
+        // which then fall through to the Cloudflare/Cloudinary paths below.
+        if (_presizedOn)
+        {
+            var pre = Presized(url, width);
+            if (pre != null) return pre;
+        }
 
         // Cloudflare transforms take priority and handle non-Cloudinary (R2) URLs too, so run this before
         // the Cloudinary-specific marker check below.

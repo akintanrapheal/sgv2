@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
         // Image storage: Cloudflare R2 (S3-compatible) with a Cloudinary/local fallback, behind one service
         // every upload path uses. R2 uses IHttpClientFactory for the Cloudinary→R2 migration (fetch-by-URL).
         services.AddScoped<IR2Storage, R2Storage>();
+        services.AddScoped<IImageResizer, ImageResizer>();
         services.AddScoped<IImageStorageService, ImageStorageService>();
         services.AddScoped<ITransferWorkflowService, TransferWorkflowService>();
 
