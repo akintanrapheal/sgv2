@@ -504,32 +504,29 @@ public class CheckoutController : Controller
 
         if (user == null)
         {
-            // Guest checkout: require contact fields
+            // Guest checkout: email is always required (for the confirmation + receipt).
             if (string.IsNullOrWhiteSpace(vm.GuestEmail))
-            {
                 ModelState.AddModelError("GuestEmail", "Please enter your email address.");
-                vm.Cart = cart;
-                vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
-                    .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
-                return await RedisplayCheckoutAsync(vm);
-            }
-
-            // Resolve the guest's account by email — but never silently attach this order to a real
-            // registered account (that would leak orders into a stranger's history). Reuse an existing
-            // *guest* shell for the same email (no account sprawl); create one only if none exists.
-            var existing = await _userManager.FindByEmailAsync(vm.GuestEmail);
-            var isCareEmail = CustomerCareEmails.Contains(vm.GuestEmail.Trim());
-            if (existing != null && !existing.IsGuest && !isCareEmail)
+            // Store pickup also needs a name and phone so the branch can reach the customer at collection.
+            if (vm.FulfillmentType == FulfillmentChoice.StorePickup)
             {
-                ModelState.AddModelError("GuestEmail",
-                    "An account already exists with this email. Please sign in to place your order (or reset your password if you've forgotten it).");
+                if (string.IsNullOrWhiteSpace(vm.GuestName))
+                    ModelState.AddModelError("GuestName", "Please enter your name for the pickup.");
+                if (string.IsNullOrWhiteSpace(vm.GuestPhone))
+                    ModelState.AddModelError("GuestPhone", "Please enter a phone number for the pickup.");
+            }
+            if (!ModelState.IsValid)
+            {
                 vm.Cart = cart;
                 vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
                     .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
                 return await RedisplayCheckoutAsync(vm);
             }
 
-            user = existing;
+            // A returning customer may check out as a guest with the email on their existing account —
+            // attach the order to that account rather than forcing a sign-in (guest confirmation is
+            // token-based; no sign-in happens). A new guest shell is created only if no account exists.
+            user = await _userManager.FindByEmailAsync(vm.GuestEmail);
             if (user == null)
             {
                 var guestName = vm.GuestName?.Trim() ?? "Guest";
@@ -567,6 +564,30 @@ public class CheckoutController : Controller
                 vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
                     .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
                 return await RedisplayCheckoutAsync(vm);
+            }
+
+            // Name, phone and email are mandatory for pickup so the branch can reach the customer at
+            // collection. For a signed-in buyer these come from the profile; the GuestPhone field is also
+            // shown so a customer with no phone on file can supply one (which we then save to the account).
+            var pPhone = !string.IsNullOrWhiteSpace(vm.GuestPhone) ? vm.GuestPhone!.Trim() : user.PhoneNumber;
+            if (string.IsNullOrWhiteSpace(user.FullName))
+                ModelState.AddModelError("GuestName", "Please enter a name for the pickup.");
+            if (string.IsNullOrWhiteSpace(pPhone))
+                ModelState.AddModelError("GuestPhone", "Please enter a phone number for the pickup.");
+            if (string.IsNullOrWhiteSpace(user.Email))
+                ModelState.AddModelError("GuestEmail", "Please enter an email for the pickup.");
+            if (!ModelState.IsValid)
+            {
+                vm.Cart = cart;
+                vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
+                    .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
+                return await RedisplayCheckoutAsync(vm);
+            }
+            // Backfill a phone the account was missing, so staff + the receipt have it next time.
+            if (string.IsNullOrWhiteSpace(user.PhoneNumber) && !string.IsNullOrWhiteSpace(pPhone))
+            {
+                user.PhoneNumber = pPhone;
+                await _userManager.UpdateAsync(user);
             }
         }
 
