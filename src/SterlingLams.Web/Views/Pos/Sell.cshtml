@@ -1988,9 +1988,9 @@
                 const who = o.customerName ? ' · ' + o.customerName : '';
                 const by = o.cashierName ? ' · by ' + o.cashierName : '';
                 return `<div data-receipt="${o.id}" title="View / print receipt"
-                     class="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-neutral-50 transition-colors">
+                     class="px-3 py-2.5 flex items-center gap-2 cursor-pointer hover:bg-neutral-50 transition-colors ${o.voided ? 'opacity-60' : ''}">
                     <div class="flex-1 min-w-0">
-                        <p class="font-medium text-neutral-800 truncate">${o.orderNumber}</p>
+                        <p class="font-medium text-neutral-800 truncate">${o.orderNumber}${o.voided ? ' <span class="text-[10px] font-semibold text-red-600 border border-red-200 rounded px-1 align-middle">VOIDED</span>' : ''}</p>
                         <p class="text-[11px] text-neutral-400 truncate">${when} · ${o.itemCount} item${o.itemCount === 1 ? '' : 's'} · ${o.method}${who}${by}</p>
                     </div>
                     <span class="font-semibold text-neutral-800 flex-shrink-0">${fmt(o.total)}</span>
@@ -1998,14 +1998,18 @@
                        class="flex-shrink-0 text-neutral-400 hover:text-brand-500 transition-colors p-1">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
                     </a>
-                    ${o.canFix ? `<button type="button" data-fixpay="${o.id}" data-method="${o.method || ''}" data-num="${o.orderNumber}" title="Correct payment method (manager)"
+                    ${!o.voided && o.canFix ? `<button type="button" data-fixpay="${o.id}" data-method="${o.method || ''}" data-num="${o.orderNumber}" title="Correct payment method (manager)"
                             class="flex-shrink-0 text-neutral-400 hover:text-brand-500 transition-colors p-1">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/></svg>
                     </button>` : ''}
-                    <button type="button" data-refund="${o.orderNumber}" title="Refund this sale"
+                    ${!o.voided && o.canVoid ? `<button type="button" data-void="${o.id}" data-num="${o.orderNumber}" title="Void this sale (manager)"
+                            class="flex-shrink-0 text-neutral-400 hover:text-red-600 transition-colors p-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M18.364 5.636L5.636 18.364M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </button>` : ''}
+                    ${!o.voided ? `<button type="button" data-refund="${o.orderNumber}" title="Refund this sale"
                             class="flex-shrink-0 text-neutral-400 hover:text-red-500 transition-colors p-1">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 10h10a4 4 0 014 4v1m-4-9l-4 4 4 4"/></svg>
-                    </button>
+                    </button>` : ''}
                 </div>`;
             }).join('');
             // Click anywhere on a row (except the action buttons) to view/print the receipt.
@@ -2018,7 +2022,48 @@
                 b.addEventListener('click', () => window.tillOpenRefund?.(b.dataset.refund)));
             el.querySelectorAll('[data-fixpay]').forEach(b =>
                 b.addEventListener('click', () => openFixPay(b.dataset.fixpay, b.dataset.method, b.dataset.num)));
+            el.querySelectorAll('[data-void]').forEach(b =>
+                b.addEventListener('click', () => openVoid(b.dataset.void, b.dataset.num)));
         } catch { el.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">Could not load orders.</p>'; }
+    }
+
+    // Void a sale (manager PIN + reason): reverses the sale, returns stock, drops it from takings.
+    function openVoid(id, num) {
+        const ov = document.createElement('div');
+        ov.className = 'fixed inset-0 z-[90] bg-black/40 flex items-center justify-center p-4';
+        ov.innerHTML = `
+          <div class="bg-white rounded-xl w-full max-w-sm p-5 space-y-3" id="vd-card">
+            <h3 class="text-base font-semibold text-neutral-900">Void sale</h3>
+            <p class="text-xs text-neutral-500">${num || ''} — cancels the sale, returns its stock to inventory and removes it from today's takings. Requires a manager PIN. Re-ring it correctly afterwards.</p>
+            <input id="vd-reason" type="text" placeholder="Reason (e.g. wrong payment method, keyed in error)" class="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
+            <input id="vd-pin" type="password" inputmode="numeric" autocomplete="off" placeholder="Manager PIN" class="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-500" />
+            <p id="vd-msg" class="text-xs text-center h-4 text-red-500"></p>
+            <div class="flex gap-2">
+              <button type="button" id="vd-cancel" class="flex-1 border border-neutral-200 rounded-lg py-2.5 text-sm">Cancel</button>
+              <button type="button" id="vd-ok" class="flex-1 bg-red-600 text-white rounded-lg py-2.5 text-sm font-medium hover:bg-red-700">Void sale</button>
+            </div>
+          </div>`;
+        document.body.appendChild(ov);
+        const close = () => ov.remove();
+        ov.addEventListener('click', e => { if (!e.target.closest('#vd-card')) close(); });
+        ov.querySelector('#vd-cancel').addEventListener('click', close);
+        ov.querySelector('#vd-ok').addEventListener('click', async () => {
+            const reason = ov.querySelector('#vd-reason').value.trim();
+            const pin = ov.querySelector('#vd-pin').value.trim();
+            const msg = ov.querySelector('#vd-msg');
+            if (!reason) { msg.textContent = 'Enter a reason.'; return; }
+            if (!pin) { msg.textContent = 'Enter the manager PIN.'; return; }
+            try {
+                const res = await fetch('/Pos/VoidSale', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token ? token.value : '' },
+                    body: JSON.stringify({ orderId: +id, reason, pin })
+                });
+                const d = await res.json();
+                if (d.success) { close(); showError('Sale voided — stock returned.', false); loadOrders(); }
+                else msg.textContent = d.message || 'Could not void it.';
+            } catch { msg.textContent = 'Request failed.'; }
+        });
     }
 
     // Correct a sale's payment method (manager PIN + reason). Current-session sales only.

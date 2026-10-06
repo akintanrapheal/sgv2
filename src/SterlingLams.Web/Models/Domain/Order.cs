@@ -65,6 +65,12 @@ public class Order
     public int? TillSessionId { get; set; }
     public TillSession? TillSession { get; set; }
 
+    /// <summary>Set when a POS sale is VOIDED (manager-approved cancellation of a same-session mistake):
+    /// its stock is returned and it's excluded from takings/EOD. Null = live sale.</summary>
+    public DateTime? VoidedAt { get; set; }
+    public string? VoidedByName { get; set; }
+    public string? VoidReason { get; set; }
+
     public int? PickupStoreId { get; set; }
     public Store? PickupStore { get; set; }
 

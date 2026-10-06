@@ -82,8 +82,9 @@ public class CashUpService : ICashUpService
         var storeId = session.Register.StoreId;
         var winEnd = session.ClosedAt ?? DateTime.UtcNow;
 
-        // POS sales rung up on this session, with their items + category for the breakdowns.
-        var sales = await _db.Orders.Where(o => o.TillSessionId == session.Id)
+        // POS sales rung up on this session, with their items + category for the breakdowns. Voided sales
+        // are excluded — a void returns the stock and removes the sale from takings.
+        var sales = await _db.Orders.Where(o => o.TillSessionId == session.Id && o.VoidedAt == null)
             .Include(o => o.Items).ThenInclude(i => i.Product).ThenInclude(p => p.Category)
             .ToListAsync();
         var saleIds = sales.Select(s => s.Id).ToList();

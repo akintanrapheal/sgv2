@@ -9,7 +9,8 @@ public enum StockMovementType
     Transfer,   // inter-branch movement (out of one, into another)
     Return,     // customer return (stock in)
     Damage,     // written off as damaged (stock out)
-    Loss        // shrinkage / theft / lost (stock out)
+    Loss,       // shrinkage / theft / lost (stock out)
+    Void        // a voided POS sale — the sold stock returned (stock in)
 }
 
 /// <summary>
