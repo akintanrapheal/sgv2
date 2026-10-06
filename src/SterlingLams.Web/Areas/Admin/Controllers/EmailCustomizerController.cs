@@ -35,7 +35,7 @@ public class EmailCustomizerController : AdminBaseController
         // Sent to a NEW staff member the admin adds — a link to set their own password. Placeholder: {name}.
         ("staff_invite",    "Staff invite — set password", "You've been added to Sterlin Glams — set your password", "You've been given backend access to Sterlin Glams. Click below to set your password, then sign in with your email."),
         // Branch/staff emails — sent to a store's email (not the customer). Placeholders: {branch}, {order}.
-        ("branch_transfer_request", "Transfer request (to branch)", "Send stock to {branch} — order {order}", "Please pack and send the stock below to {branch} so order {order} can be fulfilled."),
+        ("branch_transfer_request", "Send to merge (to branch)", "Send to merge: pack items for {branch} — order {order}", "Please pack and send the items below to {branch} to be merged and complete order {order}."),
         ("branch_dispatch",         "Order dispatch (to branch)",   "Dispatch order {order}",                 "All stock for order {order} is now at your branch — please pack and fulfil it."),
         ("returns_to_restock",      "Returns to restock (to branch)", "Returned items to restock at {branch}", "A refund has been approved and returned items are waiting at {branch}. Check each one in Inventory → Returns to restock and put it back on the shelf or write it off as damaged."),
         // Internal alert to the shop when an online order is placed. Placeholders: {order}, {date}, {name}.
