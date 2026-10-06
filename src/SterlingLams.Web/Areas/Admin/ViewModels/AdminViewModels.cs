@@ -134,6 +134,11 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public bool CanRefund { get; set; }
         public decimal RefundedTotal { get; set; }
 
+        // ── Replacements (send a new item, bad one goes back to Inventory) ────
+        public List<OrderReplacement> Replacements { get; set; } = new();
+        /// <summary>Paid online order, not fully refunded, with a branch to move stock → a replacement can be raised.</summary>
+        public bool CanReplace { get; set; }
+
         /// <summary>Order timeline notes (system + staff), newest first.</summary>
         public List<OrderNote> Notes { get; set; } = new();
 

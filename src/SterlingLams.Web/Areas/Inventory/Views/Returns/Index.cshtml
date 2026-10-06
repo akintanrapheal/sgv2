@@ -18,13 +18,13 @@
 @if (TempData["Error"] != null)
 { <div class="mb-4 max-w-3xl rounded-md bg-rose-50 border border-rose-200 text-rose-700 text-sm px-4 py-2.5">@TempData["Error"]</div> }
 
-@if (!Model.Pending.Any())
+@if (!Model.Pending.Any() && !Model.PendingReplacements.Any())
 {
     <div class="bg-white border border-neutral-200 rounded-md p-10 text-center text-sm text-neutral-400 max-w-3xl">
-        Nothing waiting. Approved refunds with items to return will appear here.
+        Nothing waiting. Returned items from approved refunds and replacements will appear here.
     </div>
 }
-else
+@if (Model.Pending.Any())
 {
     <div class="space-y-3 max-w-3xl">
         @foreach (var r in Model.Pending)
@@ -47,6 +47,53 @@ else
                     <span class="text-sm text-blue-600 font-medium whitespace-nowrap">Review &amp; decide →</span>
                 </div>
             </a>
+        }
+    </div>
+}
+
+@* ── Pending replacements: the returned (bad) item, decided inline ── *@
+@if (Model.PendingReplacements.Any())
+{
+    <div class="space-y-3 max-w-3xl mt-3">
+        @foreach (var r in Model.PendingReplacements)
+        {
+            <div class="bg-white border border-neutral-200 rounded-md p-4">
+                <div class="flex items-center gap-2 flex-wrap mb-1">
+                    <span class="font-mono text-[11px] text-neutral-400">@r.Number</span>
+                    <a asp-area="Admin" asp-controller="Orders" asp-action="Detail" asp-route-id="@r.OrderId"
+                       class="text-sm font-medium text-blue-600 hover:underline">Order @r.Order</a>
+                    <span class="text-[11px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">Replacement</span>
+                </div>
+                <div class="text-xs text-neutral-500 mb-3">
+                    to Sterlin Glams @r.StoreName.Replace("Sterlin Glams ", "")
+                    · sent out <span class="text-neutral-700">@r.ReplacementItem ×@r.ReplacementQty</span>
+                    · @r.CreatedAt.ToLocalTime().ToString("dd MMM, HH:mm")
+                    @if (!string.IsNullOrWhiteSpace(r.Reason) && r.Reason != "—") { <text>· @r.Reason</text> }
+                </div>
+                <form asp-area="Inventory" asp-controller="Returns" asp-action="ResolveReplacement" asp-route-id="@r.Id" method="post">
+                    @Html.AntiForgeryToken()
+                    <div class="flex flex-wrap items-end justify-between gap-3 border-t border-neutral-100 pt-3">
+                        <div class="text-sm text-neutral-700">
+                            Returned: <span class="font-medium">@r.ReturnedItem ×@r.ReturnedQty</span>
+                        </div>
+                        <div class="flex items-end gap-2 flex-wrap">
+                            <div>
+                                <label class="block text-[11px] text-neutral-500 mb-1">Put back</label>
+                                <input type="number" name="restockQty" value="0" min="0" max="@r.ReturnedQty"
+                                       class="w-20 border border-neutral-200 rounded px-2 py-1.5 text-sm text-right focus:outline-none focus:border-neutral-400" />
+                            </div>
+                            <div>
+                                <label class="block text-[11px] text-neutral-500 mb-1">Reason (for any not restocked)</label>
+                                <select name="reason" class="border border-neutral-200 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-neutral-400">
+                                    @foreach (var rz in reasons) { <option value="@rz">@rz</option> }
+                                </select>
+                            </div>
+                            <button type="submit" class="px-4 py-1.5 bg-neutral-900 text-white text-sm rounded hover:bg-black transition-colors">Resolve</button>
+                        </div>
+                    </div>
+                    <p class="text-[11px] text-neutral-400 mt-1.5">Put back the whole quantity if it's resellable, or 0 to write it all off as damaged (shows in Shrinkage).</p>
+                </form>
+            </div>
         }
     </div>
 }
@@ -81,6 +128,39 @@ else
                                 </span>
                             </div>
                         }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@* ── History: resolved replacements ── *@
+@if (Model.ResolvedReplacements.Any())
+{
+    <div class="mt-10 max-w-3xl">
+        <h2 class="text-sm font-semibold text-neutral-700 mb-3">Recently resolved replacements</h2>
+        <div class="space-y-3">
+            @foreach (var r in Model.ResolvedReplacements)
+            {
+                <div class="bg-white border border-neutral-200 rounded-md p-4">
+                    <div class="flex items-center justify-between gap-2 flex-wrap mb-2">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-mono text-[11px] text-neutral-400">@r.Number</span>
+                            <a asp-area="Admin" asp-controller="Orders" asp-action="Detail" asp-route-id="@r.OrderId"
+                               class="text-sm font-medium text-blue-600 hover:underline">Order @r.Order</a>
+                            <span class="text-[11px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">Replacement</span>
+                        </div>
+                        <div class="text-xs text-neutral-400">
+                            @r.StoreName@if (r.DecidedAt.HasValue) { <text> · @r.DecidedAt.Value.ToLocalTime().ToString("dd MMM, HH:mm")</text> }
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap items-center justify-between gap-2 py-1 text-sm border-t border-neutral-100 pt-2">
+                        <span class="text-neutral-700">@r.Qty× @r.ReturnedItem</span>
+                        <span class="flex items-center gap-2 text-xs">
+                            @if (r.Restocked > 0) { <span class="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">@r.Restocked restocked</span> }
+                            @if (r.WrittenOff > 0) { <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700">@r.WrittenOff written off@(string.IsNullOrWhiteSpace(r.Note) ? "" : $" · {r.Note}")</span> }
+                        </span>
                     </div>
                 </div>
             }

@@ -140,10 +140,14 @@ public abstract class InventoryAreaController : Controller
         var db = HttpContext.RequestServices.GetRequiredService<ApplicationDbContext>();
         ViewData["PendingTransfersCount"] = await Infrastructure.DbRead.RetryAsync(() => db.StockTransfers.CountAsync(
             t => t.Status == TransferStatus.PendingApproval || t.Status == TransferStatus.InTransit));
-        // Approved refunds whose returned items still need a restock / write-off decision (Step 2).
-        ViewData["PendingReturnsCount"] = await Infrastructure.DbRead.RetryAsync(() => db.Refunds.CountAsync(
+        // Approved refunds whose returned items still need a restock / write-off decision (Step 2),
+        // plus replacements whose returned (bad) item still needs the same decision.
+        var pendingRefundReturns = await Infrastructure.DbRead.RetryAsync(() => db.Refunds.CountAsync(
             r => r.Status == RefundStatus.Approved && r.RestockRequested
                 && r.Items.Any(i => i.RestockDecision == RestockDecision.Pending)));
+        var pendingReplacementReturns = await Infrastructure.DbRead.RetryAsync(() => db.OrderReplacements.CountAsync(
+            r => r.RestockDecision == RestockDecision.Pending));
+        ViewData["PendingReturnsCount"] = pendingRefundReturns + pendingReplacementReturns;
         // Items whose price changed and whose tag needs reprinting.
         ViewData["PendingReprintsCount"] = await Infrastructure.DbRead.RetryAsync(() => db.LabelReprintQueue.CountAsync(q => q.Status == ReprintStatus.Pending));
 

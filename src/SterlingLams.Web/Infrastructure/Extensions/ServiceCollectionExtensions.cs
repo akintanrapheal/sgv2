@@ -32,6 +32,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ILoyaltyService, LoyaltyService>();
         services.AddScoped<IGiftCardService, GiftCardService>();
         services.AddScoped<IRefundApprovalService, RefundApprovalService>();
+        services.AddScoped<IReplacementService, ReplacementService>();
         services.AddScoped<IStorefrontCache, StorefrontCache>();
 
         // ─── Logistics (Lagos delivery) integration — order push + delivered callback ──

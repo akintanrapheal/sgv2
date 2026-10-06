@@ -201,6 +201,153 @@
                 </form>
             </div>
         }
+
+        <!-- Replacements -->
+        @if (Model.Replacements.Any())
+        {
+            <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
+                <h2 class="text-sm font-medium mb-3">Replacements</h2>
+                <div class="space-y-2">
+                    @foreach (var rp in Model.Replacements)
+                    {
+                        var disp = rp.RestockDecision == SterlingLams.Web.Models.Domain.RestockDecision.Pending
+                            ? "<span class=\"text-amber-600\">returned item pending Inventory review</span>"
+                            : rp.RestockDecision == SterlingLams.Web.Models.Domain.RestockDecision.Restocked
+                                ? $"<span class=\"text-emerald-600\">{rp.RestockedQuantity} restocked</span>"
+                                : "<span class=\"text-rose-600\">written off (damaged)</span>";
+                        <div class="border border-neutral-100 rounded-sm px-3 py-2 text-xs">
+                            <div class="flex items-center justify-between">
+                                <span class="font-mono text-neutral-700">@rp.ReplacementNumber</span>
+                                <span class="text-[11px] text-neutral-400">@rp.CreatedAt.ToLocalTime().ToString("dd MMM yy HH:mm")</span>
+                            </div>
+                            <div class="text-neutral-600 mt-0.5">
+                                <span class="text-rose-600">@rp.OldProductName@(rp.OldVariantName != null ? $" ({rp.OldVariantName})" : "") ×@rp.OldQuantity</span>
+                                <span class="text-neutral-400">→</span>
+                                <span class="text-emerald-700">@rp.NewProductName@(rp.NewVariantName != null ? $" ({rp.NewVariantName})" : "") ×@rp.NewQuantity</span>
+                            </div>
+                            <div class="text-[11px] text-neutral-400 mt-0.5">
+                                @Html.Raw(disp)
+                                @if (!string.IsNullOrWhiteSpace(rp.Reason)) { <text>· @rp.Reason</text> }
+                                @if (rp.BalancePaid > 0) { <text>· balance paid ₦@rp.BalancePaid.ToString("N0")</text> }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Replace an item -->
+        @if (Model.CanReplace)
+        {
+            <div class="bg-white rounded-sm border border-neutral-100">
+                <div class="px-6 py-4 border-b border-neutral-100">
+                    <h2 class="text-sm font-medium">Replace an item</h2>
+                    <p class="text-[11px] text-neutral-400 mt-0.5">Send a different item for one that can't be kept (tarnished / faulty). The replacement's stock is deducted now; the returned item goes to Inventory → Returns for a put-back / write-off decision. No money is refunded.</p>
+                </div>
+                <form asp-area="Admin" asp-controller="Orders" asp-action="ReplaceItem"
+                      asp-route-id="@Model.Order.Id" method="post" id="replace-form"
+                      onsubmit="return replaceSubmit();">
+                    @Html.AntiForgeryToken()
+                    <div class="px-6 py-4 space-y-3">
+                        <div>
+                            <label class="block text-[11px] text-neutral-500 mb-1">Item being replaced</label>
+                            <select name="orderItemId" id="rep-olditem" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-neutral-400">
+                                @foreach (var item in Model.Order.Items)
+                                {
+                                    <option value="@item.Id" data-max="@item.Quantity">@item.ProductName@(string.IsNullOrEmpty(item.VariantName) ? "" : $" — {item.VariantName}") (×@item.Quantity)</option>
+                                }
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] text-neutral-500 mb-1">Replacement item (search by name, SKU or barcode)</label>
+                            <input type="text" id="rep-search" autocomplete="off" placeholder="Start typing…"
+                                   class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-neutral-400" />
+                            <div id="rep-results" class="hidden mt-1 border border-neutral-200 rounded-sm max-h-56 overflow-auto bg-white"></div>
+                            <div id="rep-chosen" class="hidden mt-2 text-xs bg-emerald-50 border border-emerald-100 rounded-sm px-3 py-2"></div>
+                            <input type="hidden" name="newProductId" id="rep-pid" value="0" />
+                            <input type="hidden" name="newVariantId" id="rep-vid" value="0" />
+                        </div>
+                        <div class="flex gap-2">
+                            <div class="w-24">
+                                <label class="block text-[11px] text-neutral-500 mb-1">Qty</label>
+                                <input type="number" name="newQty" id="rep-qty" value="1" min="1"
+                                       class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs text-right focus:outline-none focus:border-neutral-400" />
+                            </div>
+                            <div class="flex-1">
+                                <label class="block text-[11px] text-neutral-500 mb-1">Balance paid (if dearer)</label>
+                                <input type="number" name="balancePaid" value="0" min="0" step="0.01"
+                                       class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs text-right focus:outline-none focus:border-neutral-400" />
+                            </div>
+                        </div>
+                        <input name="balanceNote" type="text" placeholder="Balance note — how it was collected (optional)"
+                               class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-neutral-400" />
+                        <input name="reason" type="text" placeholder="Reason — why the item can't be kept (optional)"
+                               class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-neutral-400" />
+                        <button type="submit"
+                                class="w-full py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-black transition-colors">
+                            Raise replacement
+                        </button>
+                    </div>
+                </form>
+            </div>
+            <script>
+                (function () {
+                    var searchUrl = '@Url.Action("ReplacementSearch", "Orders", new { area = "Admin", id = Model.Order.Id })';
+                    var box = document.getElementById('rep-search');
+                    var results = document.getElementById('rep-results');
+                    var chosen = document.getElementById('rep-chosen');
+                    var pidEl = document.getElementById('rep-pid');
+                    var vidEl = document.getElementById('rep-vid');
+                    var qtyEl = document.getElementById('rep-qty');
+                    var chosenStock = 0;
+                    function esc(s) { return (s == null ? '' : String(s)).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+                    function pick(pid, vid, label, stock) {
+                        pidEl.value = pid; vidEl.value = vid || 0; chosenStock = stock;
+                        chosen.innerHTML = '<div class="flex items-center justify-between"><span>' + esc(label) + '</span><span class="text-neutral-500">' + stock + ' in stock here</span></div>';
+                        chosen.classList.remove('hidden');
+                        results.classList.add('hidden'); results.innerHTML = '';
+                        box.value = '';
+                        qtyEl.max = Math.max(1, stock);
+                        if (+qtyEl.value > stock) qtyEl.value = Math.max(1, stock);
+                    }
+                    var t = null;
+                    box.addEventListener('input', function () {
+                        clearTimeout(t);
+                        var q = box.value.trim();
+                        if (q.length < 2) { results.classList.add('hidden'); results.innerHTML = ''; return; }
+                        t = setTimeout(function () {
+                            fetch(searchUrl + '&q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (items) {
+                                if (!items.length) { results.innerHTML = '<p class="px-3 py-2 text-xs text-neutral-400">No products found.</p>'; results.classList.remove('hidden'); return; }
+                                var html = '';
+                                items.forEach(function (p) {
+                                    if (p.isVariable && p.variants && p.variants.length) {
+                                        html += '<div class="px-3 pt-2 pb-1 text-[11px] text-neutral-500 font-medium">' + esc(p.name) + (p.sku ? ' · ' + esc(p.sku) : '') + '</div>';
+                                        p.variants.forEach(function (v) {
+                                            var out = v.stock <= 0;
+                                            html += '<button type="button" data-pid="' + p.id + '" data-vid="' + v.id + '" data-label="' + esc(p.name + ' — ' + v.name) + '" data-stock="' + v.stock + '" ' + (out ? 'disabled' : '') + ' class="rep-opt w-full flex items-center justify-between px-5 py-1.5 text-left text-xs hover:bg-neutral-50 ' + (out ? 'opacity-40 cursor-not-allowed' : '') + '"><span>' + esc(v.name) + '</span><span class="' + (out ? 'text-rose-500' : 'text-neutral-400') + '">' + (out ? 'Out of stock' : v.stock + ' here') + '</span></button>';
+                                        });
+                                    } else {
+                                        var out = p.stock <= 0;
+                                        html += '<button type="button" data-pid="' + p.id + '" data-vid="0" data-label="' + esc(p.name) + '" data-stock="' + p.stock + '" ' + (out ? 'disabled' : '') + ' class="rep-opt w-full flex items-center justify-between px-3 py-1.5 text-left text-xs hover:bg-neutral-50 ' + (out ? 'opacity-40 cursor-not-allowed' : '') + '"><span>' + esc(p.name) + (p.sku ? ' · ' + esc(p.sku) : '') + '</span><span class="' + (out ? 'text-rose-500' : 'text-neutral-400') + '">' + (out ? 'Out of stock' : p.stock + ' here') + '</span></button>';
+                                    }
+                                });
+                                results.innerHTML = html;
+                                results.classList.remove('hidden');
+                                results.querySelectorAll('.rep-opt').forEach(function (b) {
+                                    b.addEventListener('click', function () { pick(+b.dataset.pid, +b.dataset.vid, b.dataset.label, +b.dataset.stock); });
+                                });
+                            }).catch(function () { results.innerHTML = '<p class="px-3 py-2 text-xs text-rose-500">Search failed.</p>'; results.classList.remove('hidden'); });
+                        }, 250);
+                    });
+                    window.replaceSubmit = function () {
+                        if (+pidEl.value <= 0) { alert('Pick a replacement item first.'); return false; }
+                        if (+qtyEl.value <= 0) { alert('Enter a quantity.'); return false; }
+                        if (chosenStock > 0 && +qtyEl.value > chosenStock) { alert('Only ' + chosenStock + ' in stock at this branch.'); return false; }
+                        return confirm('Raise this replacement? The replacement item\'s stock will be deducted now.');
+                    };
+                })();
+            </script>
+        }
     </div>
 
     <!-- Sidebar -->
