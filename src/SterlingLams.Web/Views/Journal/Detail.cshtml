@@ -7,7 +7,8 @@
     if (!string.IsNullOrEmpty(Model.CoverImageUrl)) { ViewData["OgImage"] = Model.CoverImageUrl; }
 
     var more = ViewBag.More as List<SterlingLams.Web.Models.Domain.BlogPost> ?? new();
-    var baseUrl = $"{Context.Request.Scheme}://{Context.Request.Host}";
+    // Fixed canonical origin so the article's JSON-LD matches its canonical tag (see SeoUrl).
+    var baseUrl = SterlingLams.Web.Infrastructure.SeoUrl.Base;
     var articleLd = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
     {
         ["@context"] = "https://schema.org",

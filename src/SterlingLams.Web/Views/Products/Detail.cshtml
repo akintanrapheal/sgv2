@@ -31,8 +31,9 @@
 
     // ── Structured data (Product + breadcrumbs) ──────────────────────────────
     var sdReq = Context.Request;
-    var sdBase = $"{sdReq.Scheme}://{sdReq.Host}";
-    var sdUrl = sdBase + sdReq.Path;
+    // Fixed canonical origin (not the request host) so the product's JSON-LD url matches its canonical tag.
+    var sdBase = SterlingLams.Web.Infrastructure.SeoUrl.Base;
+    var sdUrl = SterlingLams.Web.Infrastructure.SeoUrl.Canonical(sdReq.Path);
     string SdAbs(string u) => string.IsNullOrEmpty(u) ? u : (u.StartsWith("/") ? sdBase + u : u);
     // Real values so the Offer enrichments Google wants aren't fabricated: national shipping rate
     // and the configured return window (default 7 days). priceValidUntil silences Google's warning.

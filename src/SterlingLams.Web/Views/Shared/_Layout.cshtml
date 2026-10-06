@@ -2,14 +2,16 @@
 @inject ISettingsService SettingsService
 @{
     var seoReq      = Context.Request;
-    var seoBaseUrl  = $"{seoReq.Scheme}://{seoReq.Host}";
+    // One fixed canonical origin for ALL SEO URLs (not the request host) so www/apex/mixed-case/Render
+    // copies don't each self-canonicalise into duplicates. See Infrastructure/SeoUrl.
+    var seoBaseUrl  = SterlingLams.Web.Infrastructure.SeoUrl.Base;
     var seoSiteName = await SettingsService.GetAsync("general.site_name", "Sterlin Glams");
     var seoDesc     = (ViewData["Description"]?.ToString()) ?? "Sterlin Glams — Luxury Jewellery. Timeless elegance crafted for you.";
     // ViewData["TitleFull"] = the exact <title> to use verbatim (e.g. an imported SEO title that already
     // includes the brand); otherwise ViewData["Title"] gets the "— {site}" suffix as before.
     var seoTitle    = ViewData["TitleFull"]?.ToString()
                       ?? (ViewData["Title"] != null ? $"{ViewData["Title"]} — {seoSiteName}" : seoSiteName);
-    var seoCanonical= (ViewData["Canonical"]?.ToString()) ?? (seoBaseUrl + seoReq.Path);
+    var seoCanonical= (ViewData["Canonical"]?.ToString()) ?? SterlingLams.Web.Infrastructure.SeoUrl.Canonical(seoReq.Path);
     var seoOgType   = (ViewData["OgType"]?.ToString()) ?? "website";
     var seoRobots   = (ViewData["Robots"]?.ToString()) ?? "index, follow";
     var seoLogo     = await SettingsService.GetAsync("general.logo_url", "");
