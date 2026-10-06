@@ -1436,22 +1436,38 @@ public class PosController : Controller
             return Json(new { success = false, message = "Only today's sales (current session) can be voided — use Refund for older ones." });
 
         var uid = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        // Return the sold stock to this branch (for a mistaken sale the goods never actually left).
-        foreach (var it in order.Items.Where(i => i.ProductId > 0 && i.Quantity > 0))
-            await _stock.ApplyAsync(it.ProductId, it.ProductVariantId, register.StoreId, it.Quantity,
-                StockMovementType.Void, order.OrderNumber, "Sale voided", uid, materializeVariant: true);
 
-        // Reverse loyalty earned/redeemed + any gift-card use on this sale.
-        await _loyalty.ReverseForOrderAsync(order.Id);
-        await _giftCards.ReverseForOrderAsync(order.Id);
+        // All-or-nothing: the stock return, loyalty/gift-card reversal, void stamp + note commit together,
+        // so a failure never leaves a half-voided sale (stock back but still in takings, or vice versa).
+        // Any error is reported to the cashier as a real message instead of a bare "request failed".
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            // Return the sold stock to this branch (for a mistaken sale the goods never actually left).
+            foreach (var it in order.Items.Where(i => i.ProductId > 0 && i.Quantity > 0))
+                await _stock.ApplyAsync(it.ProductId, it.ProductVariantId, register.StoreId, it.Quantity,
+                    StockMovementType.Void, order.OrderNumber, "Sale voided", uid, materializeVariant: true);
 
-        order.VoidedAt = DateTime.UtcNow;
-        order.VoidedByName = manager.FullName;
-        order.VoidReason = reason;
-        order.UpdatedAt = DateTime.UtcNow;
-        OrderNotes.AddSystem(_db, order.Id,
-            $"Sale VOIDED by manager {manager.FullName} (cashier {User.Identity?.Name}): {reason}. Stock returned; removed from takings.");
-        await _db.SaveChangesAsync();
+            // Reverse loyalty earned/redeemed + any gift-card use on this sale.
+            await _loyalty.ReverseForOrderAsync(order.Id);
+            await _giftCards.ReverseForOrderAsync(order.Id);
+
+            order.VoidedAt = DateTime.UtcNow;
+            order.VoidedByName = manager.FullName;
+            order.VoidReason = reason;
+            order.UpdatedAt = DateTime.UtcNow;
+            OrderNotes.AddSystem(_db, order.Id,
+                $"Sale VOIDED by manager {manager.FullName} (cashier {User.Identity?.Name}): {reason}. Stock returned; removed from takings.");
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            var inner = ex; while (inner.InnerException != null) inner = inner.InnerException;
+            return Json(new { success = false, message = "Couldn't void the sale: " + inner.Message });
+        }
+
         try { await _audit.LogAsync("Void", "Order", order.Id.ToString(), $"POS voided {order.OrderNumber}: {reason}"); } catch { }
         return Json(new { success = true });
     }

@@ -2104,10 +2104,10 @@
                     headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token ? token.value : '' },
                     body: JSON.stringify({ orderId: +id, reason, pin })
                 });
-                const d = await res.json();
-                if (d.success) { close(); showError('Sale voided — stock returned.', false); loadOrders(); }
-                else msg.textContent = d.message || 'Could not void it.';
-            } catch { msg.textContent = 'Request failed.'; }
+                let d = {}; try { d = await res.json(); } catch {}
+                if (res.ok && d.success) { close(); showError('Sale voided — stock returned.', false); loadOrders(); }
+                else msg.textContent = d.message || ('Could not void it (error ' + res.status + ').');
+            } catch { msg.textContent = 'Request failed — check your connection and try again.'; }
         });
     }
 
