@@ -707,6 +707,14 @@ public class PosController : Controller
         var items = t.Items.Select(i => new SterlingLams.Web.Services.ItemQtyDto(i.Id, i.ApprovedQty ?? 0)).ToList();
         var res = await _transfers.DispatchAsync(t.Id, items, null, "POS", null, User.FindFirstValue(ClaimTypes.NameIdentifier));
         if (!res.Success) return Json(new { success = false, message = res.Error });
+        // Narrate the split on the order's history: this branch packed its part and sent it to merge.
+        if (t.OrderId != null)
+        {
+            var destName = await _db.Stores.Where(s => s.Id == t.ToStoreId).Select(s => s.Name).FirstOrDefaultAsync();
+            var qty = t.Items.Sum(i => i.DispatchedQty ?? i.ApprovedQty ?? 0);
+            OrderNotes.AddSystem(_db, t.OrderId.Value, $"{reg.Store?.Name} packed & sent {qty} item(s) to merge → {destName} ({t.TransferNumber}).");
+            await _db.SaveChangesAsync();
+        }
         try { await _audit.LogAsync("Dispatch", "Transfer", t.Id.ToString(), $"POS dispatched {t.TransferNumber}"); } catch { }
         return Json(new { success = true });
     }
@@ -778,6 +786,13 @@ public class PosController : Controller
         var res = await _transfers.ReceiveAsync(t.Id, lines, string.IsNullOrWhiteSpace(req.Notes) ? null : req.Notes.Trim(),
             User.FindFirstValue(ClaimTypes.NameIdentifier));
         if (!res.Success) return Json(new { success = false, message = res.Error });
+        // Narrate the merge on the order's history.
+        if (t.OrderId != null)
+        {
+            var fromName = await _db.Stores.Where(s => s.Id == t.FromStoreId).Select(s => s.Name).FirstOrDefaultAsync();
+            OrderNotes.AddSystem(_db, t.OrderId.Value, $"{reg.Store?.Name} merged in items from {fromName} ({t.TransferNumber}).");
+            await _db.SaveChangesAsync();
+        }
         try { await _audit.LogAsync("Receive", "Transfer", t.Id.ToString(), $"POS received {t.TransferNumber}" + (anyShort ? " (short — reason logged)" : "")); } catch { }
         return Json(new { success = true });
     }
@@ -1664,6 +1679,12 @@ public class PosController : Controller
             }).ToList();
         }
 
+        // Items still arriving from other branches to be merged here. While any are pending the order is
+        // "Merging": a pickup store may pack its OWN items now (stops the alarm), but can't tell the
+        // customer it's ready until the merging items have arrived and been received.
+        var mergePending = await _db.StockTransfers.CountAsync(t => t.OrderId == o.Id && t.ToStoreId == storeId
+            && (t.Status == TransferStatus.Approved || t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived));
+
         var a = o.DeliveryAddress;
         return Json(new
         {
@@ -1671,15 +1692,21 @@ public class PosController : Controller
             id = o.Id,
             orderNumber = o.OrderNumber,
             status = o.Status.ToString(),
+            merging = mergePending > 0,
+            mergePending,
             fulfillmentType = o.FulfillmentType.ToString(),
             incoming,
             placedAt = o.CreatedAt,           // shown in West Africa Time on the client
             deliveryType = o.DeliveryType,    // "Express" | "Standard" | null (pickup)
             // Two-step flow for BOTH types: pack first (stops the alert), then notify pickup / dispatch.
+            // A pickup store can pack its own items while still Merging; delivery waits until merged (it
+            // then hands off to Logistics as one parcel).
             canPack = o.PackedAt == null
-                      && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing),
+                      && (o.Status == OrderStatus.Confirmed || o.Status == OrderStatus.Processing
+                          || (o.Status == OrderStatus.AwaitingTransfer && o.FulfillmentType == FulfillmentType.StorePickup)),
             canNotifyPickup = o.FulfillmentType == FulfillmentType.StorePickup && o.PackedAt != null
-                      && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded,
+                      && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded
+                      && mergePending == 0,
             // Delivery dispatch is no longer done at the POS — once packed, the admin Logistics board
             // marks it out for delivery (and emails the customer). The POS only packs.
             canDispatch = false,
@@ -1805,6 +1832,10 @@ public class PosController : Controller
                 && x.FulfillmentType == FulfillmentType.StorePickup && x.PickupStoreId == register.StoreId);
         if (o == null) return Json(new { success = false, message = "Order not found for this branch." });
         if (o.PackedAt == null) return Json(new { success = false, message = "Pack the order first." });
+        // Can't tell the customer it's ready while items are still arriving to merge from another branch.
+        var stillMerging = await _db.StockTransfers.AnyAsync(t => t.OrderId == o.Id && t.ToStoreId == register.StoreId
+            && (t.Status == TransferStatus.Approved || t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived));
+        if (stillMerging) return Json(new { success = false, message = "Items are still arriving to merge — receive them first." });
         var email = o.User?.Email;
         if (string.IsNullOrWhiteSpace(email)) return Json(new { success = false, message = "This customer has no email on file." });
 
@@ -1814,6 +1845,7 @@ public class PosController : Controller
         o.Status = OrderStatus.ReadyForPickup;
         if (o.PackedByName == null) { o.PackedByUserId = pme?.Id; o.PackedByName = pme?.FullName ?? User.Identity?.Name ?? "staff"; }
         o.UpdatedAt = DateTime.UtcNow;
+        OrderNotes.AddSystem(_db, o.Id, $"Order fulfilled — ready for pickup at {register.Store?.Name}; customer notified by {pme?.FullName ?? User.Identity?.Name ?? "staff"}.");
         await _db.SaveChangesAsync();
 
         var sent = await SendPosPickupReadyEmailAsync(o.Id);

@@ -3146,8 +3146,11 @@
             // POS is pack-only. Pickup: pack then notify the customer. Delivery: pack, then it hands off
             // to the admin Logistics board (which dispatches it and emails the customer "on its way").
             let act = null, actLabel = '';
-            if (d.canPack) { act = 'pack'; actLabel = 'Mark as packed'; }
+            // While items are still arriving to merge, the store packs only its OWN items.
+            if (d.canPack) { act = 'pack'; actLabel = d.merging ? 'Mark my items packed' : 'Mark as packed'; }
             else if (d.canNotifyPickup) { act = 'pickup'; actLabel = d.pickupNotified ? 'Resend pickup notification' : 'Send pickup-ready notification'; }
+            const mergingNote = (d.merging && d.packed)
+                ? `<p class="text-center text-[12px] text-amber-600">Your items packed — waiting on items arriving to merge before it's ready.</p>` : '';
             const packBtn = act
                 ? `<button type="button" id="fulfil-action-btn" data-id="${d.id}" data-act="${act}" class="w-full bg-brand-500 text-white rounded-lg py-3 text-sm font-semibold hover:bg-brand-600 transition-colors">${actLabel}</button>`
                 : '';
@@ -3184,7 +3187,7 @@
                         <div class="flex justify-between text-xs text-neutral-500"><span>Delivery${d.deliveryType ? ' (' + esc(d.deliveryType) + ')' : ''}</span><span>${money(d.deliveryFee)}</span></div>
                         <div class="flex justify-between text-sm font-semibold text-neutral-800 pt-1"><span>Total</span><span>${money(d.total)}</span></div>
                     </div>
-                    ${incomingHtml ? `<div class="space-y-2"><p class="text-[10px] uppercase tracking-wide text-neutral-400">Incoming stock (awaiting transfer)</p>${incomingHtml}</div>` : ''}
+                    ${incomingHtml ? `<div class="space-y-2"><p class="text-[10px] uppercase tracking-wide text-neutral-400">Arriving to merge</p>${incomingHtml}</div>` : ''}
                     <div class="border border-neutral-200 rounded-xl p-3">
                         <p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Customer</p>
                         <p class="text-sm text-neutral-800">${esc(cust.name) || 'Customer'}</p>
@@ -3201,6 +3204,7 @@
                     ${packBtn}
                     <a href="${window.__posBase}/PackedOrderPrint/${d.id}" target="_blank" class="block text-center border border-neutral-300 text-neutral-700 rounded-lg py-2.5 text-sm font-medium hover:border-neutral-400 transition-colors">Print this order</a>
                     ${packedNote}
+                    ${mergingNote}
                     ${handoffNote}
                 </div>`;
             const pb = document.getElementById('fulfil-action-btn');
