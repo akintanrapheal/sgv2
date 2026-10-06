@@ -50,14 +50,16 @@ public class RefundApprovalService : IRefundApprovalService
     private readonly ILogger<RefundApprovalService> _log;
 
     private readonly IPostHogClient _posthog;
+    private readonly ITransferWorkflowService _transfers;
 
     public RefundApprovalService(ApplicationDbContext db, IStockService stock, ILoyaltyService loyalty,
         IGiftCardService giftCards, IPaymentService payment, IAuditService audit,
-        IEmailService email, ISettingsService settings, IPostHogClient posthog, ILogger<RefundApprovalService> log)
+        IEmailService email, ISettingsService settings, IPostHogClient posthog,
+        ITransferWorkflowService transfers, ILogger<RefundApprovalService> log)
     {
         _email = email; _settings = settings;
         _db = db; _stock = stock; _loyalty = loyalty; _giftCards = giftCards;
-        _payment = payment; _audit = audit; _posthog = posthog; _log = log;
+        _payment = payment; _audit = audit; _posthog = posthog; _transfers = transfers; _log = log;
     }
 
     public Task<int> PendingCountAsync() =>
@@ -198,6 +200,7 @@ public class RefundApprovalService : IRefundApprovalService
         {
             await _loyalty.ReverseForOrderAsync(order.Id);
             await _giftCards.ReverseForOrderAsync(order.Id);
+            await CancelLinkedTransfersAsync(order, approverUserId);
         }
 
         try
@@ -229,6 +232,50 @@ public class RefundApprovalService : IRefundApprovalService
                 + (refund.RestockRequested ? " Returned items sent to Inventory for restock/write-off review." : "")
                 + (gatewayNote.Length > 0 ? $" {gatewayNote}." : "")
         };
+    }
+
+    /// <summary>On a full refund, reverse any still-open inter-branch "send to merge" transfers linked to the
+    /// order, so a sending branch's stock isn't held or sent for a dead order — and the reversal shows on the
+    /// order history. Not-yet-dispatched transfers are cancelled (reservation released via CancelAsync);
+    /// already-in-transit ones can't be auto-reversed (the stock physically left), so they're flagged for
+    /// manual reconciliation. Best-effort — never fails the refund.</summary>
+    private async Task CancelLinkedTransfersAsync(Order order, string userId)
+    {
+        try
+        {
+            var linked = await _db.StockTransfers
+                .Where(t => t.OrderId == order.Id
+                    && t.Status != TransferStatus.Cancelled && t.Status != TransferStatus.Completed
+                    && t.Status != TransferStatus.Rejected)
+                .ToListAsync();
+            var notesAdded = false;
+            foreach (var t in linked)
+            {
+                if (t.Status is TransferStatus.Draft or TransferStatus.PendingApproval or TransferStatus.Approved)
+                {
+                    // Cancels + releases the sending branch's reservation, and writes its own history note.
+                    var res = await _transfers.CancelAsync(t.Id, $"Order {order.OrderNumber} fully refunded", userId);
+                    if (!res.Success)
+                    {
+                        OrderNotes.AddSystem(_db, order.Id,
+                            $"Could not auto-cancel inter-branch transfer {t.TransferNumber} on refund: {res.Error}");
+                        notesAdded = true;
+                    }
+                }
+                else // InTransit / PartiallyReceived — stock already left the sending branch
+                {
+                    OrderNotes.AddSystem(_db, order.Id,
+                        $"Transfer {t.TransferNumber} was already in transit when {order.OrderNumber} was refunded — "
+                        + "reconcile that stock manually (Inventory → Transfers).");
+                    notesAdded = true;
+                }
+            }
+            if (notesAdded) await _db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Reversing linked transfers failed for refunded order {OrderNumber}", order.OrderNumber);
+        }
     }
 
     /// <summary>Emails the destination branch (+ admin copy) that a refund's returned items are waiting
