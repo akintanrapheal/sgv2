@@ -378,9 +378,16 @@
     var psBarWrap = document.getElementById('pi-presize-bar-wrap');
     var psBar = document.getElementById('pi-presize-bar');
     if (psBtn) {
+        // Remember how far we got so a failed/interrupted run RESUMES instead of restarting — survives
+        // even a page reload. Cleared when the whole job finishes (so a later click re-runs from scratch).
+        var PS_KEY = 'sg-presize-cursor';
         psBtn.addEventListener('click', function () {
             psBtn.disabled = true;
-            var total = 0, done = 0, failed = 0, cursor = 'pi:0';
+            var total = 0, failed = 0;
+            var saved = '';
+            try { saved = localStorage.getItem(PS_KEY) || ''; } catch (e) {}
+            // Resume from the saved position unless the previous run had already finished.
+            var cursor = (saved && saved.indexOf('done') !== 0) ? saved : 'pi:0';
             psBarWrap.classList.remove('hidden');
             fetch(base + 'PresizeStatus').then(function (r) { return r.json(); }).then(function (s) {
                 if (!s.ok) { psStatus.textContent = 'Could not read status.'; psBtn.disabled = false; return; }
@@ -398,13 +405,17 @@
                     .then(function (r) { return r.json(); })
                     .then(function (d) {
                         if (!d.ok) { psStatus.textContent = d.error || 'Failed.'; psBtn.disabled = false; return; }
-                        done += d.uploaded; failed += d.failed; cursor = d.cursor;
-                        var pct = total ? Math.min(100, Math.round((total - d.remaining) / total * 100)) : 100;
+                        failed += d.failed; cursor = d.cursor;
+                        try { localStorage.setItem(PS_KEY, cursor); } catch (e) {}
+                        // Progress is driven by the server's "remaining" so it stays accurate across resumes/reloads.
+                        var processed = total ? Math.max(0, total - d.remaining) : 0;
+                        var pct = total ? Math.min(100, Math.round(processed / total * 100)) : 100;
                         psBar.style.width = pct + '%';
-                        psStatus.textContent = 'Generating… ' + done + ' of ' + total + ' done' + (failed ? (' · ' + failed + ' failed') : '') + ' (' + pct + '%)';
+                        psStatus.textContent = 'Generating… ' + processed + ' of ' + total + ' done' + (failed ? (' · ' + failed + ' failed') : '') + ' (' + pct + '%)';
                         if (d.done) {
+                            try { localStorage.removeItem(PS_KEY); } catch (e) {}
                             psBar.style.width = '100%';
-                            psStatus.textContent = 'Done — pre-sized ' + done + ' image(s)' + (failed ? (' · ' + failed + ' failed (re-run to retry)') : '') + '. Now enable "Serve pre-sized R2 images" in Integrations and turn Cloudflare resizing off.';
+                            psStatus.textContent = 'Done — pre-sized all ' + total + ' image(s)' + (failed ? (' · ' + failed + ' failed (re-run to retry)') : '') + '. Now enable "Serve pre-sized R2 images" in Integrations and turn Cloudflare resizing off.';
                             psBtn.disabled = false;
                         } else { step(); }
                     })
