@@ -7,7 +7,10 @@ namespace SterlingLams.Web.Services;
 // ── EposNow-style "Sales & Operation" cash-up summary ──────────────────────────────────────────
 // Shared by the POS close screen (PosController) and the read-only Inventory oversight view
 // (Inventory/Till/Eod). Pure data build — no HTTP context — so it can run from either area.
-public record TenderLine(string Key, string Label, decimal Expected, decimal? Counted)
+/// <summary>One payment channel on the cash-up. Only <see cref="Countable"/> tenders (Cash) are physically
+/// counted by the cashier and show an over/short; the rest (card, bank transfer, website, gift card) are
+/// recorded automatically from the system and shown read-only.</summary>
+public record TenderLine(string Key, string Label, decimal Expected, decimal? Counted, bool Countable = false)
 { public decimal Variance => (Counted ?? 0) - Expected; }
 public record SalesGroupRow(string Name, int Qty, decimal Discount, decimal Net, decimal Tax)
 { public decimal Total => Net + Tax; }
@@ -35,8 +38,9 @@ public class CloseSummaryVm
     public int Transactions { get; set; }
     public List<TenderLine> Tenders { get; set; } = new();
     public decimal Takings => Tenders.Sum(t => t.Expected);
-    public decimal Counted => Tenders.Sum(t => t.Counted ?? 0);
-    public decimal Variance => Tenders.Sum(t => t.Variance);
+    // Only counted (cash) tenders contribute to the counted total / over-short — the rest are auto-recorded.
+    public decimal Counted => Tenders.Where(t => t.Countable).Sum(t => t.Counted ?? 0);
+    public decimal Variance => Tenders.Where(t => t.Countable).Sum(t => t.Variance);
     public decimal OpeningFloat => Session.OpeningFloat;
 
     // Float section
@@ -103,6 +107,12 @@ public class CashUpService : ICashUpService
         var onlineLines = new List<SaleLine>();
         var onlineOrderIds = new HashSet<int>();
 
+        // Website revenue is split into two buckets by how the order was paid: a bank-transfer order
+        // (manually confirmed by staff with PaymentProvider "Transfer") is money to reconcile in the bank;
+        // everything else is paid through the online gateway. (We don't take pay-on-delivery.)
+        static bool IsTransfer(Order o) => string.Equals(o.PaymentProvider, "Transfer", StringComparison.OrdinalIgnoreCase);
+        decimal wOnlineGross = 0m, wTransferGross = 0m;
+
         // (b) Items THIS branch SENT to merge, dispatched within the window.
         var sentTransfers = await _db.StockTransfers
             .Where(t => t.FromStoreId == storeId && t.OrderId != null && t.DispatchedAt != null
@@ -131,6 +141,8 @@ public class CashUpService : ICashUpService
                 onlineLines.Add(new SaleLine(null, oi.ProductName,
                     oi.Product?.Category?.Name ?? "Uncategorised", qty, qty * oi.UnitPrice, qty * perUnitDisc));
                 onlineOrderIds.Add(o.Id);
+                var netSent = qty * oi.UnitPrice - qty * perUnitDisc;
+                if (IsTransfer(o)) wTransferGross += netSent; else wOnlineGross += netSent;
             }
         }
 
@@ -163,13 +175,12 @@ public class CashUpService : ICashUpService
                 onlineLines.Add(new SaleLine(null, oi.ProductName,
                     oi.Product?.Category?.Name ?? "Uncategorised", ownQty, ownQty * oi.UnitPrice, ownQty * perUnitDisc));
                 onlineOrderIds.Add(o.Id);
+                var netOwn = ownQty * oi.UnitPrice - ownQty * perUnitDisc;
+                if (IsTransfer(o)) wTransferGross += netOwn; else wOnlineGross += netOwn;
             }
         }
 
-        // Website-orders tender = item-only online revenue attributed to this branch (delivery excluded).
-        var website = onlineLines.Sum(l => l.Gross - l.DiscountAmount);
-
-        // Counted-per-tender saved at close (null while the session is still open).
+        // Counted-per-tender saved at close (null while the session is still open). Only cash is counted.
         Dictionary<string, decimal> counted = new();
         if (!interim && !string.IsNullOrWhiteSpace(session.CountedTenders))
         {
@@ -178,19 +189,62 @@ public class CashUpService : ICashUpService
         }
         decimal? C(string k) => interim ? null : (counted.TryGetValue(k, out var v) ? v : 0);
 
-        // Approved refunds for this session. A cash refund is money handed out of the drawer, so the Cash
-        // tender's expected amount is net of cash refunds. (Card/transfer refunds don't touch the drawer.)
+        // Approved POS refunds for this session. Each refund is netted against the SAME channel it was paid
+        // back through (a cash refund reduces cash, a card refund reduces card, a transfer refund reduces
+        // transfer) — so every channel's figure is after its own refunds.
         var refundsAll = await _db.Refunds.Where(r => r.TillSessionId == session.Id && r.Status == RefundStatus.Approved)
             .Select(r => new { r.RefundNumber, r.CreatedAt, r.Reason, r.RefundMethod, r.Amount }).ToListAsync();
-        var cashRefunds = refundsAll.Where(r => r.RefundMethod == "Cash").Sum(r => r.Amount);
+        var cashRefunds     = refundsAll.Where(r => r.RefundMethod == "Cash").Sum(r => r.Amount);
+        var cardRefunds     = refundsAll.Where(r => r.RefundMethod == "Card").Sum(r => r.Amount);
+        var transferRefunds = refundsAll.Where(r => r.RefundMethod == "Transfer").Sum(r => r.Amount);
+
+        // Website refunds: approved refunds on ONLINE orders, approved within this window, reduce THIS
+        // branch's website figure by the value of the refunded items this branch supplied (mirroring how
+        // website SALES are split across branches), netted into the matching bucket (online vs transfer).
+        decimal wOnlineRefund = 0m, wTransferRefund = 0m;
+        var onlineRefunds = await _db.Refunds
+            .Where(r => r.Status == RefundStatus.Approved && r.TillSessionId == null
+                && r.DecisionAt != null && r.DecisionAt >= session.OpenedAt && r.DecisionAt < winEnd)
+            .Include(r => r.Items)
+            .Include(r => r.OriginalOrder).ThenInclude(o => o.Items)
+            .ToListAsync();
+        var refundOrderIds = onlineRefunds.Select(r => r.OriginalOrderId).Distinct().ToList();
+        var refundOrderTransfers = refundOrderIds.Count == 0
+            ? new List<StockTransfer>()
+            : await _db.StockTransfers.Where(t => t.OrderId != null && refundOrderIds.Contains(t.OrderId!.Value))
+                .Include(t => t.Items).ToListAsync();
+        foreach (var r in onlineRefunds)
+        {
+            var o = r.OriginalOrder;
+            if (o == null || o.Channel != OrderChannel.Online) continue;
+            var oTransfers = refundOrderTransfers.Where(t => t.OrderId == o.Id).ToList();
+            foreach (var ri in r.Items)
+            {
+                var oi = o.Items.FirstOrDefault(x => x.ProductId == ri.ProductId && x.ProductVariantId == ri.ProductVariantId);
+                var totalQty = oi?.Quantity ?? ri.Quantity;
+                if (totalQty <= 0) continue;
+                var sentQty = oTransfers.Where(t => t.FromStoreId == storeId).SelectMany(t => t.Items)
+                    .Where(ti => ti.ProductId == ri.ProductId && ti.ProductVariantId == ri.ProductVariantId).Sum(QtyOf);
+                var inboundQty = oTransfers.Where(t => t.ToStoreId == storeId).SelectMany(t => t.Items)
+                    .Where(ti => ti.ProductId == ri.ProductId && ti.ProductVariantId == ri.ProductVariantId).Sum(QtyOf);
+                var isFulfiller = o.FulfillingStoreId == storeId || o.PickupStoreId == storeId;
+                var ownQty = isFulfiller ? Math.Max(0, totalQty - inboundQty) : 0;
+                var branchQty = ownQty + sentQty;
+                if (branchQty <= 0) continue;
+                var branchShare = branchQty / (decimal)totalQty;           // this branch's share of the item
+                var refundedValue = ri.Quantity * ri.UnitPrice * branchShare;
+                if (IsTransfer(o)) wTransferRefund += refundedValue; else wOnlineRefund += refundedValue;
+            }
+        }
 
         var tenders = new List<TenderLine>
         {
-            new("Cash",     "Cash",          SumOf("Cash") - cashRefunds, C("Cash")),
-            new("Card",     "Card",          SumOf("Card"),     C("Card")),
-            new("Transfer", "Bank transfer", SumOf("Transfer"), C("Transfer")),
-            new("GiftCard", "Gift card",     giftCard,          C("GiftCard")),
-            new("Website",  "Website orders", website,          C("Website")),
+            new("Cash",            "Cash",                    SumOf("Cash")     - cashRefunds,     C("Cash"), Countable: true),
+            new("Card",            "Card",                    SumOf("Card")     - cardRefunds,     null),
+            new("Transfer",        "Bank transfer",           SumOf("Transfer") - transferRefunds, null),
+            new("GiftCard",        "Gift card",               giftCard,                            null),
+            new("WebsiteOnline",   "Website – paid online",   wOnlineGross   - wOnlineRefund,   null),
+            new("WebsiteTransfer", "Website – bank transfer", wTransferGross - wTransferRefund, null),
         };
 
         // Cash drawer / float movements.

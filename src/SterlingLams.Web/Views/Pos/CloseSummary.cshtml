@@ -144,21 +144,32 @@
                             <tbody class="divide-y divide-neutral-100">
                                 @foreach (var tn in Model.Tenders)
                                 {
-                                    <tr data-tender="@tn.Key" data-expected="@tn.Expected">
+                                    <tr data-tender="@tn.Key" data-expected="@tn.Expected" data-countable="@(tn.Countable ? "1" : "0")">
                                         <td class="px-4 py-2.5 text-neutral-700">@tn.Label</td>
                                         <td class="px-4 py-2.5 text-right">
-                                            @if (interim)
+                                            @if (tn.Countable && interim)
                                             {
                                                 <input type="number" min="0" step="any" value="@(tn.Counted?.ToString("0.##") ?? "")" placeholder="0.00"
                                                        class="cu-counted w-28 text-right border border-neutral-200 rounded px-2 py-1 text-sm" data-key="@tn.Key" />
                                             }
-                                            else
+                                            else if (tn.Countable)
                                             {
                                                 <span>@Money(tn.Counted ?? 0)</span>
                                             }
+                                            else
+                                            {
+                                                <span class="text-neutral-300" title="Recorded automatically — nothing to count">—</span>
+                                            }
                                         </td>
                                         <td class="px-4 py-2.5 text-right text-neutral-600">@Money(tn.Expected)</td>
-                                        <td class="px-4 py-2.5 text-right cu-variance @VarCls(tn.Variance)">@Money(tn.Variance)</td>
+                                        @if (tn.Countable)
+                                        {
+                                            <td class="px-4 py-2.5 text-right cu-variance @VarCls(tn.Variance)">@Money(tn.Variance)</td>
+                                        }
+                                        else
+                                        {
+                                            <td class="px-4 py-2.5 text-right text-neutral-300">—</td>
+                                        }
                                     </tr>
                                 }
                             </tbody>
@@ -407,6 +418,8 @@
     function recalc() {
         var subCounted = 0, subVar = 0;
         document.querySelectorAll('tr[data-tender]').forEach(function (row) {
+            // Only countable (cash) rows feed the counted/variance totals — the rest are auto-recorded.
+            if (row.dataset.countable !== '1') return;
             var input = row.querySelector('.cu-counted');
             var expected = parseFloat(row.dataset.expected) || 0;
             var counted = input ? (parseFloat(input.value) || 0) : (parseFloat(row.dataset.counted) || 0);
