@@ -13,7 +13,9 @@ public sealed class LegacyUrlRedirectMiddleware
 
     public async Task Invoke(HttpContext ctx)
     {
-        if (HttpMethods.IsGet(ctx.Request.Method))
+        // HEAD as well as GET: crawlers, link checkers and uptime monitors probe old URLs with HEAD, and
+        // skipping them here meant those tools saw a 404 for a URL that redirects perfectly well on GET.
+        if (HttpMethods.IsGet(ctx.Request.Method) || HttpMethods.IsHead(ctx.Request.Method))
         {
             string? target = null;
             try { target = MapLegacy(ctx.Request.Path.Value ?? ""); }
@@ -61,6 +63,12 @@ public sealed class LegacyUrlRedirectMiddleware
         ["/sg-kingsmen-shop"] = "/products", ["/sg-packaging"] = "/products", ["/sg-packaging-store"] = "/products",
         // Misc leftover pages → home
         ["/home-glasses"] = "/", ["/html-sitemap"] = "/", ["/page-not-found"] = "/",
+        // Old sitemap locations. Yoast served /sitemap_index.xml and WordPress core /wp-sitemap.xml;
+        // both are still what Search Console has on file for this site, and both were 404ing, which
+        // reads as "sitemap gone" rather than "sitemap moved".
+        ["/sitemap_index.xml"] = "/sitemap.xml", ["/wp-sitemap.xml"] = "/sitemap.xml",
+        ["/product-sitemap.xml"] = "/sitemap.xml", ["/page-sitemap.xml"] = "/sitemap.xml",
+        ["/post-sitemap.xml"] = "/sitemap.xml", ["/product_cat-sitemap.xml"] = "/sitemap.xml",
         // Instagram "link in bio" / quick-links landing → home (brand landing). Can become its own page later.
         ["/quicklinks"] = "/", ["/quick-links"] = "/", ["/links"] = "/", ["/link-in-bio"] = "/", ["/linkinbio"] = "/",
         // Blog posts → the Journal (articles not individually migrated)
@@ -109,18 +117,8 @@ public sealed class LegacyUrlRedirectMiddleware
 
         // 3) Catalogue (slug-preserving where possible).
         if (lower == "/shop") return "/products";
-        if (lower.StartsWith("/shop/"))
-        {
-            var slug = p["/shop/".Length..];
-            // Encode the slug: old product URLs can contain non-ASCII (e.g. ₦) which must be %-escaped in
-            // the Location header, or setting it throws "Invalid non-ASCII character in header".
-            return slug.Length == 0 || slug.Contains('/') ? "/products" : $"/products/{Uri.EscapeDataString(slug)}";
-        }
-        if (lower.StartsWith("/product/"))
-        {
-            var slug = p["/product/".Length..];
-            return slug.Length == 0 || slug.Contains('/') ? "/products" : $"/products/{Uri.EscapeDataString(slug)}";
-        }
+        if (lower.StartsWith("/shop/")) return Product(p["/shop/".Length..]);
+        if (lower.StartsWith("/product/")) return Product(p["/product/".Length..]);
         if (lower.StartsWith("/product-category/"))
         {
             var segs = p["/product-category/".Length..].Split('/', StringSplitOptions.RemoveEmptyEntries);
@@ -132,5 +130,19 @@ public sealed class LegacyUrlRedirectMiddleware
             return "/";
 
         return null;
+    }
+
+    /// <summary>
+    /// Old single-product URL (/shop/{slug} or /product/{slug}) → its page on the new storefront.
+    /// Retired slugs resolve through <see cref="LegacyProductSlugMap"/> here rather than being bounced to
+    /// /products/{slug} first, so the old URL reaches its replacement in one 301 instead of two.
+    /// </summary>
+    private static string Product(string slug)
+    {
+        if (slug.Length == 0 || slug.Contains('/')) return "/products";
+        if (LegacyProductSlugMap.TryResolve(slug, out var moved)) return moved;
+        // Encode the slug: old product URLs can contain non-ASCII (e.g. ₦) which must be %-escaped in
+        // the Location header, or setting it throws "Invalid non-ASCII character in header".
+        return $"/products/{Uri.EscapeDataString(slug)}";
     }
 }

@@ -76,13 +76,17 @@ public static partial class Img
         }
     }
 
-    // Snap every requested size to one of a few standard "buckets". Cloudinary bills a credit per 1,000
-    // distinct transformations, and each unique width/height makes a new one — so a storefront asking for
-    // 72/80/96/112/120/150/192/200/224/400/480/600/700/1000/1080… px all over the place multiplies the
-    // credit cost. Rounding every request UP to the nearest bucket collapses that long tail into a handful
-    // of shared, cached derivatives (never smaller than asked, so images stay crisp). The two hottest sizes
-    // (96, 160) are kept exact so the most common thumbnails don't upsize. Change buckets here only.
-    private static readonly int[] Buckets = { 96, 160, 256, 400, 512, 800, 1280, 1920 };
+    // Snap every requested size UP to one of a few standard "buckets". Both delivery providers bill per
+    // UNIQUE transformation (Cloudflare Images: $0.50 per 1,000 beyond 5,000 free/month; Cloudinary: a
+    // credit per 1,000), and every distinct width makes a new one — so a storefront asking for
+    // 72/80/96/120/128/150/192/224/256/400/480/600/700/800/1000/1080/1200… px multiplies the cost.
+    // Collapsing the long tail into FOUR buckets that match the real display sizes (thumbnails ~72–160,
+    // cards ~400–600, detail ~800–1000, hero ~1080+) keeps the unique count low (≈ 4 sizes per image)
+    // while staying crisp (never smaller than asked). Fewer buckets = fewer unique transformations = lower
+    // bill; widen this list only if a layout genuinely needs another size. Change buckets here only.
+    //   ≤160: all thumbnails · ≤400: cart/related/small cards · ≤800: product cards, category, home blocks
+    //   ≤1280: product-detail main + most hero/journal · >1280: rounds to the next 320 (e.g. 1920 hero).
+    private static readonly int[] Buckets = { 160, 400, 800, 1280 };
     private static int Snap(int px)
     {
         if (px <= 0) return Buckets[0];

@@ -255,18 +255,30 @@ public class ProductsController : Controller
 
         if (product == null)
         {
-            // Old /shop/{slug} links (redirected here) whose slug no longer matches the new catalogue
-            // — e.g. duplicate-name "-2" suffixes or manually edited WooCommerce slugs — would otherwise
-            // dead-end in a 404. Send the shopper to a search for those words so they still find the item.
-            var terms = slug.Replace('-', ' ').Replace('_', ' ').Trim();
-            return terms.Length > 0 ? Redirect($"/products?search={Uri.EscapeDataString(terms)}") : NotFound();
+            // Old /shop/{slug} links (redirected here) whose slug no longer matches the new catalogue —
+            // e.g. duplicate-name "-2" suffixes or manually edited WooCommerce slugs. Send the ones we can
+            // place to their replacement with a single extra 301 so the old page's ranking carries over.
+            if (SterlingLams.Web.Infrastructure.LegacyProductSlugMap.TryResolve(slug, out var moved))
+                return RedirectPermanent(moved);
+
+            // Anything we can't place honestly 404s. It must NOT bounce to /products?search=… : that
+            // returns 200 on a page with none of the old content, which Google classes as a soft 404 and
+            // drops from the index — taking the ranking (and the traffic) with it. The branded 404 page
+            // still offers the collection, so the shopper isn't dead-ended either way.
+            return NotFound();
         }
 
-        // Admin toggle: a product that's out of stock everywhere is hidden from the storefront
-        // entirely — a direct link returns Not Found (matches it being absent from listings).
-        var hideOos = await _settings.GetBoolAsync("storefront.hide_out_of_stock", false);
-        if (hideOos && !product.StoreInventories.Any(si => si.QuantityOnHand > 0))
-            return NotFound();
+        // A product that's out of stock everywhere keeps its page and still returns 200. "Hide out of
+        // stock" removes it from listings (see Index) but must not 404 a live URL: these pages are
+        // indexed and earn again the moment stock lands, and a 404 de-indexes them. The view renders the
+        // sold-out state with schema availability=OutOfStock plus the back-in-stock form, which is what
+        // Google and the shopper both expect for a temporarily unavailable item.
+        //
+        // So the toggle only thins the variant picker, and only while something is still buyable —
+        // hiding every option on a fully sold-out product would leave an empty picker instead of a
+        // readable sold-out page.
+        var anyStock = product.StoreInventories.Any(si => si.QuantityOnHand > 0);
+        var hideOos = anyStock && await _settings.GetBoolAsync("storefront.hide_out_of_stock", false);
 
         // Track for the "Recently viewed" merchandising row (cookie-based; works for guests).
         SterlingLams.Web.Infrastructure.RecentlyViewed.Record(Request, Response, product.Id);
