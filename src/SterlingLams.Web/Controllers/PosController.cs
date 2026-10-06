@@ -23,6 +23,7 @@ public class PosController : Controller
 
     private readonly SterlingLams.Web.Services.IStoreAccessService _access;
     private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
+    private readonly SterlingLams.Web.Services.IGiftCardService _giftCards;
 
     private readonly SterlingLams.Web.Services.IAuditService _audit;
     private readonly SterlingLams.Web.Services.ISettingsService _settings;
@@ -40,6 +41,7 @@ public class PosController : Controller
         UserManager<ApplicationUser> userManager,
         SterlingLams.Web.Services.IStoreAccessService access,
         SterlingLams.Web.Services.ILoyaltyService loyalty,
+        SterlingLams.Web.Services.IGiftCardService giftCards,
         SterlingLams.Web.Services.IAuditService audit,
         SterlingLams.Web.Services.ISettingsService settings,
         SterlingLams.Web.Services.IEmailService email,
@@ -58,6 +60,7 @@ public class PosController : Controller
         _userManager = userManager;
         _access = access;
         _loyalty = loyalty;
+        _giftCards = giftCards;
         _audit = audit;
         _settings = settings;
         _email = email;
@@ -1334,7 +1337,10 @@ public class PosController : Controller
                 orderNumber = o.OrderNumber,
                 total = o.Total,
                 method = o.PaymentProvider,
-                canFix = o.TillSessionId == openSessionId,   // current-session sale → correctable
+                voided = o.VoidedAt != null,
+                // Current-session, not-yet-voided sales can be corrected / voided.
+                canFix = o.TillSessionId == openSessionId && o.VoidedAt == null,
+                canVoid = o.TillSessionId == openSessionId && o.VoidedAt == null,
                 createdAt = o.CreatedAt,
                 itemCount = o.Items.Sum(i => i.Quantity),
                 customerName = o.Customer != null
@@ -1396,6 +1402,57 @@ public class PosController : Controller
             $"Payment method corrected from {oldMethod} to {method} by manager {manager.FullName} (cashier {User.Identity?.Name}): {reason}");
         await _db.SaveChangesAsync();
         try { await _audit.LogAsync("FixPayment", "Order", order.Id.ToString(), $"POS payment {oldMethod}→{method} on {order.OrderNumber}: {reason}"); } catch { }
+        return Json(new { success = true });
+    }
+
+    public class VoidSaleDto { public int OrderId { get; set; } public string? Pin { get; set; } public string? Reason { get; set; } }
+
+    // ── Void a POS sale (manager-approved cancellation of a same-session mistake) ──────────────────────
+    // Returns all the sold stock to this branch, reverses loyalty/gift-card, marks the order Voided and
+    // excludes it from takings/EOD. Current-session only; a refunded sale can't be voided (use the refund).
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> VoidSale([FromBody] VoidSaleDto req)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { success = false, message = "This POS isn't set up." });
+        if (!await _access.CanWriteAsync(User, register.StoreId))
+            return Json(new { success = false, message = "You're not assigned to this branch's POS." });
+
+        var reason = (req.Reason ?? "").Trim();
+        if (reason.Length == 0) return Json(new { success = false, message = "Enter a reason for the void." });
+
+        var manager = await ValidateManagerPinAsync(req.Pin);
+        if (manager == null) return Json(new { success = false, message = "Manager PIN not recognised." });
+
+        var session = await OpenSessionAsync(register.Id);
+        if (session == null) return Json(new { success = false, message = "No open till session." });
+
+        var order = await _db.Orders.Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Id == req.OrderId && o.Channel == OrderChannel.Pos && o.RegisterId == register.Id);
+        if (order == null) return Json(new { success = false, message = "Sale not found for this till." });
+        if (order.VoidedAt != null) return Json(new { success = false, message = "This sale is already voided." });
+        if (order.Status == OrderStatus.Refunded) return Json(new { success = false, message = "This sale was refunded — it can't be voided." });
+        if (order.TillSessionId != session.Id)
+            return Json(new { success = false, message = "Only today's sales (current session) can be voided — use Refund for older ones." });
+
+        var uid = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        // Return the sold stock to this branch (for a mistaken sale the goods never actually left).
+        foreach (var it in order.Items.Where(i => i.ProductId > 0 && i.Quantity > 0))
+            await _stock.ApplyAsync(it.ProductId, it.ProductVariantId, register.StoreId, it.Quantity,
+                StockMovementType.Void, order.OrderNumber, "Sale voided", uid, materializeVariant: true);
+
+        // Reverse loyalty earned/redeemed + any gift-card use on this sale.
+        await _loyalty.ReverseForOrderAsync(order.Id);
+        await _giftCards.ReverseForOrderAsync(order.Id);
+
+        order.VoidedAt = DateTime.UtcNow;
+        order.VoidedByName = manager.FullName;
+        order.VoidReason = reason;
+        order.UpdatedAt = DateTime.UtcNow;
+        OrderNotes.AddSystem(_db, order.Id,
+            $"Sale VOIDED by manager {manager.FullName} (cashier {User.Identity?.Name}): {reason}. Stock returned; removed from takings.");
+        await _db.SaveChangesAsync();
+        try { await _audit.LogAsync("Void", "Order", order.Id.ToString(), $"POS voided {order.OrderNumber}: {reason}"); } catch { }
         return Json(new { success = true });
     }
 
