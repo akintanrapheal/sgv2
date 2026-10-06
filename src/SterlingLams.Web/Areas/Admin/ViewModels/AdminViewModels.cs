@@ -467,6 +467,9 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public DateTime JoinedAt { get; set; }
         public int OrderCount { get; set; }
         public decimal TotalSpend { get; set; }
+        /// <summary>Paid orders that aren't fully refunded — the denominator for a true Average Order Value
+        /// (so refunded/unpaid orders don't drag the AOV down).</summary>
+        public int PaidOrderCount { get; set; }
         public List<RecentOrderRow> RecentOrders { get; set; } = new();
 
         // Loyalty + tags

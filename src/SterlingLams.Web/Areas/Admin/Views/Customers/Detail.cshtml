@@ -35,11 +35,11 @@
                     <span class="text-xs text-neutral-400">Total Spend (paid)</span>
                     <span class="text-xs font-medium text-emerald-700">₦@Model.TotalSpend.ToString("N0")</span>
                 </div>
-                @if (Model.OrderCount > 0)
+                @if (Model.PaidOrderCount > 0)
                 {
                     <div class="flex justify-between">
                         <span class="text-xs text-neutral-400">Avg. Order Value</span>
-                        <span class="text-xs font-medium">₦@((Model.TotalSpend / Model.OrderCount).ToString("N0"))</span>
+                        <span class="text-xs font-medium">₦@((Model.TotalSpend / Model.PaidOrderCount).ToString("N0"))</span>
                     </div>
                 }
                 @if (Model.ImportedTransactions.HasValue)

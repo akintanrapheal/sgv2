@@ -130,6 +130,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     Spend  = g.Where(o => o.IsPaid).Sum(o => (decimal?)o.Total) ?? 0
                 })
                 .ToListAsync();
+            // Approved refunds per user, netted out of spend (a refunded order stays IsPaid = true).
+            var refundsByUser = (await _db.Refunds
+                .Where(r => r.Status == RefundStatus.Approved && pageUserIds.Contains(r.OriginalOrder.UserId))
+                .GroupBy(r => r.OriginalOrder.UserId)
+                .Select(g => new { UserId = g.Key, Refunded = g.Sum(r => (decimal?)r.Amount) ?? 0 })
+                .ToListAsync())
+                .ToDictionary(x => x.UserId, x => x.Refunded);
 
             var rows = new List<AdminUserRow>();
             foreach (var u in pageUsers)
@@ -148,7 +155,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     IsRevoked      = u.AccessRevoked,
                     EmailConfirmed = u.EmailConfirmed,
                     OrderCount     = stat?.Count ?? 0,
-                    TotalSpend     = stat?.Spend ?? 0,
+                    TotalSpend     = (stat?.Spend ?? 0) - (refundsByUser.TryGetValue(u.Id, out var rf) ? rf : 0),
                     JoinedAt       = u.CreatedAt,
                     LastLoginAt    = u.LastLoginAt,
                 });
