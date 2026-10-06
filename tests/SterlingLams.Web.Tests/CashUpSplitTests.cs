@@ -252,4 +252,56 @@ public class CashUpSplitTests
         // And the website refund now appears on the Refunds tab (was previously only netted, not listed).
         Assert.Contains(vm.Refunds, r => r.Number == "R-WEB" && r.Amount == 1000m && r.Method.StartsWith("Website"));
     }
+
+    [Fact]
+    public async Task Refund_exceeding_a_channels_sales_floors_it_to_zero_and_shows_a_refunds_line()
+    {
+        using var t = new TestDb();
+        var (_, allen, _) = t.SeedBranches();
+        var buyer = t.SeedUser();
+        var p = t.SeedProduct(5000m);
+        var now = DateTime.UtcNow;
+        var session = OpenSession(t, allen, now.AddHours(-2));
+
+        // In-store card sale this session, so there are positive takings to net against.
+        var pos = new Order
+        {
+            OrderNumber = "T-CARD", UserId = buyer.Id, Channel = OrderChannel.Pos, TillSessionId = session.Id,
+            FulfillingStoreId = allen.Id, Status = OrderStatus.Delivered, IsPaid = true, PaidAt = now.AddMinutes(-30),
+            PaymentProvider = "Card", Currency = "NGN", Subtotal = 10000m, Total = 10000m,
+            Items = new List<OrderItem> { new() { ProductId = p.Id, ProductName = p.Name, Quantity = 2, UnitPrice = 5000m } },
+        };
+        // Online order Allen fulfilled on an EARLIER day (paid before this session → not website sales this session)...
+        var web = new Order
+        {
+            OrderNumber = "T-WEBOLD", UserId = buyer.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = allen.Id,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = now.AddHours(-26),
+            PaymentProvider = "Paystack", Currency = "NGN", Subtotal = 5000m, Total = 5000m,
+            Items = new List<OrderItem> { new() { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 5000m } },
+        };
+        t.Db.AddRange(pos, web);
+        t.Db.SaveChanges();
+
+        // ...but REFUNDED during this session → the refund is attributed to Allen with no matching sale this session.
+        var refund = new Refund
+        {
+            RefundNumber = "R-OLD", OriginalOrderId = web.Id, TillSessionId = null,
+            RefundMethod = "Paystack", Amount = 5000m, Status = RefundStatus.Approved,
+            CreatedAt = now.AddMinutes(-20), DecisionAt = now.AddMinutes(-15),
+            Items = new List<RefundItem> { new() { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 5000m } },
+        };
+        t.Db.Add(refund);
+        t.Db.SaveChanges();
+
+        var vm = await new CashUpService(t.Db).BuildAsync(session, interim: true, currentUserId: "");
+
+        // The website channel is floored at 0 (not -5,000); the excess shows as an explicit refunds line.
+        Assert.Equal(0m, vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected);
+        Assert.Contains(vm.Tenders, x => x.Key == "RefundsBeyondSales" && x.Expected == -5000m);
+        // No SALES channel reads negative.
+        Assert.DoesNotContain(vm.Tenders.Where(x => x.Key != "RefundsBeyondSales"), x => x.Expected < 0);
+        // Takings unchanged by the cosmetic split: card 10,000 − 5,000 refund = 5,000.
+        Assert.Equal(5000m, vm.Takings);
+    }
 }
