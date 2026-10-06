@@ -1319,6 +1319,11 @@ public class PosController : Controller
         var register = await BoundRegisterAsync();
         if (register == null) return Json(Array.Empty<object>());
 
+        // Only sales on the current (still-open) session can be corrected/voided here — correcting a
+        // closed day would change a finished end-of-day report.
+        var openSession = await OpenSessionAsync(register.Id);
+        var openSessionId = openSession?.Id ?? -1;
+
         var orders = await _db.Orders
             .Where(o => o.Channel == OrderChannel.Pos && o.RegisterId == register.Id)
             .OrderByDescending(o => o.CreatedAt)
@@ -1329,6 +1334,7 @@ public class PosController : Controller
                 orderNumber = o.OrderNumber,
                 total = o.Total,
                 method = o.PaymentProvider,
+                canFix = o.TillSessionId == openSessionId,   // current-session sale → correctable
                 createdAt = o.CreatedAt,
                 itemCount = o.Items.Sum(i => i.Quantity),
                 customerName = o.Customer != null
@@ -1341,6 +1347,56 @@ public class PosController : Controller
             })
             .ToListAsync();
         return Json(orders);
+    }
+
+    public class FixPaymentDto { public int OrderId { get; set; } public string? Pin { get; set; } public string? Reason { get; set; } public string? Method { get; set; } }
+
+    // ── Correct a POS sale's payment method (e.g. paid by transfer but rung up as cash/card) ──────────
+    // Manager-PIN + reason gated, current-session only; updates the recorded tender so it lands in the
+    // right line on end-of-day. For a full reversal (stock back) use Void; split-tender sales must be
+    // voided + re-rung instead.
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> FixSalePayment([FromBody] FixPaymentDto req)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { success = false, message = "This POS isn't set up." });
+        if (!await _access.CanWriteAsync(User, register.StoreId))
+            return Json(new { success = false, message = "You're not assigned to this branch's POS." });
+
+        var method = (req.Method ?? "").Trim();
+        if (method is not ("Cash" or "Card" or "Transfer"))
+            return Json(new { success = false, message = "Choose Cash, Card or Transfer." });
+        var reason = (req.Reason ?? "").Trim();
+        if (reason.Length == 0) return Json(new { success = false, message = "Enter a reason for the correction." });
+
+        var manager = await ValidateManagerPinAsync(req.Pin);
+        if (manager == null) return Json(new { success = false, message = "Manager PIN not recognised." });
+
+        var session = await OpenSessionAsync(register.Id);
+        if (session == null) return Json(new { success = false, message = "No open till session." });
+
+        var order = await _db.Orders.FirstOrDefaultAsync(o => o.Id == req.OrderId
+            && o.Channel == OrderChannel.Pos && o.RegisterId == register.Id);
+        if (order == null) return Json(new { success = false, message = "Sale not found for this till." });
+        if (order.TillSessionId != session.Id)
+            return Json(new { success = false, message = "Only today's sales (current session) can be corrected here — use Refund for older ones." });
+
+        var payments = await _db.OrderPayments.Where(p => p.OrderId == order.Id).ToListAsync();
+        if (payments.Count > 1)
+            return Json(new { success = false, message = "This sale used split tender — void and re-ring it instead." });
+
+        var oldMethod = payments.Count == 1 ? payments[0].Method : (order.PaymentProvider ?? "—");
+        if (string.Equals(oldMethod, method, StringComparison.OrdinalIgnoreCase))
+            return Json(new { success = false, message = $"This sale is already recorded as {method}." });
+
+        order.PaymentProvider = method;
+        if (payments.Count == 1) payments[0].Method = method;
+        order.UpdatedAt = DateTime.UtcNow;
+        OrderNotes.AddSystem(_db, order.Id,
+            $"Payment method corrected from {oldMethod} to {method} by manager {manager.FullName} (cashier {User.Identity?.Name}): {reason}");
+        await _db.SaveChangesAsync();
+        try { await _audit.LogAsync("FixPayment", "Order", order.Id.ToString(), $"POS payment {oldMethod}→{method} on {order.OrderNumber}: {reason}"); } catch { }
+        return Json(new { success = true });
     }
 
     // ── Fulfilment queue: online orders THIS branch was assigned to pack/ship ─────
