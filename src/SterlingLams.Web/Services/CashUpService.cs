@@ -203,6 +203,9 @@ public class CashUpService : ICashUpService
         // branch's website figure by the value of the refunded items this branch supplied (mirroring how
         // website SALES are split across branches), netted into the matching bucket (online vs transfer).
         decimal wOnlineRefund = 0m, wTransferRefund = 0m;
+        // Website refunds attributed to THIS branch also get listed on the Refunds tab (not just netted
+        // into the figures) so the cash-up shows every refund that reduced this branch's takings.
+        var websiteRefundRows = new List<CloseRefundRow>();
         var onlineRefunds = await _db.Refunds
             .Where(r => r.Status == RefundStatus.Approved && r.TillSessionId == null
                 && r.DecisionAt != null && r.DecisionAt >= session.OpenedAt && r.DecisionAt < winEnd)
@@ -219,6 +222,7 @@ public class CashUpService : ICashUpService
             var o = r.OriginalOrder;
             if (o == null || o.Channel != OrderChannel.Online) continue;
             var oTransfers = refundOrderTransfers.Where(t => t.OrderId == o.Id).ToList();
+            decimal branchRefund = 0m;
             foreach (var ri in r.Items)
             {
                 var oi = o.Items.FirstOrDefault(x => x.ProductId == ri.ProductId && x.ProductVariantId == ri.ProductVariantId);
@@ -235,7 +239,13 @@ public class CashUpService : ICashUpService
                 var branchShare = branchQty / (decimal)totalQty;           // this branch's share of the item
                 var refundedValue = ri.Quantity * ri.UnitPrice * branchShare;
                 if (IsTransfer(o)) wTransferRefund += refundedValue; else wOnlineRefund += refundedValue;
+                branchRefund += refundedValue;
             }
+            if (branchRefund > 0)
+                websiteRefundRows.Add(new CloseRefundRow(r.RefundNumber, r.DecisionAt ?? r.CreatedAt,
+                    string.IsNullOrWhiteSpace(r.Reason) ? $"Website order {o.OrderNumber}" : r.Reason!,
+                    string.IsNullOrWhiteSpace(r.RefundMethod) ? "Website" : $"Website · {r.RefundMethod}",
+                    Math.Round(branchRefund, 2)));
         }
 
         var tenders = new List<TenderLine>
@@ -310,8 +320,11 @@ public class CashUpService : ICashUpService
             ByProduct = byProduct,
             ByEmployee = byEmployee,
             ByCategory = byCategory,
+            // POS refunds on this session + website refunds attributed to this branch, newest first.
             Refunds = refundsAll.Select(r => new CloseRefundRow(r.RefundNumber, r.CreatedAt,
-                string.IsNullOrWhiteSpace(r.Reason) ? "—" : r.Reason!, r.RefundMethod, r.Amount)).ToList(),
+                    string.IsNullOrWhiteSpace(r.Reason) ? "—" : r.Reason!, r.RefundMethod, r.Amount))
+                .Concat(websiteRefundRows)
+                .OrderByDescending(r => r.When).ToList(),
             Voids = new(),
             Taxes = lines.Any()
                 ? new() { new TaxGroupRow("No Tax", 0m, lines.Sum(l => l.Quantity), totalNet, 0m) }
