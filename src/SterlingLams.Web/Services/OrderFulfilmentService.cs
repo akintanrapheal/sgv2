@@ -410,8 +410,8 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                     order.FulfillingStoreId = fulfilStore.Id;
                     order.Status = OrderStatus.AwaitingTransfer;
                     OrderNotes.AddSystem(_db, order.Id,
-                        $"Order status changed from {prevStatus} to Awaiting Transfer — fulfilling from {fulfilStore.Name}; "
-                        + $"{sourceNotices.Count} inter-branch transfer(s) requested.");
+                        $"Order status changed from {prevStatus} to Arriving to merge — fulfilling from {fulfilStore.Name}; "
+                        + $"{sourceNotices.Count} branch(es) asked to send items to merge.");
                     await _db.SaveChangesAsync();
                     await tx.CommitAsync();
                     awaitingTransfer = true; fulfilStoreForEmail = fulfilStore;

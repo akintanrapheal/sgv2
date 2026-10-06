@@ -155,7 +155,7 @@
                             // states (Cancelled/Refunded) keep their real label.
                             var statusLabel = (o.IsPos && (o.Status == "Delivered" || o.Status == "Collected"))
                                 ? "Paid & collected"
-                                : (o.Status == "AwaitingTransfer" ? "Awaiting transfer" : o.Status);
+                                : (o.Status == "AwaitingTransfer" ? "Arriving to merge" : o.Status);
                         }
                         <span class="text-[10px] px-2 py-0.5 rounded-full @bc">@statusLabel</span>
                     </td>

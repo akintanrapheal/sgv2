@@ -17,7 +17,7 @@
         "Pending" or "AwaitingTransfer" => "bg-amber-50 text-amber-700",
         _ => "bg-blue-50 text-blue-700"
     };
-    string Label(string s) => s == "AwaitingTransfer" ? "Awaiting transfer" : s;
+    string Label(string s) => s == "AwaitingTransfer" ? "Arriving to merge" : s;
 }
 
 @await Html.PartialAsync("_SalesTabs", view)

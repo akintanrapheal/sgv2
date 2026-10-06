@@ -14,7 +14,7 @@
         OrderStatus.Pending or OrderStatus.AwaitingTransfer => "bg-amber-50 text-amber-700",
         _ => "bg-blue-50 text-blue-700"
     };
-    string StatusLabel(OrderStatus s) => s == OrderStatus.AwaitingTransfer ? "Awaiting transfer" : s.ToString();
+    string StatusLabel(OrderStatus s) => s == OrderStatus.AwaitingTransfer ? "Arriving to merge" : s.ToString();
 }
 
 <div class="flex items-center justify-between mb-4">
