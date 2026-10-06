@@ -1028,27 +1028,15 @@ public class CheckoutController : Controller
 
                 var custName = order.User?.FullName ?? order.DeliveryAddress?.FullName ?? "";
                 var a = order.DeliveryAddress;
-                var billing = new List<string> { custName };
-                if (a != null)
-                {
-                    billing.Add(a.Line1 + (string.IsNullOrWhiteSpace(a.Line2) ? "" : ", " + a.Line2));
-                    billing.Add($"{a.City}, {a.State}".Trim(' ', ','));
-                    if (!string.IsNullOrWhiteSpace(a.Phone)) billing.Add(a.Phone);
-                }
-                if (!string.IsNullOrWhiteSpace(customerEmail)) billing.Add(customerEmail!);
+                var (billing, shipping, pickupLabel) = SterlingLams.Web.Services.OrderEmailTemplate.AddressBlocksFor(order, custName, customerEmail);
 
-                List<string> shipping;
                 string shippingLabel;
                 if (order.FulfillmentType == FulfillmentType.StorePickup)
                 {
-                    var store = order.PickupStore?.Name ?? "our store";
-                    shipping = new List<string> { custName, "Pickup at " + store };
-                    shippingLabel = $"Pickup at {store}";
+                    shippingLabel = pickupLabel;
                 }
                 else
                 {
-                    shipping = new List<string> { custName };
-                    if (a != null) { shipping.Add(a.Line1 + (string.IsNullOrWhiteSpace(a.Line2) ? "" : ", " + a.Line2)); shipping.Add($"{a.City}, {a.State}".Trim(' ', ',')); }
                     // Show the chosen delivery method + its timeframe, e.g.
                     // "₦4,000.00 via Glams Priority Delivery (within 48 hrs)".
                     var method = await _zones.DescribeOptionAsync(order.DeliveryType, a?.State, a?.City);
@@ -1131,30 +1119,10 @@ public class CheckoutController : Controller
             i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId))).ToList();
 
         var custName = order.User?.FullName ?? order.DeliveryAddress?.FullName ?? "";
-        var a = order.DeliveryAddress;
-        var billing = new List<string> { custName };
-        if (a != null)
-        {
-            billing.Add(a.Line1 + (string.IsNullOrWhiteSpace(a.Line2) ? "" : ", " + a.Line2));
-            billing.Add($"{a.City}, {a.State}".Trim(' ', ','));
-            if (!string.IsNullOrWhiteSpace(a.Phone)) billing.Add(a.Phone);
-        }
-        if (!string.IsNullOrWhiteSpace(customerEmail)) billing.Add(customerEmail!);
-
-        List<string> shipping;
-        string shippingLabel;
-        if (order.FulfillmentType == FulfillmentType.StorePickup)
-        {
-            var store = order.PickupStore?.Name ?? "our store";
-            shipping = new List<string> { custName, "Pickup at " + store };
-            shippingLabel = $"Pickup at {store}";
-        }
-        else
-        {
-            shipping = new List<string> { custName };
-            if (a != null) { shipping.Add(a.Line1 + (string.IsNullOrWhiteSpace(a.Line2) ? "" : ", " + a.Line2)); shipping.Add($"{a.City}, {a.State}".Trim(' ', ',')); }
-            shippingLabel = order.DeliveryFee > 0 ? $"Delivery — ₦{order.DeliveryFee:N0}" : "Delivery";
-        }
+        var (billing, shipping, pickupLabel) = SterlingLams.Web.Services.OrderEmailTemplate.AddressBlocksFor(order, custName, customerEmail);
+        var shippingLabel = order.FulfillmentType == FulfillmentType.StorePickup
+            ? pickupLabel
+            : (order.DeliveryFee > 0 ? $"Delivery — ₦{order.DeliveryFee:N0}" : "Delivery");
 
         var subjectT = await _settings.GetAsync("email.new_order_admin.subject", "New order {order}");
         var introT = await _settings.GetAsync("email.new_order_admin.intro",

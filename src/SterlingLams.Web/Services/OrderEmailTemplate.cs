@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using SterlingLams.Web.Infrastructure;
+using SterlingLams.Web.Models.Domain;
 
 namespace SterlingLams.Web.Services;
 
@@ -45,6 +46,47 @@ public static class OrderEmailTemplate
         if (body.Length == 0) return "";
         return $@"<div style=""margin:12px 0;font-size:13px;color:#44403c;line-height:1.5;"">
             <div style=""text-transform:uppercase;letter-spacing:.5px;font-size:11px;color:#9ca3af;margin-bottom:2px;"">{System.Net.WebUtility.HtmlEncode(label)}</div>{body}</div>";
+    }
+
+    /// <summary>
+    /// Shared billing + shipping blocks for the order emails (customer confirmation, website admin alert,
+    /// and the manual staff-confirmed alert) so they never drift. The customer PHONE comes from the
+    /// delivery address or, for pickup orders (no address), the buyer's account — so the number always
+    /// shows. For store pickup the shipping block + the returned label carry the branch's FULL address.
+    /// </summary>
+    public static (List<string> billing, List<string> shipping, string pickupLabel) AddressBlocksFor(
+        Order order, string custName, string? customerEmail)
+    {
+        var a = order.DeliveryAddress;
+        var phone = !string.IsNullOrWhiteSpace(a?.Phone) ? a!.Phone
+            : (order.User?.PhoneNumber ?? order.Customer?.PhoneNumber);
+
+        var billing = new List<string> { custName };
+        if (a != null)
+        {
+            billing.Add(a.Line1 + (string.IsNullOrWhiteSpace(a.Line2) ? "" : ", " + a.Line2));
+            billing.Add($"{a.City}, {a.State}".Trim(' ', ','));
+        }
+        if (!string.IsNullOrWhiteSpace(phone)) billing.Add("Tel: " + phone);
+        if (!string.IsNullOrWhiteSpace(customerEmail)) billing.Add(customerEmail!);
+
+        var shipping = new List<string> { custName };
+        if (!string.IsNullOrWhiteSpace(phone)) shipping.Add("Tel: " + phone);
+        var pickupLabel = "";
+        if (order.FulfillmentType == FulfillmentType.StorePickup)
+        {
+            var store = order.PickupStore?.Name ?? "our store";
+            var storeAddr = order.PickupStore?.Address;
+            shipping.Add("Pickup at " + store);
+            if (!string.IsNullOrWhiteSpace(storeAddr)) shipping.Add(storeAddr!);
+            pickupLabel = string.IsNullOrWhiteSpace(storeAddr) ? $"Store pickup — {store}" : $"Store pickup — {store}, {storeAddr}";
+        }
+        else if (a != null)
+        {
+            shipping.Add(a.Line1 + (string.IsNullOrWhiteSpace(a.Line2) ? "" : ", " + a.Line2));
+            shipping.Add($"{a.City}, {a.State}".Trim(' ', ','));
+        }
+        return (billing, shipping, pickupLabel);
     }
 
     public static string Build(
