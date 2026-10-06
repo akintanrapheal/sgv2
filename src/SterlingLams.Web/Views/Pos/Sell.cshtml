@@ -2101,7 +2101,7 @@
             try {
                 const res = await fetch('/Pos/VoidSale', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token ? token.value : '' },
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': (document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '') },
                     body: JSON.stringify({ orderId: +id, reason, pin })
                 });
                 let d = {}; try { d = await res.json(); } catch {}
@@ -2147,7 +2147,7 @@
             try {
                 const res = await fetch('/Pos/FixSalePayment', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token ? token.value : '' },
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': (document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '') },
                     body: JSON.stringify({ orderId: +id, method, reason, pin })
                 });
                 const d = await res.json();
