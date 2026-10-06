@@ -5,8 +5,13 @@
 # them — a redirect is cheap (no DB hit) and is how the old pages' ranking transfers to the new ones.
 # Blocking them here previously stopped Google from seeing those redirects, which cost rankings.
 #
-# We still block genuine crawl traps: faceted query-string permutations (they explode into thousands of
-# combinations) and non-indexable app pages (cart/checkout/account).
+# We still block non-indexable app pages (cart/checkout/account) and dead "add to cart" action links.
+#
+# NOTE: we deliberately do NOT block the old WooCommerce faceted params (filter_color / min_price /
+# max_price / per_page / shop_view). Those appear ONLY on old /shop + /product-category/ URLs, which now
+# 301-redirect to the new catalogue — blocking them stopped Google seeing the redirects, so thousands sat
+# as "Soft 404". The NEW storefront uses different param names (category / minPrice), which canonicalise to
+# the clean page, so leaving these unblocked opens no crawl trap.
 User-agent: *
 Disallow: /cart
 Disallow: /checkout
@@ -15,11 +20,6 @@ Disallow: /account
 # not real pages, so keep them out of the index and off the crawl budget. The real content URLs
 # (/product/… and /product-category/…) carry no add-to-cart param, so they stay crawlable + redirect.
 Disallow: /*add-to-cart=
-Disallow: /*filter_color=
-Disallow: /*min_price=
-Disallow: /*max_price=
-Disallow: /*per_page=
-Disallow: /*shop_view=
 Allow: /products
 
 Sitemap: https://sterlinglams.com/sitemap.xml
