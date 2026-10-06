@@ -139,6 +139,36 @@ public class CashUpSplitTests
     }
 
     [Fact]
+    public async Task Manually_confirmed_transfer_website_order_also_lands_in_the_transfer_bucket()
+    {
+        using var t = new TestDb();
+        var (_, allen, _) = t.SeedBranches();
+        var buyer = t.SeedUser();
+        var p = t.SeedProduct(2500m);
+        var now = DateTime.UtcNow;
+        var session = OpenSession(t, allen, now.AddHours(-2));
+
+        // A staff-confirmed bank-transfer website order carries PaymentProvider "Manual (Transfer)" — it must
+        // still count as "Website – bank transfer", not "paid online".
+        var order = new Order
+        {
+            OrderNumber = "T-WT-MAN", UserId = buyer.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = allen.Id,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = now.AddMinutes(-30),
+            PaymentProvider = "Manual (Transfer)", Currency = "NGN",
+            Subtotal = 2 * 2500m, DeliveryFee = 500m, Total = 2 * 2500m + 500m,
+            Items = new List<OrderItem> { new() { ProductId = p.Id, ProductName = p.Name, Quantity = 2, UnitPrice = 2500m } },
+        };
+        t.Db.Add(order);
+        t.Db.SaveChanges();
+
+        var vm = await new CashUpService(t.Db).BuildAsync(session, interim: true, currentUserId: "");
+
+        Assert.Equal(5000m, vm.Tenders.First(x => x.Key == "WebsiteTransfer").Expected);
+        Assert.Equal(0m, vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected);
+    }
+
+    [Fact]
     public async Task Refunds_net_against_the_channel_they_were_paid_back_through()
     {
         using var t = new TestDb();

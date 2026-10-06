@@ -111,7 +111,10 @@ public class CashUpService : ICashUpService
         // Website revenue is split into two buckets by how the order was paid: a bank-transfer order
         // (manually confirmed by staff with PaymentProvider "Transfer") is money to reconcile in the bank;
         // everything else is paid through the online gateway. (We don't take pay-on-delivery.)
-        static bool IsTransfer(Order o) => string.Equals(o.PaymentProvider, "Transfer", StringComparison.OrdinalIgnoreCase);
+        // "Transfer" (online gateway-less transfer) AND "Manual (Transfer)" (a staff-confirmed bank
+        // transfer on a website order) both count as the bank-transfer bucket — not "paid online".
+        static bool IsTransfer(Order o) => o.PaymentProvider != null
+            && o.PaymentProvider.Contains("Transfer", StringComparison.OrdinalIgnoreCase);
         decimal wOnlineGross = 0m, wTransferGross = 0m;
 
         // (b) Items THIS branch SENT to merge, dispatched within the window.
