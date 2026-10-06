@@ -338,37 +338,29 @@ public sealed class OrderStatusService : IOrderStatusService
             return u.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? u
                  : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + u.TrimStart('/'));
         }
+        // Same rich layout as the website new-order email (logo shell, ORDER DETAILS, product table,
+        // SUBTOTAL/SHIPPING/TOTAL/PAYMENT, billing + shipping blocks). Only the intro says it was
+        // confirmed manually, and PAYMENT shows "Manual (…)". Phone + full pickup address included.
         var items = order.Items
-            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId)))
+            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId), i.ProductSku))
             .ToList();
 
-        string E(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
-        // Fulfilment line: pickup store or delivery.
-        var fulfil = order.FulfillmentType == FulfillmentType.StorePickup
-            ? $"Pickup at {E(order.PickupStore?.Name ?? "store")}"
+        var (billing, shipping, pickupLabel) = OrderEmailTemplate.AddressBlocksFor(order, buyerName, buyer?.Email);
+        var shippingLabel = order.FulfillmentType == FulfillmentType.StorePickup
+            ? pickupLabel
             : (order.DeliveryFee > 0 ? $"Delivery — ₦{order.DeliveryFee:N0}" : "Delivery");
-        var paidVia = string.IsNullOrWhiteSpace(order.PaymentProvider) ? "Manual" : E(order.PaymentProvider);
-        var contact = new[] { buyer?.Email, buyer?.PhoneNumber }.Where(x => !string.IsNullOrWhiteSpace(x));
-        var extra =
-            $@"<table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""margin:4px 0 0;font-size:13px;color:#44403c;line-height:1.7;"">
-  <tr><td><strong>Customer:</strong> {E(buyerName)}{(contact.Any() ? " — " + E(string.Join(", ", contact)) : "")}</td></tr>
-  <tr><td><strong>Fulfilment:</strong> {fulfil}</td></tr>
-  <tr><td><strong>Payment:</strong> {paidVia}</td></tr>
-</table>";
+        var paidVia = string.IsNullOrWhiteSpace(order.PaymentProvider) ? "Manual" : order.PaymentProvider!;
 
         var subjectT = await _settings.GetAsync("email.new_order_admin.subject", "New order {order}");
         var subject = subjectT.Replace("{order}", order.OrderNumber) + $" — ₦{order.Total:N0}";
         var heading = subjectT.Replace("{order}", order.OrderNumber);
-        var intro = "A new order has come in (confirmed manually by staff) — full details below. View it in the admin dashboard under Orders.";
+        var introHtml = System.Net.WebUtility.HtmlEncode(
+            "A new order has come in (confirmed manually by staff) — full details below. View it in the admin dashboard under Orders.");
 
-        string? detailUrl = null;
-        if (_http.HttpContext != null)
-            detailUrl = _links.GetUriByAction(_http.HttpContext, "Detail", "Orders",
-                new { area = "Admin", id = order.Id }, _http.HttpContext.Request.Scheme, _http.HttpContext.Request.Host);
-
-        var body = OrderEmailTemplate.BuildStatusUpdate(heading, intro, order.OrderNumber, items, order.Total,
-            extraHtml: extra, buttonLabel: detailUrl == null ? null : "View order",
-            buttonHref: detailUrl);
+        var body = OrderEmailTemplate.Build(
+            heading: heading, introHtml: introHtml, orderNumber: order.OrderNumber, orderDate: order.CreatedAt,
+            items: items, subtotal: order.Subtotal, shippingLabel: shippingLabel, total: order.Total,
+            paymentMethod: paidVia, billingLines: billing, shippingLines: shipping);
 
         var fromAlerts = await _settings.GetAsync("email.from_alerts", "");
         var sentAny = false;
