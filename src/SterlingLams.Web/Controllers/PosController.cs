@@ -2336,13 +2336,20 @@ public class PosController : Controller
                 query = query.Where(p => p.CategoryId == categoryId.Value);
             }
         }
+        // Printed labels and stored barcodes sometimes differ by a leading zero (e.g. label "2345" vs stored
+        // "02345", from EposNow/Excel dropping or adding it). Match the zero-stripped form too so a scan
+        // finds the item whichever side carries the zero. (Only when it stays specific enough — ≥3 chars.)
+        var qStrip = q.TrimStart('0');
+        if (qStrip.Length < 3) qStrip = q;
         if (q.Length > 0)
             query = query.Where(p => EF.Functions.ILike(p.Name, $"%{q}%")
                                   || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
                                   || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
+                                  || EF.Functions.ILike(p.Barcode ?? "", $"%{qStrip}%")
                                   // Also match a VARIANT's own barcode (e.g. Silver = 011005), so scanning
                                   // any variant's code surfaces the product — not just the product barcode.
-                                  || p.Variants.Any(v => v.IsActive && v.Barcode != null && EF.Functions.ILike(v.Barcode, $"%{q}%")));
+                                  || p.Variants.Any(v => v.IsActive && v.Barcode != null
+                                        && (EF.Functions.ILike(v.Barcode, $"%{q}%") || EF.Functions.ILike(v.Barcode, $"%{qStrip}%"))));
 
         var products = await query.OrderBy(p => p.Name).Take(40)
             .Select(p => new
@@ -2366,14 +2373,14 @@ public class PosController : Controller
         // AVAILABLE (on-hand − reserved) per product and per variant, so the till + variant picker
         // numbers match what checkout will actually allow.
         var inv = await StoreInvAsync(storeId, products.Select(p => p.id).ToList());
-        var qlc = q.ToLowerInvariant();
         return Json(products.Select(p => new
         {
             p.id, p.name, p.sku, p.barcode, p.price, image = PosThumb(p.image),
             stock = ProdAvail(inv, p.id),
             // When a specific variant's barcode was scanned, tell the till which one so it can add that
-            // exact variant straight away (no variant-picker prompt).
-            scanVariantId = p.variants?.FirstOrDefault(v => v.barcode != null && v.barcode.ToLowerInvariant() == qlc)?.id,
+            // exact variant straight away (no variant-picker prompt). Matched ignoring a leading zero.
+            scanVariantId = p.variants?.FirstOrDefault(v =>
+                SterlingLams.Web.Infrastructure.BarcodeMatch.Same(v.barcode, q))?.id,
             variants = p.variants?.Select(v => new { v.id, v.name, v.barcode, v.price, stock = VarAvail(inv, p.id, v.id), image = PosThumb(v.imageUrl) })
         }));
     }

@@ -1233,7 +1233,9 @@
             const v = (vm.variants || []).find(x => x.id === vm.scanVariantId);
             if (v) { await add(vm, v); clearBox(); return; }
         }
-        const exact = items.find(p => (p.barcode && p.barcode.toLowerCase() === code.toLowerCase()) || (p.sku && p.sku.toLowerCase() === code.toLowerCase()));
+        // Leading-zero-insensitive barcode match: a label "2345" scans the stored "02345" (and vice versa).
+        const nb = s => (s || '').toString().trim().toLowerCase().replace(/^0+/, '');
+        const exact = items.find(p => (p.barcode && nb(p.barcode) === nb(code)) || (p.sku && p.sku.toLowerCase() === code.toLowerCase()));
         if (exact && exact.stock > 0) { add(exact); clearBox(); }
         // No exact hit — show the matches so the user can pick one (then the ✕ clears them).
         else { lastResults = items; catGrid.classList.add('hidden'); resultsEl.classList.remove('hidden'); toggleClear(); renderProducts(items); }
