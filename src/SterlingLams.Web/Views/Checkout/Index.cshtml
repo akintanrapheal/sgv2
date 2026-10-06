@@ -39,9 +39,10 @@
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Full Name</label>
+                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Full Name <span class="pickup-req text-red-400 hidden">*</span></label>
                                 <input asp-for="GuestName" type="text" autocomplete="name"
-                                       class="form-input" placeholder="Jane Smith" />
+                                       class="form-input @(ViewData.ModelState["GuestName"]?.Errors.Any() == true ? "border-red-400" : "")" placeholder="Jane Smith" />
+                                <span asp-validation-for="GuestName" class="text-xs text-red-500 mt-1 block"></span>
                             </div>
                             <div>
                                 <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Email <span class="text-red-400">*</span></label>
@@ -51,9 +52,11 @@
                                 <span asp-validation-for="GuestEmail" class="text-xs text-red-500 mt-1 block"></span>
                             </div>
                             <div>
-                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Phone</label>
+                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Phone <span class="pickup-req text-red-400 hidden">*</span></label>
                                 <input asp-for="GuestPhone" type="tel" autocomplete="tel"
-                                       class="form-input" placeholder="+234 800 000 0000" />
+                                       class="form-input @(ViewData.ModelState["GuestPhone"]?.Errors.Any() == true ? "border-red-400" : "")" placeholder="+234 800 000 0000" />
+                                <span asp-validation-for="GuestPhone" class="text-xs text-red-500 mt-1 block"></span>
+                                <span class="pickup-req hidden text-xs text-neutral-400 mt-1 block">Required for store pickup.</span>
                             </div>
                         </div>
                     </section>
@@ -213,6 +216,20 @@
                         }
                     </div>
                     <p id="pickup-error" class="text-xs text-red-500 mt-2 hidden">Please choose a store to collect from.</p>
+
+                    @* Signed-in buyers don't fill the guest contact block, but a phone is mandatory for
+                       pickup — collect one here if it's missing from the account (saved on checkout). *@
+                    @if (User.Identity?.IsAuthenticated == true)
+                    {
+                        <div class="mt-6 max-w-sm">
+                            <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Phone for pickup <span class="text-red-400">*</span></label>
+                            <input asp-for="GuestPhone" type="tel" autocomplete="tel"
+                                   class="form-input @(ViewData.ModelState["GuestPhone"]?.Errors.Any() == true ? "border-red-400" : "")"
+                                   placeholder="+234 800 000 0000" />
+                            <span asp-validation-for="GuestPhone" class="text-xs text-red-500 mt-1 block"></span>
+                            <span class="text-xs text-neutral-400 mt-1 block">So the branch can reach you at collection.</span>
+                        </div>
+                    }
                 </section>
 
                 <!-- Step 3: Order notes + newsletter -->
@@ -416,6 +433,8 @@ let CURRENT_FEE = 0;
 function toggleFulfillment(type) {
     document.getElementById('delivery-section').classList.toggle('hidden', type !== 'delivery');
     document.getElementById('pickup-section').classList.toggle('hidden', type !== 'pickup');
+    // Name + phone are required for pickup — show the * hints on the guest contact fields.
+    document.querySelectorAll('.pickup-req').forEach(e => e.classList.toggle('hidden', type !== 'pickup'));
     if (type === 'pickup') {
         updateSummary(0);
     }
