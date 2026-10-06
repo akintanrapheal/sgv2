@@ -176,5 +176,50 @@ public class CashUpSplitTests
         Assert.Equal(3000m, vm.Tenders.First(x => x.Key == "Card").Expected);
         Assert.Equal(2000m, vm.Tenders.First(x => x.Key == "Cash").Expected);
         Assert.Equal(0m, vm.Tenders.First(x => x.Key == "Transfer").Expected);
+
+        // Both POS refunds show on the Refunds tab.
+        Assert.Contains(vm.Refunds, r => r.Number == "R-CARD" && r.Amount == 2000m);
+        Assert.Contains(vm.Refunds, r => r.Number == "R-CASH" && r.Amount == 1000m);
+    }
+
+    [Fact]
+    public async Task Website_refund_reduces_the_branch_figure_and_shows_on_the_refunds_tab()
+    {
+        using var t = new TestDb();
+        var (_, allen, _) = t.SeedBranches();
+        var buyer = t.SeedUser();
+        var p = t.SeedProduct(1000m);
+        var now = DateTime.UtcNow;
+        var session = OpenSession(t, allen, now.AddHours(-2));
+
+        // Paid online order fulfilled by Allen: 2× p = ₦2,000 to Allen's website figure.
+        var order = new Order
+        {
+            OrderNumber = "T-WEB-R", UserId = buyer.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = allen.Id,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = now.AddMinutes(-60),
+            Currency = "NGN", Subtotal = 2000m, Total = 2000m,
+            Items = new List<OrderItem> { new() { ProductId = p.Id, ProductName = p.Name, Quantity = 2, UnitPrice = 1000m } },
+        };
+        t.Db.Add(order);
+        t.Db.SaveChanges();
+
+        // Approved WEBSITE refund (no till session) for 1 unit, approved inside Allen's window.
+        var refund = new Refund
+        {
+            RefundNumber = "R-WEB", OriginalOrderId = order.Id, TillSessionId = null,
+            RefundMethod = "Paystack", Amount = 1000m, Status = RefundStatus.Approved,
+            CreatedAt = now.AddMinutes(-20), DecisionAt = now.AddMinutes(-15),
+            Items = new List<RefundItem> { new() { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 1000m } },
+        };
+        t.Db.Add(refund);
+        t.Db.SaveChanges();
+
+        var vm = await new CashUpService(t.Db).BuildAsync(session, interim: true, currentUserId: "");
+
+        // 2,000 earned − 1,000 refunded = 1,000 left in the website figure.
+        Assert.Equal(1000m, vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected);
+        // And the website refund now appears on the Refunds tab (was previously only netted, not listed).
+        Assert.Contains(vm.Refunds, r => r.Number == "R-WEB" && r.Amount == 1000m && r.Method.StartsWith("Website"));
     }
 }
