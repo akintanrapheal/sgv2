@@ -2719,11 +2719,14 @@
         if (e.key !== 'Enter') return;
         e.preventDefault();
         var q = searchIn.value.trim().toLowerCase(); if (!q) return;
+        // Leading-zero-insensitive barcode match: "2345" and "02345" are the same item.
+        var nbs = function (s) { return (s || '').toString().trim().toLowerCase().replace(/^0+/, ''); };
+        var qk = nbs(q);
         var mp = null, mv = null;
         for (var k = 0; k < lastResults.length; k++) {
             var r = lastResults[k];
-            if ((r.barcode && r.barcode.toLowerCase() === q) || (r.sku && r.sku.toLowerCase() === q)) { mp = r; break; }
-            var v = (r.variants || []).find(function (x) { return x.barcode && x.barcode.toLowerCase() === q; });
+            if ((r.barcode && nbs(r.barcode) === qk) || (r.sku && r.sku.toLowerCase() === q)) { mp = r; break; }
+            var v = (r.variants || []).find(function (x) { return x.barcode && nbs(x.barcode) === qk; });
             if (v) { mp = r; mv = v; break; }
         }
         if (!mp && lastResults.length === 1 && !lastResults[0].hasVariants) mp = lastResults[0];
@@ -2843,7 +2846,10 @@
         if (e.key !== 'Enter') return;
         e.preventDefault();
         var code = recvScan.value.trim().toLowerCase(); recvScan.value = ''; if (!code) return;
-        var idx = recvState.lines.findIndex(function (l) { return l.codes.indexOf(code) !== -1; });
+        // Leading-zero-insensitive: a label "2345" ticks off the line stored as "02345" (and vice versa).
+        var nbr = function (s) { return (s || '').toString().trim().toLowerCase().replace(/^0+/, ''); };
+        var ckey = nbr(code);
+        var idx = recvState.lines.findIndex(function (l) { return (l.codes || []).some(function (c) { return nbr(c) === ckey; }); });
         if (idx === -1) { recvScanMsg.className = 'text-xs text-center h-4 mt-1 text-red-500'; recvScanMsg.textContent = 'No item on this transfer matches that barcode.'; return; }
         var line = recvState.lines[idx];
         // Start counting from 0 the first time a line is scanned, so scans tally the physical count.

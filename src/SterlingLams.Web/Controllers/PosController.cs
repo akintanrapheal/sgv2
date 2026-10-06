@@ -555,11 +555,15 @@ public class PosController : Controller
         var reg = await BoundRegisterAsync();
         if (reg == null) return Json(Array.Empty<object>());
         var term = (q ?? "").Trim().ToLower();   // case-insensitive (Postgres LIKE is case-sensitive)
+        // Also match the leading-zero-stripped form so a label "2345" finds the item stored as "02345"
+        // (and vice versa) — same fix as the sell scan. Kept specific (≥3 chars) to avoid broadening.
+        var strip = term.TrimStart('0');
+        if (strip.Length < 3) strip = term;
         var raw = await _db.Products
             .Where(p => p.IsActive && (term == "" || p.Name.ToLower().Contains(term)
                       || (p.Sku != null && p.Sku.ToLower().Contains(term))
-                      || (p.Barcode != null && p.Barcode.ToLower().Contains(term))
-                      || p.Variants.Any(v => v.Barcode != null && v.Barcode.ToLower().Contains(term))))
+                      || (p.Barcode != null && (p.Barcode.ToLower().Contains(term) || p.Barcode.ToLower().Contains(strip)))
+                      || p.Variants.Any(v => v.Barcode != null && (v.Barcode.ToLower().Contains(term) || v.Barcode.ToLower().Contains(strip)))))
             .OrderBy(p => p.Name).Take(25)
             .Select(p => new
             {
