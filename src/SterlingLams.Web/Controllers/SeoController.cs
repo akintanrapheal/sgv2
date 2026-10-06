@@ -12,7 +12,9 @@ public class SeoController : Controller
     private readonly ApplicationDbContext _db;
     public SeoController(ApplicationDbContext db) => _db = db;
 
-    private string BaseUrl => $"{Request.Scheme}://{Request.Host}";
+    // The one fixed canonical origin (apex), so sitemap/robots URLs match the pages' canonical tags
+    // regardless of which host served the request (see Infrastructure/SeoUrl).
+    private static string BaseUrl => SterlingLams.Web.Infrastructure.SeoUrl.Base;
 
     [HttpGet("/robots.txt")]
     public IActionResult Robots()

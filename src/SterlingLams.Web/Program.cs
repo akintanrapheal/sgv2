@@ -374,6 +374,24 @@ app.UseStatusCodePagesWithReExecute("/Home/PageNotFound", "?code={0}");
 
 app.UseHttpsRedirection();
 
+// ─── Canonical host (SEO) ────────────────────────────────────────────────────
+// 301 the "www." alias to the one canonical apex host so duplicate copies of every page stop serving
+// (they also carry a canonical tag to the same place). /health is exempt — Render's health check can hit
+// an alias host, and a 301 there would read as unhealthy and 502 the service.
+app.Use(async (context, next) =>
+{
+    var wwwHost = "www." + new Uri(SterlingLams.Web.Infrastructure.SeoUrl.Base).Host; // e.g. www.sterlinglams.com
+    if (context.Request.Host.Host.Equals(wwwHost, StringComparison.OrdinalIgnoreCase)
+        && !context.Request.Path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.Redirect(
+            SterlingLams.Web.Infrastructure.SeoUrl.Base + context.Request.Path + context.Request.QueryString,
+            permanent: true);
+        return;
+    }
+    await next();
+});
+
 // ─── Security headers ───────────────────────────────────────────────────────
 // Reject verbs the app has no endpoints for. Without this, MVC answers DELETE/PUT on any GET
 // action (returning 200), which scanners flag and which can confuse caches/proxies.
@@ -664,6 +682,11 @@ catch (Exception ex)
     var seedLogger = app.Services.GetRequiredService<ILogger<Program>>();
     seedLogger.LogError(ex, "Seeding failed — database may not be available.");
 }
+
+// The one canonical origin for all SEO URLs (canonical tags, og:url, JSON-LD, sitemap). Defaults to the
+// apex domain; App:CanonicalBaseUrl overrides it (kept separate from App:BaseUrl, which may point at the
+// Render URL for email links during a cutover).
+SterlingLams.Web.Infrastructure.SeoUrl.Configure(app.Configuration["App:CanonicalBaseUrl"]);
 
 // ─── CLI maintenance commands ────────────────────────────────────────────────
 // Usage: dotnet run -- migrate-woo "C:\path\to\product-export.csv"

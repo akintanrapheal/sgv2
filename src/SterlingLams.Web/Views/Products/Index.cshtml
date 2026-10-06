@@ -36,14 +36,15 @@
     var sidebarNodes = SterlingLams.Web.Infrastructure.StoreMenu.BuildSidebar(
         Model.Filters.Categories.Select(c => (c.Slug, c.Name)));
 
-    // Self-canonical that keeps the category but drops page/sort/filter noise (avoids duplicates).
-    var canonBase = $"{Context.Request.Scheme}://{Context.Request.Host}/products";
+    // Self-canonical that keeps the category but drops page/sort/filter noise (avoids duplicates). Built
+    // from the one fixed canonical origin so www/apex/etc. don't fork into duplicates (see SeoUrl).
+    var canonBase = SterlingLams.Web.Infrastructure.SeoUrl.Base + "/products";
     ViewData["Canonical"] = string.IsNullOrWhiteSpace(Model.Filters.Category)
         ? canonBase
         : $"{canonBase}?category={Model.Filters.Category}";
 
     // BreadcrumbList structured data (OP-39): Home > Collections, or Home > <Category> on a filtered view.
-    var sdBase = $"{Context.Request.Scheme}://{Context.Request.Host}";
+    var sdBase = SterlingLams.Web.Infrastructure.SeoUrl.Base;
     var hasCategory = !string.IsNullOrWhiteSpace(Model.Filters.Category);
     var crumbLeafName = hasCategory ? (Model.PageTitle ?? "Collections") : "Collections";
     var crumbLeafUrl = hasCategory ? $"{sdBase}/products?category={Model.Filters.Category}" : $"{sdBase}/products";
