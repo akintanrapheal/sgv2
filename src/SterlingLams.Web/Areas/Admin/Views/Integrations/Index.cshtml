@@ -568,8 +568,17 @@
                 <input type="checkbox" name="cloudflare.transforms_enabled" value="true" @(Model.CfTransformsEnabled ? "checked" : "")
                        class="mt-0.5 rounded accent-neutral-900" />
                 <span>
-                    <p class="text-sm font-medium text-neutral-800">Resize images via Cloudflare</p>
-                    <p class="text-[11px] text-neutral-400">Serve resized images from the public base URL above. Turn on only after enabling Transformations for your domain in Cloudflare and moving images to R2.</p>
+                    <p class="text-sm font-medium text-neutral-800">Resize images via Cloudflare <span class="text-[11px] text-amber-600">(paid over 5,000/mo)</span></p>
+                    <p class="text-[11px] text-neutral-400">Resize on the fly via Cloudflare. Turn on only after enabling Transformations for your domain and moving images to R2. Leave this for the paid path — turn it OFF when using pre-sized images below.</p>
+                </span>
+            </label>
+
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" name="images.presized" value="true" @(Model.PresizedEnabled ? "checked" : "")
+                       class="mt-0.5 rounded accent-neutral-900" />
+                <span>
+                    <p class="text-sm font-medium text-neutral-800">Serve pre-sized R2 images <span class="text-[11px] text-emerald-600">(free — no transforms)</span></p>
+                    <p class="text-[11px] text-neutral-400">Serve small WebP files made once at upload — zero Cloudflare transformations, no quota, no cost. Turn on <b>only after</b> running "Generate pre-sized images" (Import Products) so every image has its renditions, then turn the Cloudflare option above OFF. Takes priority over Cloudflare resizing, so you can switch back anytime by unticking this.</p>
                 </span>
             </label>
         </section>

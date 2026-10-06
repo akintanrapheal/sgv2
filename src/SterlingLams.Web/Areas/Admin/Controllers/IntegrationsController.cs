@@ -139,6 +139,7 @@ public class IntegrationsController : AdminBaseController
             R2AccessKeyId      = Plain("r2.access_key_id", null),
             R2SecretSet        = Set("r2.secret_access_key", null),
             CfTransformsEnabled = await _settings.GetBoolAsync("cloudflare.transforms_enabled", false),
+            PresizedEnabled     = await _settings.GetBoolAsync("images.presized", false),
 
             BaseUrl = baseUrl,
         };
@@ -368,6 +369,9 @@ public class IntegrationsController : AdminBaseController
         SterlingLams.Web.Infrastructure.Img.ConfigureCloudflare(
             await _settings.GetBoolAsync("cloudflare.transforms_enabled", false),
             await _settings.GetAsync("r2.public_base", ""));
+        SterlingLams.Web.Infrastructure.Img.ConfigurePresized(
+            await _settings.GetBoolAsync("images.presized", false),
+            await _settings.GetAsync("r2.public_base", ""));
 
         await LogAsync("Update", "Setting", null,
             $"Updated Integrations settings ({updates.Count} fields, {secretsUpdated} secret(s) changed)");
@@ -457,6 +461,7 @@ public class IntegrationsViewModel
     public string R2AccessKeyId { get; set; } = "";
     public bool R2SecretSet { get; set; }
     public bool CfTransformsEnabled { get; set; }
+    public bool PresizedEnabled { get; set; }
 
     public string BaseUrl { get; set; } = "";
 }

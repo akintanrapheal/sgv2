@@ -40,14 +40,16 @@ public class ProductImportController : AdminBaseController
     private readonly ILogger<ProductImportController> _log;
     private readonly SterlingLams.Web.Services.IImageKitUploader _imagekit;
     private readonly SterlingLams.Web.Services.IR2Storage _r2;
+    private readonly SterlingLams.Web.Services.IImageStorageService _imageStorage;
 
     public ProductImportController(ApplicationDbContext db, SterlingLams.Web.Services.ICloudinaryProvider cloud,
         SterlingLams.Web.Services.IStorefrontCache cache, SterlingLams.Web.Services.BarcodeImportService barcodes,
         SterlingLams.Web.Services.StockImportService stockImport,
         IHttpClientFactory httpFactory, ILogger<ProductImportController> log,
-        SterlingLams.Web.Services.IImageKitUploader imagekit, SterlingLams.Web.Services.IR2Storage r2)
+        SterlingLams.Web.Services.IImageKitUploader imagekit, SterlingLams.Web.Services.IR2Storage r2,
+        SterlingLams.Web.Services.IImageStorageService imageStorage)
     {
-        _db = db; _cloud = cloud; _cache = cache; _barcodes = barcodes; _stockImport = stockImport; _httpFactory = httpFactory; _log = log; _imagekit = imagekit; _r2 = r2;
+        _db = db; _cloud = cloud; _cache = cache; _barcodes = barcodes; _stockImport = stockImport; _httpFactory = httpFactory; _log = log; _imagekit = imagekit; _r2 = r2; _imageStorage = imageStorage;
     }
 
     public async Task<IActionResult> Index()
@@ -431,6 +433,100 @@ public class ProductImportController : AdminBaseController
         var total = await _db.ProductImages.CountAsync(i => i.Url.Contains(CldMark))
                   + await _db.ProductVariants.CountAsync(v => v.ImageUrl != null && v.ImageUrl.Contains(CldMark))
                   + await _db.Categories.CountAsync(c => c.ImageUrl != null && c.ImageUrl.Contains(CldMark));
+        return Json(new { ok = true, total, configured = await _r2.IsConfiguredAsync() });
+    }
+
+    // ── Pre-size images: generate the fixed-width WebP renditions (…_160/400/800/1280.webp) for every R2
+    // image, so the storefront can serve them directly with NO Cloudflare transformation (zero cost/quota).
+    // Downloads each stored original from R2 and writes the renditions back. Bounded batches (the page
+    // repeats until done), resumable via an Id cursor, idempotent (overwrites).
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> PresizeR2(string? cursor)
+    {
+        if (!await _r2.IsConfiguredAsync())
+            return Json(new { ok = false, error = "Cloudflare R2 isn't configured. Fill in the R2 details in Admin → Integrations first." });
+
+        var publicBase = (await _r2.PublicBaseAsync()).TrimEnd('/');
+        if (publicBase.Length == 0) return Json(new { ok = false, error = "R2 public base URL is not set." });
+
+        // Small batch — each image means a download + decode + 4 WebP encodes + 4 uploads.
+        const int Batch = 4;
+        var parts = (cursor ?? "pi:0").Split(':');
+        var phase = parts.Length > 0 && parts[0].Length > 0 ? parts[0] : "pi";
+        var lastId = parts.Length > 1 && int.TryParse(parts[1], out var lv) ? lv : 0;
+
+        int done = 0, failed = 0;
+        string sample = "";
+        var http = _httpFactory.CreateClient();
+        http.Timeout = TimeSpan.FromSeconds(60);
+
+        async Task<int> Do(IEnumerable<(int Id, string Url)> rows)
+        {
+            int maxId = lastId;
+            foreach (var r in rows)
+            {
+                maxId = r.Id;
+                if (string.IsNullOrEmpty(r.Url) || !r.Url.StartsWith(publicBase, StringComparison.OrdinalIgnoreCase)) continue;
+                var key = r.Url[(publicBase.Length + 1)..];           // object key = URL after the public base
+                try
+                {
+                    var bytes = await http.GetByteArrayAsync(r.Url);  // the stored original
+                    await _imageStorage.GenerateVariantsAsync(key, bytes);
+                    done++; if (sample.Length == 0) sample = key;
+                }
+                catch (Exception ex) { failed++; if (sample.Length == 0) sample = $"FAILED {key}: {ex.Message}"; }
+            }
+            return maxId;
+        }
+
+        var Match = publicBase;
+        string nextCursor = cursor ?? "pi:0";
+        if (phase == "pi")
+        {
+            var rows = await _db.ProductImages.Where(i => i.Id > lastId && i.Url.Contains(Match))
+                .OrderBy(i => i.Id).Take(Batch).Select(i => new { i.Id, i.Url }).ToListAsync();
+            if (rows.Count > 0) nextCursor = "pi:" + await Do(rows.Select(r => (r.Id, r.Url)));
+            else { phase = "pv"; lastId = 0; nextCursor = "pv:0"; }
+        }
+        if (phase == "pv" && done + failed == 0)
+        {
+            var rows = await _db.ProductVariants.Where(v => v.Id > lastId && v.ImageUrl != null && v.ImageUrl.Contains(Match))
+                .OrderBy(v => v.Id).Take(Batch).Select(v => new { v.Id, Url = v.ImageUrl! }).ToListAsync();
+            if (rows.Count > 0) nextCursor = "pv:" + await Do(rows.Select(r => (r.Id, r.Url)));
+            else { phase = "cat"; lastId = 0; nextCursor = "cat:0"; }
+        }
+        if (phase == "cat" && done + failed == 0)
+        {
+            var rows = await _db.Categories.Where(c => c.Id > lastId && c.ImageUrl != null && c.ImageUrl.Contains(Match))
+                .OrderBy(c => c.Id).Take(Batch).Select(c => new { c.Id, Url = c.ImageUrl! }).ToListAsync();
+            if (rows.Count > 0) nextCursor = "cat:" + await Do(rows.Select(r => (r.Id, r.Url)));
+            else { nextCursor = "done:0"; }
+        }
+
+        var finished = nextCursor.StartsWith("done");
+        var curPhase = nextCursor.Split(':')[0];
+        var curId = int.TryParse(nextCursor.Split(':')[1], out var ci) ? ci : 0;
+        int remaining = 0;
+        if (!finished)
+        {
+            if (curPhase == "pi") remaining += await _db.ProductImages.CountAsync(i => i.Id > curId && i.Url.Contains(Match));
+            if (curPhase == "pi" || curPhase == "pv")
+                remaining += await _db.ProductVariants.CountAsync(v => v.ImageUrl != null && v.ImageUrl.Contains(Match) && (curPhase == "pi" || v.Id > curId));
+            remaining += await _db.Categories.CountAsync(c => c.ImageUrl != null && c.ImageUrl.Contains(Match) && (curPhase != "cat" || c.Id > curId));
+        }
+
+        if (done > 0) await LogAsync("Update", "Product", null, $"Pre-sized {done} image(s) into R2 ({remaining} remaining).");
+        return Json(new { ok = true, uploaded = done, failed, remaining, cursor = nextCursor, done = finished, sample });
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> PresizeStatus()
+    {
+        var publicBase = (await _r2.PublicBaseAsync()).TrimEnd('/');
+        var total = publicBase.Length == 0 ? 0
+            : await _db.ProductImages.CountAsync(i => i.Url.Contains(publicBase))
+            + await _db.ProductVariants.CountAsync(v => v.ImageUrl != null && v.ImageUrl.Contains(publicBase))
+            + await _db.Categories.CountAsync(c => c.ImageUrl != null && c.ImageUrl.Contains(publicBase));
         return Json(new { ok = true, total, configured = await _r2.IsConfiguredAsync() });
     }
 

@@ -81,6 +81,25 @@
     </div>
 
     <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
+        <h2 class="text-sm font-semibold text-neutral-800">Generate pre-sized images (free delivery, no transforms)</h2>
+        <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
+            Creates small WebP versions of every R2 image at a few fixed sizes and stores them in R2, so the
+            storefront serves a right-sized file directly — with <b>no Cloudflare transformations</b> (zero cost,
+            no quota). Run this <b>after</b> the R2 migration above is done. When it finishes, go to
+            <a asp-controller="Integrations" asp-action="Index" class="text-brand-600 hover:underline">Admin → Integrations</a>,
+            turn on <b>"Serve pre-sized R2 images"</b> and turn <b>"Resize images via Cloudflare"</b> off.
+            Safe to re-run (overwrites). Runs in batches — <b>keep this tab open</b> until it says done.
+        </p>
+        <div class="flex items-center gap-2 mt-4">
+            <button type="button" id="pi-presize" class="px-5 py-2 bg-neutral-900 text-white text-sm rounded-md hover:bg-neutral-700">Generate pre-sized images</button>
+            <span id="pi-presize-status" class="text-sm text-neutral-500"></span>
+        </div>
+        <div id="pi-presize-bar-wrap" class="hidden mt-3 h-2 w-full max-w-md bg-neutral-100 rounded-full overflow-hidden">
+            <div id="pi-presize-bar" class="h-full bg-emerald-500 transition-all" style="width:0%"></div>
+        </div>
+    </div>
+
+    <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
         <h2 class="text-sm font-semibold text-neutral-800">Import barcodes (EposNow)</h2>
         <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
             Upload an EposNow <strong>ProductList</strong> CSV (<span class="font-mono">Name;CategoryId;Barcode</span>).
@@ -349,6 +368,47 @@
                         } else { step(); }
                     })
                     .catch(function () { r2Status.textContent = 'A batch failed — click again to resume (already-moved images are skipped).'; r2Btn.disabled = false; });
+            }
+        });
+    }
+
+    // ── Generate pre-sized images (free delivery) — batched loop until done ──
+    var psBtn = document.getElementById('pi-presize');
+    var psStatus = document.getElementById('pi-presize-status');
+    var psBarWrap = document.getElementById('pi-presize-bar-wrap');
+    var psBar = document.getElementById('pi-presize-bar');
+    if (psBtn) {
+        psBtn.addEventListener('click', function () {
+            psBtn.disabled = true;
+            var total = 0, done = 0, failed = 0, cursor = 'pi:0';
+            psBarWrap.classList.remove('hidden');
+            fetch(base + 'PresizeStatus').then(function (r) { return r.json(); }).then(function (s) {
+                if (!s.ok) { psStatus.textContent = 'Could not read status.'; psBtn.disabled = false; return; }
+                if (!s.configured) { psStatus.textContent = 'Configure R2 in Admin → Integrations first.'; psBtn.disabled = false; return; }
+                total = s.total || 0;
+                if (total === 0) { psStatus.textContent = 'No R2 images found — run the migration above first.'; psBtn.disabled = false; return; }
+                step();
+            }).catch(function () { psStatus.textContent = 'Request failed.'; psBtn.disabled = false; });
+
+            function step() {
+                var fd = new FormData();
+                fd.append('__RequestVerificationToken', token ? token.value : '');
+                fd.append('cursor', cursor);
+                fetch(base + 'PresizeR2', { method: 'POST', body: fd, headers: { 'RequestVerificationToken': token ? token.value : '' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (!d.ok) { psStatus.textContent = d.error || 'Failed.'; psBtn.disabled = false; return; }
+                        done += d.uploaded; failed += d.failed; cursor = d.cursor;
+                        var pct = total ? Math.min(100, Math.round((total - d.remaining) / total * 100)) : 100;
+                        psBar.style.width = pct + '%';
+                        psStatus.textContent = 'Generating… ' + done + ' of ' + total + ' done' + (failed ? (' · ' + failed + ' failed') : '') + ' (' + pct + '%)';
+                        if (d.done) {
+                            psBar.style.width = '100%';
+                            psStatus.textContent = 'Done — pre-sized ' + done + ' image(s)' + (failed ? (' · ' + failed + ' failed (re-run to retry)') : '') + '. Now enable "Serve pre-sized R2 images" in Integrations and turn Cloudflare resizing off.';
+                            psBtn.disabled = false;
+                        } else { step(); }
+                    })
+                    .catch(function () { psStatus.textContent = 'A batch failed — click again to resume.'; psBtn.disabled = false; });
             }
         });
     }

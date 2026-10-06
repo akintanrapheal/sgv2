@@ -21,18 +21,24 @@ public interface IImageStorageService
 
     /// <summary>Stores raw bytes (e.g. an image downloaded during product import). Returns the URL or null.</summary>
     Task<string?> UploadBytesAsync(byte[] bytes, string originalFileName, string subfolder);
+
+    /// <summary>Generates + stores the pre-sized WebP renditions (…_160/400/800/1280.webp) for an R2 object
+    /// key — used on upload and by the backfill batch. Best-effort; no-op when R2 isn't configured.</summary>
+    Task GenerateVariantsAsync(string r2Key, byte[] originalBytes);
 }
 
 public sealed class ImageStorageService : IImageStorageService
 {
     private readonly IR2Storage _r2;
     private readonly ICloudinaryProvider _cloud;
+    private readonly IImageResizer _resizer;
     private readonly IWebHostEnvironment _env;
 
-    public ImageStorageService(IR2Storage r2, ICloudinaryProvider cloud, IWebHostEnvironment env)
+    public ImageStorageService(IR2Storage r2, ICloudinaryProvider cloud, IImageResizer resizer, IWebHostEnvironment env)
     {
         _r2 = r2;
         _cloud = cloud;
+        _resizer = resizer;
         _env = env;
     }
 
@@ -58,7 +64,11 @@ public sealed class ImageStorageService : IImageStorageService
         {
             var key = $"sterlinglams/{(sub.Length > 0 ? sub + "/" : "")}{Guid.NewGuid():N}{ext}";
             var url = await _r2.PutAsync(key, bytes, ct);
-            if (url != null) return url;
+            if (url != null)
+            {
+                await GenerateVariantsAsync(key, bytes); // pre-sized renditions for the zero-cost delivery path
+                return url;
+            }
             // fall through to Cloudinary if the put failed, so an upload is never silently lost
         }
 
@@ -87,6 +97,18 @@ public sealed class ImageStorageService : IImageStorageService
         var fileName = $"{Guid.NewGuid():N}{ext}";
         await File.WriteAllBytesAsync(Path.Combine(dir, fileName), bytes);
         return $"/{folderPath}/{fileName}";
+    }
+
+    public async Task GenerateVariantsAsync(string r2Key, byte[] originalBytes)
+    {
+        if (string.IsNullOrWhiteSpace(r2Key) || originalBytes == null || originalBytes.Length == 0) return;
+        if (!await _r2.IsConfiguredAsync()) return;
+        var slash = r2Key.LastIndexOf('/');
+        var dot = r2Key.LastIndexOf('.');
+        var baseKey = dot > slash ? r2Key[..dot] : r2Key;
+        var renditions = _resizer.ToWebpWidths(originalBytes);
+        foreach (var (w, webp) in renditions)
+            await _r2.PutAsync($"{baseKey}_{w}.webp", webp, "image/webp");
     }
 
     // Keep the subfolder to safe path segments (drops "." / ".." and empties), matching the old inline checks.
