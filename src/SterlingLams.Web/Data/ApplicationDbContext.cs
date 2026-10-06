@@ -29,6 +29,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<StockReservation> StockReservations => Set<StockReservation>();
     public DbSet<Refund> Refunds => Set<Refund>();
     public DbSet<RefundItem> RefundItems => Set<RefundItem>();
+    public DbSet<OrderReplacement> OrderReplacements => Set<OrderReplacement>();
     public DbSet<CashMovement> CashMovements => Set<CashMovement>();
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<EmailLog> EmailLogs => Set<EmailLog>();
@@ -309,6 +310,16 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
             e.ToTable(t => t.HasCheckConstraint("CK_Refunds_Amount_NonNegative", "\"Amount\" >= 0"));
         });
         builder.Entity<RefundItem>(e => e.Property(i => i.UnitPrice).HasPrecision(18, 2));
+
+        // ─── OrderReplacement ───────────────────────────────────────────────
+        builder.Entity<OrderReplacement>(e =>
+        {
+            e.Property(r => r.BalancePaid).HasPrecision(18, 2);
+            e.HasIndex(r => r.ReplacementNumber).IsUnique();
+            e.HasOne(r => r.OriginalOrder).WithMany().HasForeignKey(r => r.OriginalOrderId)
+             .OnDelete(DeleteBehavior.Restrict);
+            e.ToTable(t => t.HasCheckConstraint("CK_OrderReplacements_Balance_NonNegative", "\"BalancePaid\" >= 0"));
+        });
 
         // ─── CashMovement (pay-in / pay-out against a shift) ────────────────
         builder.Entity<CashMovement>(e =>

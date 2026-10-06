@@ -29,14 +29,16 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private readonly SterlingLams.Web.Services.Logistics.ILogisticsDispatchService _logistics;
         private readonly IWhatsAppService _whatsapp;
         private readonly IOrderStatusService _orderStatus;
+        private readonly IReplacementService _replacements;
         private const int PageSize = 25;
 
         public OrdersController(ApplicationDbContext db, IStockService stock, IPaymentService payment,
             ILoyaltyService loyalty, IGiftCardService giftCards, IOrderFulfilmentService fulfilment, IEmailService email,
             ISettingsService settings,
             SterlingLams.Web.Services.Logistics.ILogisticsDispatchService logistics,
-            IWhatsAppService whatsapp, IOrderStatusService orderStatus)
+            IWhatsAppService whatsapp, IOrderStatusService orderStatus, IReplacementService replacements)
         {
+            _replacements = replacements;
             _db = db;
             _stock = stock;
             _payment = payment;
@@ -206,6 +208,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .OrderByDescending(r => r.CreatedAt)
                 .ToListAsync();
 
+            var replacements = await _db.OrderReplacements
+                .Where(r => r.OriginalOrderId == id)
+                .OrderByDescending(r => r.CreatedAt)
+                .ToListAsync();
+
             var notes = await _db.OrderNotes
                 .Where(n => n.OrderId == id)
                 .OrderByDescending(n => n.CreatedAt).ThenByDescending(n => n.Id)
@@ -263,7 +270,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 CustomerTotalRevenue = custRevenue,
                 CustomerAvgOrderValue = custAov,
                 // Online refunds only here; POS returns are handled at the till.
-                CanRefund = order.IsPaid && order.Channel == OrderChannel.Online && order.Status != OrderStatus.Refunded
+                CanRefund = order.IsPaid && order.Channel == OrderChannel.Online && order.Status != OrderStatus.Refunded,
+                Replacements = replacements,
+                // A replacement moves stock, so it needs a paid online order with a branch and not fully refunded.
+                CanReplace = order.IsPaid && order.Channel == OrderChannel.Online && order.Status != OrderStatus.Refunded
+                             && (order.FulfillingStoreId ?? order.PickupStoreId ?? 0) > 0
             };
 
             return View(vm);
@@ -648,6 +659,66 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             TempData["Success"] =
                 $"Refund request {refundNumber} for ₦{amount:N0} sent to Finance for approval. No money or stock has moved yet.";
             return RedirectToAction(nameof(Detail), new { id });
+        }
+
+        // ── Replacement: send the customer a different item for a bad one ─────────────────────────────
+        // Deducts the replacement item's stock at the order's branch now and queues the returned (bad)
+        // item for Inventory's restock/write-off decision. No money is paid out.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ReplaceItem(int id, int orderItemId, int newProductId, int newVariantId,
+            int newQty, string? reason, decimal balancePaid = 0, string? balanceNote = null)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+            var userName = User.Identity?.Name;
+            var res = await _replacements.CreateAsync(id, orderItemId, newProductId,
+                newVariantId > 0 ? newVariantId : (int?)null, newQty, reason, balancePaid, balanceNote, userId, userName);
+            TempData[res.Success ? "Success" : "Error"] = res.Message;
+            return RedirectToAction(nameof(Detail), new { id });
+        }
+
+        // Product search for the replacement picker — returns products (and their active variants) with
+        // available stock AT THIS ORDER'S BRANCH, so a cashier only picks what can actually be sent.
+        [HttpGet]
+        public async Task<IActionResult> ReplacementSearch(int id, string? q)
+        {
+            var order = await _db.Orders.Where(o => o.Id == id)
+                .Select(o => new { StoreId = o.FulfillingStoreId ?? o.PickupStoreId ?? 0 }).FirstOrDefaultAsync();
+            if (order == null || order.StoreId <= 0) return Json(Array.Empty<object>());
+            q = (q ?? "").Trim();
+            if (q.Length < 2) return Json(Array.Empty<object>());
+
+            var qStrip = q.TrimStart('0'); if (qStrip.Length < 3) qStrip = q;
+            var matches = await _db.Products.Where(p => p.IsActive &&
+                    (EF.Functions.ILike(p.Name, $"%{q}%")
+                     || EF.Functions.ILike(p.Sku ?? "", $"%{q}%")
+                     || EF.Functions.ILike(p.Barcode ?? "", $"%{q}%")
+                     || EF.Functions.ILike(p.Barcode ?? "", $"%{qStrip}%")
+                     || p.Variants.Any(v => v.IsActive && v.Barcode != null
+                            && (EF.Functions.ILike(v.Barcode, $"%{q}%") || EF.Functions.ILike(v.Barcode, $"%{qStrip}%")))))
+                .OrderBy(p => p.Name).Take(20)
+                .Select(p => new
+                {
+                    id = p.Id, name = p.Name, sku = p.Sku,
+                    isVariable = p.ProductType == "variable",
+                    variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name)
+                        .Select(v => new { id = v.Id, name = v.Name, sku = v.Sku }).ToList()
+                }).ToListAsync();
+
+            var pids = matches.Select(m => m.id).ToList();
+            var inv = await _db.StoreInventories
+                .Where(si => si.StoreId == order.StoreId && pids.Contains(si.ProductId))
+                .Select(si => new { si.ProductId, si.ProductVariantId, avail = si.QuantityOnHand - si.QuantityReserved })
+                .ToListAsync();
+            int Avail(int pid, int? vid) =>
+                Math.Max(0, inv.Where(i => i.ProductId == pid && i.ProductVariantId == vid).Select(i => i.avail).FirstOrDefault());
+
+            return Json(matches.Select(m => new
+            {
+                m.id, m.name, m.sku, m.isVariable,
+                stock = m.isVariable ? m.variants.Sum(v => Avail(m.id, v.id)) : Avail(m.id, null),
+                variants = m.variants.Select(v => new { v.id, v.name, v.sku, stock = Avail(m.id, v.id) })
+            }));
         }
 
         [HttpPost]

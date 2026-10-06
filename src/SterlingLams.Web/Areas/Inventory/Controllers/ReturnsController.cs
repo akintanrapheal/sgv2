@@ -17,15 +17,17 @@ public class ReturnsController : InventoryAreaController
 {
     private readonly ApplicationDbContext _db;
     private readonly IRefundApprovalService _refunds;
+    private readonly IReplacementService _replacements;
 
     // Reasons offered when returned units are NOT put back on the shelf.
     public static readonly string[] WriteOffReasons =
         { "Damaged", "Wrong item sold", "Expired / quality issue", "Customer changed mind", "Other" };
 
-    public ReturnsController(ApplicationDbContext db, IRefundApprovalService refunds)
+    public ReturnsController(ApplicationDbContext db, IRefundApprovalService refunds, IReplacementService replacements)
     {
         _db = db;
         _refunds = refunds;
+        _replacements = replacements;
     }
 
     public async Task<IActionResult> Index()
@@ -80,8 +82,62 @@ public class ReturnsController : InventoryAreaController
             Items = r.Items
         }).ToList();
 
+        // ── Replacements: the returned (bad) item awaiting the same restock / write-off decision ──
+        var pendingReplacements = await _db.OrderReplacements
+            .Where(r => r.RestockDecision == RestockDecision.Pending)
+            .OrderBy(r => r.CreatedAt)
+            .Select(r => new PendingReplacementVm
+            {
+                Id = r.Id,
+                Number = r.ReplacementNumber,
+                Order = r.OriginalOrder.OrderNumber,
+                OrderId = r.OriginalOrderId,
+                StoreName = _db.Stores.Where(s => s.Id == r.StoreId).Select(s => s.Name).FirstOrDefault() ?? "—",
+                Reason = string.IsNullOrWhiteSpace(r.Reason) ? "—" : r.Reason!,
+                ReturnedItem = r.OldProductName + (r.OldVariantName != null ? $" ({r.OldVariantName})" : ""),
+                ReturnedQty = r.OldQuantity,
+                ReplacementItem = r.NewProductName + (r.NewVariantName != null ? $" ({r.NewVariantName})" : ""),
+                ReplacementQty = r.NewQuantity,
+                CreatedAt = r.CreatedAt,
+            })
+            .ToListAsync();
+
+        var resolvedReplacements = await _db.OrderReplacements
+            .Where(r => r.RestockDecision != RestockDecision.Pending)
+            .OrderByDescending(r => r.RestockDecidedAt)
+            .Take(50)
+            .Select(r => new ResolvedReplacementVm
+            {
+                Number = r.ReplacementNumber,
+                Order = r.OriginalOrder.OrderNumber,
+                OrderId = r.OriginalOrderId,
+                StoreName = _db.Stores.Where(s => s.Id == r.StoreId).Select(s => s.Name).FirstOrDefault() ?? "—",
+                ReturnedItem = r.OldProductName + (r.OldVariantName != null ? $" ({r.OldVariantName})" : ""),
+                Qty = r.OldQuantity,
+                Restocked = r.RestockedQuantity,
+                Note = r.RestockNote,
+                DecidedAt = r.RestockDecidedAt,
+            })
+            .ToListAsync();
+
         ViewBag.Reasons = WriteOffReasons;
-        return View(new ReturnsPageVm { Pending = pending, Resolved = resolved });
+        return View(new ReturnsPageVm
+        {
+            Pending = pending, Resolved = resolved,
+            PendingReplacements = pendingReplacements, ResolvedReplacements = resolvedReplacements,
+        });
+    }
+
+    // Inventory's restock / write-off decision for a replacement's returned (bad) item.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResolveReplacement(int id, int restockQty, string? reason)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        var res = await _replacements.ResolveStockAsync(id, restockQty, reason, userId);
+        if (res.Success)
+            await LogAsync("ReplacementRestock", "OrderReplacement", id.ToString(), res.Message);
+        TempData[res.Success ? "Success" : "Error"] = res.Message;
+        return RedirectToAction(nameof(Index));
     }
 
     // One return in full — the order, WHY Finance approved it, and the per-item restock decision.
@@ -157,6 +213,37 @@ public class ReturnsPageVm
 {
     public List<PendingReturnVm> Pending { get; set; } = new();
     public List<ResolvedReturnVm> Resolved { get; set; } = new();
+    public List<PendingReplacementVm> PendingReplacements { get; set; } = new();
+    public List<ResolvedReplacementVm> ResolvedReplacements { get; set; } = new();
+}
+
+public class PendingReplacementVm
+{
+    public int Id { get; set; }
+    public string Number { get; set; } = "";
+    public string Order { get; set; } = "";
+    public int OrderId { get; set; }
+    public string StoreName { get; set; } = "";
+    public string Reason { get; set; } = "";
+    public string ReturnedItem { get; set; } = "";
+    public int ReturnedQty { get; set; }
+    public string ReplacementItem { get; set; } = "";
+    public int ReplacementQty { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class ResolvedReplacementVm
+{
+    public string Number { get; set; } = "";
+    public string Order { get; set; } = "";
+    public int OrderId { get; set; }
+    public string StoreName { get; set; } = "";
+    public string ReturnedItem { get; set; } = "";
+    public int Qty { get; set; }
+    public int Restocked { get; set; }
+    public int WrittenOff => Qty - Restocked;
+    public string? Note { get; set; }
+    public DateTime? DecidedAt { get; set; }
 }
 
 public class PendingReturnVm
