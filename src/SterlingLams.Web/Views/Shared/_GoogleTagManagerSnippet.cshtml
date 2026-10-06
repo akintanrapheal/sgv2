@@ -1,0 +1,19 @@
+@inject SterlingLams.Web.Services.ISettingsService SettingsService
+@{
+    // Google Tag Manager — storefront only. Rendered only when a well-formed container id is set, so
+    // nothing user-entered can break out of the string. The CSP opens googletagmanager.com (+ Google ad
+    // hosts + frame-src) whenever this is set — see Program.cs.
+    var gtmId = (await SettingsService.GetAsync("gtm.container_id")).Trim();
+    var gtmOk = System.Text.RegularExpressions.Regex.IsMatch(gtmId, "^GTM-[A-Za-z0-9]{4,12}$");
+    var nonce = Context.Items["csp-nonce"] as string ?? "";
+}
+@* Standard GTM loader, with the per-request CSP nonce set on the injected gtm.js script so GTM copies it
+   onto the tags it fires — letting GA4/Ads tags run under the storefront's strict nonce-based CSP. *@
+@if (gtmOk)
+{
+    <script nonce="@nonce">(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;j.setAttribute('nonce','@nonce');f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','@gtmId');</script>
+}
