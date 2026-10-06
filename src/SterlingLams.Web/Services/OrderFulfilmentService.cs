@@ -409,9 +409,12 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                     var prevStatus = order.Status;
                     order.FulfillingStoreId = fulfilStore.Id;
                     order.Status = OrderStatus.AwaitingTransfer;
+                    var splitLines = sourceNotices
+                        .Select(s => $"{s.Item1.Name} → pack & send {s.Item3.Sum(i => i.Item2)} item(s) to merge")
+                        .ToList();
                     OrderNotes.AddSystem(_db, order.Id,
-                        $"Order status changed from {prevStatus} to Arriving to merge — fulfilling from {fulfilStore.Name}; "
-                        + $"{sourceNotices.Count} branch(es) asked to send items to merge.");
+                        $"Order split to merge at {fulfilStore.Name} (packs its own items). "
+                        + string.Join("; ", splitLines) + ".");
                     await _db.SaveChangesAsync();
                     await tx.CommitAsync();
                     awaitingTransfer = true; fulfilStoreForEmail = fulfilStore;
