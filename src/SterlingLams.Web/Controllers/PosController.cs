@@ -2581,7 +2581,7 @@ public class PosController : Controller
                         && (p.SaleEndsAt == null || p.SaleEndsAt >= DateTime.UtcNow)
                     ? p.SalePrice.Value : p.Price),
                 inv = p.StoreInventories.Select(si => new { si.StoreId, store = si.Store.Name, si.ProductVariantId, si.QuantityOnHand, si.QuantityReserved }).ToList(),
-                variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).Select(v => new { id = v.Id, name = v.Name }).ToList()
+                variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).Select(v => new { id = v.Id, name = v.Name, barcode = v.Barcode }).ToList()
             })
             .ToListAsync();
 
@@ -2612,6 +2612,7 @@ public class PosController : Controller
                         {
                             location = s.store,
                             variant = v.name,
+                            barcode = string.IsNullOrWhiteSpace(v.barcode) ? p.barcode : v.barcode, // each variant's own barcode
                             inStock = cells.Sum(c => c.QuantityOnHand),
                             onHold = cells.Sum(c => c.QuantityReserved),
                             qtySold = Sold(p.id, v.id, s.StoreId)
@@ -2627,6 +2628,7 @@ public class PosController : Controller
                     {
                         location = s.store,
                         variant = (string?)null,
+                        barcode = p.barcode,
                         inStock = cells.Sum(c => c.QuantityOnHand),
                         onHold = cells.Sum(c => c.QuantityReserved),
                         qtySold = Sold(p.id, null, s.StoreId)

@@ -2648,7 +2648,7 @@
                 'Sale price': fmt(p.price),
                 'Brand': DASH,
                 'Category': esc(p.category) || DASH,
-                'Barcode': esc(p.barcode) || DASH,
+                'Barcode': esc(r.barcode || p.barcode) || DASH,
                 'Order code': esc(p.sku) || DASH,
                 'Qty sold': r.qtySold
             };
