@@ -450,7 +450,13 @@ app.Use(async (context, next) =>
     // widen the storefront CSP for those hosts while GA is actually enabled, so it stays strict otherwise.
     var settingsSvc = context.RequestServices.GetRequiredService<SterlingLams.Web.Services.ISettingsService>();
     var gaHosts = "";
-    if (!staffArea && await settingsSvc.GetBoolAsync("ga.enabled", false))
+    var frameHosts = "";
+    // GTM (ads/analytics team manages tags from the GTM console) and the GA4 gtag share the same Google
+    // hosts, so widen the storefront CSP when EITHER is on. GTM works independently of the GA4 toggle.
+    var gtmId = (await settingsSvc.GetAsync("gtm.container_id", "")).Trim();
+    var gtmOn = System.Text.RegularExpressions.Regex.IsMatch(gtmId, "^GTM-[A-Za-z0-9]{4,12}$");
+    var gaOrGtm = !staffArea && (gtmOn || await settingsSvc.GetBoolAsync("ga.enabled", false));
+    if (gaOrGtm)
     {
         scriptSrc += " https://www.googletagmanager.com";
         // GA4 beacons + Google Ads conversion/remarketing pings. *.doubleclick.net covers the
@@ -458,6 +464,8 @@ app.Use(async (context, next) =>
         // Google Ads remarketing. Conversions already record via GA4; these just let the Ads
         // remarketing/measurement beacons through (and clear their CSP console errors).
         gaHosts = " https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com https://*.analytics.google.com https://www.googletagmanager.com https://www.googleadservices.com https://www.google.com https://*.doubleclick.net https://pagead2.googlesyndication.com";
+        // GTM's noscript iframe + Google Ads conversion iframes (frames fall back to default-src 'self').
+        frameHosts = " https://www.googletagmanager.com https://td.doubleclick.net https://*.doubleclick.net https://www.google.com";
     }
 
     // Meta Pixel (Facebook/Instagram ads) needs connect.facebook.net (script) + facebook.com (beacons).
@@ -476,6 +484,7 @@ app.Use(async (context, next) =>
         "font-src 'self' https://fonts.gstatic.com; " +
         "img-src 'self' data: https:; " +
         "connect-src 'self'" + gaHosts + metaHosts + "; " +
+        "frame-src 'self'" + frameHosts + "; " +
         "object-src 'none'; " +
         "base-uri 'self'; " +
         // Allow the checkout form to redirect to the hosted payment page (the payment callback returns

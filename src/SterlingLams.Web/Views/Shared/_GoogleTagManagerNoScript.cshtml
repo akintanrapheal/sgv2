@@ -1,0 +1,11 @@
+@inject SterlingLams.Web.Services.ISettingsService SettingsService
+@{
+    var gtmId = (await SettingsService.GetAsync("gtm.container_id")).Trim();
+    var gtmOk = System.Text.RegularExpressions.Regex.IsMatch(gtmId, "^GTM-[A-Za-z0-9]{4,12}$");
+}
+@* GTM <noscript> fallback — must sit immediately after <body>. The iframe host is allowed via frame-src. *@
+@if (gtmOk)
+{
+    <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=@gtmId"
+                      height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+}
