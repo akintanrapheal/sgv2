@@ -128,6 +128,26 @@ def words(s):
     return set(t for t in re.split(r'[-_]+', s.lower()) if t)
 
 
+def category_from_slug(slug, live_categories):
+    """
+    Last resort when the product's own old category is gone: a live category named in the product slug.
+    e.g. "double-layer-anklets" -> anklets, whose old category was the retired "accessories".
+    Only used after the recorded category fails, and only on whole words of 4+ characters (matched
+    singular-or-plural), so it can't latch onto a fragment of an unrelated category name.
+    """
+    w = words(slug)
+    stems = {t.rstrip('s') for t in w}
+    best = None
+    for cat in live_categories:
+        for part in re.split(r'[-_]+', cat):
+            if len(part) < 4:
+                continue
+            if part in w or part.rstrip('s') in stems:
+                if best is None or len(cat) > len(best):
+                    best = cat
+    return best
+
+
 def best_match(old, live_products):
     """Strictest-first match, or (None, 0) when nothing is close enough to be safe."""
     ow = words(old)
@@ -172,6 +192,11 @@ def main():
         if cat and cat in live_categories:
             rows.append({**r, 'target': '/products?category=' + cat, 'confidence': '',
                          'reason': 'gone -> its old category'})
+            continue
+        named = category_from_slug(slug, live_categories)
+        if named:
+            rows.append({**r, 'target': '/products?category=' + named, 'confidence': '',
+                         'reason': 'gone, old category retired -> category named in the slug'})
         else:
             rows.append({**r, 'target': '', 'confidence': '',
                          'reason': 'gone, no safe target -> 404'})
