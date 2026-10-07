@@ -51,15 +51,17 @@ public class RefundApprovalService : IRefundApprovalService
 
     private readonly IPostHogClient _posthog;
     private readonly ITransferWorkflowService _transfers;
+    private readonly IOrderFulfilmentService _fulfilment;
 
     public RefundApprovalService(ApplicationDbContext db, IStockService stock, ILoyaltyService loyalty,
         IGiftCardService giftCards, IPaymentService payment, IAuditService audit,
         IEmailService email, ISettingsService settings, IPostHogClient posthog,
-        ITransferWorkflowService transfers, ILogger<RefundApprovalService> log)
+        ITransferWorkflowService transfers, IOrderFulfilmentService fulfilment, ILogger<RefundApprovalService> log)
     {
         _email = email; _settings = settings;
         _db = db; _stock = stock; _loyalty = loyalty; _giftCards = giftCards;
-        _payment = payment; _audit = audit; _posthog = posthog; _transfers = transfers; _log = log;
+        _payment = payment; _audit = audit; _posthog = posthog; _transfers = transfers;
+        _fulfilment = fulfilment; _log = log;
     }
 
     public Task<int> PendingCountAsync() =>
@@ -201,6 +203,11 @@ public class RefundApprovalService : IRefundApprovalService
             await _loyalty.ReverseForOrderAsync(order.Id);
             await _giftCards.ReverseForOrderAsync(order.Id);
             await CancelLinkedTransfersAsync(order, approverUserId);
+            // Also free the fulfilling branch's own local hold (StockReservation rows + QuantityReserved)
+            // for an order refunded before it was finalised — CancelLinkedTransfers only covers the
+            // inter-branch transfers, so without this an awaiting-transfer order's local units stayed
+            // reserved forever. No-op once the sale was committed (no reservation rows left).
+            try { await _fulfilment.ReleaseReservationAsync(order.Id); } catch { /* best-effort */ }
         }
 
         try

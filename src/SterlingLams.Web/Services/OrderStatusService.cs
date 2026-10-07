@@ -38,6 +38,7 @@ public sealed class OrderStatusService : IOrderStatusService
 {
     private readonly ApplicationDbContext _db;
     private readonly IOrderFulfilmentService _fulfilment;
+    private readonly ITransferWorkflowService _transfers;
     private readonly Logistics.ILogisticsDispatchService _logistics;
     private readonly IEmailService _email;
     private readonly ISettingsService _settings;
@@ -47,11 +48,13 @@ public sealed class OrderStatusService : IOrderStatusService
     private readonly LinkGenerator _links;
 
     public OrderStatusService(ApplicationDbContext db, IOrderFulfilmentService fulfilment,
+        ITransferWorkflowService transfers,
         Logistics.ILogisticsDispatchService logistics, IEmailService email, ISettingsService settings,
         IWhatsAppService whatsapp, IAuditService audit, IHttpContextAccessor http, LinkGenerator links)
     {
         _db = db;
         _fulfilment = fulfilment;
+        _transfers = transfers;
         _logistics = logistics;
         _email = email;
         _settings = settings;
@@ -126,9 +129,20 @@ public sealed class OrderStatusService : IOrderStatusService
         {
             order.Status = newStatus;
             order.UpdatedAt = DateTime.UtcNow;
-            OrderNotes.AddSystem(_db, order.Id, $"Order status changed from {old} to {newStatus} by {staff}.");
+            // Don't log a confusing "Cancelled → Cancelled" when staff re-apply the same status
+            // (e.g. re-cancelling to release a stuck hold) — only note a real transition.
+            if (old != newStatus)
+                OrderNotes.AddSystem(_db, order.Id, $"Order status changed from {old} to {newStatus} by {staff}.");
             await _db.SaveChangesAsync();
         }
+
+        // Cancelling frees any stock still HELD for the order that never became a sale: the fulfilling
+        // branch's reservation + any still-open "send to merge" transfers. Without this, a cancelled
+        // online order (esp. one Awaiting Transfer) leaves its units reserved forever ("held for online
+        // orders") — they can't be sold again. On-hand is NOT restocked here: a fulfilled order's units
+        // come back through the refund restock/write-off decision. Idempotent (re-run frees nothing).
+        if (newStatus == OrderStatus.Cancelled)
+            await ReleaseHoldsForCancelledOrderAsync(order, staff);
 
         await LogAsync("Update", "Order", order.Id.ToString(),
             $"Order {order.OrderNumber} status: {old} → {order.Status}");
@@ -170,6 +184,63 @@ public sealed class OrderStatusService : IOrderStatusService
             await SendNewOrderAdminAlertAsync(order.Id);
 
         return OrderStatusOutcome.Applied;
+    }
+
+    /// <summary>Frees stock still held for a cancelled order: the fulfilling branch's reservation rows
+    /// (+ QuantityReserved) and any still-open inter-branch transfers (which release the sending branch's
+    /// reservation). On-hand is left alone — a fulfilled order's units are returned via the refund
+    /// restock/write-off decision, so restocking here too would double-count. Best-effort, idempotent.</summary>
+    private async Task ReleaseHoldsForCancelledOrderAsync(Order order, string staff)
+    {
+        // 1) The fulfilling branch's own local hold (StockReservation rows + QuantityReserved).
+        try
+        {
+            var held = await _db.StockReservations.Where(r => r.OrderId == order.Id)
+                .SumAsync(r => (int?)r.Quantity) ?? 0;
+            if (held > 0)
+            {
+                await _fulfilment.ReleaseReservationAsync(order.Id);   // frees the rows + QuantityReserved
+                OrderNotes.AddSystem(_db, order.Id,
+                    $"Released {held} held unit(s) back to available stock on cancellation.");
+                await _db.SaveChangesAsync();
+            }
+        }
+        catch { /* best-effort — a failed release must never break the cancel itself */ }
+
+        // 2) Any still-open "send to merge" transfers for this order. Not-yet-dispatched ones are
+        //    cancelled (releases the sending branch's reservation); in-transit ones can't be auto-undone
+        //    (the stock physically left) so they're flagged for manual reconciliation.
+        try
+        {
+            var linked = await _db.StockTransfers
+                .Where(t => t.OrderId == order.Id
+                    && t.Status != TransferStatus.Cancelled && t.Status != TransferStatus.Completed
+                    && t.Status != TransferStatus.Rejected)
+                .ToListAsync();
+            var notesAdded = false;
+            foreach (var t in linked)
+            {
+                if (t.Status is TransferStatus.Draft or TransferStatus.PendingApproval or TransferStatus.Approved)
+                {
+                    var res = await _transfers.CancelAsync(t.Id, $"Order {order.OrderNumber} cancelled by {staff}", null);
+                    if (!res.Success)
+                    {
+                        OrderNotes.AddSystem(_db, order.Id,
+                            $"Could not auto-cancel inter-branch transfer {t.TransferNumber} on cancellation: {res.Error}");
+                        notesAdded = true;
+                    }
+                }
+                else // InTransit / PartiallyReceived — stock already left the sending branch
+                {
+                    OrderNotes.AddSystem(_db, order.Id,
+                        $"Transfer {t.TransferNumber} was already in transit when {order.OrderNumber} was cancelled — "
+                        + "reconcile that stock manually (Inventory → Transfers).");
+                    notesAdded = true;
+                }
+            }
+            if (notesAdded) await _db.SaveChangesAsync();
+        }
+        catch { /* best-effort */ }
     }
 
     /// <summary>The person who bought the order — on a POS sale Order.User is the CASHIER and the buyer
