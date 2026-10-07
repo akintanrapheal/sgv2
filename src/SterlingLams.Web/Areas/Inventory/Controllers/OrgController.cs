@@ -83,10 +83,13 @@ public class OrgController : InventoryAreaController
             TempData["Error"] = "Please enter a register name and choose a branch.";
             return RedirectToAction(nameof(Registers));
         }
-        _db.Registers.Add(new Register { Name = name.Trim(), StoreId = storeId, IsActive = true });
+        // The first register a store gets becomes its online till by default, so website sales always land
+        // on exactly one till (the owner can move it to another register later).
+        var isFirstForStore = !await _db.Registers.AnyAsync(r => r.StoreId == storeId);
+        _db.Registers.Add(new Register { Name = name.Trim(), StoreId = storeId, IsActive = true, HandlesOnlineOrders = isFirstForStore });
         await _db.SaveChangesAsync();
-        await LogAsync("Create", "Register", null, $"Added register '{name.Trim()}'");
-        TempData["Success"] = "Register added.";
+        await LogAsync("Create", "Register", null, $"Added register '{name.Trim()}'{(isFirstForStore ? " (online till)" : "")}");
+        TempData["Success"] = "Register added." + (isFirstForStore ? " It's the branch's online till — website sales show on its cash-up." : "");
         return RedirectToAction(nameof(Registers));
     }
 
@@ -116,6 +119,24 @@ public class OrgController : InventoryAreaController
         r.IsActive = !r.IsActive;
         await _db.SaveChangesAsync();
         await LogAsync("Update", "Register", id.ToString(), $"{(r.IsActive ? "Enabled" : "Disabled")} register '{r.Name}'");
+        return RedirectToAction(nameof(Registers));
+    }
+
+    // Make this register the store's ONLINE TILL — website (online-paid) sales attribute to its cash-up.
+    // Exactly one per store: setting it here clears the flag on the branch's other registers.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> SetOnlineTill(int id)
+    {
+        var r = await _db.Registers.FindAsync(id);
+        if (r == null) return NotFound();
+        var siblings = await _db.Registers
+            .Where(x => x.StoreId == r.StoreId && x.Id != r.Id && x.HandlesOnlineOrders)
+            .ToListAsync();
+        foreach (var s in siblings) s.HandlesOnlineOrders = false;
+        r.HandlesOnlineOrders = true;
+        await _db.SaveChangesAsync();
+        await LogAsync("Update", "Register", id.ToString(), $"Set '{r.Name}' as the online till for its branch.");
+        TempData["Success"] = $"'{r.Name}' is now the online till — website sales will show on its cash-up only.";
         return RedirectToAction(nameof(Registers));
     }
 
