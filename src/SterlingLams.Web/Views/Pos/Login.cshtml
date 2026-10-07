@@ -201,7 +201,7 @@
         loginBtn.textContent = pending ? 'Set PIN' : 'Sign In';
     }
 
-    // Safety net: never let a script error or rejected promise fail silently on the POS login.
+    // Safety net: never let a script error or rejected promise fail silently on the EPOS login.
     window.addEventListener('error', e => { errEl.textContent = 'Unexpected error: ' + (e.message || 'unknown') + ' — please reload.'; });
     window.addEventListener('unhandledrejection', e => { errEl.textContent = 'Unexpected error: ' + ((e.reason && e.reason.message) || 'unexpected') + ' — please reload.'; });
 }());

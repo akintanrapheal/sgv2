@@ -50,7 +50,7 @@
                     <tr class="hover:bg-neutral-50 cursor-pointer" onclick="location.href='@Url.Action("Detail", "Sales", new { id = o.Id })'">
                         <td class="px-4 py-3 font-mono text-xs text-neutral-800">@o.OrderNumber</td>
                         <td class="px-4 py-3 text-neutral-500 text-xs">@o.When.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</td>
-                        <td class="px-4 py-3 text-neutral-600">@(o.Channel == "Pos" ? "POS" : "Online")</td>
+                        <td class="px-4 py-3 text-neutral-600">@(o.Channel == "Pos" ? "EPOS" : "Online")</td>
                         <td class="px-4 py-3 text-neutral-600 text-xs">@o.Status</td>
                         <td class="px-4 py-3 text-right font-medium text-neutral-800">₦@o.Total.ToString("N0")</td>
                     </tr>

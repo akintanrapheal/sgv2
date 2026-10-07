@@ -170,8 +170,8 @@ public class PosController : Controller
         var basePath = "/" + SterlingLams.Web.Infrastructure.StaffPaths.Pos;
         var manifest = new
         {
-            name = "Sterlin Glams POS",
-            short_name = "SG POS",
+            name = "Sterlin Glams EPOS",
+            short_name = "SG EPOS",
             description = "Sterlin Glams point of sale — works offline.",
             id = basePath,
             start_url = basePath,

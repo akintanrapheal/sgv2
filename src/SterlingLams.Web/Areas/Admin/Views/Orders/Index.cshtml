@@ -32,7 +32,7 @@
         <select name="channel" onchange="this.form.submit()" class="@selCls">
             <option value="">All channels</option>
             <option value="Online" selected="@(Model.ChannelFilter == "Online")">Online</option>
-            <option value="Pos" selected="@(Model.ChannelFilter == "Pos")">In-store (POS)</option>
+            <option value="Pos" selected="@(Model.ChannelFilter == "Pos")">In-store (EPOS)</option>
         </select>
         <select name="paid" onchange="this.form.submit()" class="@selCls">
             <option value="">Any payment</option>
@@ -151,7 +151,7 @@
                             };
                         }
                         @{
-                            // A completed POS sale reads as "Paid & collected", not "Delivered". Other POS
+                            // A completed EPOS sale reads as "Paid & collected", not "Delivered". Other EPOS
                             // states (Cancelled/Refunded) keep their real label.
                             var statusLabel = (o.IsPos && (o.Status == "Delivered" || o.Status == "Collected"))
                                 ? "Paid & collected"

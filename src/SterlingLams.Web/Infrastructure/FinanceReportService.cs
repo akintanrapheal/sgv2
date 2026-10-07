@@ -66,7 +66,7 @@ public class FinanceReportService : IFinanceReportService
             + Row("Refunds", refunds, "#dc2626")
             + $"<tr><td style=\"padding:10px 0;border-top:1px solid #e7e5e4;font-weight:700;\">Net revenue</td><td style=\"padding:10px 0;border-top:1px solid #e7e5e4;text-align:right;font-weight:700;\">{Money(net)}</td></tr>"
             + "</table>"
-            + $"<p style=\"color:#57534e;font-size:13px;margin:16px 0 0;\">{count} transaction(s) · POS {Money(posGross)} · Online {Money(gross - posGross)}</p>"
+            + $"<p style=\"color:#57534e;font-size:13px;margin:16px 0 0;\">{count} transaction(s) · EPOS {Money(posGross)} · Online {Money(gross - posGross)}</p>"
             + "<p style=\"color:#a8a29e;font-size:12px;margin:20px 0 0;\">Automated by the Finance module. Open the Finance dashboard for the full breakdown.</p>";
 
         var subject = $"Sterlin Glams — {freqLabel} finance summary ({f:dd MMM}–{t:dd MMM})";

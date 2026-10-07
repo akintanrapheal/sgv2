@@ -8,7 +8,7 @@
     if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = "/images/sg-logo.png";
     string Money(decimal v) => "₦" + v.ToString("N0");
     var storeName = Model.StoreId.HasValue ? Model.Stores.FirstOrDefault(s => s.Id == Model.StoreId)?.Name ?? "All branches" : "All branches";
-    var channelName = Model.Channel switch { "Online" => "Online", "Pos" => "POS / in-store", _ => "All channels" };
+    var channelName = Model.Channel switch { "Online" => "Online", "Pos" => "EPOS / in-store", _ => "All channels" };
 }
 <!DOCTYPE html>
 <html lang="en">

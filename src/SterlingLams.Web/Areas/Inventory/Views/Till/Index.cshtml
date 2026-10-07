@@ -1,6 +1,6 @@
 @model SterlingLams.Web.Areas.Inventory.Controllers.TillOversightViewModel
 @{
-    ViewData["Title"] = "POS";
+    ViewData["Title"] = "EPOS";
     var stores = ViewBag.Stores as List<SterlingLams.Web.Models.Domain.Store> ?? new();
     int? storeId = ViewBag.StoreId;
     string status = ViewBag.Status ?? "all";
@@ -15,7 +15,7 @@
         <div><p class="text-xs text-neutral-400 uppercase tracking-wide">Open sessions</p><p class="text-xl font-semibold @(Model.OpenSessions > 0 ? "text-emerald-600" : "text-neutral-900")">@Model.OpenSessions</p></div>
     </div>
     <a href="/pos" target="_blank" rel="noopener"
-       class="px-4 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Open POS App →</a>
+       class="px-4 py-2 bg-emerald-600 text-white text-sm rounded-sm hover:bg-emerald-700 transition-colors">Open EPOS App →</a>
 </div>
 
 <form asp-area="Inventory" asp-controller="Till" asp-action="Index" method="get" class="flex gap-2 flex-wrap mb-3">
@@ -66,7 +66,7 @@
         <tbody class="divide-y divide-neutral-100">
             @if (!Model.Rows.Any())
             {
-                <tr><td colspan="8" class="px-4 py-10 text-center text-neutral-400">No POS sessions yet.</td></tr>
+                <tr><td colspan="8" class="px-4 py-10 text-center text-neutral-400">No EPOS sessions yet.</td></tr>
             }
             @foreach (var r in Model.Rows)
             {

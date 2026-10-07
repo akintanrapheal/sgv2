@@ -13,7 +13,7 @@
 
     var store = ViewBag.Store as SterlingLams.Web.Models.Domain.Store;
     var cashierName = ViewBag.CashierName as string ?? "—";
-    var deviceName = ((ViewBag.DeviceName as string) ?? "POS").Replace("Till", "Pos").Replace("till", "pos");
+    var deviceName = ((ViewBag.DeviceName as string) ?? "EPOS").Replace("Till", "Pos").Replace("till", "pos");
     var order = Model.OriginalOrder;
     var customer = order?.Customer;
 
@@ -136,7 +136,7 @@
         <div class="c" style="margin-top:8px;"><svg id="barcode" style="display:inline-block;max-width:100%;height:auto;"></svg></div>
     </div>
 
-    <div class="btns"><button onclick="window.print()">Print</button><a href="@($"/{SterlingLams.Web.Infrastructure.StaffPaths.Pos}")">Back to POS</a></div>
+    <div class="btns"><button onclick="window.print()">Print</button><a href="@($"/{SterlingLams.Web.Infrastructure.StaffPaths.Pos}")">Back to EPOS</a></div>
     <script src="/js/jsbarcode.min.js"></script>
     <script>
         try { JsBarcode("#barcode", "@Model.RefundNumber", { format: "CODE128", displayValue: true, width: 1, height: 34, margin: 0, fontSize: 10 }); }

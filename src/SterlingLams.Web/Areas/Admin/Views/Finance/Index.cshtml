@@ -92,7 +92,7 @@
         <select name="channel" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm">
             <option value="" selected="@(Model.Channel == "")">All channels</option>
             <option value="Online" selected="@(Model.Channel == "Online")">Online</option>
-            <option value="Pos" selected="@(Model.Channel == "Pos")">POS / in-store</option>
+            <option value="Pos" selected="@(Model.Channel == "Pos")">EPOS / in-store</option>
         </select>
     </div>
     <button class="px-4 py-1.5 bg-neutral-900 text-white text-sm rounded-sm hover:bg-neutral-700 transition-colors">Apply</button>
@@ -147,7 +147,7 @@
         <p class="text-xs text-neutral-400">Online sales</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.OnlineGross) <span class="text-xs text-neutral-400">· @Model.OnlineCount</span></p>
     </div>
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
-        <p class="text-xs text-neutral-400">POS / in-store sales</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.PosGross) <span class="text-xs text-neutral-400">· @Model.PosCount</span></p>
+        <p class="text-xs text-neutral-400">EPOS / in-store sales</p><p class="text-xl font-light text-neutral-900 mt-1">@Money(Model.PosGross) <span class="text-xs text-neutral-400">· @Model.PosCount</span></p>
     </div>
 </div>
 
@@ -162,7 +162,7 @@
 </div>
 
 <div class="mb-6">
-    <partial name="_ChartCard" model='new ChartCard { Id = "finStaff", Title = "Sales by cashier (POS)", Subtitle = "gross rung up per staff member", Height = 150, Empty = !Model.ByStaff.Any(), EmptyText = "No POS sales in range." }' />
+    <partial name="_ChartCard" model='new ChartCard { Id = "finStaff", Title = "Sales by cashier (EPOS)", Subtitle = "gross rung up per staff member", Height = 150, Empty = !Model.ByStaff.Any(), EmptyText = "No EPOS sales in range." }' />
 </div>
 
 <!-- Money-in + staff tables -->
@@ -195,7 +195,7 @@
     </div>
 
     <div class="bg-white border border-neutral-100 rounded-sm overflow-hidden">
-        <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Sales by cashier (POS)</div>
+        <div class="px-4 py-2.5 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">Sales by cashier (EPOS)</div>
         <table class="w-full text-sm">
             <thead><tr class="text-xs text-neutral-400">
                 <th class="px-4 py-2 text-left font-medium">Cashier</th>
@@ -203,7 +203,7 @@
                 <th class="px-4 py-2 text-right font-medium">Gross</th>
             </tr></thead>
             <tbody class="divide-y divide-neutral-100">
-                @if (!Model.ByStaff.Any()) { <tr><td colspan="3" class="px-4 py-8 text-center text-neutral-400">No POS sales in range.</td></tr> }
+                @if (!Model.ByStaff.Any()) { <tr><td colspan="3" class="px-4 py-8 text-center text-neutral-400">No EPOS sales in range.</td></tr> }
                 @foreach (var s in Model.ByStaff)
                 {
                     <tr class="hover:bg-neutral-50">

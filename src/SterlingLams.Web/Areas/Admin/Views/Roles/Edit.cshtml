@@ -101,7 +101,7 @@
             </p>
         </div>
 
-        <!-- Inventory System (the separate POS / stock backend) -->
+        <!-- Inventory System (the separate EPOS / stock backend) -->
         @{
             var invViewOn = Model.SelectedSections.Contains("InventorySystem") || Model.SelectedSections.Contains("InventorySystem:manage");
             var invManageOn = Model.SelectedSections.Contains("InventorySystem:manage");
@@ -109,7 +109,7 @@
         <div class="bg-white rounded-sm border border-neutral-100 p-6">
             <h2 class="text-sm font-medium text-neutral-800 mb-1">Inventory System</h2>
             <p class="text-xs text-neutral-400 mb-4">
-                The separate POS / stock backend (Point of Sale, Sales, CRM, Inventory, Reports, Administration).
+                The separate EPOS / stock backend (Point of Sale, Sales, CRM, Inventory, Reports, Administration).
                 Granting this gives access to <strong>every</strong> Inventory System tab. To grant only some tabs,
                 leave this off and set them per-tab inside <strong>Inventory System → Roles &amp; permissions</strong>.
             </p>

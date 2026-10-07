@@ -31,7 +31,7 @@
                     <li>Orders, order items, payments, refunds</li>
                     <li>Stock movements (ledger), transfers &amp; reservations</li>
                     <li>Stock adjustments &amp; stock-takes</li>
-                    <li>POS sessions, cash movements, parked sales</li>
+                    <li>EPOS sessions, cash movements, parked sales</li>
                     <li>Loyalty points &amp; gift-card transactions</li>
                     <li>Abandoned carts, back-in-stock, label reprint queue</li>
                     <li>Email log, campaign/automation runs, referrals, expenses, reviews, traffic</li>
@@ -84,10 +84,10 @@
             <div class="bg-white rounded-lg border border-amber-100 p-4">
                 <p class="text-[11px] font-semibold uppercase tracking-wide text-red-600 mb-2">Will be removed</p>
                 <ul class="list-disc pl-4 space-y-1 text-neutral-700">
-                    <li>All orders (online &amp; POS), payments, refunds</li>
+                    <li>All orders (online &amp; EPOS), payments, refunds</li>
                     <li>Stock transfers, reservations &amp; the stock ledger</li>
                     <li>Stock adjustments &amp; stock-takes</li>
-                    <li>POS till sessions, cash movements, parked sales</li>
+                    <li>EPOS till sessions, cash movements, parked sales</li>
                     <li>Product reviews, abandoned carts, back-in-stock</li>
                     <li>Email log, traffic, campaign/automation runs, expenses</li>
                     <li>Points earned by test orders; gift-card usage history</li>
@@ -106,7 +106,7 @@
             </div>
         </div>
 
-        <form asp-action="GoLive" method="post" onsubmit="return confirm('Final check: permanently remove ALL test orders/POS/transactions and set every stock record to 0? Customers, loyalty points and gift cards are kept. This cannot be undone.');">
+        <form asp-action="GoLive" method="post" onsubmit="return confirm('Final check: permanently remove ALL test orders/EPOS/transactions and set every stock record to 0? Customers, loyalty points and gift cards are kept. This cannot be undone.');">
             @Html.AntiForgeryToken()
             <div class="flex flex-wrap items-end gap-4">
                 <div class="flex-1 min-w-[220px]">

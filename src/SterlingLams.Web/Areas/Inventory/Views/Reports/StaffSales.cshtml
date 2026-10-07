@@ -13,7 +13,7 @@
        class="text-xs text-neutral-400 hover:text-neutral-700">← Sales by staff</a>
 </div>
 <h1 class="font-cormorant text-2xl font-light text-neutral-900">@staffName</h1>
-<p class="text-xs text-neutral-400 mb-4">In-store (POS) sales · @from.ToString("dd MMM") – @to.ToString("dd MMM yyyy")</p>
+<p class="text-xs text-neutral-400 mb-4">In-store (EPOS) sales · @from.ToString("dd MMM") – @to.ToString("dd MMM yyyy")</p>
 
 <div class="grid grid-cols-2 gap-3 mb-4">
     <div class="bg-white border border-neutral-100 rounded-sm p-4">
@@ -50,7 +50,7 @@
             </tr>
         </thead>
         <tbody class="divide-y divide-neutral-50">
-            @if (!Model.Any()) { <tr><td colspan="8" class="px-4 py-12 text-center text-neutral-400">No POS sales by this staff member in the selected period.</td></tr> }
+            @if (!Model.Any()) { <tr><td colspan="8" class="px-4 py-12 text-center text-neutral-400">No EPOS sales by this staff member in the selected period.</td></tr> }
             @foreach (var r in Model)
             {
                 <tr class="hover:bg-neutral-50">

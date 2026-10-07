@@ -298,7 +298,7 @@ public class StockImportService
 
         var summary = $"{store.Name}: {matched} matched / {unmatched} unmatched; "
                     + $"{(commit ? "set" : "would set")} {stockLines} stock line(s) ({totalUnits} units)"
-                    + (setPosPrice ? $", {posSet} POS price(s)" : "") + ".";
+                    + (setPosPrice ? $", {posSet} EPOS price(s)" : "") + ".";
         return new Result(commit, rows.Count, matched, unmatched, stockLines, totalUnits, posSet, issues, summary, null);
     }
 }

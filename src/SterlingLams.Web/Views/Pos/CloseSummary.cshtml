@@ -1,7 +1,7 @@
 @model SterlingLams.Web.Services.CloseSummaryVm
 @{
     // Window title shows the staff at the till (like EposNow), not "Sales & Operation".
-    ViewData["Title"] = string.IsNullOrWhiteSpace(Model.StaffName) ? "POS" : Model.StaffName;
+    ViewData["Title"] = string.IsNullOrWhiteSpace(Model.StaffName) ? "EPOS" : Model.StaffName;
     var s = Model.Session;
     var interim = Model.Interim;
     string Money(decimal v) => (v < 0 ? "-₦" : "₦") + Math.Abs(v).ToString("N2");

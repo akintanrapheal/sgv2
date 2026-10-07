@@ -4,18 +4,18 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <meta name="robots" content="noindex, nofollow" />
-    @* The installed PWA window already prefixes "Sterlin Glams POS" (manifest name), so the document
-       title is just the page name — avoids the "Sterlin Glams POS - POS · POS" triple-up. *@
-    <title>@(string.IsNullOrEmpty(ViewData["Title"] as string) ? "POS" : ViewData["Title"])</title>
+    @* The installed PWA window already prefixes "Sterlin Glams EPOS" (manifest name), so the document
+       title is just the page name — avoids the "Sterlin Glams EPOS - EPOS · EPOS" triple-up. *@
+    <title>@(string.IsNullOrEmpty(ViewData["Title"] as string) ? "EPOS" : ViewData["Title"])</title>
     <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
 
-    @* Installable, offline-capable POS app (PWA). Manifest is served dynamically so start_url/scope
-       follow the (possibly secret) POS prefix. *@
+    @* Installable, offline-capable EPOS app (PWA). Manifest is served dynamically so start_url/scope
+       follow the (possibly secret) EPOS prefix. *@
     <link rel="manifest" href="@($"/{SterlingLams.Web.Infrastructure.StaffPaths.Pos}/Manifest")" />
     <meta name="theme-color" content="#ed028b" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="SG POS" />
+    <meta name="apple-mobile-web-app-title" content="SG EPOS" />
     <link rel="icon" type="image/png" sizes="32x32" href="~/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="~/favicon-16.png" />
     <link rel="apple-touch-icon" href="~/apple-touch-icon.png" />
@@ -24,7 +24,7 @@
 </head>
 <body class="bg-neutral-100 text-neutral-800 antialiased h-full">
     @RenderBody()
-    @* POS base = the configurable (possibly secret) prefix. This shim rewrites every "/Pos/..." fetch
+    @* EPOS base = the configurable (possibly secret) prefix. This shim rewrites every "/Pos/..." fetch
        to that prefix and loads FIRST, so it sits innermost — pos-offline.js still matches the original
        "/Pos/..." URLs for its offline logic, and the real network request goes to the prefix. *@
     <script>

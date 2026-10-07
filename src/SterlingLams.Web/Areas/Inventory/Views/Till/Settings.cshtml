@@ -1,5 +1,5 @@
 @{
-    ViewData["Title"] = "POS Settings";
+    ViewData["Title"] = "EPOS Settings";
     var header = ViewBag.ReceiptHeader as string ?? "";
     var footer = ViewBag.ReceiptFooter as string ?? "";
     var apprRefunds = ViewBag.ApprovalRefunds as bool? ?? false;
@@ -23,8 +23,8 @@
 }
 
 <div class="mb-5">
-    <h1 class="text-lg font-medium text-neutral-800">POS settings</h1>
-    <p class="text-xs text-neutral-400">Customise what prints on POS receipts. The address, phone and store name come from each selling branch unless you set an override below.</p>
+    <h1 class="text-lg font-medium text-neutral-800">EPOS settings</h1>
+    <p class="text-xs text-neutral-400">Customise what prints on EPOS receipts. The address, phone and store name come from each selling branch unless you set an override below.</p>
 </div>
 
 @if (TempData["Success"] != null)
@@ -38,11 +38,11 @@
             @Html.AntiForgeryToken()
 
             <div>
-                <h2 class="text-sm font-semibold text-neutral-800 mb-3">POS screen</h2>
+                <h2 class="text-sm font-semibold text-neutral-800 mb-3">EPOS screen</h2>
                 <label class="block text-xs font-medium text-neutral-700 mb-1">Customer welcome message</label>
                 <textarea name="welcomeMessage" rows="2" placeholder="Blank = no message"
                           class="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 resize-none">@welcomeMessage</textarea>
-                <p class="text-[11px] text-neutral-400 mt-1">Scrolls across the top of the POS screen to greet in-store customers. Leave blank to hide it.</p>
+                <p class="text-[11px] text-neutral-400 mt-1">Scrolls across the top of the EPOS screen to greet in-store customers. Leave blank to hide it.</p>
                 <div class="mt-3 max-w-[200px]">
                     <label class="block text-xs font-medium text-neutral-700 mb-1">Message colour</label>
                     <select name="welcomeColor" class="w-full border border-neutral-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500">

@@ -163,7 +163,7 @@
                     <th data-col="price" draggable="true" class="prod-th text-right font-semibold px-4 py-3 select-none">
                         <a asp-area="Inventory" asp-controller="Products" asp-action="Index" asp-all-route-data="@R(("sort", NextSort("price")),("page","1"))" class="hover:text-neutral-900">Sale price <span class="text-neutral-300">@SortIcon("price")</span></a>
                     </th>
-                    <th data-col="posprice" draggable="true" class="prod-th text-right font-semibold px-4 py-3 select-none">POS price</th>
+                    <th data-col="posprice" draggable="true" class="prod-th text-right font-semibold px-4 py-3 select-none">EPOS price</th>
                     <th data-col="colour" draggable="true" class="prod-th text-left font-semibold px-4 py-3 select-none">Button<br />colour</th>
                     <th data-col="barcode" draggable="true" class="prod-th text-left font-semibold px-4 py-3 select-none">Barcode</th>
                     <th data-col="description" draggable="true" class="prod-th text-left font-semibold px-4 py-3 select-none">Description</th>
@@ -422,7 +422,7 @@
         { k: 'name', t: 'Name', def: true }, { k: 'sku', t: 'SKU', def: false },
         { k: 'category', t: 'Category', def: true },
         { k: 'price', t: 'Sale price', def: true },
-        { k: 'posprice', t: 'POS price', def: true },
+        { k: 'posprice', t: 'EPOS price', def: true },
         { k: 'colour', t: 'Button colour', def: true }, { k: 'barcode', t: 'Barcode', def: false },
         { k: 'description', t: 'Description', def: false }, { k: 'trackstock', t: 'Stock Tracked', def: false },
         { k: 'image', t: 'Image', def: false }, { k: 'sellweb', t: 'Sell on Web', def: false }
@@ -433,7 +433,7 @@
         try {
             var s = JSON.parse(localStorage.getItem(VKEY) || 'null');
             if (!(s && s.length)) return defaultVisible();
-            // One-time migration: reveal the newly-added POS price column for existing users without
+            // One-time migration: reveal the newly-added EPOS price column for existing users without
             // touching their other column choices.
             if (localStorage.getItem(VKEY + '.v') !== '2') {
                 if (s.indexOf('posprice') === -1) s.push('posprice');

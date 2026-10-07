@@ -11,7 +11,7 @@
         var cards = new[]
         {
             new { Label = "Revenue Today",     Value = "₦" + Model.RevenueToday.ToString("N0"),     Sub = "vs yesterday",                       Href = (string?)null,                                                Color = "text-emerald-600", Delta = Model.RevenueTodayDeltaPct },
-            new { Label = "Revenue (Month)",   Value = "₦" + Model.RevenueThisMonth.ToString("N0"), Sub = $"Online ₦{Model.RevenueOnlineMonth:N0} · POS ₦{Model.RevenuePosMonth:N0}", Href = (string?)null,                       Color = "text-emerald-600", Delta = Model.RevenueMonthDeltaPct },
+            new { Label = "Revenue (Month)",   Value = "₦" + Model.RevenueThisMonth.ToString("N0"), Sub = $"Online ₦{Model.RevenueOnlineMonth:N0} · EPOS ₦{Model.RevenuePosMonth:N0}", Href = (string?)null,                       Color = "text-emerald-600", Delta = Model.RevenueMonthDeltaPct },
             new { Label = "Avg Order (Month)", Value = "₦" + Model.AovThisMonth.ToString("N0"),     Sub = "vs last month",                      Href = (string?)null,                                                Color = "text-emerald-600", Delta = Model.AovDeltaPct },
             new { Label = "Orders Today",      Value = Model.OrdersToday.ToString(),                Sub = Model.OrdersPending + " pending",     Href = Url.Action("Index","Orders",new{area="Admin",status="Pending"}), Color = "text-blue-600",    Delta = Model.OrdersTodayDeltaPct },
             new { Label = "Products",          Value = Model.TotalProducts.ToString(),              Sub = "Active listings",                    Href = Url.Action("Index","Products",new{area="Admin"}),             Color = "text-neutral-700", Delta = (int?)null },

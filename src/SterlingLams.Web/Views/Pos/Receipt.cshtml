@@ -53,7 +53,7 @@
         websiteLine = "www." + contactEmail.Split('@')[1] + " | " + contactEmail;
 
     // Register/device name — show "Till" wording as the branch set it (e.g. "Ajah Till 1").
-    var deviceName = Model.Register?.Name ?? "POS";
+    var deviceName = Model.Register?.Name ?? "EPOS";
 
     var payParts = ViewBag.Payments as List<KeyValuePair<string, decimal>> ?? new();
     if (payParts.Count == 0)
