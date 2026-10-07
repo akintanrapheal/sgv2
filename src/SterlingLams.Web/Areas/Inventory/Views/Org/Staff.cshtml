@@ -54,7 +54,7 @@
             <tr class="bg-neutral-50 border-b border-neutral-100 text-xs text-neutral-400">
                 <th class="text-left px-4 py-3 font-medium">Staff</th>
                 <th class="text-left px-4 py-3 font-medium">Roles</th>
-                <th class="text-left px-4 py-3 font-medium">POS PIN</th>
+                <th class="text-left px-4 py-3 font-medium">EPOS PIN</th>
                 <th class="text-left px-4 py-3 font-medium">Last login</th>
             </tr>
         </thead>
@@ -103,7 +103,7 @@
                                 @if (s.HasPin)
                                 {
                                     <form asp-area="Inventory" asp-controller="Org" asp-action="SetCashierPin" method="post" class="inline ml-2"
-                                          onsubmit="return confirm('Remove this staff member’s POS PIN?');">
+                                          onsubmit="return confirm('Remove this staff member’s EPOS PIN?');">
                                         @Html.AntiForgeryToken()
                                         <input type="hidden" name="id" value="@s.Id" />
                                         <input type="hidden" name="pin" value="" />
@@ -130,10 +130,10 @@
     string Branch(string n) => n.Replace("Sterlin Glams ", "");
 }
 
-<!-- ── Cashiers (POS logins) ───────────────────────────────────────────── -->
+<!-- ── Cashiers (EPOS logins) ───────────────────────────────────────────── -->
 <div class="mt-10 mb-3">
     <h2 class="font-cormorant text-2xl font-light text-neutral-900">Cashiers</h2>
-    <p class="text-xs text-neutral-400">Staff who sign into the POS app with a PIN. They have no back-office access.</p>
+    <p class="text-xs text-neutral-400">Staff who sign into the EPOS app with a PIN. They have no back-office access.</p>
 </div>
 
 @if (canManageOrg)
@@ -244,7 +244,7 @@
                                     <button type="submit" class="text-xs text-amber-600 hover:text-amber-800 transition-colors">Reset PIN</button>
                                 </form>
                                 <form asp-area="Inventory" asp-controller="Org" asp-action="SetCashierPin" method="post" class="inline"
-                                      onsubmit="return confirm('Remove POS access for this cashier?');">
+                                      onsubmit="return confirm('Remove EPOS access for this cashier?');">
                                     @Html.AntiForgeryToken()
                                     <input type="hidden" name="id" value="@c.Id" />
                                     <input type="hidden" name="pin" value="" />
@@ -277,7 +277,7 @@
 @section Scripts {
 <script>
     function cashierPin(id) {
-        const pin = prompt('Enter a new 4–8 digit POS PIN for this cashier:');
+        const pin = prompt('Enter a new 4–8 digit EPOS PIN for this cashier:');
         if (pin === null) return;
         if (!/^\d{4,8}$/.test(pin.trim())) { alert('PIN must be 4–8 digits.'); return; }
         document.getElementById('cashier-pin-id').value = id;

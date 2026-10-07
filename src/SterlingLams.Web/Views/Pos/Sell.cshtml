@@ -5,7 +5,7 @@
     var session = ViewData["Session"] as SterlingLams.Web.Models.Domain.TillSession;
     var cashierName = ViewData["CashierName"]?.ToString() ?? User.Identity?.Name ?? "";
     var reprintCount = ViewData["ReprintCount"] as int? ?? 0;
-    // Scrolling welcome message shown to in-store customers across the top bar. Editable in POS settings.
+    // Scrolling welcome message shown to in-store customers across the top bar. Editable in EPOS settings.
     var welcomeMessage = (await Settings.GetAsync("pos.welcome_message",
         "Welcome to Sterlin Glams — where elegance meets you. Enjoy a beautiful shopping experience with us today.")).Trim();
     var autoPrintReceipt = await Settings.GetBoolAsync("pos.auto_print_receipt", true);
@@ -17,7 +17,7 @@
 @Html.AntiForgeryToken()
 
 <style nonce="@Context.Items["csp-nonce"]">
-    /* Scrolling customer welcome across the POS top bar. Two identical groups, each exactly the bar's
+    /* Scrolling customer welcome across the EPOS top bar. Two identical groups, each exactly the bar's
        width (flex:0 0 100%), scroll left by one full group (-100%) — so there's always content on
        screen and the loop is seamless (no empty pause, no word split). Pauses on hover.
        NOTE: this is a decorative, customer-facing KIOSK strip, so it deliberately keeps scrolling even
@@ -62,7 +62,7 @@
         @if (!string.IsNullOrWhiteSpace(welcomeMessage))
         {
             @* Scrolling welcome/greeting for in-store customers. Content is duplicated so the loop is
-               seamless; the message is admin-editable in POS settings. *@
+               seamless; the message is admin-editable in EPOS settings. *@
             <div class="pos-welcome @(isRainbow ? "pos-welcome-rainbow" : "") flex-1 min-w-0 overflow-hidden mx-2" aria-hidden="true">
                 <div class="pos-welcome-track">
                     <div class="pos-welcome-group">
@@ -793,7 +793,7 @@
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
             </button>
             <div class="min-w-0">
-                <p class="text-xs text-neutral-400">POS</p>
+                <p class="text-xs text-neutral-400">EPOS</p>
                 <h3 id="stocklookup-title" class="text-lg font-semibold text-neutral-900 truncate leading-tight">Stock lookup</h3>
             </div>
         </div>
@@ -873,7 +873,7 @@
 @* ── Send stock (cashier → creates a transfer request, admin approves, cashier marks sent) ── *@
 <div id="till-sendstock" class="hidden fixed inset-0 z-50 bg-white flex flex-col">
     <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 flex-shrink-0">
-        <div><p class="text-xs text-neutral-400">POS</p><h3 class="text-lg font-semibold text-neutral-900 leading-tight">Send stock</h3></div>
+        <div><p class="text-xs text-neutral-400">EPOS</p><h3 class="text-lg font-semibold text-neutral-900 leading-tight">Send stock</h3></div>
         <button type="button" id="sendstock-close" class="text-neutral-400 hover:text-neutral-700"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></button>
     </div>
     <div class="flex-1 overflow-y-auto">
@@ -911,7 +911,7 @@
 @* ── Receive stock (destination cashier picks an in-transit transfer to check in) ── *@
 <div id="till-receivestock" class="hidden fixed inset-0 z-50 bg-white flex flex-col">
     <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 flex-shrink-0">
-        <div><p class="text-xs text-neutral-400">POS</p><h3 class="text-lg font-semibold text-neutral-900 leading-tight">Receive stock</h3></div>
+        <div><p class="text-xs text-neutral-400">EPOS</p><h3 class="text-lg font-semibold text-neutral-900 leading-tight">Receive stock</h3></div>
         <button type="button" id="receivestock-close" class="text-neutral-400 hover:text-neutral-700"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></button>
     </div>
     <div class="flex-1 overflow-y-auto">
@@ -949,7 +949,7 @@
 @* ── Transfer history (past transfers touching this branch, both directions) ── *@
 <div id="till-transferhistory" class="hidden fixed inset-0 z-50 bg-white flex flex-col">
     <div class="flex items-center justify-between px-6 py-4 border-b border-neutral-100 flex-shrink-0">
-        <div><p class="text-xs text-neutral-400">POS</p><h3 class="text-lg font-semibold text-neutral-900 leading-tight">Transfer history</h3></div>
+        <div><p class="text-xs text-neutral-400">EPOS</p><h3 class="text-lg font-semibold text-neutral-900 leading-tight">Transfer history</h3></div>
         <button type="button" id="transferhistory-close" class="text-neutral-400 hover:text-neutral-700"><svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg></button>
     </div>
     <div class="flex-1 overflow-y-auto">
@@ -1248,7 +1248,7 @@
                 body: JSON.stringify({ productId: ppCurrent.id, hidden: true })
             });
             const data = await res.json();
-            if (data.success) { closeProductPopup(); runSearch(); }   // refresh — product now hidden from POS
+            if (data.success) { closeProductPopup(); runSearch(); }   // refresh — product now hidden from EPOS
             else showError(data.message || 'Could not update.');
         } catch { showError('Could not update.'); }
         finally { ppToggle.disabled = false; }
@@ -1704,7 +1704,7 @@
         saveCart();
     }
 
-    // Pay is only enabled once there's a cart AND an attached customer (mandatory on POS).
+    // Pay is only enabled once there's a cart AND an attached customer (mandatory on EPOS).
     function cartTotal() { return Math.max(0, grossTotal() - loyaltyDiscount()); }
     function splitOk() {
         if (!splitPayments) return false;
@@ -2013,10 +2013,10 @@
                         (data.change > 0 ? `<br>Change due: <span class="font-medium text-emerald-600">${fmt(data.change)}</span>` : '');
                     receiptBtn.onclick = null;
                     // Use __posBase, not a literal "/Pos" — this is an <a href> navigation (not a
-                    // shimmed fetch), so under a secret POS prefix "/Pos/Receipt/.." 404s.
+                    // shimmed fetch), so under a secret EPOS prefix "/Pos/Receipt/.." 404s.
                     receiptBtn.href = window.__posBase + '/Receipt/' + data.orderId;
                     receiptBtn.classList.remove('hidden');
-                    // Print it straight away (unless auto-print is turned off in POS settings).
+                    // Print it straight away (unless auto-print is turned off in EPOS settings).
                     if (POS_AUTOPRINT) autoPrintReceipt(data.orderId);
                 }
                 cart = []; tenderedEl.value = ''; setCustomer(null); selectMethod(''); clearSavedCart(); renderCart();
@@ -2039,7 +2039,7 @@
             const res = await fetch('/Pos/RecentOrders');
             const orders = await res.json();
             if (!orders.length) {
-                el.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">No sales yet on this POS.</p>';
+                el.innerHTML = '<p class="text-center text-neutral-400 py-6 text-xs">No sales yet on this EPOS.</p>';
                 return;
             }
             el.innerHTML = orders.map(o => {
@@ -2181,7 +2181,7 @@
         setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 2500);
     }
 
-    // Safety net: never let a script error or rejected promise fail silently in the POS — surface it
+    // Safety net: never let a script error or rejected promise fail silently in the EPOS — surface it
     // so the cashier knows something went wrong and can report it, rather than a dead button.
     window.addEventListener('error', (e) => { if (e && e.message) showError('Something went wrong: ' + e.message); });
     window.addEventListener('unhandledrejection', (e) => {
@@ -2251,7 +2251,7 @@
         document.getElementById('discount-step3').classList.add('hidden');
         const list = document.getElementById('discount-reasons-list');
         if (!discountReasons.length) {
-            list.innerHTML = '<p class="px-4 py-6 text-sm text-neutral-400 text-center">No discount reasons configured.<br>Add them in Admin → POS → Discount Reasons.</p>';
+            list.innerHTML = '<p class="px-4 py-6 text-sm text-neutral-400 text-center">No discount reasons configured.<br>Add them in Admin → EPOS → Discount Reasons.</p>';
             return;
         }
         list.innerHTML = discountReasons.map(r =>
@@ -2523,7 +2523,7 @@
         if (!num) return;
         const res = await fetch('/Pos/RefundLookup?orderNumber=' + encodeURIComponent(num));
         const data = await res.json();
-        if (!data.found) { body.classList.add('hidden'); msgEl.textContent = 'No POS sale with that number.'; return; }
+        if (!data.found) { body.classList.add('hidden'); msgEl.textContent = 'No EPOS sale with that number.'; return; }
         orderId = data.orderId;
         lines = data.items.map(i => ({ ...i, qty: 0 }));
         itemsEl.innerHTML = lines.map((i, idx) => `
@@ -3301,7 +3301,7 @@
             const placed = d.placedAt ? new Date(d.placedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
             const cust = d.customer || {};
             const isPickup = d.fulfillmentType === 'StorePickup';
-            // POS is pack-only. Pickup: pack then notify the customer. Delivery: pack, then it hands off
+            // EPOS is pack-only. Pickup: pack then notify the customer. Delivery: pack, then it hands off
             // to the admin Logistics board (which dispatches it and emails the customer "on its way").
             let act = null, actLabel = '';
             // While items are still arriving to merge, the store packs only its OWN items.

@@ -119,13 +119,13 @@
     </div>
 
     <div class="bg-white border border-neutral-200 rounded-md p-5 mt-6">
-        <h2 class="text-sm font-semibold text-neutral-800">Import stock &amp; POS prices (EposNow)</h2>
+        <h2 class="text-sm font-semibold text-neutral-800">Import stock &amp; EPOS prices (EposNow)</h2>
         <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
             Upload an EposNow stock export (<span class="font-mono">.xlsx</span> or <span class="font-mono">.csv</span>:
             <span class="font-mono">Name, Barcode, DatedStock, SalePrice…</span>) for <strong>one branch</strong>.
             Each row is matched to a product/variant by its <strong>barcode</strong>. Apply sets that branch's
             <strong>on-hand quantity</strong> to <span class="font-mono">DatedStock</span>, and (optionally) writes
-            <span class="font-mono">SalePrice</span> as the product's <strong>POS price</strong> — the till price only;
+            <span class="font-mono">SalePrice</span> as the product's <strong>EPOS price</strong> — the till price only;
             the website price and sale price are never touched. <strong>Preview first</strong> — nothing is written until you Apply.
         </p>
         <div class="grid sm:grid-cols-2 gap-3 mt-3">
@@ -147,7 +147,7 @@
         </div>
         <div class="flex flex-wrap items-center gap-4 mt-3">
             <label class="flex items-center gap-2 text-sm text-neutral-700"><input id="pi-st-stock" type="checkbox" checked /> Set on-hand stock</label>
-            <label class="flex items-center gap-2 text-sm text-neutral-700"><input id="pi-st-pos" type="checkbox" checked /> Set POS price from SalePrice</label>
+            <label class="flex items-center gap-2 text-sm text-neutral-700"><input id="pi-st-pos" type="checkbox" checked /> Set EPOS price from SalePrice</label>
         </div>
         <div class="flex items-center gap-2 mt-4">
             <button type="button" id="pi-st-preview" class="px-5 py-2 border border-neutral-300 text-neutral-700 text-sm rounded-md hover:border-neutral-500">Preview</button>
@@ -484,7 +484,7 @@
         }).catch(function () { bcPreview.disabled = false; bcStatus.textContent = 'Request failed.'; });
     });
 
-    // ── Import stock & POS prices (EposNow) — preview then apply, with an issues list ──
+    // ── Import stock & EPOS prices (EposNow) — preview then apply, with an issues list ──
     var stStore = document.getElementById('pi-st-store');
     var stFile = document.getElementById('pi-st-file');
     var stStock = document.getElementById('pi-st-stock');
@@ -511,7 +511,7 @@
         var grid = '<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">'
             + stat(d.committed ? 'Stock set' : 'Stock lines', d.stockLines, 'text-emerald-600')
             + stat('Total units', d.totalUnits)
-            + stat(d.committed ? 'POS prices set' : 'POS prices', d.posPricesSet)
+            + stat(d.committed ? 'EPOS prices set' : 'EPOS prices', d.posPricesSet)
             + stat('Matched', d.matched)
             + stat('Issues', d.issuesTotal, d.issuesTotal ? 'text-amber-600' : 'text-neutral-900')
             + stat('Rows in file', d.rowsRead)
@@ -576,14 +576,14 @@
         if (!stValidate()) return;
         var label = stStore.options[stStore.selectedIndex].text;
         if (!confirm('Apply this stock to ' + label + '? On-hand quantities are SET to the sheet values'
-            + (stPos.checked ? ', and POS prices updated from SalePrice' : '') + '. Website prices are not touched.')) return;
+            + (stPos.checked ? ', and EPOS prices updated from SalePrice' : '') + '. Website prices are not touched.')) return;
         stPreview.disabled = true; stApply.disabled = true; stStatus.textContent = 'Applying…';
         stPost(base + 'ApplyStock').then(function (d) {
             stPreview.disabled = false;
             if (!d.ok) { stStatus.textContent = d.error || 'Failed.'; return; }
             stRender(d);
             stStatus.textContent = 'Done — ' + d.stockLines + ' stock line(s), ' + d.totalUnits + ' units'
-                + (stPos.checked ? ', ' + d.posPricesSet + ' POS price(s)' : '') + ' set for ' + label + '.'
+                + (stPos.checked ? ', ' + d.posPricesSet + ' EPOS price(s)' : '') + ' set for ' + label + '.'
                 + (d.issuesTotal ? ' ' + d.issuesTotal + ' row(s) had issues — download the CSV to fix them.' : '');
         }).catch(function () { stPreview.disabled = false; stApply.disabled = false; stStatus.textContent = 'Request failed.'; });
     });
