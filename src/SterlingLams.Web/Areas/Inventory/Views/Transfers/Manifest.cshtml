@@ -50,17 +50,20 @@
     .sig strong { display:block; color:#111; font-size:13px; margin-bottom:1px; }
     .foot { margin-top: 26px; text-align: center; font-size: 10px; color: #9ca3af; }
     .printbtn { display:inline-block; margin-bottom:16px; padding:8px 16px; background:#111; color:#fff; border:none; border-radius:4px; font-size:12px; cursor:pointer; }
-    @@media print { body { padding: 0; } .noprint { display: none; } }
+    /* margin:0 removes the browser's own print header/footer (URL, date, page no.); body padding keeps a
+       small, even margin so the sheet isn't surrounded by a big blank border. */
+    @@page { margin: 0; }
+    @@media print { body { padding: 10mm; } .noprint { display: none; } .sheet { max-width: none; } }
 </style>
 </head>
 <body>
 <div class="sheet">
     <div class="noprint" style="margin-bottom:16px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <button class="printbtn" style="margin:0" onclick="window.print()">Print / Save as PDF</button>
+        <button type="button" id="print-btn" class="printbtn" style="margin:0">Print / Save as PDF</button>
         @if (!string.IsNullOrEmpty(publicUrl))
         {
             <input id="share-url" value="@publicUrl" readonly style="flex:1; min-width:220px; font-size:12px; padding:8px 10px; border:1px solid #e5e7eb; border-radius:4px; color:#374151;" />
-            <button type="button" class="printbtn" style="margin:0; background:#059669;" onclick="var i=document.getElementById('share-url');i.select();navigator.clipboard&&navigator.clipboard.writeText(i.value);this.textContent='Copied';">Copy link</button>
+            <button type="button" id="copy-btn" class="printbtn" style="margin:0; background:#059669;">Copy link</button>
         }
     </div>
     <p class="noprint" style="font-size:11px;color:#9ca3af;margin:-8px 0 16px;">Share this link (or the QR) with the receiver — no account needed to view.</p>
@@ -134,5 +137,22 @@
 
     <div class="foot">Generated from Sterlin Glams Inventory — verify every line against the physical goods on arrival. @Model.TransferNumber</div>
 </div>
+@* Buttons are wired here (not inline onclick) because this public page runs under the strict
+   nonce-based CSP, which blocks inline event handlers. *@
+<script nonce="@Context.Items["csp-nonce"]">
+    (function () {
+        var p = document.getElementById('print-btn');
+        if (p) p.addEventListener('click', function () { window.print(); });
+        var c = document.getElementById('copy-btn');
+        if (c) c.addEventListener('click', function () {
+            var i = document.getElementById('share-url');
+            if (!i) return;
+            i.select();
+            try { navigator.clipboard && navigator.clipboard.writeText(i.value); } catch (e) {}
+            try { document.execCommand('copy'); } catch (e) {}
+            c.textContent = 'Copied';
+        });
+    })();
+</script>
 </body>
 </html>
