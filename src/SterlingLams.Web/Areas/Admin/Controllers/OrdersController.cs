@@ -302,6 +302,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .Include(o => o.User).Include(o => o.Customer)
                 .FirstOrDefaultAsync(o => o.Id == id);
             if (order == null) return NotFound();
+            // The "From" branch for the label: the fulfilling branch, else the pickup branch, else the first
+            // active branch — so a real Sterlin Glams return address always prints (never just the name).
+            var fromStore = order.FulfillingStore ?? order.PickupStore
+                ?? await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Id).FirstOrDefaultAsync();
+            ViewBag.FromStore = fromStore;
             // Order QR (scannable with a phone) — encodes the order number, like the barcode. Server-side
             // PNG via QRCoder (no JS/System.Drawing), handed to the view as a data URI.
             using (var qrGen = new QRCoder.QRCodeGenerator())

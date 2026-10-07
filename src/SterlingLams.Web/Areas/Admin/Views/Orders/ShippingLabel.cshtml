@@ -17,7 +17,7 @@
     var toPhone = !string.IsNullOrWhiteSpace(Model.ContactPhone) ? Model.ContactPhone
                 : (!string.IsNullOrWhiteSpace(a?.Phone) ? a!.Phone : buyer?.PhoneNumber);
 
-    var fromStore = Model.FulfillingStore;
+    var fromStore = ViewBag.FromStore as SterlingLams.Web.Models.Domain.Store ?? Model.FulfillingStore;
     var fromName = fromStore != null ? fromStore.Name : siteName;
     var fromAddr = fromStore != null
         ? string.Join(", ", new[] { fromStore.Address, $"{fromStore.City}, {fromStore.State}".Trim(' ', ',') }.Where(x => !string.IsNullOrWhiteSpace(x)))
@@ -57,12 +57,13 @@
         html, body { margin: 0; padding: 0; }
         /* 4mm safe padding on all four sides so the printer's non-printable edge never clips the border. */
         body { width: 6in; height: 4in; padding: 4mm; font-family: Arial, Helvetica, sans-serif; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .lbl { width: 100%; height: 100%; border: 2px solid #000; display: flex; flex-direction: column; overflow: hidden; }
+        .lbl { width: 100%; height: 100%; border: 2px solid #000; display: flex; flex-direction: column; }
         .r { display: flex; }
-        /* Header: logo + brief return | FRAGILE */
+        /* Header: centred logo | FRAGILE */
         .hd { border-bottom: 2px solid #000; }
-        .hd .brand { flex: 1; display: flex; gap: 8px; padding: 6px 8px; align-items: center; min-width: 0; }
-        .hd .brand img { max-width: 36mm; max-height: 18mm; height: auto; width: auto; object-fit: contain; }
+        .hd .brand { flex: 1; display: flex; gap: 8px; padding: 6px 8px; align-items: center; justify-content: center; min-width: 0; }
+        /* brightness(0) forces the logo to solid black so it prints crisp B&W (the light "Glams" shows clearly). */
+        .hd .brand img { max-width: 40mm; max-height: 15mm; height: auto; width: auto; object-fit: contain; filter: brightness(0); }
         .hd .ret { font-size: 8.5px; line-height: 1.25; color: #000; min-width: 0; }
         .hd .ret b { font-size: 9.5px; }
         .hd .frag { width: 2.5in; border-left: 2px solid #000; padding: 6px 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; }
@@ -81,9 +82,9 @@
         .fld { display: flex; gap: 4px; margin-bottom: 1px; }
         .fld .k { width: 48px; color: #000; flex: 0 0 auto; }
         .to .name { font-size: 17px; font-weight: 800; line-height: 1.1; margin: 1px 0 3px; }
-        .to .addr { font-size: 12.5px; font-weight: 600; line-height: 1.3; }
-        .to .ph { font-size: 12.5px; font-weight: 700; margin-top: 2px; }
-        .add { margin-top: 5px; padding-top: 4px; border-top: 1px dashed #000; font-size: 10px; }
+        .to .addr { font-size: 12px; font-weight: 600; line-height: 1.25; }
+        .to .ph { font-size: 12px; font-weight: 700; margin-top: 2px; }
+        .add { margin-top: 4px; padding-top: 3px; border-top: 1px solid #000; font-size: 9.5px; line-height: 1.3; }
         .add .h { font-weight: 800; }
         .add .note { white-space: pre-line; word-break: break-word; }
         /* Footer: order no + sign | QR */
@@ -130,17 +131,17 @@
                 <div class="name">@E(toName)</div>
                 <div class="addr">@Html.Raw(toAddrHtml)</div>
                 @if (!string.IsNullOrWhiteSpace(toPhone)) { <div class="ph">☎ @E(toPhone)</div> }
-                <div class="add">
-                    <span class="h">Additional information:</span>
-                    Items: @itemCount@(Model.Channel == SterlingLams.Web.Models.Domain.OrderChannel.Pos ? " · In-store" : " · Website order")
-                    <div class="note">Note: @(string.IsNullOrWhiteSpace(Model.Notes) ? "—" : E(Model.Notes))</div>
-                </div>
+                @if (!string.IsNullOrWhiteSpace(Model.Notes))
+                {
+                    <div class="add"><span class="h">Note:</span> @E(Model.Notes)</div>
+                }
             </div>
         </div>
 
         <div class="r ft">
             <div class="left">
                 <div class="ord"><span class="k">Order number</span><br /><span class="v">@Model.OrderNumber</span></div>
+                <div style="font-size:9px; margin-top:2px;">Items: @itemCount@(Model.Channel == SterlingLams.Web.Models.Domain.OrderChannel.Pos ? " · In-store" : " · Website order")</div>
                 <div class="sign">
                     <div class="c"><span class="k">Packed by</span><span class="v">@(string.IsNullOrWhiteSpace(Model.PackedByName) ? "" : E(Model.PackedByName))</span></div>
                     <div class="c"><span class="k">Signed off by</span><span class="v">&nbsp;</span></div>
