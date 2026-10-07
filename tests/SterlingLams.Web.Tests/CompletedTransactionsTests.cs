@@ -112,4 +112,35 @@ public class CompletedTransactionsTests
 
         Assert.DoesNotContain(vm.Rows, r => r.IsVoid);   // voids are POS — none under the Website filter
     }
+
+    [Fact]
+    public async Task EndOfDay_website_amounts_exclude_delivery()
+    {
+        using var t = new TestDb();
+        var (abuja, _, _) = t.SeedBranches();
+        var user = t.SeedUser();
+        var p = t.SeedProduct(20000m);
+
+        // A website order fulfilled by Abuja, PACKED today (EOD counts website orders on the packed day).
+        t.Db.Orders.Add(new Order
+        {
+            OrderNumber = "W-EOD", UserId = user.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = abuja.Id,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = DateTime.UtcNow,
+            PackedAt = DateTime.UtcNow, PackedByName = "Dorathy", PaymentProvider = "Paystack",
+            Currency = "NGN", Subtotal = 20000m, DeliveryFee = 5000m, Total = 25000m,
+            Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 20000m } }
+        });
+        await t.Db.SaveChangesAsync();
+
+        var ctrl = new FinanceController(t.Db, null!, null!, null!, null!);
+        var day = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd");   // Lagos day
+        var result = await ctrl.EndOfDay(day, null);
+        var vm = (FinanceController.EndOfDayVm)((ViewResult)result).ViewData.Model!;
+
+        var abujaRow = vm.Rows.Single(r => r.StoreId == abuja.Id);
+        Assert.Equal(20000m, abujaRow.Ops.WebsiteAmount);        // 25,000 − 5,000 delivery = product only
+        Assert.Equal(20000m, abujaRow.Ops.PackedWebsiteAmount);
+        Assert.Equal(1, abujaRow.Ops.PackedWebsiteOrders);
+    }
 }

@@ -1337,12 +1337,14 @@ public class FinanceController : AdminBaseController
                 PosSales: os.Count(o => o.Channel == OrderChannel.Pos),
                 TransferPayments: ccontribs.Count(m => m.Method == "Transfer"),
                 CashPayments: ccontribs.Count(m => m.Method == "Cash"),
+                // Website amounts are merchandise only — delivery is logistics, not a product sale
+                // (consistent with Completed Transactions and the Overview "Online sales" figure).
                 WebsiteOrders: web.Count,
-                WebsiteAmount: web.Sum(o => o.Total),
+                WebsiteAmount: web.Sum(o => o.Total - o.DeliveryFee),
                 PackedWebsiteOrders: packedWeb.Count,
-                PackedWebsiteAmount: packedWeb.Sum(o => o.Total),
+                PackedWebsiteAmount: packedWeb.Sum(o => o.Total - o.DeliveryFee),
                 AwaitingWebsiteOrders: awaitingWeb.Count,
-                AwaitingWebsiteAmount: awaitingWeb.Sum(o => o.Total),
+                AwaitingWebsiteAmount: awaitingWeb.Sum(o => o.Total - o.DeliveryFee),
                 ItemsSoldQty: items.Sum(i => i.Quantity),
                 ItemsSoldAmount: items.Sum(i => i.Line),
                 OpeningCash: openingCash,
@@ -1650,7 +1652,9 @@ public class FinanceController : AdminBaseController
             .ToListAsync();
         var posGross = chan.Where(c => c.Key == OrderChannel.Pos).Sum(c => c.Gross);
         var posCount = chan.Where(c => c.Key == OrderChannel.Pos).Sum(c => c.Count);
-        var onlineGross = chan.Where(c => c.Key == OrderChannel.Online).Sum(c => c.Gross);
+        // "Online sales" is merchandise only — the delivery fee is logistics, not a product sale (shown in
+        // the delivery/logistics figures). Matches the Completed Transactions + EOD website amounts.
+        var onlineGross = chan.Where(c => c.Key == OrderChannel.Online).Sum(c => c.Gross - c.Delivery);
         var onlineCount = chan.Where(c => c.Key == OrderChannel.Online).Sum(c => c.Count);
 
         // Refunds in range, attributed via the original order (respects the same filters).
