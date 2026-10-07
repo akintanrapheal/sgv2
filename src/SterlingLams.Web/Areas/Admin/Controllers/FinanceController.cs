@@ -1367,7 +1367,7 @@ public class FinanceController : AdminBaseController
     { public decimal Line => Qty * UnitPrice; }
     public record CtRow(int Id, string Number, DateTime When, string Staff, string Location, string Device,
         string Customer, decimal Discount, string DiscountReason, decimal Total, string Tender, decimal Change,
-        List<CtItem> Items, bool IsRefund = false);
+        List<CtItem> Items, bool IsRefund = false, bool IsVoid = false);
 
     public class CompletedTxnVm
     {
@@ -1384,7 +1384,8 @@ public class FinanceController : AdminBaseController
         public int Count { get; set; }
         public decimal Total { get; set; }         // gross sales
         public decimal RefundsTotal { get; set; }  // approved refunds (positive)
-        public decimal Net { get; set; }           // Total − RefundsTotal (end-of-day balance)
+        public decimal VoidsTotal { get; set; }    // voided till sales (positive)
+        public decimal Net { get; set; }           // Total − RefundsTotal − VoidsTotal (end-of-day balance)
         public decimal Discount { get; set; }
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 50;
@@ -1416,7 +1417,7 @@ public class FinanceController : AdminBaseController
             OnlineCustName = o.User != null ? (o.User.FirstName + " " + o.User.LastName) : null,
             AddrName = o.DeliveryAddress != null ? o.DeliveryAddress.FullName : null,
             AddrPhone = o.DeliveryAddress != null ? o.DeliveryAddress.Phone : null,
-            o.DiscountAmount, o.DiscountCode, o.Total, o.PaymentProvider, o.ChangeGiven,
+            o.DiscountAmount, o.DiscountCode, o.Total, o.DeliveryFee, o.PaymentProvider, o.ChangeGiven,
             Items = o.Items.Select(i => new CtItem(i.ProductName, i.VariantName, i.ProductSku, i.Quantity, i.UnitPrice)).ToList()
         }).ToListAsync();
 
@@ -1447,7 +1448,30 @@ public class FinanceController : AdminBaseController
             Items = rf.Items.Select(i => new CtItem(i.ProductName, i.VariantName, null, i.Quantity, i.UnitPrice)).ToList()
         }).ToListAsync();
 
-        var staffNames = await UserNamesAsync(raw.Select(r => r.StaffId).Concat(refRaw.Select(r => r.CashierUserId)));
+        // Voided till sales — shown as NEGATIVE rows dated at the VOID time (not the sale time), so an
+        // end-of-day check sees the reversal when it happened, just like a refund. Voids are POS-only, so
+        // there's nothing to show when the report is filtered to Website. The original sale still appears
+        // as its positive row (on the sale time), so sale + void net to zero for the day.
+        var includeVoids = channel != "Online";   // voids are POS-only — none when filtered to Website
+        var voidRaw = await _db.Orders.Where(o => includeVoids
+                && o.Channel == OrderChannel.Pos && o.VoidedAt != null
+                && o.VoidedAt >= f && o.VoidedAt < t
+                && (!storeId.HasValue || o.PickupStoreId == storeId || o.FulfillingStoreId == storeId)
+                && (!registerId.HasValue || o.RegisterId == registerId))
+            .OrderByDescending(o => o.VoidedAt)
+            .Select(o => new
+            {
+                o.Id, o.OrderNumber, When = o.VoidedAt!.Value, StaffId = o.UserId,
+                StoreName = o.PickupStore != null ? o.PickupStore.Name : (o.FulfillingStore != null ? o.FulfillingStore.Name : null),
+                Device = o.Register != null ? o.Register.Name : null,
+                CustName = o.Customer != null ? (o.Customer.FirstName + " " + o.Customer.LastName) : null,
+                CustPhone = o.Customer != null ? o.Customer.PhoneNumber : null,
+                o.Total, o.VoidReason,
+                Items = o.Items.Select(i => new CtItem(i.ProductName, i.VariantName, i.ProductSku, i.Quantity, i.UnitPrice)).ToList()
+            }).ToListAsync();
+
+        var staffNames = await UserNamesAsync(raw.Select(r => r.StaffId)
+            .Concat(refRaw.Select(r => r.CashierUserId)).Concat(voidRaw.Select(v => v.StaffId)));
         var regNames = await _db.Registers.Select(r => new { r.Id, r.Name }).ToDictionaryAsync(r => r.Id, r => r.Name);
 
         var rows = raw.Select(r =>
@@ -1460,10 +1484,15 @@ public class FinanceController : AdminBaseController
             var tender = pays.GetValueOrDefault(r.Id)
                 ?? (r.Channel == OrderChannel.Online ? "Website"
                     : string.IsNullOrWhiteSpace(r.PaymentProvider) ? "—" : r.PaymentProvider!);
+            // Finance uses this report to check cashier end-of-day, which is about MERCHANDISE taken, not
+            // logistics. Delivery fees belong to Logistics, so exclude them from website (online) order
+            // totals — show the product amount only. POS sales have no delivery fee. This flows into the
+            // Sales/Net summary and every export (CSV/Excel/Word) since they all read CtRow.Total.
+            var rowTotal = r.Channel == OrderChannel.Online ? r.Total - r.DeliveryFee : r.Total;
             return new CtRow(r.Id, r.OrderNumber, r.When, staff, r.StoreName ?? "Online / Unassigned",
                 r.Device ?? (r.Channel == OrderChannel.Online ? "Website" : "—"), customer,
                 r.DiscountAmount, string.IsNullOrWhiteSpace(r.DiscountCode) ? "—" : r.DiscountCode!,
-                r.Total, tender, r.ChangeGiven ?? 0, r.Items);
+                rowTotal, tender, r.ChangeGiven ?? 0, r.Items);
         }).ToList();
 
         var refRows = refRaw.Select(rf =>
@@ -1482,7 +1511,19 @@ public class FinanceController : AdminBaseController
                 -rf.Amount, tender, 0m, rf.Items, IsRefund: true);
         }).ToList();
 
-        var combined = rows.Concat(refRows).OrderByDescending(r => r.When).ToList();
+        var voidRows = voidRaw.Select(v =>
+        {
+            var staff = string.IsNullOrEmpty(v.StaffId) ? "" : staffNames.GetValueOrDefault(v.StaffId!, "—");
+            var name = v.CustName?.Trim();
+            if (string.IsNullOrWhiteSpace(name)) name = "Walk-in";
+            var customer = "Void — " + (string.IsNullOrWhiteSpace(v.CustPhone) ? name : $"{name} · {v.CustPhone}");
+            // Distinct id range so the "Show items" toggle never collides with a sale (+id) or refund (−id) row.
+            return new CtRow(-1_000_000_000 - v.Id, v.OrderNumber, v.When, staff, v.StoreName ?? "—",
+                v.Device ?? "—", customer, 0m, string.IsNullOrWhiteSpace(v.VoidReason) ? "—" : v.VoidReason!,
+                -v.Total, "Void", 0m, v.Items, IsVoid: true);
+        }).ToList();
+
+        var combined = rows.Concat(refRows).Concat(voidRows).OrderByDescending(r => r.When).ToList();
 
         if (!string.IsNullOrWhiteSpace(q))
         {
@@ -1516,10 +1557,11 @@ public class FinanceController : AdminBaseController
             Registers = await _db.Registers.Include(r => r.Store).OrderBy(r => r.Store.Name).ThenBy(r => r.Name).ToListAsync(),
             Rows = pageRows,
             Count = total,
-            Total = rows.Where(r => !r.IsRefund).Sum(r => r.Total),      // gross sales
-            RefundsTotal = rows.Where(r => r.IsRefund).Sum(r => -r.Total), // refunds as a positive figure
-            Net = rows.Sum(r => r.Total),                                 // sales minus refunds (EOD balance)
-            Discount = rows.Where(r => !r.IsRefund).Sum(r => r.Discount),
+            Total = rows.Where(r => !r.IsRefund && !r.IsVoid).Sum(r => r.Total),   // gross sales
+            RefundsTotal = rows.Where(r => r.IsRefund).Sum(r => -r.Total),         // refunds as a positive figure
+            VoidsTotal = rows.Where(r => r.IsVoid).Sum(r => -r.Total),             // voids as a positive figure
+            Net = rows.Sum(r => r.Total),                                          // sales − refunds − voids (EOD balance)
+            Discount = rows.Where(r => !r.IsRefund && !r.IsVoid).Sum(r => r.Discount),
             Page = page, PageSize = pageSize, TotalPages = totalPages
         });
     }

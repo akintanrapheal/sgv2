@@ -79,8 +79,15 @@
         · Sales <span class="text-neutral-800 font-medium">@Money(Model.Total)</span>
         @if (Model.RefundsTotal > 0)
         {
-            <text>· Refunds <span class="text-rose-600 font-medium">−@Money(Model.RefundsTotal)</span>
-            · Net <span class="text-neutral-900 font-semibold">@Money(Model.Net)</span></text>
+            <text>· Refunds <span class="text-rose-600 font-medium">−@Money(Model.RefundsTotal)</span></text>
+        }
+        @if (Model.VoidsTotal > 0)
+        {
+            <text>· Voids <span class="text-rose-600 font-medium">−@Money(Model.VoidsTotal)</span></text>
+        }
+        @if (Model.RefundsTotal > 0 || Model.VoidsTotal > 0)
+        {
+            <text>· Net <span class="text-neutral-900 font-semibold">@Money(Model.Net)</span></text>
         }
         · Discounts <span class="text-neutral-800 font-medium">@Money(Model.Discount)</span>
     </div>
@@ -119,8 +126,8 @@
                         <td class="px-3 py-2.5 text-neutral-700">@r.Customer</td>
                         <td class="px-3 py-2.5 text-right text-neutral-600">@(r.Discount > 0 ? Money(r.Discount) : "—")</td>
                         <td class="px-3 py-2.5 text-neutral-500">@r.DiscountReason</td>
-                        <td class="px-3 py-2.5 text-right font-medium @(r.IsRefund ? "text-rose-600" : "text-neutral-900")">@Money(r.Total)</td>
-                        <td class="px-3 py-2.5 @(r.IsRefund ? "text-rose-600" : "text-neutral-600")">@r.Tender</td>
+                        <td class="px-3 py-2.5 text-right font-medium @(r.Total < 0 ? "text-rose-600" : "text-neutral-900")">@Money(r.Total)</td>
+                        <td class="px-3 py-2.5 @(r.Total < 0 ? "text-rose-600" : "text-neutral-600")">@r.Tender</td>
                         <td class="px-3 py-2.5 text-right text-neutral-500">@Money(r.Change)</td>
                         <td class="px-3 py-2.5 text-right no-print">
                             <button type="button" onclick="document.getElementById('items-@r.Id').classList.toggle('hidden')"
