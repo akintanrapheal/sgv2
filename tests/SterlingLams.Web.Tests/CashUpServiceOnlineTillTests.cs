@@ -69,4 +69,42 @@ public class CashUpServiceOnlineTillTests
         Assert.Equal(0m, Web(inStoreVm));
         Assert.Equal(0, inStoreVm.Transactions);
     }
+
+    [Fact]
+    public async Task Website_order_paid_before_the_till_opened_still_counts()
+    {
+        using var t = new TestDb();
+        var user = t.SeedUser();
+        var (abuja, _, _) = t.SeedBranches();
+        var p = t.SeedProduct(24450m);
+        var reg = new Register { Name = "Abuja Pos 1", StoreId = abuja.Id, IsActive = true, HandlesOnlineOrders = true };
+        t.Db.Registers.Add(reg);
+        await t.Db.SaveChangesAsync();
+
+        // A concrete Lagos day so the window is deterministic regardless of when the test runs.
+        var day = SterlingLams.Web.Services.ReportCalendar.Today;
+        var dayStart = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(day);
+        var opened = dayStart.AddHours(9).AddMinutes(24);     // till opened 09:24
+        var closed = dayStart.AddHours(19);                   // closed 19:00
+        var paidEarly = dayStart.AddHours(7).AddMinutes(44);  // order paid 07:44 — BEFORE the till opened
+
+        var session = new TillSession { RegisterId = reg.Id, OpenedByUserId = "dorathy", OpenedAt = opened, ClosedAt = closed, OpeningFloat = 0 };
+        t.Db.TillSessions.Add(session);
+        t.Db.Orders.Add(new Order
+        {
+            OrderNumber = "W-EARLY", UserId = user.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = abuja.Id,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = paidEarly,
+            PaymentProvider = "Paystack", Currency = "NGN", Subtotal = 24450m, DeliveryFee = 3500m, Total = 27950m,
+            Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 24450m } }
+        });
+        await t.Db.SaveChangesAsync();
+
+        var tracked = await t.Db.TillSessions.Include(x => x.Register).FirstAsync(x => x.Id == session.Id);
+        var vm = await new CashUpService(t.Db).BuildAsync(tracked, interim: false, currentUserId: "");
+
+        // Counted despite being paid before the till opened; merchandise only (delivery excluded).
+        Assert.Equal(24450m, vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected);
+        Assert.Equal(1, vm.Transactions);
+    }
 }
