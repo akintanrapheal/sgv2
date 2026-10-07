@@ -58,8 +58,12 @@ public static class OrderEmailTemplate
         Order order, string custName, string? customerEmail)
     {
         var a = order.DeliveryAddress;
-        var phone = !string.IsNullOrWhiteSpace(a?.Phone) ? a!.Phone
-            : (order.User?.PhoneNumber ?? order.Customer?.PhoneNumber);
+        // Prefer this order's own captured contact — a shared account (customer-care shell email) must not
+        // make every order show the same stale name/phone.
+        if (!string.IsNullOrWhiteSpace(order.ContactName)) custName = order.ContactName!.Trim();
+        var phone = !string.IsNullOrWhiteSpace(order.ContactPhone) ? order.ContactPhone!.Trim()
+            : (!string.IsNullOrWhiteSpace(a?.Phone) ? a!.Phone
+                : (order.User?.PhoneNumber ?? order.Customer?.PhoneNumber));
 
         var billing = new List<string> { custName };
         if (a != null)

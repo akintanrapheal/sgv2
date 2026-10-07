@@ -137,6 +137,13 @@ public class Order
     public string? PackedByUserId { get; set; }
     public string? PackedByName { get; set; }
 
+    /// <summary>The customer's name + phone for THIS specific order, captured at checkout. Crucial when
+    /// several orders share one account — e.g. customer care placing orders for different buyers under one
+    /// shell email (websitecare@gmail.com): the account's name is shared/stale, but each order keeps the
+    /// real buyer here so Admin, emails and receipts show the right person. Null = fall back to the account.</summary>
+    public string? ContactName { get; set; }
+    public string? ContactPhone { get; set; }
+
     public string? TrackingNumber { get; set; }
     public string? Notes { get; set; }
     public string? AdminNotes { get; set; }
