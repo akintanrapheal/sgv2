@@ -51,7 +51,7 @@
     <PackageReference Include="SixLabors.ImageSharp" Version="2.1.13" />
 
     <!-- Stripe -->
-    <PackageReference Include="Stripe.net" Version="52.4.2" />
+    <PackageReference Include="Stripe.net" Version="53.0.0" />
 
     <!-- HTTP Client (IHttpClientFactory) + JSON both ship in the .NET 10 shared framework —
          no explicit PackageReference needed (removing them clears NU1510 on net10). -->
