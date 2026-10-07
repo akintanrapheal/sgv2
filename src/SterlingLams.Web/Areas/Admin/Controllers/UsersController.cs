@@ -160,10 +160,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 RoleFilter     = role,
                 StatusFilter   = status,
                 AvailableRoles = staffRoles,
-                // Assignable per user: staff roles (never Admin) + Customer (removes backend access).
-                // Admin included — it's a full-access role (assignable like the Create form). Only
-                // Admins/Developers can reach this action at all (see OnActionExecutionAsync).
-                AssignableRoles = staffRoles.Append("Customer").ToList(),
+                // Assignable per user: staff roles + Customer (removes backend access). The owner can
+                // assign anything incl. the full-access tier; a delegated user-admin can assign every
+                // ordinary role but NOT Admin/Owner/Developer (can't grant beyond their own level).
+                AssignableRoles = staffRoles.Append("Customer")
+                    .Where(r => AdminSections.IsSuperAdmin(User) || !AdminSections.FullAccessRoles.Contains(r))
+                    .ToList(),
                 CurrentPage    = page,
                 TotalPages     = (int)Math.Ceiling(total / (double)PageSize),
                 TotalCount     = total,
@@ -178,22 +180,28 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         }
 
         // ── Create new staff/admin user ────────────────────────────────────────
-        // Staff roles a new user can be given (never Admin — full access isn't grantable here).
         private static string[] StaffRoles => SterlingLams.Web.Areas.Admin.AdminSections.DefaultStaffRoles;
+
+        // Roles the CURRENT actor may hand out. Everyone with access can create ordinary staff; only
+        // the owner may create full-access (Admin/Owner/Developer) accounts — a delegated user-admin
+        // can't grant beyond their own level.
+        private string[] CreatableRoles() =>
+            StaffRoles.Where(r => AdminSections.IsSuperAdmin(User) || !AdminSections.FullAccessRoles.Contains(r)).ToArray();
 
         [HttpGet]
         public IActionResult Create()
         {
             ViewData["Title"] = "New User";
-            ViewBag.Roles = StaffRoles;
-            return View(new AdminCreateUserViewModel { Role = StaffRoles.First() });
+            var roles = CreatableRoles();
+            ViewBag.Roles = roles;
+            return View(new AdminCreateUserViewModel { Role = roles.First() });
         }
 
         [HttpPost, ValidateAntiForgeryToken]
         public async Task<IActionResult> Create(AdminCreateUserViewModel vm)
         {
             ViewData["Title"] = "New User";
-            ViewBag.Roles = StaffRoles;
+            ViewBag.Roles = CreatableRoles();
 
             if (string.IsNullOrWhiteSpace(vm.Email))
             {
@@ -235,8 +243,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
 
             // Every created user is staff: give them a backend role (which also lets them shop the
-            // storefront). Full "Admin" is never assignable here.
-            var role = StaffRoles.Contains(vm.Role) ? vm.Role : StaffRoles.First();
+            // storefront). A delegate can't mint a full-access account — fall back to a safe default.
+            var creatable = CreatableRoles();
+            var role = creatable.Contains(vm.Role) ? vm.Role : creatable.First();
             await _userManager.AddToRoleAsync(user, role);
 
             if (vm.SendInvite)
@@ -324,8 +333,16 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             // role is protected and can't be changed (SetRole enforces this too).
             var staffRoles = await _roleManager.Roles.Where(r => r.Name != "Customer")
                 .Select(r => r.Name!).OrderBy(r => r).ToListAsync();
-            ViewBag.AssignableRoles = staffRoles.Append("Customer").ToList();
-            ViewBag.CanChangeRole = !IsOwnerAccount(user);
+            // Owner can assign the full-access tier; a delegated user-admin cannot (see SetRole).
+            ViewBag.AssignableRoles = staffRoles.Append("Customer")
+                .Where(r => AdminSections.IsSuperAdmin(User) || !AdminSections.FullAccessRoles.Contains(r))
+                .ToList();
+            // Role is changeable unless it's the protected owner account, or (for a non-owner
+            // delegate) a full-access account they're not allowed to touch.
+            var targetHoldsFullAccess = (await _userManager.GetRolesAsync(user))
+                .Any(r => AdminSections.FullAccessRoles.Contains(r));
+            ViewBag.CanChangeRole = !IsOwnerAccount(user)
+                && (AdminSections.IsSuperAdmin(User) || !targetHoldsFullAccess);
             return View(user);
         }
 
@@ -490,6 +507,21 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
 
             role = (role ?? "Customer").Trim();
+
+            // Delegated user-admins (not the owner) manage ordinary staff, but must not touch the
+            // full-access tier: they can neither assign Admin/Owner/Developer nor change an account
+            // that already holds one. This keeps "can grant up to their own level, never beyond"
+            // true — only the owner mints or alters full-access accounts.
+            if (!AdminSections.IsSuperAdmin(User))
+            {
+                var holdsFullAccess = (await _userManager.GetRolesAsync(user))
+                    .Any(r => AdminSections.FullAccessRoles.Contains(r));
+                if (holdsFullAccess || AdminSections.FullAccessRoles.Contains(role))
+                {
+                    TempData["Error"] = "Only the owner can assign or change the Admin, Owner or Developer role.";
+                    return RedirectToAction(nameof(Index));
+                }
+            }
 
             // Validate the target role exists (Customer = no backend role)
             if (role != "Customer" && !await _roleManager.RoleExistsAsync(role))
