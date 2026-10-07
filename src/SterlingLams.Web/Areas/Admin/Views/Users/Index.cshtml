@@ -4,8 +4,14 @@
     bool hasFilters = !string.IsNullOrEmpty(Model.SearchQuery) ||
                       !string.IsNullOrEmpty(Model.RoleFilter) ||
                       !string.IsNullOrEmpty(Model.StatusFilter);
-    // Owner is view-only here; only Admin + Developer can create users / change roles.
-    var canManage = SterlingLams.Web.Areas.Admin.AdminSections.IsSystemManager(User);
+    // Who can operate this screen: Admin/Developer (IsSystemManager) OR a delegated user-admin —
+    // the owner, or someone in a role granted Users (e.g. "User Manager", via IsUserAdmin).
+    var canManage = SterlingLams.Web.Areas.Admin.AdminSections.IsSystemManager(User)
+                 || SterlingLams.Web.Areas.Admin.AdminSections.IsUserAdmin(User);
+    // Roles shown as a fixed badge (not a changeable dropdown) — the full-access tier plus the
+    // user-admin "User Manager" role, so a role-manager can't be silently re-roled from the list.
+    Func<SterlingLams.Web.Areas.Admin.ViewModels.AdminUserRow, bool> isProtectedRole = u =>
+        u.IsAdmin || string.Equals(u.RoleName, "User Manager", StringComparison.OrdinalIgnoreCase);
 }
 
 <!-- Stat cards -->
@@ -135,9 +141,10 @@
                     </td>
                     <td class="px-4 py-3 text-xs text-neutral-500">@(string.IsNullOrEmpty(u.Phone) ? "—" : u.Phone)</td>
                     <td class="px-4 py-3">
-                        @if (isSelf || u.IsAdmin || !canManage)
+                        @if (isSelf || isProtectedRole(u) || !canManage)
                         {
-                            @* Own account, full administrators, and view-only (Owner) see a read-only badge. *@
+                            @* Own account, full administrators, the User Manager role, and view-only
+                               (Owner) see a read-only badge — not a changeable dropdown. *@
                             <span class="text-[10px] bg-violet-50 text-violet-700 px-2 py-0.5 rounded-full">@u.RoleName</span>
                         }
                         else
