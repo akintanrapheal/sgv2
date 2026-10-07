@@ -89,23 +89,29 @@ public class CashUpService : ICashUpService
         // show in Finance, which attributes per order.)
         var isOnlineTill = session.Register?.HandlesOnlineOrders == true;
 
-        // Website orders arrive 24/7, so the online till counts them from the START of its business day —
-        // NOT from the minute the cashier opened the till. Otherwise an order paid before open (e.g. a
-        // 07:44 order when the till opens at 09:24) is silently dropped from the cash-up. Bounded by any
-        // earlier session's close on this register so two sessions the same day can't both claim the same
-        // early orders. POS sales are tied to the session id, so they're unaffected by this window.
+        // Website orders belong to the Lagos DAY, not a till shift — they arrive 24/7, before the cashier
+        // opens the till AND after they close it. So the online till counts them across the WHOLE business
+        // day, not just its open→close clock (otherwise an order paid at 07:44 before a 09:24 open, or one
+        // confirmed at 13:12 after an early close, is silently dropped). The day is partitioned across the
+        // register's sessions by OPEN time: this session owns online orders from its open — or the start of
+        // the day if it's the day's first session — until the next session on this register opened (or the
+        // end of the day, capped at now). That captures the early/late orders while never double-counting
+        // across two sessions in one day. POS sales are tied to the session id, so they're unaffected.
         var onlineStart = session.OpenedAt;
+        var onlineEnd = winEnd;
         if (isOnlineTill)
         {
-            var openLocalDate = ReportCalendar.ToLocal(session.OpenedAt).Date;
-            onlineStart = ReportCalendar.StartOfDayUtc(openLocalDate);
-            var prevClose = await _db.TillSessions
+            var dayStart = ReportCalendar.StartOfDayUtc(ReportCalendar.ToLocal(session.OpenedAt).Date);
+            var dayEnd = dayStart.AddDays(1);
+            var hasEarlier = await _db.TillSessions.AnyAsync(s => s.RegisterId == session.RegisterId
+                && s.Id != session.Id && s.OpenedAt >= dayStart && s.OpenedAt < session.OpenedAt);
+            onlineStart = hasEarlier ? session.OpenedAt : dayStart;
+            var nextOpen = await _db.TillSessions
                 .Where(s => s.RegisterId == session.RegisterId && s.Id != session.Id
-                    && s.ClosedAt != null && s.ClosedAt <= session.OpenedAt)
-                .OrderByDescending(s => s.ClosedAt)
-                .Select(s => s.ClosedAt)
-                .FirstOrDefaultAsync();
-            if (prevClose.HasValue && prevClose.Value > onlineStart) onlineStart = prevClose.Value;
+                    && s.OpenedAt > session.OpenedAt && s.OpenedAt < dayEnd)
+                .OrderBy(s => s.OpenedAt).Select(s => (DateTime?)s.OpenedAt).FirstOrDefaultAsync();
+            var nowCapped = DateTime.UtcNow < dayEnd ? DateTime.UtcNow : dayEnd;
+            onlineEnd = nextOpen ?? nowCapped;
         }
 
         // POS sales rung up on this session, with their items + category for the breakdowns. Voided sales
@@ -147,7 +153,7 @@ public class CashUpService : ICashUpService
         // website revenue — other tills skip the whole online attribution (empty set).
         var sentTransfers = !isOnlineTill ? new List<StockTransfer>() : await _db.StockTransfers
             .Where(t => t.FromStoreId == storeId && t.OrderId != null && t.DispatchedAt != null
-                && t.DispatchedAt >= onlineStart && t.DispatchedAt < winEnd
+                && t.DispatchedAt >= onlineStart && t.DispatchedAt < onlineEnd
                 && (t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived
                     || t.Status == TransferStatus.Completed))
             .Include(t => t.Items)
@@ -183,7 +189,7 @@ public class CashUpService : ICashUpService
             .Where(o => o.Channel == OrderChannel.Online && o.IsPaid
                 && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded
                 && (o.FulfillingStoreId == storeId || o.PickupStoreId == storeId)
-                && (o.PaidAt ?? o.CreatedAt) >= onlineStart && (o.PaidAt ?? o.CreatedAt) < winEnd)
+                && (o.PaidAt ?? o.CreatedAt) >= onlineStart && (o.PaidAt ?? o.CreatedAt) < onlineEnd)
             .Include(o => o.Items).ThenInclude(i => i.Product).ThenInclude(p => p.Category)
             .ToListAsync();
         var fulfilledIds = fulfilledOrders.Select(o => o.Id).ToList();
@@ -239,7 +245,7 @@ public class CashUpService : ICashUpService
         var websiteRefundRows = new List<CloseRefundRow>();
         var onlineRefunds = !isOnlineTill ? new List<Refund>() : await _db.Refunds
             .Where(r => r.Status == RefundStatus.Approved && r.TillSessionId == null
-                && r.DecisionAt != null && r.DecisionAt >= onlineStart && r.DecisionAt < winEnd)
+                && r.DecisionAt != null && r.DecisionAt >= onlineStart && r.DecisionAt < onlineEnd)
             .Include(r => r.Items)
             .Include(r => r.OriginalOrder).ThenInclude(o => o.Items)
             .ToListAsync();
