@@ -17,21 +17,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 {
     public class UsersController : AdminBaseController
     {
-        // Section == null → full administrators only. User & role management is owner-only.
-        protected override string? Section => null;
-
-        // Owner is view-only here: only Admin + Developer may create/edit users or change roles.
-        public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
-        {
-            var m = context.HttpContext.Request.Method;
-            var isWrite = m == "POST" || m == "PUT" || m == "DELETE" || m == "PATCH";
-            if (isWrite && !AdminSections.IsSystemManager(User))
-            {
-                context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
-                return;
-            }
-            await base.OnActionExecutionAsync(context, next);
-        }
+        // Grantable "Users" section: view needs Users, writes need Users:manage (enforced by the base).
+        // The owner always passes; a configured user-admin (Admin:UserAdminEmails) also passes via
+        // UserAdminArea. The owner ACCOUNT itself is still protected from edits/role changes below.
+        protected override string? Section => "Users";
+        protected override bool UserAdminArea => true;
 
         private readonly ApplicationDbContext _db;
         private readonly UserManager<ApplicationUser> _userManager;

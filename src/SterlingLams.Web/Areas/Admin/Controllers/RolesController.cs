@@ -12,23 +12,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers;
 
 public class RolesController : AdminBaseController
 {
-    // Section == null → only full Administrators can manage roles (privilege-escalation guard)
-    protected override string? Section => null;
-
-    // Roles & Permissions is super-admin-only: only the owner account can create, edit or delete roles
-    // (the base controller already blocks non-super-admins since Section == null; this is belt-and-braces
-    // for writes).
-    public override async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
-    {
-        var m = context.HttpContext.Request.Method;
-        var isWrite = m == "POST" || m == "PUT" || m == "DELETE" || m == "PATCH";
-        if (isWrite && !AdminSections.IsSuperAdmin(User))
-        {
-            context.Result = RedirectToAction("AccessDenied", "Account", new { area = "" });
-            return;
-        }
-        await base.OnActionExecutionAsync(context, next);
-    }
+    // Grantable "Roles" section: view needs Roles, writes need Roles:manage (enforced by the base). The
+    // owner always passes; a configured user-admin (Admin:UserAdminEmails) also passes via UserAdminArea.
+    // NOTE: granting this lets the holder assign roles (incl. making someone an Admin), i.e. effectively
+    // full non-owner access. Owner-only areas (Integrations, Subscribe, Reset) stay email-gated regardless.
+    protected override string? Section => "Roles";
+    protected override bool UserAdminArea => true;
 
     private readonly RoleManager<IdentityRole> _roleManager;
     private readonly UserManager<ApplicationUser> _userManager;

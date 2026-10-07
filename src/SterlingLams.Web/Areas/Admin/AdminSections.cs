@@ -56,9 +56,12 @@ public static class AdminSections
 
         // ── Settings & administration ─────────────────────────────────────────
         new("Stores",     "Stores",     "Stores",     "M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z", "Settings"),
-        new("Users",      "Users",      "Users",      "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z", "Settings", OwnerOnly: true),
+        // Grantable (not OwnerOnly) so "Users" / "Roles & Permissions" can be given to a role in the role
+        // editor. Access is still restricted — the owner, configured user-admins, or a role granted the
+        // section. Owner-only screens (Integrations/Subscribe/Reset) remain OwnerOnly below.
+        new("Users",      "Users",      "Users",      "M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z", "Settings"),
         new("CustomerImport", "Import Customers", "CustomerImport", "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12", "Settings"),
-        new("Roles",      "Roles & Permissions", "Roles", "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z", "Settings", OwnerOnly: true),
+        new("Roles",      "Roles & Permissions", "Roles", "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z", "Settings"),
         // OwnerOnly: this screen holds the payment gateway keys and SMTP credentials. The class summary
         // above always listed it as owner-only and IntegrationsController documents itself the same way,
         // but the flag was missing here — so it was grantable to any role.
@@ -132,11 +135,23 @@ public static class AdminSections
     /// </summary>
     private static string[] _ownerEmails = { "rapheal@sterlinglamslogistics.com" };
 
+    /// <summary>
+    /// Accounts allowed to manage USERS &amp; ROLES only (not billing, payment/SMTP keys, data reset or
+    /// audit-delete — those stay owner-only). Like the owner list it is config-driven (Admin:UserAdminEmails
+    /// / Render Admin__UserAdminEmails), NOT a grantable role, so it can't be self-granted from inside the
+    /// app. Owners are implicitly user-admins too.
+    /// </summary>
+    private static string[] _userAdminEmails = { "abm@sterlinglams.com" };
+
     public static void InitOwners(IConfiguration config)
     {
         var raw = config["Admin:OwnerEmails"];
         if (!string.IsNullOrWhiteSpace(raw))
             _ownerEmails = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var rawUA = config["Admin:UserAdminEmails"];
+        if (!string.IsNullOrWhiteSpace(rawUA))
+            _userAdminEmails = rawUA.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     /// <summary>True only for the configured owner account(s) — stricter than <see cref="IsFullAccess"/>.</summary>
@@ -157,6 +172,21 @@ public static class AdminSections
     /// is governed by its granted permissions, so the super admin can restrict them. Same identity as
     /// <see cref="IsOwner"/>; named separately for clarity at the admin-area gates.</summary>
     public static bool IsSuperAdmin(ClaimsPrincipal user) => IsOwner(user);
+
+    /// <summary>True for the owner OR a configured user-admin — the accounts allowed into the Users and
+    /// Roles screens. User-admins can manage staff and roles but NOT billing, integrations, data reset or
+    /// audit-delete (those remain <see cref="IsOwner"/>-only).</summary>
+    public static bool IsUserAdmin(ClaimsPrincipal user)
+    {
+        if (IsOwner(user)) return true;
+        if (user?.Identity?.IsAuthenticated != true) return false;
+        var email = user.FindFirstValue(ClaimTypes.Email);
+        var name = user.Identity.Name;
+        foreach (var u in _userAdminEmails)
+            if (u.Equals(email, StringComparison.OrdinalIgnoreCase) || u.Equals(name, StringComparison.OrdinalIgnoreCase))
+                return true;
+        return false;
+    }
 
     /// <summary>True if the given email/username belongs to a configured owner (super-admin) account.
     /// Used to protect the owner account from being deleted, locked, demoted or role-changed by anyone.</summary>

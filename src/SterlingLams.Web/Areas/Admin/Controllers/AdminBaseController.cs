@@ -24,6 +24,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         protected virtual bool EnforceManageOnWrite => true;
 
         /// <summary>
+        /// For Section==null controllers: when true, a configured USER-ADMIN (not just the owner) may enter.
+        /// Used by Users and Roles so staff-account/role management can be delegated without handing over
+        /// billing, payment keys, data reset or audit-delete (which stay owner-only). Default false =
+        /// owner-only (Integrations, Subscribe, DataReset).
+        /// </summary>
+        protected virtual bool UserAdminArea => false;
+
+        /// <summary>
         /// Enforces section-based access before every action. Administrators bypass all checks.
         /// Staff roles must have the section granted; otherwise they're sent to Access Denied.
         /// Also exposes the user's allowed sections to the layout for sidebar filtering.
@@ -42,6 +50,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             // its permissions grant.
             ViewData["IsFullAdmin"] = AdminSections.IsSuperAdmin(User);
             ViewData["IsOwner"] = AdminSections.IsOwner(User);   // stricter: the configured owner account only
+            ViewData["IsUserAdmin"] = AdminSections.IsUserAdmin(User);   // owner + delegated user/role managers
 
             // Inventory-team staff operate in the dedicated Inventory System, not the website admin.
             if (!AdminSections.IsFullAccess(User) && User.IsInRole("Inventory"))
@@ -71,6 +80,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
             else
             {
+                // Configured user-admins (owner + Admin:UserAdminEmails) always reach the Users/Roles
+                // area, even without the section granted to their role.
+                if (UserAdminArea && AdminSections.IsUserAdmin(User))
+                {
+                    await next();
+                    return;
+                }
+
                 var method = context.HttpContext.Request.Method;
                 var isWrite = method == "POST" || method == "PUT" || method == "DELETE" || method == "PATCH";
                 var ok = isWrite && EnforceManageOnWrite
