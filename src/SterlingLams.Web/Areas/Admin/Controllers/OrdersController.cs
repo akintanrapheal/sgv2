@@ -146,9 +146,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     Id = o.Id,
                     OrderNumber = o.OrderNumber,
                     // POS: show the buyer (Order.Customer), not the cashier (Order.User); walk-ins have none.
+                    // Online: prefer the per-order contact name so a shared customer-care email doesn't show
+                    // the same stale buyer on every order.
                     CustomerName = o.Channel == OrderChannel.Pos
                         ? (o.Customer != null ? o.Customer.FirstName + " " + o.Customer.LastName : "Walk-in")
-                        : o.User.FirstName + " " + o.User.LastName,
+                        : (o.ContactName != null && o.ContactName != "" ? o.ContactName : o.User.FirstName + " " + o.User.LastName),
                     CustomerEmail = o.Channel == OrderChannel.Pos
                         ? (o.Customer != null ? o.Customer.Email ?? "" : "")
                         : o.User.Email ?? "",
@@ -257,9 +259,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var vm = new AdminOrderDetailViewModel
             {
                 Order = order,
-                CustomerName = buyer?.FullName is { Length: > 0 } n ? n : (isPos ? "Walk-in customer" : order.User.FullName),
+                // Prefer the per-order contact (captured at checkout) over the account — a shared
+                // customer-care shell email would otherwise show the same stale buyer on every order.
+                CustomerName = !string.IsNullOrWhiteSpace(order.ContactName) ? order.ContactName!
+                    : (buyer?.FullName is { Length: > 0 } n ? n : (isPos ? "Walk-in customer" : order.User.FullName)),
                 CustomerEmail = buyer?.Email ?? "",
-                CustomerPhone = buyer?.PhoneNumber ?? "",
+                CustomerPhone = !string.IsNullOrWhiteSpace(order.ContactPhone) ? order.ContactPhone! : (buyer?.PhoneNumber ?? ""),
                 CashierName = isPos ? order.User?.FullName : null,
                 Refunds = refunds,
                 RefundedQty = refundedQty,

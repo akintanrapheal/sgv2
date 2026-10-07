@@ -322,7 +322,8 @@ public sealed class OrderStatusService : IOrderStatusService
         if (order == null) return;
 
         var buyer = Buyer(order);
-        var buyerName = string.IsNullOrWhiteSpace(buyer?.FullName) ? "a customer" : buyer!.FullName;
+        var buyerName = !string.IsNullOrWhiteSpace(order.ContactName) ? order.ContactName!.Trim()
+            : (string.IsNullOrWhiteSpace(buyer?.FullName) ? "a customer" : buyer!.FullName);
 
         // Per-item primary image, made absolute for email clients.
         var pids = order.Items.Select(i => i.ProductId).Distinct().ToList();

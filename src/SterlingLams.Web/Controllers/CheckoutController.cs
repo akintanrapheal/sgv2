@@ -703,10 +703,20 @@ public class CheckoutController : Controller
         // Build order — short sequential number, e.g. SL-30012.
         var orderNumber = await _orderNumbers.NextAsync(OrderChannel.Online);
 
+        // Capture THIS order's buyer name/phone so a shared account (e.g. customer-care shell email used
+        // for many different buyers) never makes an order show the wrong person. Prefer what was typed at
+        // checkout (guest fields), then the delivery address, then fall back to the account at display time.
+        var contactName = !string.IsNullOrWhiteSpace(vm.GuestName) ? vm.GuestName!.Trim()
+            : (!string.IsNullOrWhiteSpace(vm.DeliveryAddress?.FullName) ? vm.DeliveryAddress!.FullName.Trim() : null);
+        var contactPhone = !string.IsNullOrWhiteSpace(vm.GuestPhone) ? vm.GuestPhone!.Trim()
+            : (!string.IsNullOrWhiteSpace(vm.DeliveryAddress?.Phone) ? vm.DeliveryAddress!.Phone.Trim() : null);
+
         var order = new Order
         {
             OrderNumber = orderNumber,
             UserId = user.Id,
+            ContactName = contactName,
+            ContactPhone = contactPhone,
             FulfillmentType = vm.FulfillmentType == FulfillmentChoice.StorePickup
                 ? FulfillmentType.StorePickup
                 : FulfillmentType.Delivery,
@@ -1026,7 +1036,7 @@ public class CheckoutController : Controller
                     new SterlingLams.Web.Services.OrderEmailTemplate.Item(
                         i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId), i.ProductSku)).ToList();
 
-                var custName = order.User?.FullName ?? order.DeliveryAddress?.FullName ?? "";
+                var custName = !string.IsNullOrWhiteSpace(order.ContactName) ? order.ContactName!.Trim() : (order.User?.FullName ?? order.DeliveryAddress?.FullName ?? "");
                 var a = order.DeliveryAddress;
                 var (billing, shipping, pickupLabel) = SterlingLams.Web.Services.OrderEmailTemplate.AddressBlocksFor(order, custName, customerEmail);
 
@@ -1118,7 +1128,7 @@ public class CheckoutController : Controller
         var items = order.Items.Select(i => new SterlingLams.Web.Services.OrderEmailTemplate.Item(
             i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId))).ToList();
 
-        var custName = order.User?.FullName ?? order.DeliveryAddress?.FullName ?? "";
+        var custName = !string.IsNullOrWhiteSpace(order.ContactName) ? order.ContactName!.Trim() : (order.User?.FullName ?? order.DeliveryAddress?.FullName ?? "");
         var (billing, shipping, pickupLabel) = SterlingLams.Web.Services.OrderEmailTemplate.AddressBlocksFor(order, custName, customerEmail);
         var shippingLabel = order.FulfillmentType == FulfillmentType.StorePickup
             ? pickupLabel
