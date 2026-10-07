@@ -23,6 +23,10 @@ public static class RoleSeedData
         ["Admin"]        = FullGrants,
         ["Owner"]        = FullGrants,
         ["Developer"]    = FullGrants,
+        // Ready-made delegate for staff-account & role management: Dashboard (view) + full Users & Roles.
+        // :manage is listed explicitly so it's granted on existing DBs too (the bare→:manage auto-upgrade
+        // only runs once, before any granular grant exists).
+        ["User Manager"] = new[] { "Dashboard", "Users", "Users:manage", "Roles", "Roles:manage" },
         ["Operations"]   = new[] { "Dashboard", "Orders", "Inventory", "Stores" },
         ["Sales"]        = new[] { "Dashboard", "Orders", "Customers", "Discounts" },
         ["Inventory"]    = new[] { "Dashboard", "Products", "Inventory", "Stores", "Categories", "Attributes" },

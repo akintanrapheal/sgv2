@@ -137,6 +137,15 @@ public class RolesController : AdminBaseController
             TempData["Error"] = "Built-in roles can't be renamed — you can still change their permissions.";
             return RedirectToAction(nameof(Edit), new { id = vm.OriginalName });
         }
+        // Only the OWNER may edit the permissions of the full-access roles (Admin/Owner/Developer). A
+        // delegated user/role manager can manage every other role, but not re-shape the top-tier ones
+        // (prevents escalation via them or locking admins out).
+        var targetRole = vm.IsNew ? name : (vm.OriginalName ?? name);
+        if (AdminSections.FullAccessRoles.Contains(targetRole) && !AdminSections.IsSuperAdmin(User))
+        {
+            TempData["Error"] = "Only the owner can change the permissions of the Admin, Owner or Developer roles.";
+            return RedirectToAction(nameof(Index));
+        }
 
         if (vm.IsNew)
         {
