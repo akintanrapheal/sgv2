@@ -13,6 +13,7 @@
     var showLogo = ViewBag.ReceiptShowLogo as bool? ?? true;
     var showPoints = ViewBag.ReceiptShowPoints as bool? ?? true;
     var showBarcode = ViewBag.ReceiptShowBarcode as bool? ?? true;
+    var autoPrint = ViewBag.AutoPrintReceipt as bool? ?? true;
     var rcLogoUrl = ViewBag.ReceiptLogoUrl as string ?? "";
     var rcLogoHeight = ViewBag.ReceiptLogoHeight as int? ?? 45;  // receipt logo WIDTH in mm
     var rcLogoFallback = ViewBag.ReceiptLogoFallback as string ?? "/images/sg-logo.png";
@@ -125,6 +126,13 @@
                 <label class="flex items-center gap-2.5 cursor-pointer">
                     <input type="checkbox" name="receiptShowBarcode" value="true" id="f-barcode" @(showBarcode ? "checked" : "") class="rounded border-neutral-300 accent-emerald-600 w-4 h-4" />
                     <span class="text-sm text-neutral-800">Order barcode</span>
+                </label>
+                <label class="flex items-start gap-2.5 cursor-pointer mt-2.5 pt-2.5 border-t border-neutral-100">
+                    <input type="checkbox" name="autoPrintReceipt" value="true" id="f-autoprint" @(autoPrint ? "checked" : "") class="mt-0.5 rounded border-neutral-300 accent-emerald-600 w-4 h-4" />
+                    <span>
+                        <span class="block text-sm text-neutral-800">Auto-print receipt after payment</span>
+                        <span class="block text-[11px] text-neutral-400">Prints the receipt automatically the moment a sale is paid — no need to reopen the order. Turn off to print manually.</span>
+                    </span>
                 </label>
             </div>
 
