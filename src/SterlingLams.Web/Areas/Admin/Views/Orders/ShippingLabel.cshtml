@@ -1,0 +1,165 @@
+@model SterlingLams.Web.Models.Domain.Order
+@inject SterlingLams.Web.Services.ISettingsService Settings
+@{
+    Layout = null;
+    // Logo: the receipt override → the site logo → the built-in logo (same chain as receipts).
+    var logoUrl = await Settings.GetAsync("pos.receipt_logo_url", "");
+    if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = await Settings.GetAsync("general.logo_url", "");
+    if (string.IsNullOrWhiteSpace(logoUrl)) logoUrl = "/images/sg-logo.png";
+    var siteName = await Settings.GetAsync("general.site_name", "Sterlin Glams");
+
+    string E(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
+
+    var a = Model.DeliveryAddress;
+    // Per-order contact wins over the (possibly shared) account; then the delivery address; then the buyer.
+    var buyer = Model.Channel == SterlingLams.Web.Models.Domain.OrderChannel.Pos ? Model.Customer : Model.User;
+    var toName  = !string.IsNullOrWhiteSpace(Model.ContactName) ? Model.ContactName
+                : (!string.IsNullOrWhiteSpace(a?.FullName) ? a!.FullName : buyer?.FullName ?? "Customer");
+    var toPhone = !string.IsNullOrWhiteSpace(Model.ContactPhone) ? Model.ContactPhone
+                : (!string.IsNullOrWhiteSpace(a?.Phone) ? a!.Phone : buyer?.PhoneNumber);
+
+    // FROM = the branch shipping it; fall back to the company.
+    var fromStore = Model.FulfillingStore;
+    var fromName = fromStore != null ? fromStore.Name : siteName;
+    var fromAddr = fromStore != null
+        ? string.Join(", ", new[] { fromStore.Address, $"{fromStore.City}, {fromStore.State}".Trim(' ', ',') }.Where(x => !string.IsNullOrWhiteSpace(x)))
+        : await Settings.GetAsync("pos.receipt_address", "");
+    var fromPhone = fromStore?.Phone;
+    if (string.IsNullOrWhiteSpace(fromPhone)) fromPhone = await Settings.GetAsync("pos.receipt_phone", "");
+
+    var deliveryLabel = (Model.DeliveryType ?? "").ToLowerInvariant() switch
+    {
+        "sameday" => "Glams Same-Day Delivery",
+        "express" => "Glams Priority Delivery",
+        "standard" => "Glams Standard Delivery",
+        _ => Model.FulfillmentType == SterlingLams.Web.Models.Domain.FulfillmentType.StorePickup ? "Store Pickup" : "Delivery"
+    };
+    var itemCount = Model.Items?.Sum(i => i.Quantity) ?? 0;
+    var isPickup = Model.FulfillmentType == SterlingLams.Web.Models.Domain.FulfillmentType.StorePickup;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Label @Model.OrderNumber</title>
+    <style>
+        @@page { size: 4in 6in; margin: 0; }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; }
+        body { width: 4in; font-family: Arial, Helvetica, sans-serif; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .label { width: 4in; min-height: 6in; padding: 0.16in 0.18in; display: flex; flex-direction: column; }
+        .hd { text-align: center; border-bottom: 2px solid #000; padding-bottom: 5px; }
+        .hd img { max-width: 44mm; max-height: 15mm; height: auto; object-fit: contain; }
+        .hd .biz { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+        .meta { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; padding: 5px 0; border-bottom: 1px solid #000; }
+        .meta .ord { font-weight: 700; font-size: 13px; }
+        .svc { text-align: center; font-weight: 700; text-transform: uppercase; font-size: 12px; letter-spacing: 1px; padding: 5px 0; border-bottom: 2px solid #000; }
+        .sec { padding: 6px 0; border-bottom: 1px solid #000; }
+        .sec .lbl { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: #000; font-weight: 700; margin-bottom: 2px; }
+        .from { font-size: 11px; line-height: 1.35; }
+        .to { padding: 8px 0; border-bottom: 2px solid #000; }
+        .to .lbl { font-size: 10px; }
+        .to .name { font-size: 20px; font-weight: 800; line-height: 1.1; margin: 2px 0 3px; }
+        .to .addr { font-size: 14px; line-height: 1.3; font-weight: 600; }
+        .to .ph { font-size: 14px; font-weight: 700; margin-top: 3px; }
+        .fragile { text-align: center; font-weight: 800; font-size: 13px; letter-spacing: 1px; padding: 5px 0; border-bottom: 1px solid #000; }
+        .note { font-size: 11px; padding: 5px 0; border-bottom: 1px solid #000; min-height: 0.35in; }
+        .note .lbl { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 700; margin-bottom: 2px; }
+        .note .body { line-height: 1.3; white-space: pre-line; word-break: break-word; }
+        .row { display: flex; justify-content: space-between; font-size: 11px; padding: 4px 0; }
+        .sign { display: flex; gap: 10px; padding: 6px 0 2px; border-top: 1px solid #000; }
+        .sign .col { flex: 1; font-size: 10px; }
+        .sign .k { display: block; text-transform: uppercase; letter-spacing: 1px; color: #000; font-weight: 700; font-size: 8px; margin-bottom: 8px; }
+        .sign .v { display: block; border-top: 1px solid #000; padding-top: 2px; font-size: 11px; font-weight: 600; min-height: 14px; }
+        .foot { display: flex; align-items: center; gap: 10px; margin-top: auto; padding-top: 6px; }
+        .foot .qr { flex: 0 0 auto; text-align: center; }
+        .foot .qr img { width: 20mm; height: 20mm; display: block; }
+        .foot .qr span { font-size: 8px; letter-spacing: 1px; }
+        .bc { flex: 1; text-align: center; min-width: 0; }
+        .bc svg { max-width: 100%; height: auto; }
+        .muted { color: #000; }
+    </style>
+</head>
+<body onload="draw()">
+    <div class="label">
+        <div class="hd">
+            <img src="@logoUrl" alt="@E(siteName)" onerror="this.style.display='none'" />
+            <div class="biz">Shipping Label</div>
+        </div>
+
+        <div class="meta">
+            <span class="ord">@Model.OrderNumber</span>
+            <span>@Model.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</span>
+        </div>
+        <div class="svc">@deliveryLabel</div>
+
+        <div class="sec">
+            <div class="lbl">From</div>
+            <div class="from">
+                <strong>@E(fromName)</strong><br />
+                @if (!string.IsNullOrWhiteSpace(fromAddr)) { @E(fromAddr)<br /> }
+                @if (!string.IsNullOrWhiteSpace(fromPhone)) { <text>☎ @E(fromPhone)</text> }
+            </div>
+        </div>
+
+        <div class="to">
+            <div class="lbl"><strong>DELIVER TO</strong></div>
+            <div class="name">@E(toName)</div>
+            @if (!isPickup && a != null)
+            {
+                <div class="addr">
+                    @E(a.Line1)@(string.IsNullOrWhiteSpace(a.Line2) ? "" : ", " + E(a.Line2))<br />
+                    @E($"{a.City}, {a.State}".Trim(' ', ','))@(string.IsNullOrWhiteSpace(a.PostalCode) ? "" : " " + E(a.PostalCode))<br />
+                    @E(a.Country)
+                </div>
+            }
+            else if (isPickup && Model.PickupStore != null)
+            {
+                <div class="addr">Store pickup — @E(Model.PickupStore.Name)<br />@E(Model.PickupStore.Address)</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(toPhone)) { <div class="ph">☎ @E(toPhone)</div> }
+        </div>
+
+        <div class="fragile">⚠ FRAGILE — HANDLE WITH CARE</div>
+
+        <div class="note">
+            <div class="lbl">Customer note / special instructions</div>
+            <div class="body">@(string.IsNullOrWhiteSpace(Model.Notes) ? "—" : E(Model.Notes))</div>
+        </div>
+
+        <div class="row">
+            <span>Items: <strong>@itemCount</strong></span>
+            <span class="muted">@(Model.Channel == SterlingLams.Web.Models.Domain.OrderChannel.Pos ? "In-store" : "Website order")</span>
+        </div>
+
+        <div class="sign">
+            <div class="col">
+                <span class="k">Packed by</span>
+                <span class="v">@(string.IsNullOrWhiteSpace(Model.PackedByName) ? "" : E(Model.PackedByName))</span>
+            </div>
+            <div class="col">
+                <span class="k">Signed off by</span>
+                <span class="v">&nbsp;</span>
+            </div>
+        </div>
+
+        <div class="foot">
+            @if (ViewBag.QrDataUri != null)
+            {
+                <div class="qr"><img src="@ViewBag.QrDataUri" alt="@Model.OrderNumber" /><span>SCAN</span></div>
+            }
+            <div class="bc"><svg id="barcode"></svg></div>
+        </div>
+    </div>
+
+    <script src="/js/jsbarcode.min.js"></script>
+    <script>
+        function draw() {
+            try { JsBarcode("#barcode", "@Model.OrderNumber", { format: "CODE128", displayValue: true, width: 1.6, height: 45, margin: 0, fontSize: 13 }); }
+            catch (e) { var el = document.getElementById('barcode'); if (el) el.outerHTML = '<p style="font-size:13px;font-weight:700;">' + "@Model.OrderNumber" + '</p>'; }
+            setTimeout(function () { window.print(); }, 150);
+        }
+    </script>
+</body>
+</html>

@@ -290,6 +290,26 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         public async Task<IActionResult> PackingSlip(int id) => await PrintDoc(id, "packing");
         public async Task<IActionResult> Invoice(int id) => await PrintDoc(id, "invoice");
 
+        // Standalone 4x6" shipping label for a delivery order: logo, from-branch, deliver-to (prefers the
+        // per-order contact), customer note, and the order-number barcode. Auto-prints on open.
+        public async Task<IActionResult> ShippingLabel(int id)
+        {
+            var order = await _db.Orders
+                .Include(o => o.Items)
+                .Include(o => o.DeliveryAddress)
+                .Include(o => o.FulfillingStore)
+                .Include(o => o.PickupStore)
+                .Include(o => o.User).Include(o => o.Customer)
+                .FirstOrDefaultAsync(o => o.Id == id);
+            if (order == null) return NotFound();
+            // Order QR (scannable with a phone) — encodes the order number, like the barcode. Server-side
+            // PNG via QRCoder (no JS/System.Drawing), handed to the view as a data URI.
+            using (var qrGen = new QRCoder.QRCodeGenerator())
+            using (var qrData = qrGen.CreateQrCode(order.OrderNumber, QRCoder.QRCodeGenerator.ECCLevel.M))
+                ViewBag.QrDataUri = "data:image/png;base64," + System.Convert.ToBase64String(new QRCoder.PngByteQRCode(qrData).GetGraphic(6));
+            return View("ShippingLabel", order);
+        }
+
         private async Task<IActionResult> PrintDoc(int id, string mode)
         {
             var order = await _db.Orders
