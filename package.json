@@ -12,9 +12,10 @@
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38"
   },
-  "comment:overrides": "Force patched transitive build-tool deps (dev-only, CSS build). postcss-selector-parser<6.1.3 = AST-recursion DoS; browserslist<4.28.7 = poisoned browserslist-stats.json prototype write/crash.",
+  "comment:overrides": "Force patched transitive build-tool deps (dev-only, CSS build). postcss-selector-parser<7.1.6 = quadratic-complexity selector-parse DoS (6.x line has no patch; 7.x API is drop-in for Tailwind 3); source-map-js<1.2.2 = indexed source-map section-offset event-loop DoS; browserslist<4.28.7 = poisoned browserslist-stats.json prototype write/crash.",
   "overrides": {
-    "postcss-selector-parser": "^6.1.3",
+    "postcss-selector-parser": "^7.1.6",
+    "source-map-js": "^1.2.2",
     "browserslist": "^4.28.7"
   }
 }
