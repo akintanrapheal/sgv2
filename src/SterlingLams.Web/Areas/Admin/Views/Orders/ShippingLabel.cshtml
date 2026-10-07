@@ -55,13 +55,14 @@
         @@page { size: 6in 4in; margin: 0; }
         * { box-sizing: border-box; }
         html, body { margin: 0; padding: 0; }
-        body { width: 6in; height: 4in; font-family: Arial, Helvetica, sans-serif; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .lbl { width: 6in; height: 4in; border: 2px solid #000; display: flex; flex-direction: column; }
+        /* 4mm safe padding on all four sides so the printer's non-printable edge never clips the border. */
+        body { width: 6in; height: 4in; padding: 4mm; font-family: Arial, Helvetica, sans-serif; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .lbl { width: 100%; height: 100%; border: 2px solid #000; display: flex; flex-direction: column; overflow: hidden; }
         .r { display: flex; }
         /* Header: logo + brief return | FRAGILE */
         .hd { border-bottom: 2px solid #000; }
         .hd .brand { flex: 1; display: flex; gap: 8px; padding: 6px 8px; align-items: center; min-width: 0; }
-        .hd .brand img { max-width: 24mm; max-height: 14mm; height: auto; object-fit: contain; }
+        .hd .brand img { max-width: 36mm; max-height: 18mm; height: auto; width: auto; object-fit: contain; }
         .hd .ret { font-size: 8.5px; line-height: 1.25; color: #000; min-width: 0; }
         .hd .ret b { font-size: 9.5px; }
         .hd .frag { width: 2.5in; border-left: 2px solid #000; padding: 6px 8px; text-align: center; display: flex; flex-direction: column; justify-content: center; }
@@ -103,12 +104,8 @@
     <div class="lbl">
         <div class="r hd">
             <div class="brand">
+                @* Logo only here — the full sender address lives in the "From:" block below (no duplication). *@
                 <img src="@logoUrl" alt="@E(siteName)" onerror="this.style.display='none'" />
-                <div class="ret">
-                    <b>@E(fromName)</b><br />
-                    @if (!string.IsNullOrWhiteSpace(fromAddr)) { @Html.Raw(E(fromAddr))<br /> }
-                    @if (!string.IsNullOrWhiteSpace(fromPhone)) { <text>☎ @E(fromPhone)</text> }
-                </div>
             </div>
             <div class="frag">
                 <div class="big">FRAGILE</div>
