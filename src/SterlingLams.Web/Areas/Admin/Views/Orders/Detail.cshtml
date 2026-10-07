@@ -11,6 +11,11 @@
            class="px-3 py-1.5 text-xs border border-neutral-200 rounded-sm hover:border-neutral-400 transition-colors">🖨 Invoice</a>
         <a asp-area="Admin" asp-controller="Orders" asp-action="PackingSlip" asp-route-id="@Model.Order.Id" target="_blank"
            class="px-3 py-1.5 text-xs border border-neutral-200 rounded-sm hover:border-neutral-400 transition-colors">🖨 Packing slip</a>
+        @if (Model.Order.Channel == SterlingLams.Web.Models.Domain.OrderChannel.Online && Model.Order.FulfillmentType == SterlingLams.Web.Models.Domain.FulfillmentType.Delivery)
+        {
+            <a asp-area="Admin" asp-controller="Orders" asp-action="ShippingLabel" asp-route-id="@Model.Order.Id" target="_blank"
+               class="px-3 py-1.5 text-xs border border-neutral-200 rounded-sm hover:border-neutral-400 transition-colors">🏷 Shipping label (4×6)</a>
+        }
         <span class="text-xs text-neutral-400 ml-2">@Model.Order.CreatedAt.ToLocalTime().ToString("dddd, dd MMMM yyyy HH:mm")</span>
     </div>
 </div>
