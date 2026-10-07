@@ -90,13 +90,21 @@ public class LogisticsDispatchService : ILogisticsDispatchService
                 return;
             }
 
+            // Prefer the per-order contact (so a shared customer-care account doesn't send the wrong name),
+            // then the delivery address, then the account.
+            var custName = !string.IsNullOrWhiteSpace(order.ContactName) ? order.ContactName!
+                : (a?.FullName ?? order.User?.FullName ?? "Customer");
+            var custPhone = !string.IsNullOrWhiteSpace(order.ContactPhone) ? order.ContactPhone!
+                : (a?.Phone ?? order.User?.PhoneNumber ?? "");
+
             var payload = new
             {
                 orderNumber = order.OrderNumber,
-                customerName = a?.FullName ?? order.User?.FullName ?? "Customer",
-                phone = a?.Phone ?? order.User?.PhoneNumber ?? "",
+                customerName = custName,
+                phone = custPhone,
                 customerEmail = order.User?.Email,
                 address,
+                deliveryType = order.DeliveryType ?? "",
                 items = order.Items.Select(i => new
                 {
                     name = string.IsNullOrEmpty(i.VariantName) ? i.ProductName : $"{i.ProductName} ({i.VariantName})",
