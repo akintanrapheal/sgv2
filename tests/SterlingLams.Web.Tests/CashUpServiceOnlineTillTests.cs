@@ -107,4 +107,41 @@ public class CashUpServiceOnlineTillTests
         Assert.Equal(24450m, vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected);
         Assert.Equal(1, vm.Transactions);
     }
+
+    [Fact]
+    public async Task Website_order_confirmed_after_the_till_closed_still_counts()
+    {
+        using var t = new TestDb();
+        var user = t.SeedUser();
+        var (abuja, _, _) = t.SeedBranches();
+        var p = t.SeedProduct(16950m);
+        var reg = new Register { Name = "Allen Pos 1", StoreId = abuja.Id, IsActive = true, HandlesOnlineOrders = true };
+        t.Db.Registers.Add(reg);
+        await t.Db.SaveChangesAsync();
+
+        var day = SterlingLams.Web.Services.ReportCalendar.Today;
+        var dayStart = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(day);
+        var opened = dayStart.AddHours(9);                   // till opened 09:00
+        var closed = dayStart.AddHours(13);                  // closed early at 13:00
+        var paidLate = dayStart.AddHours(13).AddMinutes(12); // website bank transfer confirmed 13:12 — AFTER close
+
+        var session = new TillSession { RegisterId = reg.Id, OpenedByUserId = "lucy", OpenedAt = opened, ClosedAt = closed, OpeningFloat = 0 };
+        t.Db.TillSessions.Add(session);
+        t.Db.Orders.Add(new Order
+        {
+            OrderNumber = "SGW-LATE", UserId = user.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = abuja.Id,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = paidLate,
+            PaymentProvider = "Manual (Transfer)", Currency = "NGN", Subtotal = 16950m, DeliveryFee = 7500m, Total = 24450m,
+            Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 16950m } }
+        });
+        await t.Db.SaveChangesAsync();
+
+        var tracked = await t.Db.TillSessions.Include(x => x.Register).FirstAsync(x => x.Id == session.Id);
+        var vm = await new CashUpService(t.Db).BuildAsync(tracked, interim: false, currentUserId: "");
+
+        // A website bank-transfer confirmed after the till closed still lands in the day's cash-up.
+        Assert.Equal(16950m, vm.Tenders.First(x => x.Key == "WebsiteTransfer").Expected);
+        Assert.Equal(1, vm.Transactions);
+    }
 }
