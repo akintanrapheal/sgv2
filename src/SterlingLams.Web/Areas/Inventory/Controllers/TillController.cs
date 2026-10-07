@@ -230,6 +230,7 @@ public class TillController : InventoryAreaController
         ViewBag.ReceiptShowLogo = await _settings.GetBoolAsync("pos.receipt_show_logo", true);
         ViewBag.ReceiptShowPoints = await _settings.GetBoolAsync("pos.receipt_show_points", true);
         ViewBag.ReceiptShowBarcode = await _settings.GetBoolAsync("pos.receipt_show_barcode", true);
+        ViewBag.AutoPrintReceipt = await _settings.GetBoolAsync("pos.auto_print_receipt", true);
         ViewBag.ReceiptLogoUrl = await _settings.GetAsync("pos.receipt_logo_url", "");
         ViewBag.ReceiptLogoHeight = await _settings.GetIntAsync("pos.receipt_logo_height", 45); // receipt logo WIDTH in mm
         // What the receipt actually prints when no receipt-specific logo is set (site logo → built-in).
@@ -244,7 +245,8 @@ public class TillController : InventoryAreaController
         bool approvalRefunds, bool approvalDiscounts, int approvalDiscountMinPct,
         string? receiptBusinessName, string? receiptAddress, string? receiptPhone, string? receiptWebsite,
         string? receiptThanks, bool receiptShowLogo, bool receiptShowPoints, bool receiptShowBarcode,
-        string? receiptLogoUrl, int receiptLogoHeight, string? welcomeMessage, string? welcomeColor)
+        string? receiptLogoUrl, int receiptLogoHeight, string? welcomeMessage, string? welcomeColor,
+        bool autoPrintReceipt = false)
     {
         var color = (welcomeColor ?? "default").Trim().ToLowerInvariant();
         if (color is not ("default" or "white" or "gold" or "pink" or "rainbow")) color = "default";
@@ -266,7 +268,8 @@ public class TillController : InventoryAreaController
             ["pos.receipt_thanks"] = receiptThanks?.Trim() ?? "",
             ["pos.receipt_show_logo"] = receiptShowLogo ? "true" : "false",
             ["pos.receipt_show_points"] = receiptShowPoints ? "true" : "false",
-            ["pos.receipt_show_barcode"] = receiptShowBarcode ? "true" : "false"
+            ["pos.receipt_show_barcode"] = receiptShowBarcode ? "true" : "false",
+            ["pos.auto_print_receipt"] = autoPrintReceipt ? "true" : "false"
         });
         await LogAsync("Update", "Setting", null, "Updated POS settings");
         TempData["Success"] = "POS settings saved.";

@@ -8,6 +8,7 @@
     // Scrolling welcome message shown to in-store customers across the top bar. Editable in POS settings.
     var welcomeMessage = (await Settings.GetAsync("pos.welcome_message",
         "Welcome to Sterlin Glams — where elegance meets you. Enjoy a beautiful shopping experience with us today.")).Trim();
+    var autoPrintReceipt = await Settings.GetBoolAsync("pos.auto_print_receipt", true);
     var welcomeColor = (await Settings.GetAsync("pos.welcome_color", "default")).Trim().ToLowerInvariant();
     var isRainbow = welcomeColor == "rainbow";
     var welcomeCss = welcomeColor switch { "white" => "#ffffff", "gold" => "#f5d98a", "pink" => "#ec4899", _ => "#fbe9f3" };
@@ -1934,6 +1935,19 @@
     }, true);
 
     // ── Checkout ──────────────────────────────────────────────────────────────
+    const POS_AUTOPRINT = @(autoPrintReceipt ? "true" : "false");
+    // Print the receipt the moment a sale is paid, without the cashier reopening the order. A hidden,
+    // off-screen iframe loads the receipt page (which prints itself on load), so there's no pop-up to be
+    // blocked. The success screen's Receipt button stays as a manual reprint if the printer wasn't ready.
+    function autoPrintReceipt(orderId) {
+        try {
+            var f = document.createElement('iframe');
+            f.style.cssText = 'position:fixed;width:1px;height:1px;left:-10000px;top:0;border:0;';
+            f.src = window.__posBase + '/Receipt/' + orderId;
+            document.body.appendChild(f);
+            setTimeout(function () { try { document.body.removeChild(f); } catch (e) {} }, 60000);
+        } catch (e) {}
+    }
     payBtn.addEventListener('click', async () => {
         if (!cart.length) return;
         if (method === 'Split' && window.SGPOS && !SGPOS.isOnline()) { showError('Split payment needs a connection.'); return; }
@@ -2002,6 +2016,8 @@
                     // shimmed fetch), so under a secret POS prefix "/Pos/Receipt/.." 404s.
                     receiptBtn.href = window.__posBase + '/Receipt/' + data.orderId;
                     receiptBtn.classList.remove('hidden');
+                    // Print it straight away (unless auto-print is turned off in POS settings).
+                    if (POS_AUTOPRINT) autoPrintReceipt(data.orderId);
                 }
                 cart = []; tenderedEl.value = ''; setCustomer(null); selectMethod(''); clearSavedCart(); renderCart();
                 document.getElementById('till-done').classList.remove('hidden');
