@@ -82,6 +82,13 @@ public class CashUpService : ICashUpService
         var storeId = session.Register.StoreId;
         var winEnd = session.ClosedAt ?? DateTime.UtcNow;
 
+        // Website (online) orders are attributed to the store's designated "online till" ONLY — so they're
+        // counted on exactly one session, not on every till open at the store (which double-counted them
+        // and made the Z-reports never reconcile). A non-online till shows only the in-store sales rung up
+        // on it. (If a store has no online till flagged, no session claims its website sales — they still
+        // show in Finance, which attributes per order.)
+        var isOnlineTill = session.Register?.HandlesOnlineOrders == true;
+
         // POS sales rung up on this session, with their items + category for the breakdowns. Voided sales
         // are excluded — a void returns the stock and removes the sale from takings.
         var sales = await _db.Orders.Where(o => o.TillSessionId == session.Id && o.VoidedAt == null)
@@ -117,8 +124,9 @@ public class CashUpService : ICashUpService
             && o.PaymentProvider.Contains("Transfer", StringComparison.OrdinalIgnoreCase);
         decimal wOnlineGross = 0m, wTransferGross = 0m;
 
-        // (b) Items THIS branch SENT to merge, dispatched within the window.
-        var sentTransfers = await _db.StockTransfers
+        // (b) Items THIS branch SENT to merge, dispatched within the window. Only the online till claims
+        // website revenue — other tills skip the whole online attribution (empty set).
+        var sentTransfers = !isOnlineTill ? new List<StockTransfer>() : await _db.StockTransfers
             .Where(t => t.FromStoreId == storeId && t.OrderId != null && t.DispatchedAt != null
                 && t.DispatchedAt >= session.OpenedAt && t.DispatchedAt < winEnd
                 && (t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived
@@ -151,7 +159,8 @@ public class CashUpService : ICashUpService
         }
 
         // (a) Orders THIS branch fulfils (delivery or pickup), paid within the window — its OWN-stock items.
-        var fulfilledOrders = await _db.Orders
+        // Online-till only (see above).
+        var fulfilledOrders = !isOnlineTill ? new List<Order>() : await _db.Orders
             .Where(o => o.Channel == OrderChannel.Online && o.IsPaid
                 && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded
                 && (o.FulfillingStoreId == storeId || o.PickupStoreId == storeId)
@@ -209,7 +218,7 @@ public class CashUpService : ICashUpService
         // Website refunds attributed to THIS branch also get listed on the Refunds tab (not just netted
         // into the figures) so the cash-up shows every refund that reduced this branch's takings.
         var websiteRefundRows = new List<CloseRefundRow>();
-        var onlineRefunds = await _db.Refunds
+        var onlineRefunds = !isOnlineTill ? new List<Refund>() : await _db.Refunds
             .Where(r => r.Status == RefundStatus.Approved && r.TillSessionId == null
                 && r.DecisionAt != null && r.DecisionAt >= session.OpenedAt && r.DecisionAt < winEnd)
             .Include(r => r.Items)

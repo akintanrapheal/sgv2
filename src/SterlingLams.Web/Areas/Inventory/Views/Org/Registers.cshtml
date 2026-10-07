@@ -7,7 +7,8 @@
 }
 
 <h1 class="font-cormorant text-2xl font-light text-neutral-900 mb-1">Registers</h1>
-<p class="text-xs text-neutral-400 mb-4">Each physical EPOS terminal is bound to one of these. Open the EPOS app at <span class="font-mono">/pos</span>.</p>
+<p class="text-xs text-neutral-400 mb-1">Each physical EPOS terminal is bound to one of these. Open the EPOS app at <span class="font-mono">/pos</span>.</p>
+<p class="text-xs text-neutral-400 mb-4">One register per branch is the <span class="text-violet-600 font-medium">online till</span> — website (online-paid) orders show on its cash-up only, so they aren't counted on every till at once. Every till still rings up in-store sales normally.</p>
 
 @if (TempData["Success"] != null)
 {
@@ -48,6 +49,7 @@
                 <th class="text-left px-4 py-3 font-medium">Branch</th>
                 <th class="text-left px-4 py-3 font-medium">Status</th>
                 <th class="text-left px-4 py-3 font-medium">Session</th>
+                <th class="text-left px-4 py-3 font-medium">Online till</th>
                 <th class="text-right px-4 py-3 font-medium">Action</th>
             </tr>
         </thead>
@@ -80,9 +82,27 @@
                                 <span class="text-xs text-neutral-400">Closed</span>
                             }
                         </td>
+                        <td class="px-4 py-3">
+                            @if (r.HandlesOnlineOrders)
+                            {
+                                <span class="px-2 py-0.5 rounded-sm text-[11px] bg-violet-50 text-violet-700" title="Website sales show on this till's cash-up">● Online till</span>
+                            }
+                            else
+                            {
+                                <span class="text-xs text-neutral-300">—</span>
+                            }
+                        </td>
                         <td class="px-4 py-3 text-right whitespace-nowrap">
                             @if (canManageOrg)
                             {
+                                @if (!r.HandlesOnlineOrders)
+                                {
+                                    <form asp-action="SetOnlineTill" method="post" class="inline">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@r.Id" />
+                                        <button type="submit" class="text-xs text-violet-600 hover:text-violet-700 transition-colors mr-3">Make online till</button>
+                                    </form>
+                                }
                                 <button type="button" onclick="document.getElementById('rename-@r.Id').classList.toggle('hidden')"
                                         class="text-xs text-neutral-500 hover:text-neutral-700 transition-colors mr-3">Rename</button>
                                 <form asp-action="ToggleRegister" method="post" class="inline">
@@ -109,7 +129,7 @@
             }
             else
             {
-                <tr><td colspan="5" class="px-4 py-10 text-center text-sm text-neutral-400">No registers configured.</td></tr>
+                <tr><td colspan="6" class="px-4 py-10 text-center text-sm text-neutral-400">No registers configured.</td></tr>
             }
         </tbody>
     </table>

@@ -14,7 +14,9 @@ public class CashUpSplitTests
 {
     private static TillSession OpenSession(TestDb t, Store store, DateTime openedAt)
     {
-        var reg = new Register { Name = store.Name + " Pos 1", StoreId = store.Id, IsActive = true };
+        // These tests assert each branch's share of WEBSITE revenue, which now lands on the branch's
+        // designated online till — so the session's register is that online till.
+        var reg = new Register { Name = store.Name + " Pos 1", StoreId = store.Id, IsActive = true, HandlesOnlineOrders = true };
         t.Db.Add(reg);
         t.Db.SaveChanges();
         var session = new TillSession { RegisterId = reg.Id, OpenedByUserId = "sys", OpenedAt = openedAt };
