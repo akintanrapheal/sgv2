@@ -3564,34 +3564,43 @@
     function notifyToSend(list) {
         const t = list[0];
         const extra = list.length > 1 ? ' · +' + (list.length - 1) + ' more' : '';
-        alertPack('Stock to send', t.number + (t.toStore ? ' · to ' + t.toStore : '') + extra,
-            greet + 'you have stock to pack and send to another store to complete their order');
+        alertPack('Order to send to merge', t.number + (t.toStore ? ' · to ' + t.toStore : '') + extra,
+            greet + 'you have an order to pack and send to merge to ' + (t.toStore ? t.toStore.replace('Sterlin Glams ', '') : 'another store'));
     }
     function remindPending(n) {
         alertPack('Orders waiting to be packed', n + (n === 1 ? ' order' : ' orders') + ' still need packing',
             greet + (n === 1 ? 'you have an order waiting to be packed' : 'you have ' + n + ' orders waiting to be packed'));
     }
+    function remindToSend(n) {
+        alertPack('Orders waiting to send to merge', n + (n === 1 ? ' order' : ' orders') + ' still need sending to another store',
+            greet + (n === 1 ? 'you have an order to send to merge to another store' : 'you have ' + n + ' orders to send to merge to another store'));
+    }
 
     // Background poll: keep the badge fresh and ring + pop up when a new order needs packing.
-    const alerted = new Set();   // order numbers already rung for → never alert the same one twice
+    const seen = new Set();      // numbers we've already QUEUED → never queue the same one twice
+    // Only ONE alarm sounds per tick (by priority). Anything not rung this tick stays queued and
+    // announces on a later tick, so a "send to merge" is never silently lost when a new order coincides.
+    let pendOrders = [], pendToSend = [], pendIncoming = [];
     let pendingToPack = 0;       // UNPACKED count — drives the alarm + 10-min reminder (stops once packed)
+    let pendingToSend = 0;       // outstanding "send to merge" transfers — also nagged every 10 min
     async function poll() {
         try {
             const r = await fetch('/Pos/FulfilPoll?sinceTicks=' + encodeURIComponent(cursor));
             const d = await r.json();
             pendingToPack = d.unpacked || 0;                 // alarm only while orders are unpacked
+            pendingToSend = d.toSend || 0;                   // alarm while merge sends are outstanding
             // Badge = everything still needing action across all four buckets.
             setBadge((d.toPack || 0) + (d.awaiting || 0) + (d.toSend || 0));
             if (cursor !== '0') {
-                // Ring for anything new we haven't already alerted on (keyed by order/transfer number),
-                // so acting on one never makes its alarm come back. One alarm per tick, by priority.
-                const freshOrders   = (d.newOrders   || []).filter(o => !alerted.has(o.number));
-                const freshIncoming = (d.newIncoming || []).filter(o => !alerted.has(o.number));
-                const freshToSend   = (d.newToSend   || []).filter(o => !alerted.has(o.number));
-                [freshOrders, freshIncoming, freshToSend].forEach(a => a.forEach(o => alerted.add(o.number)));
-                if (freshOrders.length) notifyNewOrders(freshOrders);
-                else if (freshToSend.length) notifyToSend(freshToSend);
-                else if (freshIncoming.length) notifyIncoming(freshIncoming);
+                // Queue anything newly seen (keyed by order/transfer number), then ring ONE category per
+                // tick by priority. Whatever isn't rung stays queued and announces on a later tick — so a
+                // "send to merge" that lands alongside a new order is never swallowed.
+                (d.newOrders   || []).forEach(o => { if (!seen.has(o.number)) { seen.add(o.number); pendOrders.push(o); } });
+                (d.newToSend   || []).forEach(o => { if (!seen.has(o.number)) { seen.add(o.number); pendToSend.push(o); } });
+                (d.newIncoming || []).forEach(o => { if (!seen.has(o.number)) { seen.add(o.number); pendIncoming.push(o); } });
+                if (pendOrders.length)        { notifyNewOrders(pendOrders); pendOrders = []; }
+                else if (pendToSend.length)   { notifyToSend(pendToSend);    pendToSend = []; }
+                else if (pendIncoming.length) { notifyIncoming(pendIncoming); pendIncoming = []; }
             }
             cursor = d.latestTicks || cursor;
         } catch { /* offline — try again next tick */ }
@@ -3599,7 +3608,10 @@
     poll();
     setInterval(poll, 15000);   // ~15s so a new order surfaces on its own, no refresh needed
     // Keep nagging (voice + ring + pop-up) every 10 minutes while any order is still unpacked.
-    setInterval(function () { if (pendingToPack > 0) remindPending(pendingToPack); }, 600000);
+    setInterval(function () {
+        if (pendingToPack > 0) remindPending(pendingToPack);
+        else if (pendingToSend > 0) remindToSend(pendingToSend);
+    }, 600000);
 }());
 </script>
 }
