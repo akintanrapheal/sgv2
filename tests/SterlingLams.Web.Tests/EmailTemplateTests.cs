@@ -22,7 +22,7 @@ public class EmailTemplateTests
             shippingLabel: "X", total: 20000m, paymentMethod: "Card",
             billingLines: new List<string>(), shippingLines: new List<string>());
 
-        Assert.Contains("(#5012176)", html);
+        Assert.Contains("#5012176", html);
     }
 
     [Fact]
@@ -32,7 +32,7 @@ public class EmailTemplateTests
             heading: "Shipped", introHtml: "", orderNumber: "SGW-1",
             items: new[] { Item("Pearl Ball Necklace", "5012176") }, total: 20000m);
 
-        Assert.Contains("(#5012176)", html);
+        Assert.Contains("#5012176", html);
     }
 
     [Fact]

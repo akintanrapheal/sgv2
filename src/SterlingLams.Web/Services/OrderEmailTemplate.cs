@@ -131,8 +131,8 @@ public static class OrderEmailTemplate
         sb.Append($@"
 <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""margin:0 0 16px;font-size:14px;"">
   <tr>
-    <td style=""color:{Accent};font-weight:bold;"">Order Number: <span style=""color:#1c1917;font-weight:normal;"">{E(orderNumber)}</span></td>
-    <td align=""right"" style=""color:{Accent};font-weight:bold;"">Order Date: <span style=""color:#1c1917;font-weight:normal;"">{E(dateText)}</span></td>
+    <td class=""em-stack"" style=""color:{Accent};font-weight:bold;"">Order Number: <span style=""color:#1c1917;font-weight:normal;"">{E(orderNumber)}</span></td>
+    <td class=""em-stack"" align=""right"" style=""color:{Accent};font-weight:bold;padding-top:2px;"">Order Date: <span style=""color:#1c1917;font-weight:normal;"">{E(dateText)}</span></td>
   </tr>
 </table>");
 
@@ -147,8 +147,10 @@ public static class OrderEmailTemplate
         foreach (var it in items)
         {
             var img = Thumb(it.ImageUrl);
-            var sku = string.IsNullOrWhiteSpace(it.Sku) ? "" : $@" <span style=""color:#a8a29e;"">(#{E(it.Sku)})</span>";
-            var name = $@"<strong style=""color:#1c1917;"">{E(it.Name)}</strong>{(string.IsNullOrWhiteSpace(it.Variant) ? "" : $@" <span style=""color:#78716c;"">- {E(it.Variant)}</span>")}{sku}";
+            var variant = string.IsNullOrWhiteSpace(it.Variant) ? "" : $@" <span style=""color:#78716c;"">- {E(it.Variant)}</span>";
+            // SKU on its OWN line under the product name.
+            var skuLine = string.IsNullOrWhiteSpace(it.Sku) ? "" : $@"<div style=""color:#a8a29e;font-size:12px;margin-top:3px;"">#{E(it.Sku)}</div>";
+            var name = $@"<span style=""display:inline-block;vertical-align:middle;""><strong style=""color:#1c1917;"">{E(it.Name)}</strong>{variant}{skuLine}</span>";
             sb.Append($@"
   <tr style=""border-bottom:1px solid {Line};"">
     <td style=""padding:12px 10px;"">{img}{name}</td>
@@ -174,7 +176,7 @@ public static class OrderEmailTemplate
         {
             var body = lines.Count == 0 ? "<span style=\"color:#a8a29e;\">—</span>"
                 : string.Join("<br/>", lines.Select(E));
-            return $@"<td valign=""top"" width=""50%"" style=""padding:0 8px;font-size:13px;color:#44403c;line-height:1.6;"">
+            return $@"<td class=""em-stack"" valign=""top"" width=""50%"" style=""padding:0 8px 8px;font-size:13px;color:#44403c;line-height:1.6;"">
                 <p style=""margin:0 0 6px;font-weight:bold;color:#1c1917;"">{title}</p>{body}</td>";
         }
         sb.Append($@"
@@ -224,8 +226,10 @@ public static class OrderEmailTemplate
         foreach (var it in items)
         {
             var variant = string.IsNullOrWhiteSpace(it.Variant) ? "" : $@" <span style=""color:#78716c;"">({E(it.Variant)})</span>";
-            var sku = string.IsNullOrWhiteSpace(it.Sku) ? "" : $@" <span style=""color:#a8a29e;"">(#{E(it.Sku)})</span>";
-            sb.Append($@"<tr><td style=""padding:8px 0;color:#374151;vertical-align:middle;"">{Thumb(it.ImageUrl)}{E(it.Name)}{variant}{sku} &times; {it.Quantity}</td><td align=""right"" style=""padding:8px 0;color:#111;vertical-align:middle;"">{Money(it.LineTotal)}</td></tr>");
+            // SKU on its OWN line under the product name.
+            var skuLine = string.IsNullOrWhiteSpace(it.Sku) ? "" : $@"<div style=""color:#a8a29e;font-size:12px;margin-top:2px;"">#{E(it.Sku)}</div>";
+            var nameCol = $@"<span style=""display:inline-block;vertical-align:middle;"">{E(it.Name)}{variant} &times; {it.Quantity}{skuLine}</span>";
+            sb.Append($@"<tr><td style=""padding:8px 0;color:#374151;vertical-align:middle;"">{Thumb(it.ImageUrl)}{nameCol}</td><td align=""right"" style=""padding:8px 0;color:#111;vertical-align:middle;"">{Money(it.LineTotal)}</td></tr>");
         }
         sb.Append($@"<tr><td style=""padding-top:8px;border-top:1px solid {Line};font-weight:700;color:#1c1917;"">Total</td><td align=""right"" style=""padding-top:8px;border-top:1px solid {Line};font-weight:700;color:#1c1917;"">{Money(total)}</td></tr>");
         sb.Append("</table>");
