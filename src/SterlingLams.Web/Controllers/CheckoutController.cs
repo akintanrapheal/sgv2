@@ -537,7 +537,7 @@ public class CheckoutController : Controller
                     Email     = vm.GuestEmail,
                     FirstName = nameParts.Length > 0 ? nameParts[0] : "Guest",
                     LastName  = nameParts.Length > 1 ? nameParts[1] : string.Empty,
-                    PhoneNumber = vm.GuestPhone,
+                    PhoneNumber = Infrastructure.PhoneNumbers.Canonical(vm.GuestPhone),
                     IsGuest   = true,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -586,7 +586,7 @@ public class CheckoutController : Controller
             // Backfill a phone the account was missing, so staff + the receipt have it next time.
             if (string.IsNullOrWhiteSpace(user.PhoneNumber) && !string.IsNullOrWhiteSpace(pPhone))
             {
-                user.PhoneNumber = pPhone;
+                user.PhoneNumber = Infrastructure.PhoneNumbers.Canonical(pPhone);
                 await _userManager.UpdateAsync(user);
             }
         }
@@ -716,7 +716,7 @@ public class CheckoutController : Controller
             OrderNumber = orderNumber,
             UserId = user.Id,
             ContactName = contactName,
-            ContactPhone = contactPhone,
+            ContactPhone = Infrastructure.PhoneNumbers.Canonical(contactPhone),
             FulfillmentType = vm.FulfillmentType == FulfillmentChoice.StorePickup
                 ? FulfillmentType.StorePickup
                 : FulfillmentType.Delivery,
