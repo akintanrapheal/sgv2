@@ -263,6 +263,7 @@ public class SmtpEmailService : IEmailService
             : $@"<img src=""{brand.LogoUrl}"" alt=""{System.Net.WebUtility.HtmlEncode(brand.FromName)}"" style=""max-height:{brand.LogoHeight}px;height:auto;width:auto;""/>";
         return $@"<!DOCTYPE html>
 <html><head><meta charset=""utf-8""><meta name=""viewport"" content=""width=device-width,initial-scale=1"">
+<meta name=""color-scheme"" content=""light dark""><meta name=""supported-color-schemes"" content=""light dark"">
 <style>
   /* Fit the phone screen: shrink padding and stack side-by-side blocks (order#/date, billing/shipping). */
   @media only screen and (max-width:600px) {{
@@ -270,19 +271,31 @@ public class SmtpEmailService : IEmailService
     .em-pad {{ padding:20px !important; }}
     .em-stack {{ display:block !important; width:100% !important; box-sizing:border-box; text-align:left !important; }}
   }}
+  /* Dark mode: give the email a proper dark theme (clients that honour prefers-color-scheme) so it reads
+     well on a dark background instead of a glaring white card. The pink header + links stay for brand. */
+  @media (prefers-color-scheme: dark) {{
+    body, .em-bg, .em-bg > table, .em-bg td {{ background:#121212 !important; }}
+    .em-container {{ background:#1e1e1e !important; border-color:#333 !important; }}
+    .em-content, .em-content * {{ color:#e7e5e4 !important; }}
+    .em-content [style*=""background:#fff""], .em-content [style*=""background:#ffffff""],
+    .em-content [style*=""background:#fafaf9""], .em-content [style*=""background:#f5f5f4""],
+    .em-content [style*=""background:#f5f5f5""] {{ background:#262626 !important; }}
+    .em-content a {{ color:#f0a6c8 !important; }}
+    .em-footer {{ background:#1e1e1e !important; border-color:#333 !important; color:#a8a29e !important; }}
+  }}
 </style>
 </head>
 <body style=""margin:0;padding:0;background:#f5f5f4;font-family:Helvetica,Arial,sans-serif;color:#1c1917;"">
-  <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""background:#f5f5f4;padding:32px 0;"">
+  <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" class=""em-bg"" style=""background:#f5f5f4;padding:32px 0;"">
     <tr><td align=""center"" style=""padding:0 12px;"">
       <table role=""presentation"" width=""560"" cellpadding=""0"" cellspacing=""0"" class=""em-container"" style=""width:100%;max-width:560px;background:#ffffff;border:1px solid #e7e5e4;"">
         <tr><td style=""background:{System.Net.WebUtility.HtmlEncode(brand.HeaderColor)};padding:24px 32px;text-align:center;"">
           {headerInner}
         </td></tr>
-        <tr><td class=""em-pad"" style=""padding:32px;font-size:15px;line-height:1.6;color:#292524;"">
+        <tr><td class=""em-pad em-content"" style=""padding:32px;font-size:15px;line-height:1.6;color:#292524;"">
           {content}
         </td></tr>
-        <tr><td style=""padding:20px 32px;border-top:1px solid #e7e5e4;text-align:center;font-size:11px;color:#a8a29e;"">
+        <tr><td class=""em-footer"" style=""padding:20px 32px;border-top:1px solid #e7e5e4;text-align:center;font-size:11px;color:#a8a29e;"">
           {(string.IsNullOrWhiteSpace(brand.NoReplyNotice) ? "" : $@"<div style=""margin:0 0 6px;font-weight:600;color:#78716c;"">{System.Net.WebUtility.HtmlEncode(brand.NoReplyNotice)}</div>")}
           &copy; {DateTime.UtcNow:yyyy} {System.Net.WebUtility.HtmlEncode(brand.FromName)}. {System.Net.WebUtility.HtmlEncode(brand.FooterText)}
         </td></tr>

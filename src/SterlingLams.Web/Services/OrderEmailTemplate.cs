@@ -148,9 +148,9 @@ public static class OrderEmailTemplate
         {
             var img = Thumb(it.ImageUrl);
             var variant = string.IsNullOrWhiteSpace(it.Variant) ? "" : $@" <span style=""color:#78716c;"">- {E(it.Variant)}</span>";
-            // SKU on its OWN line under the product name.
-            var skuLine = string.IsNullOrWhiteSpace(it.Sku) ? "" : $@"<div style=""color:#a8a29e;font-size:12px;margin-top:3px;"">#{E(it.Sku)}</div>";
-            var name = $@"<span style=""display:inline-block;vertical-align:middle;""><strong style=""color:#1c1917;"">{E(it.Name)}</strong>{variant}{skuLine}</span>";
+            // SKU inline after the name/variant, e.g. "2Piece Prong Set - Silver, 7 (#6012152)".
+            var sku = string.IsNullOrWhiteSpace(it.Sku) ? "" : $@" <span style=""color:#a8a29e;"">(#{E(it.Sku)})</span>";
+            var name = $@"<span style=""display:inline-block;vertical-align:middle;""><strong style=""color:#1c1917;"">{E(it.Name)}</strong>{variant}{sku}</span>";
             sb.Append($@"
   <tr style=""border-bottom:1px solid {Line};"">
     <td style=""padding:12px 10px;"">{img}{name}</td>
@@ -226,9 +226,9 @@ public static class OrderEmailTemplate
         foreach (var it in items)
         {
             var variant = string.IsNullOrWhiteSpace(it.Variant) ? "" : $@" <span style=""color:#78716c;"">({E(it.Variant)})</span>";
-            // SKU on its OWN line under the product name.
-            var skuLine = string.IsNullOrWhiteSpace(it.Sku) ? "" : $@"<div style=""color:#a8a29e;font-size:12px;margin-top:2px;"">#{E(it.Sku)}</div>";
-            var nameCol = $@"<span style=""display:inline-block;vertical-align:middle;"">{E(it.Name)}{variant} &times; {it.Quantity}{skuLine}</span>";
+            // SKU inline after the name/variant.
+            var sku = string.IsNullOrWhiteSpace(it.Sku) ? "" : $@" <span style=""color:#a8a29e;"">(#{E(it.Sku)})</span>";
+            var nameCol = $@"<span style=""display:inline-block;vertical-align:middle;"">{E(it.Name)}{variant}{sku} &times; {it.Quantity}</span>";
             sb.Append($@"<tr><td style=""padding:8px 0;color:#374151;vertical-align:middle;"">{Thumb(it.ImageUrl)}{nameCol}</td><td align=""right"" style=""padding:8px 0;color:#111;vertical-align:middle;"">{Money(it.LineTotal)}</td></tr>");
         }
         sb.Append($@"<tr><td style=""padding-top:8px;border-top:1px solid {Line};font-weight:700;color:#1c1917;"">Total</td><td align=""right"" style=""padding-top:8px;border-top:1px solid {Line};font-weight:700;color:#1c1917;"">{Money(total)}</td></tr>");
