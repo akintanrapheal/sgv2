@@ -218,6 +218,18 @@ public class DeliveryZoneService
         return "Delivery";
     }
 
+    /// <summary>The SHIPPING line for an order email — the Glams-branded delivery method + fee, or the
+    /// store-pickup label. Shared by the customer confirmation and every admin/order alert so they all
+    /// read the same way, e.g. "₦4,000.00 via Glams Priority Delivery (within 48 hrs)". Needs the order's
+    /// DeliveryAddress loaded for the method lookup.</summary>
+    public async Task<string> EmailShippingLabelAsync(Models.Domain.Order order, string? pickupLabel)
+    {
+        if (order.FulfillmentType == Models.Domain.FulfillmentType.StorePickup)
+            return string.IsNullOrWhiteSpace(pickupLabel) ? "Store pickup" : pickupLabel!;
+        var method = await DescribeOptionAsync(order.DeliveryType, order.DeliveryAddress?.State, order.DeliveryAddress?.City);
+        return order.DeliveryFee > 0 ? $"₦{order.DeliveryFee:N2} via {method}" : $"Free delivery — {method}";
+    }
+
     // ── Calculate fee from state + area + type (server-side, at order placement) ─
     public async Task<decimal> CalculateFeeAsync(string state, string? area, string deliveryType)
     {

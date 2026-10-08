@@ -224,7 +224,8 @@ public static class OrderEmailTemplate
         foreach (var it in items)
         {
             var variant = string.IsNullOrWhiteSpace(it.Variant) ? "" : $@" <span style=""color:#78716c;"">({E(it.Variant)})</span>";
-            sb.Append($@"<tr><td style=""padding:8px 0;color:#374151;vertical-align:middle;"">{Thumb(it.ImageUrl)}{E(it.Name)}{variant} &times; {it.Quantity}</td><td align=""right"" style=""padding:8px 0;color:#111;vertical-align:middle;"">{Money(it.LineTotal)}</td></tr>");
+            var sku = string.IsNullOrWhiteSpace(it.Sku) ? "" : $@" <span style=""color:#a8a29e;"">(#{E(it.Sku)})</span>";
+            sb.Append($@"<tr><td style=""padding:8px 0;color:#374151;vertical-align:middle;"">{Thumb(it.ImageUrl)}{E(it.Name)}{variant}{sku} &times; {it.Quantity}</td><td align=""right"" style=""padding:8px 0;color:#111;vertical-align:middle;"">{Money(it.LineTotal)}</td></tr>");
         }
         sb.Append($@"<tr><td style=""padding-top:8px;border-top:1px solid {Line};font-weight:700;color:#1c1917;"">Total</td><td align=""right"" style=""padding-top:8px;border-top:1px solid {Line};font-weight:700;color:#1c1917;"">{Money(total)}</td></tr>");
         sb.Append("</table>");
