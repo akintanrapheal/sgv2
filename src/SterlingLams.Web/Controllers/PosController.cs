@@ -2405,10 +2405,16 @@ public class PosController : Controller
                 sku = p.Sku,
                 barcode = p.Barcode,
                 categoryId = p.CategoryId,
-                price = p.PosPrice ?? (p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
+                // A variable product is priced per variant at the till (EPOS price, never the website sale
+                // price): show the representative (lowest) variant EPOS price on the card so it matches the
+                // variant picker and what's actually charged when added to the sale. Simple products keep
+                // the PosPrice-or-website-price fallback.
+                price = (p.ProductType == "variable" && p.Variants.Any(v => v.IsActive))
+                        ? p.Variants.Where(v => v.IsActive).Min(v => v.PosPrice ?? v.Price ?? p.Price)
+                        : (p.PosPrice ?? (p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
                         && (p.SaleStartsAt == null || p.SaleStartsAt <= DateTime.UtcNow)
                         && (p.SaleEndsAt == null || p.SaleEndsAt >= DateTime.UtcNow)
-                    ? p.SalePrice.Value : p.Price),
+                    ? p.SalePrice.Value : p.Price)),
                 image = p.Images.Where(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
                 variants = p.ProductType == "variable"
@@ -2523,10 +2529,16 @@ public class PosController : Controller
                 name = p.Name,
                 sku = p.Sku,
                 barcode = p.Barcode,
-                price = p.PosPrice ?? (p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
+                // A variable product is priced per variant at the till (EPOS price, never the website sale
+                // price): show the representative (lowest) variant EPOS price on the card so it matches the
+                // variant picker and what's actually charged when added to the sale. Simple products keep
+                // the PosPrice-or-website-price fallback.
+                price = (p.ProductType == "variable" && p.Variants.Any(v => v.IsActive))
+                        ? p.Variants.Where(v => v.IsActive).Min(v => v.PosPrice ?? v.Price ?? p.Price)
+                        : (p.PosPrice ?? (p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
                         && (p.SaleStartsAt == null || p.SaleStartsAt <= DateTime.UtcNow)
                         && (p.SaleEndsAt == null || p.SaleEndsAt >= DateTime.UtcNow)
-                    ? p.SalePrice.Value : p.Price),
+                    ? p.SalePrice.Value : p.Price)),
                 image = p.Images.Where(i => i.IsPrimary).Select(i => i.Url).FirstOrDefault()
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
                 variants = p.ProductType == "variable"
@@ -2592,10 +2604,16 @@ public class PosController : Controller
                 barcode = p.Barcode,
                 description = p.ShortDescription,
                 category = p.Category.Name,
-                price = p.PosPrice ?? (p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
+                // A variable product is priced per variant at the till (EPOS price, never the website sale
+                // price): show the representative (lowest) variant EPOS price on the card so it matches the
+                // variant picker and what's actually charged when added to the sale. Simple products keep
+                // the PosPrice-or-website-price fallback.
+                price = (p.ProductType == "variable" && p.Variants.Any(v => v.IsActive))
+                        ? p.Variants.Where(v => v.IsActive).Min(v => v.PosPrice ?? v.Price ?? p.Price)
+                        : (p.PosPrice ?? (p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
                         && (p.SaleStartsAt == null || p.SaleStartsAt <= DateTime.UtcNow)
                         && (p.SaleEndsAt == null || p.SaleEndsAt >= DateTime.UtcNow)
-                    ? p.SalePrice.Value : p.Price),
+                    ? p.SalePrice.Value : p.Price)),
                 inv = p.StoreInventories.Select(si => new { si.StoreId, store = si.Store.Name, si.ProductVariantId, si.QuantityOnHand, si.QuantityReserved }).ToList(),
                 variants = p.Variants.Where(v => v.IsActive).OrderBy(v => v.Name).Select(v => new { id = v.Id, name = v.Name, barcode = v.Barcode }).ToList()
             })
