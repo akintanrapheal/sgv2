@@ -711,6 +711,20 @@ public class CheckoutController : Controller
         var contactPhone = !string.IsNullOrWhiteSpace(vm.GuestPhone) ? vm.GuestPhone!.Trim()
             : (!string.IsNullOrWhiteSpace(vm.DeliveryAddress?.Phone) ? vm.DeliveryAddress!.Phone.Trim() : null);
 
+        // Capture each line's SKU (variant SKU first, else the product's) on the order so it shows on the
+        // emails + receipts — the cart cookie doesn't carry it, so resolve from the catalogue here.
+        var lineProductIds = cart.Items.Select(i => i.ProductId).Distinct().ToList();
+        var lineVariantIds = cart.Items.Where(i => i.VariantId != null).Select(i => i.VariantId!.Value).Distinct().ToList();
+        var productSkus = await _db.Products.Where(p => lineProductIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Sku }).ToDictionaryAsync(p => p.Id, p => p.Sku);
+        var variantSkus = lineVariantIds.Count == 0
+            ? new Dictionary<int, string?>()
+            : await _db.ProductVariants.Where(v => lineVariantIds.Contains(v.Id))
+                .Select(v => new { v.Id, v.Sku }).ToDictionaryAsync(v => v.Id, v => v.Sku);
+        string? SkuFor(Models.ViewModels.CartItemViewModel i) =>
+            (i.VariantId != null && variantSkus.TryGetValue(i.VariantId.Value, out var vs) && !string.IsNullOrWhiteSpace(vs))
+                ? vs : productSkus.GetValueOrDefault(i.ProductId);
+
         var order = new Order
         {
             OrderNumber = orderNumber,
@@ -745,6 +759,7 @@ public class CheckoutController : Controller
                 ProductVariantId = i.VariantId,
                 ProductName = i.ProductName,
                 VariantName = i.VariantName,
+                ProductSku = SkuFor(i),
                 Quantity = i.Quantity,
                 UnitPrice = i.UnitPrice
             }).ToList()
