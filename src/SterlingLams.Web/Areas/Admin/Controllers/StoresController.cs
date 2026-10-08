@@ -35,7 +35,7 @@ public class StoresController : AdminBaseController
     public IActionResult Create()
     {
         ViewData["Title"] = "New Store";
-        return View("Edit", new AdminStoreEditViewModel { IsActive = true });
+        return View("Edit", new AdminStoreEditViewModel { IsActive = true, IsPublic = true });
     }
 
     // ── Edit GET ──────────────────────────────────────────────────────────────
@@ -59,6 +59,7 @@ public class StoresController : AdminBaseController
             Latitude         = store.Latitude,
             Longitude        = store.Longitude,
             IsActive         = store.IsActive,
+            IsPublic         = store.IsPublic,
         });
     }
 
@@ -111,6 +112,7 @@ public class StoresController : AdminBaseController
         store.Latitude         = vm.Latitude;
         store.Longitude        = vm.Longitude;
         store.IsActive         = vm.IsActive;
+        store.IsPublic         = vm.IsPublic;
 
         var isNew = vm.Id == 0;
         // Capture the before→after field diff BEFORE saving (while the entry is still Modified).

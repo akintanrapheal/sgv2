@@ -710,6 +710,10 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public double? Longitude { get; set; }
 
         public bool IsActive { get; set; } = true;
+
+        /// <summary>Visible to customers (website + online-order fulfilment). Off = backend/EPOS only — e.g.
+        /// a branch being stocked up before it opens to customers.</summary>
+        public bool IsPublic { get; set; } = true;
     }
 
     /// <summary>One active stock hold (reservation) on an unpaid online order — for the read-only

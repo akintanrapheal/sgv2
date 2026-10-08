@@ -300,7 +300,7 @@ public class ProductsController : Controller
         // Per-variant available across active branches, using the effective-row fallback (variant's
         // own row if stocked, else the product pool) — mirrors StockService/cart so the page, cart
         // and checkout agree.
-        var activeStores = product.StoreInventories.Where(si => si.Store.IsActive)
+        var activeStores = product.StoreInventories.Where(si => si.Store.IsActive && si.Store.IsPublic)
             .Select(si => new { si.StoreId, si.Store.Name, si.Store.Slug })
             .Distinct().OrderBy(s => s.Name).ToList();
 
@@ -340,7 +340,7 @@ public class ProductsController : Controller
             CategorySlug = product.Category.Slug,
             ImageUrls = product.Images.Select(i => i.Url).ToList(),
             // Total available per branch (sum of pool + any variant rows at that store).
-            StoreStock = product.StoreInventories.Where(si => si.Store.IsActive)
+            StoreStock = product.StoreInventories.Where(si => si.Store.IsActive && si.Store.IsPublic)
                 .GroupBy(si => new { si.StoreId, si.Store.Name, si.Store.Slug })
                 .Select(g => new StoreStockViewModel
                 {
@@ -510,7 +510,7 @@ public class ProductsController : Controller
         if (product == null) return NotFound();
 
         // Per-variant availability with the variant-row → product-pool fallback (matches Detail/cart).
-        var activeStores = product.StoreInventories.Where(si => si.Store.IsActive)
+        var activeStores = product.StoreInventories.Where(si => si.Store.IsActive && si.Store.IsPublic)
             .Select(si => new { si.StoreId, Name = si.Store.Name })
             .Distinct().OrderBy(s => s.Name).ToList();
         int StoreQty(int storeId, int? variantId)

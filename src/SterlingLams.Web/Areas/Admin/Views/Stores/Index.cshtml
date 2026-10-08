@@ -38,13 +38,17 @@ else
                         <h2 class="text-sm font-medium text-neutral-800 truncate">@store.Name</h2>
                         <p class="text-xs text-neutral-400 mt-0.5">@store.City, @store.State</p>
                     </div>
-                    @if (store.IsActive)
+                    @if (!store.IsActive)
                     {
-                        <span class="ml-2 text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full flex-shrink-0">Active</span>
+                        <span class="ml-2 text-[10px] bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full flex-shrink-0">Inactive</span>
+                    }
+                    else if (!store.IsPublic)
+                    {
+                        <span class="ml-2 text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full flex-shrink-0" title="Active in the backend &amp; EPOS, but hidden from customers and not fulfilling online orders">Backend only</span>
                     }
                     else
                     {
-                        <span class="ml-2 text-[10px] bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full flex-shrink-0">Inactive</span>
+                        <span class="ml-2 text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full flex-shrink-0">Active</span>
                     }
                 </div>
 

@@ -130,7 +130,13 @@
             <!-- Active -->
             <label class="flex items-center gap-2 text-sm text-neutral-600 cursor-pointer">
                 <input asp-for="IsActive" type="checkbox" class="rounded accent-neutral-900" />
-                Store is active <span class="text-neutral-400 text-xs font-light">(inactive stores are hidden from customers and checkout)</span>
+                Store is active <span class="text-neutral-400 text-xs font-light">(inactive = fully off: EPOS tills offline, hidden everywhere, keeps its history)</span>
+            </label>
+
+            <!-- Visible to customers -->
+            <label class="flex items-center gap-2 text-sm text-neutral-600 cursor-pointer">
+                <input asp-for="IsPublic" type="checkbox" class="rounded accent-neutral-900" />
+                Visible to customers <span class="text-neutral-400 text-xs font-light">(on = shows on the website &amp; fulfils online orders · off = backend/EPOS only, e.g. a branch being stocked up before it opens)</span>
             </label>
         </div>
 
