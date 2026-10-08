@@ -266,7 +266,7 @@ public class AccountController : Controller
             Email = model.Email,
             FirstName = model.FirstName,
             LastName = model.LastName,
-            PhoneNumber = model.Phone,
+            PhoneNumber = Infrastructure.PhoneNumbers.Canonical(model.Phone),
             CreatedAt = DateTime.UtcNow
         };
 
@@ -304,7 +304,7 @@ public class AccountController : Controller
 
         guest.FirstName = model.FirstName;
         guest.LastName = model.LastName;
-        guest.PhoneNumber = model.Phone;
+        guest.PhoneNumber = Infrastructure.PhoneNumbers.Canonical(model.Phone);
         guest.IsGuest = false;
         await _userManager.UpdateAsync(guest);
 
@@ -485,7 +485,7 @@ public class AccountController : Controller
 
         user.FirstName   = model.FirstName.Trim();
         user.LastName    = model.LastName.Trim();
-        user.PhoneNumber = model.Phone?.Trim();
+        user.PhoneNumber = Infrastructure.PhoneNumbers.Canonical(model.Phone);
         await _userManager.UpdateAsync(user);
 
         TempData["Success"] = "Profile updated successfully.";

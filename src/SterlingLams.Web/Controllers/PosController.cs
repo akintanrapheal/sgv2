@@ -2108,6 +2108,11 @@ public class PosController : Controller
         if (phone.Length == 0 && email == null)
             return Json(new { success = false, message = "Enter a phone number." });
 
+        // Normalise the phone so the same number in any form (+2349160009893 / 09160009893 / 9160009893)
+        // is one customer — stored canonically and used as the identity key.
+        var phoneKey = Infrastructure.PhoneNumbers.Key(phone);
+        var canonicalPhone = Infrastructure.PhoneNumbers.Canonical(phone);
+
         // If a user with this email already exists, reuse it instead of creating a second account.
         // (Creating a new shell here is what produced duplicate-email accounts that broke login.)
         if (email != null)
@@ -2117,10 +2122,19 @@ public class PosController : Controller
             if (existing != null)
                 return Json(new { success = true, id = existing.Id, name = existing.FullName, phone = existing.PhoneNumber, reused = true });
         }
+        // Same phone number = same customer (any format), so a repeat buyer isn't duplicated.
+        if (phoneKey.Length == 10)
+        {
+            var byPhone = await _db.Users.FirstOrDefaultAsync(u => u.PhoneNumber == canonicalPhone);
+            if (byPhone != null)
+                return Json(new { success = true, id = byPhone.Id, name = byPhone.FullName, phone = byPhone.PhoneNumber, reused = true });
+        }
 
-        // POS customers are phone-first and don't log in: no password. UserName must be unique.
+        // POS customers are phone-first and don't log in: no password. UserName must be unique, and keyed on
+        // the canonical phone so the same number can't mint two shells.
         var digits = new string(phone.Where(char.IsDigit).ToArray());
-        var userName = email ?? (digits.Length > 0 ? $"pos-{digits}" : $"pos-{Guid.NewGuid():N}");
+        var userName = email ?? (phoneKey.Length == 10 ? $"pos-{phoneKey}"
+            : (digits.Length > 0 ? $"pos-{digits}" : $"pos-{Guid.NewGuid():N}"));
         if (await _userManager.FindByNameAsync(userName) != null)
             userName = $"pos-{Guid.NewGuid():N}";
 
@@ -2131,7 +2145,7 @@ public class PosController : Controller
             EmailConfirmed = email != null,
             FirstName = first,
             LastName = last,
-            PhoneNumber = phone.Length > 0 ? phone : null,
+            PhoneNumber = string.IsNullOrEmpty(canonicalPhone) ? null : canonicalPhone,
             CreatedAt = DateTime.UtcNow
         };
         var result = await _userManager.CreateAsync(user);
