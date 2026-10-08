@@ -262,15 +262,24 @@ public class SmtpEmailService : IEmailService
             ? $@"<span style=""color:#ffffff;font-size:20px;letter-spacing:3px;text-transform:uppercase;"">{System.Net.WebUtility.HtmlEncode(brand.FromName)}</span>"
             : $@"<img src=""{brand.LogoUrl}"" alt=""{System.Net.WebUtility.HtmlEncode(brand.FromName)}"" style=""max-height:{brand.LogoHeight}px;height:auto;width:auto;""/>";
         return $@"<!DOCTYPE html>
-<html><head><meta charset=""utf-8""><meta name=""viewport"" content=""width=device-width,initial-scale=1""></head>
+<html><head><meta charset=""utf-8""><meta name=""viewport"" content=""width=device-width,initial-scale=1"">
+<style>
+  /* Fit the phone screen: shrink padding and stack side-by-side blocks (order#/date, billing/shipping). */
+  @media only screen and (max-width:600px) {{
+    .em-container {{ width:100% !important; }}
+    .em-pad {{ padding:20px !important; }}
+    .em-stack {{ display:block !important; width:100% !important; box-sizing:border-box; text-align:left !important; }}
+  }}
+</style>
+</head>
 <body style=""margin:0;padding:0;background:#f5f5f4;font-family:Helvetica,Arial,sans-serif;color:#1c1917;"">
   <table role=""presentation"" width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""background:#f5f5f4;padding:32px 0;"">
-    <tr><td align=""center"">
-      <table role=""presentation"" width=""560"" cellpadding=""0"" cellspacing=""0"" style=""width:560px;max-width:92%;background:#ffffff;border:1px solid #e7e5e4;"">
+    <tr><td align=""center"" style=""padding:0 12px;"">
+      <table role=""presentation"" width=""560"" cellpadding=""0"" cellspacing=""0"" class=""em-container"" style=""width:100%;max-width:560px;background:#ffffff;border:1px solid #e7e5e4;"">
         <tr><td style=""background:{System.Net.WebUtility.HtmlEncode(brand.HeaderColor)};padding:24px 32px;text-align:center;"">
           {headerInner}
         </td></tr>
-        <tr><td style=""padding:32px;font-size:15px;line-height:1.6;color:#292524;"">
+        <tr><td class=""em-pad"" style=""padding:32px;font-size:15px;line-height:1.6;color:#292524;"">
           {content}
         </td></tr>
         <tr><td style=""padding:20px 32px;border-top:1px solid #e7e5e4;text-align:center;font-size:11px;color:#a8a29e;"">
