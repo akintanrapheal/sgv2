@@ -15,7 +15,9 @@ public class StoresController : Controller
 
     public async Task<IActionResult> Index()
     {
-        var stores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
+        // Customer-facing: only branches that are active AND public (hide branches being stocked up
+        // before they open to customers — IsActive but not IsPublic).
+        var stores = await _db.Stores.Where(s => s.IsActive && s.IsPublic).ToListAsync();
         return View(stores);
     }
 }

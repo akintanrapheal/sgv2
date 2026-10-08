@@ -208,7 +208,7 @@ public class CartController : Controller
     /// stock service's per-variant resolution (variant row if stocked, else the product pool).</summary>
     private async Task<int> CombinedAvailableAsync(int productId, int? variantId)
     {
-        var storeIds = await _db.Stores.Where(s => s.IsActive).Select(s => s.Id).ToListAsync();
+        var storeIds = await _db.Stores.Where(s => s.IsActive && s.IsPublic).Select(s => s.Id).ToListAsync();
         var total = 0;
         foreach (var sid in storeIds)
             total += await _stock.GetAvailableAsync(productId, variantId, sid);

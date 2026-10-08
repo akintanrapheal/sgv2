@@ -137,7 +137,7 @@ public class CheckoutController : Controller
             }
         }
 
-        var stores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
+        var stores = await _db.Stores.Where(s => s.IsActive && s.IsPublic).ToListAsync();
 
         // Build delivery pricing JSON for client-side zone detection (incl. same-day eligibility for this cart)
         var pricingJson = await BuildDeliveryPricingJsonAsync(cart, stores);
@@ -318,7 +318,7 @@ public class CheckoutController : Controller
         var result = new List<DelayedItemDto>();
         if (cart.IsEmpty) return result;
 
-        var activeStores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
+        var activeStores = await _db.Stores.Where(s => s.IsActive && s.IsPublic).ToListAsync();
         if (activeStores.Count == 0) return result;
         var crossEta = await _settings.GetAsync("shipping.cross_branch_days", "3 - 5 working days");
         // Inter-branch transfer timeframes for a pickup that needs stock moved to the chosen store:
@@ -408,7 +408,7 @@ public class CheckoutController : Controller
         vm.DiscountAmount      = cart.DiscountAmount;
         vm.AppliedDiscountCode = cart.AppliedDiscountCode;
         vm.DiscountDescription = cart.DiscountDescription;
-        var activeStores       = await _db.Stores.Where(s => s.IsActive).ToListAsync();
+        var activeStores       = await _db.Stores.Where(s => s.IsActive && s.IsPublic).ToListAsync();
         vm.DeliveryPricingJson = await BuildDeliveryPricingJsonAsync(cart, activeStores);
         vm.NigerianStates      = SterlingLams.Web.Services.DeliveryZoneService.NigerianStates;
         vm.LagosLGAs           = SterlingLams.Web.Services.DeliveryZoneService.LagosLGAs;
@@ -518,7 +518,7 @@ public class CheckoutController : Controller
             if (!ModelState.IsValid)
             {
                 vm.Cart = cart;
-                vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
+                vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive && s.IsPublic).ToListAsync())
                     .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
                 return await RedisplayCheckoutAsync(vm);
             }
@@ -546,7 +546,7 @@ public class CheckoutController : Controller
                 {
                     ModelState.AddModelError("", "Unable to process guest checkout. Please try again.");
                     vm.Cart = cart;
-                    vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
+                    vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive && s.IsPublic).ToListAsync())
                         .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
                     return await RedisplayCheckoutAsync(vm);
                 }
@@ -557,11 +557,11 @@ public class CheckoutController : Controller
         // Validate store selection for pickup orders
         if (vm.FulfillmentType == FulfillmentChoice.StorePickup)
         {
-            if (vm.SelectedStoreId == null || !await _db.Stores.AnyAsync(s => s.Id == vm.SelectedStoreId && s.IsActive))
+            if (vm.SelectedStoreId == null || !await _db.Stores.AnyAsync(s => s.Id == vm.SelectedStoreId && s.IsActive && s.IsPublic))
             {
                 ModelState.AddModelError("", "Please select a valid store for pickup.");
                 vm.Cart = cart;
-                vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
+                vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive && s.IsPublic).ToListAsync())
                     .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
                 return await RedisplayCheckoutAsync(vm);
             }
@@ -579,7 +579,7 @@ public class CheckoutController : Controller
             if (!ModelState.IsValid)
             {
                 vm.Cart = cart;
-                vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive).ToListAsync())
+                vm.AvailableStores = (await _db.Stores.Where(s => s.IsActive && s.IsPublic).ToListAsync())
                     .Select(s => new StorePickupOptionViewModel { StoreId = s.Id, StoreName = s.Name, Address = s.Address, OpeningHours = s.OpeningHours, AllItemsAvailable = true }).ToList();
                 return await RedisplayCheckoutAsync(vm);
             }
@@ -636,7 +636,7 @@ public class CheckoutController : Controller
         {
             var sd = await _zones.GetSameDayAsync();
             var zone = SterlingLams.Web.Services.DeliveryZoneService.GetZone(vm.DeliveryAddress.State ?? "");
-            var activeStores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
+            var activeStores = await _db.Stores.Where(s => s.IsActive && s.IsPublic).ToListAsync();
             var eligible = sd.Enabled
                 && (zone == SterlingLams.Web.Services.DeliveryZone.Lagos || zone == SterlingLams.Web.Services.DeliveryZone.Abuja)
                 && await IsCartAvailableInZoneAsync(cart, zone, activeStores);
@@ -774,7 +774,7 @@ public class CheckoutController : Controller
         // was loaded we block here — the second buyer sees "sold out" instead of paying. (A truly
         // simultaneous payment for the last unit still slips through and is auto-refunded at the
         // callback; this check stops the common "clicked pay after it sold out" case.)
-        var activeStoreIds = await _db.Stores.Where(s => s.IsActive).Select(s => s.Id).ToListAsync();
+        var activeStoreIds = await _db.Stores.Where(s => s.IsActive && s.IsPublic).Select(s => s.Id).ToListAsync();
         foreach (var grp in cart.Items.GroupBy(i => (i.ProductId, i.VariantId)))
         {
             var need = grp.Sum(i => i.Quantity);

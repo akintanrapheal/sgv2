@@ -185,6 +185,29 @@ public class OrderFulfilmentServiceTests
         Assert.True(after!.Status is OrderStatus.Refunded or OrderStatus.Cancelled); // made whole, not stuck
     }
 
+    [Fact]
+    public async Task A_non_public_branch_is_not_used_to_fulfil_online_orders()
+    {
+        using var t = new TestDb();
+        var user = t.SeedUser();
+        var (_, allen, ikota) = t.SeedBranches();
+        // Allen is being stocked up (backend/EPOS only) and not yet open to customers.
+        allen.IsPublic = false;
+        t.Db.SaveChanges();
+        var p = t.SeedProduct();
+        t.SetStock(p.Id, allen.Id, 5);   // nearest to Ikeja, but NOT public
+        t.SetStock(p.Id, ikota.Id, 5);   // a public branch that also has it
+
+        var order = t.NewDeliveryOrder(user, "Lagos", "Ikeja", (p, 2));
+        await Svc(t).FulfilPaidOrderAsync(order.Id);
+
+        var o = await t.Db.Orders.FindAsync(order.Id);
+        Assert.Equal(ikota.Id, o!.FulfillingStoreId);          // routed to the public branch, not Allen
+        Assert.Equal(OrderStatus.Confirmed, o.Status);         // Ikota alone covers it → ships, no transfer
+        Assert.Equal(5, t.Inv(p.Id, allen.Id).QuantityOnHand); // the non-public branch is left untouched
+        Assert.Equal(3, t.Inv(p.Id, ikota.Id).QuantityOnHand); // 2 sold from Ikota
+    }
+
     // ── Minimal stubs for the dependencies the fulfilment service doesn't exercise here ──
     private sealed class FakeEmail : IEmailService
     {

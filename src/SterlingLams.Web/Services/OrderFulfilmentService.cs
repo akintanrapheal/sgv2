@@ -238,7 +238,10 @@ public class OrderFulfilmentService : IOrderFulfilmentService
             // never re-process, so we can't double-refund.
             if (order.Status is OrderStatus.Cancelled or OrderStatus.Refunded) return FulfilOutcome.Fulfilled;
 
-            var activeStores = await _db.Stores.Where(s => s.IsActive).ToListAsync();
+            // Only customer-facing branches (active AND public) fulfil online orders — a branch being
+            // stocked up before it opens (IsActive but not IsPublic) must not be assigned website orders
+            // or used as a transfer source/destination for them.
+            var activeStores = await _db.Stores.Where(s => s.IsActive && s.IsPublic).ToListAsync();
             if (activeStores.Count == 0)
             {
                 _logger.LogError("No active stores — cannot fulfil order {OrderNumber}.", order.OrderNumber);

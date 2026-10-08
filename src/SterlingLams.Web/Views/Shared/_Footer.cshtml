@@ -32,7 +32,7 @@
         activeStores = await Cache.GetOrCreateAsync("footer.active_stores", async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10);
-            return await Db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
+            return await Db.Stores.Where(s => s.IsActive && s.IsPublic).OrderBy(s => s.Name).ToListAsync();
         }) ?? new List<Store>();
     }
     catch
