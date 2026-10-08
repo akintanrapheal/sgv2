@@ -7,9 +7,9 @@ namespace SterlingLams.Web.Services;
 // ── EposNow-style "Sales & Operation" cash-up summary ──────────────────────────────────────────
 // Shared by the POS close screen (PosController) and the read-only Inventory oversight view
 // (Inventory/Till/Eod). Pure data build — no HTTP context — so it can run from either area.
-/// <summary>One payment channel on the cash-up. Only <see cref="Countable"/> tenders (Cash) are physically
-/// counted by the cashier and show an over/short; the rest (card, bank transfer, website, gift card) are
-/// recorded automatically from the system and shown read-only.</summary>
+/// <summary>One payment channel on the cash-up. <see cref="Countable"/> tenders (Cash, Card, Bank transfer)
+/// are counted by the cashier at close and show an over/short; the rest (gift card, website) are recorded
+/// automatically from the system and shown read-only.</summary>
 public record TenderLine(string Key, string Label, decimal Expected, decimal? Counted, bool Countable = false)
 { public decimal Variance => (Counted ?? 0) - Expected; }
 public record SalesGroupRow(string Name, int Qty, decimal Discount, decimal Net, decimal Tax)
@@ -295,9 +295,12 @@ public class CashUpService : ICashUpService
 
         var tenders = new List<TenderLine>
         {
-            new("Cash",            "Cash",                    SumOf("Cash")     - cashRefunds,     C("Cash"), Countable: true),
-            new("Card",            "Card",                    ClampNet(SumOf("Card")     - cardRefunds),     null),
-            new("Transfer",        "Bank transfer",           ClampNet(SumOf("Transfer") - transferRefunds), null),
+            // Cash, Card and Bank transfer are COUNTED at close (the cashier confirms the drawer, the card
+            // terminal total and the transfers received) so each shows an over/short. Gift card + website
+            // are auto-recorded (electronic / online), so they're read-only.
+            new("Cash",            "Cash",                    SumOf("Cash")     - cashRefunds,     C("Cash"),     Countable: true),
+            new("Card",            "Card",                    ClampNet(SumOf("Card")     - cardRefunds),     C("Card"),     Countable: true),
+            new("Transfer",        "Bank transfer",           ClampNet(SumOf("Transfer") - transferRefunds), C("Transfer"), Countable: true),
             new("GiftCard",        "Gift card",               giftCard,                            null),
             new("WebsiteOnline",   "Website – paid online",   ClampNet(wOnlineGross   - wOnlineRefund),   null),
             new("WebsiteTransfer", "Website – bank transfer", ClampNet(wTransferGross - wTransferRefund), null),

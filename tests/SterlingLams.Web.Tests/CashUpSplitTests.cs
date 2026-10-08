@@ -97,9 +97,10 @@ public class CashUpSplitTests
         // Nothing in the bank-transfer bucket for this gateway order.
         Assert.Equal(0m, allenVm.Tenders.First(x => x.Key == "WebsiteTransfer").Expected);
 
-        // Only cash is counted at close; every other channel is auto-recorded (not countable).
-        Assert.True(allenVm.Tenders.Single(x => x.Key == "Cash").Countable);
-        Assert.All(allenVm.Tenders.Where(x => x.Key != "Cash"), t => Assert.False(t.Countable));
+        // Cash, Card and Bank transfer are counted at close; gift card + website are auto-recorded.
+        var countable = new[] { "Cash", "Card", "Transfer" };
+        Assert.All(allenVm.Tenders.Where(x => countable.Contains(x.Key)), t => Assert.True(t.Countable));
+        Assert.All(allenVm.Tenders.Where(x => !countable.Contains(x.Key)), t => Assert.False(t.Countable));
 
         // Each branch's EOD records it as a transaction and shows the right items.
         Assert.Equal(1, allenVm.Transactions);
