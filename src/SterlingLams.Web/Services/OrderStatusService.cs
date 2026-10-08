@@ -46,15 +46,18 @@ public sealed class OrderStatusService : IOrderStatusService
     private readonly IAuditService _audit;
     private readonly IHttpContextAccessor _http;
     private readonly LinkGenerator _links;
+    private readonly DeliveryZoneService _zones;
 
     public OrderStatusService(ApplicationDbContext db, IOrderFulfilmentService fulfilment,
         ITransferWorkflowService transfers,
         Logistics.ILogisticsDispatchService logistics, IEmailService email, ISettingsService settings,
-        IWhatsAppService whatsapp, IAuditService audit, IHttpContextAccessor http, LinkGenerator links)
+        IWhatsAppService whatsapp, IAuditService audit, IHttpContextAccessor http, LinkGenerator links,
+        DeliveryZoneService zones)
     {
         _db = db;
         _fulfilment = fulfilment;
         _transfers = transfers;
+        _zones = zones;
         _logistics = logistics;
         _email = email;
         _settings = settings;
@@ -353,7 +356,7 @@ public sealed class OrderStatusService : IOrderStatusService
                  : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + u.TrimStart('/'));
         }
         var items = order.Items
-            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId)))
+            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId), i.ProductSku))
             .ToList();
 
         var body = OrderEmailTemplate.BuildStatusUpdate(subject, introHtml, order.OrderNumber, items, order.Total);
@@ -418,9 +421,7 @@ public sealed class OrderStatusService : IOrderStatusService
             .ToList();
 
         var (billing, shipping, pickupLabel) = OrderEmailTemplate.AddressBlocksFor(order, buyerName, buyer?.Email);
-        var shippingLabel = order.FulfillmentType == FulfillmentType.StorePickup
-            ? pickupLabel
-            : (order.DeliveryFee > 0 ? $"Delivery — ₦{order.DeliveryFee:N0}" : "Delivery");
+        var shippingLabel = await _zones.EmailShippingLabelAsync(order, pickupLabel);
         var paidVia = string.IsNullOrWhiteSpace(order.PaymentProvider) ? "Manual" : order.PaymentProvider!;
 
         var subjectT = await _settings.GetAsync("email.new_order_admin.subject", "New order {order}");

@@ -1997,7 +1997,7 @@ public class PosController : Controller
         var introHtml = OrderEmailTemplate.ApplyPlaceholders(introText, order.OrderNumber, order.CreatedAt, firstName);
         var imgs = await PrimaryImagesAsync(order.Items.Select(i => i.ProductId).Distinct().ToList());
         var items = order.Items
-            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, imgs.GetValueOrDefault(i.ProductId)))
+            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, imgs.GetValueOrDefault(i.ProductId), i.ProductSku))
             .ToList();
         var body = OrderEmailTemplate.BuildStatusUpdate(subject, introHtml, order.OrderNumber, items, order.Total);
         var sent = await _email.SendAsync(email!, subject, body, order.User.FullName);
@@ -2025,7 +2025,7 @@ public class PosController : Controller
         var passUrl = $"{baseUrl}/pickup/{order.PickupToken}";
         var imgs = await PrimaryImagesAsync(order.Items.Select(i => i.ProductId).Distinct().ToList());
         var items = order.Items
-            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, imgs.GetValueOrDefault(i.ProductId)))
+            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, imgs.GetValueOrDefault(i.ProductId), i.ProductSku))
             .ToList();
         string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
         var store = order.PickupStore;

@@ -24,7 +24,7 @@ public class OrderCancelReleasesHoldsTests
         var transfers = new TransferWorkflowService(t.Db, new StockService(t.Db), fulfilment);
         return new OrderStatusService(t.Db, fulfilment, transfers, new FakeLogistics(),
             new FakeEmail(), new FakeSettings(), new FakeWhatsApp(), new FakeAudit(),
-            new HttpContextAccessor(), links: null!);
+            new HttpContextAccessor(), links: null!, zones: new DeliveryZoneService(new FakeSettings()));
     }
 
     [Fact]
