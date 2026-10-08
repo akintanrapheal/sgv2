@@ -118,7 +118,7 @@
             <div class="space-y-4">
                 <!-- Print header (shown only on paper) -->
                 <div class="hidden print:block mb-2">
-                    <h2 class="text-lg font-semibold">Sales &amp; Operation — @s.Register?.Store?.Name</h2>
+                    <h2 class="text-lg font-semibold">End of Day — @s.Register?.Store?.Name</h2>
                     <p class="text-xs text-neutral-500">@s.Register?.Name · Opened by @Model.OpenedByName · @s.OpenedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")@(Model.Closed ? " · Closed " + s.ClosedAt!.Value.ToLocalTime().ToString("HH:mm") : "")</p>
                 </div>
 
@@ -381,8 +381,18 @@
 <style>
     @@media print {
         .no-print { display: none !important; }
-        .close-panel { display: block !important; }
+        /* Keep the paper receipt short: print ONLY the Summary (tiles + Cash Up + float), not every tab's
+           breakdowns. The detailed Sales/Refunds/Void/Tax/Credit tabs stay on screen only. */
+        .close-panel { display: none !important; }
+        .close-panel[data-panel="Summary"] { display: block !important; }
         #close-root { background: #fff !important; }
+        /* Tighten spacing + type so it fits on a receipt roll. */
+        #close-root, #close-root * { font-size: 11px !important; line-height: 1.25 !important; }
+        #close-root .rounded-lg { border: none !important; }
+        #close-root h2 { font-size: 13px !important; }
+        #close-root td, #close-root th { padding-top: 2px !important; padding-bottom: 2px !important; }
+        #close-root .grid { gap: 4px !important; }
+        #close-root .p-3 { padding: 4px !important; }
     }
 </style>
 
