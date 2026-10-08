@@ -264,8 +264,15 @@ public class TransfersController : InventoryAreaController
                 transfer.DispatchedByUserId, transfer.ReceivedByUserId, transfer.CancelledByUserId
             }
             .Where(uid => uid != null).Cast<string>().Distinct().ToList();
-        ViewBag.UserNames = await _db.Users.Where(u => userIds.Contains(u.Id))
-            .ToDictionaryAsync(u => u.Id, u => u.Email ?? u.UserName ?? u.Id);
+        // Show the person's NAME (e.g. a cashier who requested the transfer), not their raw "cashier-<id>"
+        // username/email. Falls back to email then username only when there's no name on the account.
+        ViewBag.UserNames = (await _db.Users.Where(u => userIds.Contains(u.Id))
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.UserName }).ToListAsync())
+            .ToDictionary(u => u.Id, u =>
+            {
+                var name = $"{u.FirstName} {u.LastName}".Trim();
+                return !string.IsNullOrWhiteSpace(name) ? name : (u.Email ?? u.UserName ?? u.Id);
+            });
 
         var productIds = transfer.Items.Select(i => i.ProductId).Distinct().ToList();
         // A product can have several StoreInventory rows at one store (the null-variant pool + each
@@ -300,8 +307,15 @@ public class TransfersController : InventoryAreaController
 
         var userIds = new[] { transfer.CreatedByUserId, transfer.DispatchedByUserId, transfer.ReceivedByUserId }
             .Where(uid => uid != null).Cast<string>().Distinct().ToList();
-        ViewBag.UserNames = await _db.Users.Where(u => userIds.Contains(u.Id))
-            .ToDictionaryAsync(u => u.Id, u => u.Email ?? u.UserName ?? u.Id);
+        // Show the person's NAME (e.g. a cashier who requested the transfer), not their raw "cashier-<id>"
+        // username/email. Falls back to email then username only when there's no name on the account.
+        ViewBag.UserNames = (await _db.Users.Where(u => userIds.Contains(u.Id))
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.UserName }).ToListAsync())
+            .ToDictionary(u => u.Id, u =>
+            {
+                var name = $"{u.FirstName} {u.LastName}".Trim();
+                return !string.IsNullOrWhiteSpace(name) ? name : (u.Email ?? u.UserName ?? u.Id);
+            });
         ViewData["Title"] = $"Receipt {transfer.TransferNumber}";
         return View(transfer);
     }
