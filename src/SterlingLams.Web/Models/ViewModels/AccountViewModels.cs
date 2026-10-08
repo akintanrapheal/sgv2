@@ -61,9 +61,10 @@ public class RegisterViewModel
     [EmailAddress(ErrorMessage = "Enter a valid email address")]
     public string Email { get; set; } = string.Empty;
 
-    [Phone]
+    [Required(ErrorMessage = "Phone number is required")]
+    [Phone(ErrorMessage = "Enter a valid phone number")]
     [Display(Name = "Phone number")]
-    public string? Phone { get; set; }
+    public string Phone { get; set; } = string.Empty;
 
     [Required(ErrorMessage = "Password is required")]
     [StringLength(100, MinimumLength = 8, ErrorMessage = "Password must be at least 8 characters")]
