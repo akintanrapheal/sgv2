@@ -304,9 +304,20 @@ public class DeliveryZoneService
         bool SameSubZone(Models.Domain.Store s) =>
             customerSubZone != null && SubZoneKey(s.City) == customerSubZone;
 
+        // A Lagos "island" order prefers the island branch (e.g. Ikota / Ajah) over a mainland one (e.g.
+        // Allen / Ikeja). The two island sub-zones — "Lekki / Ajah axis" and "Island (VI / Ikoyi)" — are
+        // grouped together, so a Victoria Island / Ikoyi / Lekki Phase 1 / Lagos Island order routes to
+        // Ikota instead of falling through to the store-id tiebreaker and landing on the mainland branch.
+        // Coarser than the exact sub-zone below, so Lekki/Ajah still beats VI when both are island branches.
+        // (Owner directive 2026-10-08. Stock rules unchanged: if the island branch doesn't have everything,
+        // ChooseFulfilment still ships whole from a branch that does, else closest + transfer.)
+        var customerIsland = InLagosIsland(city);
+        bool SameIslandGroup(Models.Domain.Store s) => customerIsland && InLagosIsland(s.City);
+
         return stores
             .OrderBy(s => GetRegion(s.State, north) == customerRegion ? 0 : 1) // region group first
             .ThenBy(s => GetZone(s.State) == customerZone ? 0 : 1)             // same fine state-zone
+            .ThenBy(s => SameIslandGroup(s) ? 0 : 1)                           // island axis (Lekki/Ajah + VI/Ikoyi)
             .ThenBy(s => SameSubZone(s) ? 0 : 1)                               // same delivery sub-zone (by area)
             .ThenBy(s => CityMatches(s) ? 0 : 1)
             .ThenBy(s => s.Id)
@@ -326,6 +337,15 @@ public class DeliveryZoneService
                               || a.Contains(x, StringComparison.OrdinalIgnoreCase)))
                 return z.State + "|" + z.Name;
         return null;
+    }
+
+    // True when an area is on the Lagos island axis — either the Lekki/Ajah sub-zone or the VI/Ikoyi
+    // sub-zone. Used to route island orders to the island branch (Ikota), since the two island sub-zones
+    // should be treated as one proximity group.
+    private static bool InLagosIsland(string? area)
+    {
+        var k = SubZoneKey(area);
+        return k == "Lagos|Lekki / Ajah axis" || k == "Lagos|Island (VI / Ikoyi)";
     }
 
     // ── Default zones (starter grouping + prices; admin can fully edit) ────────
