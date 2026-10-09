@@ -1,4 +1,7 @@
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Gif;
+using SixLabors.ImageSharp.Formats.Jpeg;
+using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.Formats.Webp;
 using SixLabors.ImageSharp.Processing;
 
@@ -10,6 +13,11 @@ namespace SterlingLams.Web.Services;
 /// per-transform cost or quota). Width-only, aspect preserved, never upscaled beyond the original; the
 /// square product cards crop via CSS (object-cover), so width-only matches today's look. Uses ImageSharp
 /// 2.1.x (Apache-2.0), fully managed, no native dependencies on Render.
+///
+/// Security: decoding runs through a <see cref="Configuration"/> that registers ONLY the formats we accept
+/// (JPEG/PNG/WebP/GIF). The TIFF decoder is therefore never reachable, which closes the ImageSharp TIFF /
+/// BigTIFF advisories (GHSA TIFF T4/T6 encoder + BigTIFF decoder) — an uploaded .tiff is simply rejected
+/// as an unknown format and returns empty here.
 /// </summary>
 public interface IImageResizer
 {
@@ -23,6 +31,14 @@ public interface IImageResizer
 
 public sealed class ImageResizer : IImageResizer
 {
+    // A decode configuration that registers ONLY the formats we accept. Anything else (notably TIFF) is
+    // rejected as an unknown format, so the vulnerable TIFF/BigTIFF code paths are never reached.
+    private static readonly Configuration DecodeConfig = new(
+        new JpegConfigurationModule(),
+        new PngConfigurationModule(),
+        new WebpConfigurationModule(),
+        new GifConfigurationModule());
+
     private readonly ILogger<ImageResizer> _log;
     public ImageResizer(ILogger<ImageResizer> log) => _log = log;
 
@@ -32,7 +48,7 @@ public sealed class ImageResizer : IImageResizer
         if (source == null || source.Length == 0) return result;
         try
         {
-            using var image = Image.Load(source);
+            using var image = Image.Load(DecodeConfig, source);
             var originalWidth = image.Width;
             var encoder = new WebpEncoder { Quality = 80 };
             foreach (var w in IImageResizer.Widths)

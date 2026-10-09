@@ -41,6 +41,18 @@ public class ImagePresizeTests
         => Assert.Empty(new ImageResizer(NullLogger<ImageResizer>.Instance).ToWebpWidths(new byte[] { 1, 2, 3, 4 }));
 
     [Fact]
+    public void Resizer_rejects_tiff_uploads_so_the_tiff_decoder_is_never_reached()
+    {
+        // A perfectly valid TIFF, encoded via the full ImageSharp config...
+        using var img = new Image<Rgba32>(64, 64);
+        using var ms = new MemoryStream();
+        img.SaveAsTiff(ms);
+
+        // ...must be refused by the resizer, whose restricted config has no TIFF decoder registered.
+        Assert.Empty(new ImageResizer(NullLogger<ImageResizer>.Instance).ToWebpWidths(ms.ToArray()));
+    }
+
+    [Fact]
     public void Cld_serves_the_nearest_presized_webp_for_r2_urls()
     {
         Img.ConfigurePresized(true, "https://img.sterlinglams.com");
