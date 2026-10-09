@@ -91,7 +91,8 @@ public class StripePaymentService : IPaymentService
             await ApplyKeyAsync();
             var options = new Stripe.Checkout.SessionCreateOptions
             {
-                PaymentMethodTypes = new List<string> { "card" },
+                // Stripe.net 53 removed SessionCreateOptions.PaymentMethodTypes — when omitted,
+                // Checkout offers whatever payment methods are enabled in the Stripe dashboard.
                 Mode = "payment",
                 CustomerEmail = request.CustomerEmail,
                 SuccessUrl = request.CallbackUrl + "?session_id={CHECKOUT_SESSION_ID}",

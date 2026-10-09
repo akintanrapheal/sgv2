@@ -81,8 +81,9 @@ public class CashUpServiceOnlineTillTests
         t.Db.Registers.Add(reg);
         await t.Db.SaveChangesAsync();
 
-        // A concrete Lagos day so the window is deterministic regardless of when the test runs.
-        var day = SterlingLams.Web.Services.ReportCalendar.Today;
+        // A concrete PAST Lagos day (yesterday) so the whole window sits before "now" and the
+        // result is deterministic regardless of the wall-clock time the test runs at.
+        var day = SterlingLams.Web.Services.ReportCalendar.Today.AddDays(-1);
         var dayStart = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(day);
         var opened = dayStart.AddHours(9).AddMinutes(24);     // till opened 09:24
         var closed = dayStart.AddHours(19);                   // closed 19:00
@@ -119,7 +120,9 @@ public class CashUpServiceOnlineTillTests
         t.Db.Registers.Add(reg);
         await t.Db.SaveChangesAsync();
 
-        var day = SterlingLams.Web.Services.ReportCalendar.Today;
+        // Anchor to a past Lagos day (yesterday) so the "after close" timestamp still sits before
+        // "now" — otherwise this fails whenever the test runs earlier in the day than 13:12.
+        var day = SterlingLams.Web.Services.ReportCalendar.Today.AddDays(-1);
         var dayStart = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(day);
         var opened = dayStart.AddHours(9);                   // till opened 09:00
         var closed = dayStart.AddHours(13);                  // closed early at 13:00
