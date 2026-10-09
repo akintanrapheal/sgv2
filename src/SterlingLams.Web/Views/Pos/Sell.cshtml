@@ -1331,7 +1331,7 @@
             resolveVariant = resolve;
             variantTitle.textContent = p.name;
             variantImage.innerHTML = p.image
-                ? '<img src="' + p.image + '" alt="" class="w-full h-full object-cover">'
+                ? '<img src="' + p.image + '" alt="" class="w-full h-full object-contain">'
                 : imgPlaceholder;
             // Each variant is its own expandable row: tap the row to ADD it to the cart; tap the ▾
             // chevron to expand a per-branch stock panel for just that variant (loaded on first open).
@@ -1375,7 +1375,7 @@
                 });
                 // Show the highlighted variant's own picture in the main frame (e.g. hover "Gold" → Gold).
                 b.addEventListener('mouseenter', () => {
-                    if (b.dataset.img) variantImage.innerHTML = '<img src="' + b.dataset.img + '" alt="" class="w-full h-full object-cover">';
+                    if (b.dataset.img) variantImage.innerHTML = '<img src="' + b.dataset.img + '" alt="" class="w-full h-full object-contain">';
                 });
             });
             // Chevron: expand/collapse the per-branch stock panel without adding to cart.
