@@ -61,6 +61,10 @@
                            class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
                 </div>
             </div>
+            <p id="free-shipping-hint" class="hidden text-xs text-neutral-500 mt-3 bg-neutral-50 border border-neutral-100 rounded-sm px-3 py-2">
+                Free shipping only waives the fee for <strong>Glams Standard Delivery</strong> (3–5 working days).
+                Customers who upgrade to Priority or Same-Day still pay for that method.
+            </p>
         </div>
 
         <!-- ── Applies to (scope) ─────────────────────────────────────────── -->
@@ -180,6 +184,7 @@ function onTypeChange() {
     const t = document.getElementById('type-select').value;
     // Free shipping has no numeric value
     document.getElementById('value-field').style.display = (t === 'FreeShipping') ? 'none' : '';
+    document.getElementById('free-shipping-hint').classList.toggle('hidden', t !== 'FreeShipping');
 }
 function onScopeChange() {
     const s = document.getElementById('scope-select').value;
