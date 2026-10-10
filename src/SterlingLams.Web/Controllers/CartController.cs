@@ -199,7 +199,7 @@ public class CartController : Controller
             subtotal = cart.FormattedSubtotal,
             total = cart.FormattedTotal,
             hasDiscount = cart.HasDiscount,
-            discount = cart.FreeShipping && cart.DiscountAmount == 0 ? "Free shipping" : cart.FormattedDiscount
+            discount = cart.FreeShipping && cart.DiscountAmount == 0 ? "Free standard delivery" : cart.FormattedDiscount
         });
     }
 
