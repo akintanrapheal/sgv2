@@ -298,6 +298,9 @@
             <script>
                 (function () {
                     var searchUrl = '@Url.Action("ReplacementSearch", "Orders", new { area = "Admin", id = Model.Order.Id })';
+                    // id is a PATH segment in the admin route (…/Orders/ReplacementSearch/123), so the URL
+                    // has no query string — append q with the right separator (? not &) or it binds into id.
+                    var qSep = searchUrl.indexOf('?') === -1 ? '?' : '&';
                     var box = document.getElementById('rep-search');
                     var results = document.getElementById('rep-results');
                     var chosen = document.getElementById('rep-chosen');
@@ -321,7 +324,7 @@
                         var q = box.value.trim();
                         if (q.length < 2) { results.classList.add('hidden'); results.innerHTML = ''; return; }
                         t = setTimeout(function () {
-                            fetch(searchUrl + '&q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (items) {
+                            fetch(searchUrl + qSep + 'q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (items) {
                                 if (!items.length) { results.innerHTML = '<p class="px-3 py-2 text-xs text-neutral-400">No products found.</p>'; results.classList.remove('hidden'); return; }
                                 var html = '';
                                 items.forEach(function (p) {
