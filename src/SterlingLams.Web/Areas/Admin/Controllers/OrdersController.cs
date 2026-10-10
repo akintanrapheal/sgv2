@@ -697,12 +697,22 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         [HttpPost]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> ReplaceItem(int id, int orderItemId, int newProductId, int newVariantId,
-            int newQty, string? reason, decimal balancePaid = 0, string? balanceNote = null)
+            int newQty, string? reason, decimal balancePaid = 0, string? balanceNote = null,
+            string? returnDisposition = "restock")
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
             var userName = User.Identity?.Name;
+            // What happens to the returned (bad) item, chosen on the form: restock it now, write it off as
+            // damaged now, or leave it for Inventory → Returns to decide later.
+            var disposition = returnDisposition switch
+            {
+                "writeoff" => RestockDecision.WrittenOff,
+                "later"    => RestockDecision.Pending,
+                _          => RestockDecision.Restocked,
+            };
             var res = await _replacements.CreateAsync(id, orderItemId, newProductId,
-                newVariantId > 0 ? newVariantId : (int?)null, newQty, reason, balancePaid, balanceNote, userId, userName);
+                newVariantId > 0 ? newVariantId : (int?)null, newQty, reason, balancePaid, balanceNote, userId, userName,
+                disposition);
             TempData[res.Success ? "Success" : "Error"] = res.Message;
             return RedirectToAction(nameof(Detail), new { id });
         }

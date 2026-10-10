@@ -14,10 +14,12 @@ public class ReplacementResult
 public interface IReplacementService
 {
     /// <summary>Raise a replacement on a paid online order: deduct the replacement item's stock at the
-    /// order's branch now, and queue the returned (bad) item for Inventory's restock/write-off decision.
-    /// No money is paid out; any extra the customer paid for a costlier item is recorded as a note.</summary>
+    /// order's branch now, and settle the returned (bad) item per <paramref name="returnDisposition"/> —
+    /// restock it now (default), write it off as damaged now, or (Pending) leave it for Inventory's
+    /// restock/write-off decision. No money is paid out; any extra for a costlier item is noted.</summary>
     Task<ReplacementResult> CreateAsync(int orderId, int orderItemId, int newProductId, int? newVariantId,
-        int newQty, string? reason, decimal balancePaid, string? balanceNote, string userId, string? userName);
+        int newQty, string? reason, decimal balancePaid, string? balanceNote, string userId, string? userName,
+        RestockDecision returnDisposition = RestockDecision.Restocked);
 
     /// <summary>Inventory's Step-2 decision on the returned item: put <paramref name="restockQty"/> back on
     /// the shelf at the branch; write off the rest as damaged (shrinkage) with a reason.</summary>
@@ -44,7 +46,8 @@ public class ReplacementService : IReplacementService
         _db.OrderReplacements.CountAsync(r => r.RestockDecision == RestockDecision.Pending);
 
     public async Task<ReplacementResult> CreateAsync(int orderId, int orderItemId, int newProductId, int? newVariantId,
-        int newQty, string? reason, decimal balancePaid, string? balanceNote, string userId, string? userName)
+        int newQty, string? reason, decimal balancePaid, string? balanceNote, string userId, string? userName,
+        RestockDecision returnDisposition = RestockDecision.Restocked)
     {
         if (newQty <= 0) return Fail("Choose how many of the replacement to send (at least 1).");
         if (newProductId <= 0) return Fail("Pick a replacement product.");
@@ -98,7 +101,7 @@ public class ReplacementService : IReplacementService
             NewQuantity = newQty,
             BalancePaid = Math.Max(0, balancePaid),
             BalanceNote = string.IsNullOrWhiteSpace(balanceNote) ? null : balanceNote.Trim(),
-            RestockDecision = RestockDecision.Pending,
+            RestockDecision = returnDisposition,
             CreatedByUserId = userId,
             CreatedByName = userName,
             CreatedAt = now,
@@ -115,12 +118,44 @@ public class ReplacementService : IReplacementService
 
             _db.OrderReplacements.Add(rep);
 
+            // Settle the returned (bad) item now per the staff choice: put it straight back on the shelf
+            // (restock), or write it off as damaged. Pending = leave it for Inventory → Returns to decide.
+            string returnedFate;
+            if (returnDisposition == RestockDecision.Restocked)
+            {
+                await _stock.ApplyAsync(rep.OldProductId, rep.OldProductVariantId, storeId, rep.OldQuantity,
+                    StockMovementType.Return, number, "Replacement return restock", userId, materializeVariant: true);
+                rep.RestockedQuantity = rep.OldQuantity;
+                rep.RestockDecidedByUserId = userId;
+                rep.RestockDecidedAt = now;
+                returnedFate = $"returned item restocked at {branch}";
+            }
+            else if (returnDisposition == RestockDecision.WrittenOff)
+            {
+                // Comes back in then straight out as Damage, so stock nets to zero and the loss shows in
+                // the Shrinkage report (carrying the reason).
+                var rz = rep.Reason ?? "Damaged (replacement return)";
+                await _stock.ApplyAsync(rep.OldProductId, rep.OldProductVariantId, storeId, rep.OldQuantity,
+                    StockMovementType.Return, number, "Return (in)", userId, materializeVariant: true);
+                await _stock.ApplyAsync(rep.OldProductId, rep.OldProductVariantId, storeId, -rep.OldQuantity,
+                    StockMovementType.Damage, number, rz, userId);
+                rep.RestockedQuantity = 0;
+                rep.RestockNote = rz;
+                rep.RestockDecidedByUserId = userId;
+                rep.RestockDecidedAt = now;
+                returnedFate = "returned item written off as damaged";
+            }
+            else
+            {
+                returnedFate = "returned item pending Inventory restock/write-off review";
+            }
+
             var newLabel = $"{np.Name}{(newVariantName != null ? $" ({newVariantName})" : "")}";
             var oldLabel = $"{bad.ProductName}{(bad.VariantName != null ? $" ({bad.VariantName})" : "")}";
             OrderNotes.AddSystem(_db, order.Id,
                 $"Replacement {number}: {oldLabel} ×{rep.OldQuantity} → {newLabel} ×{newQty}"
                 + (rep.Reason != null ? $" ({rep.Reason})" : "")
-                + $". New item stock deducted at {branch}; returned item pending Inventory restock/write-off review."
+                + $". New item stock deducted at {branch}; {returnedFate}."
                 + (rep.BalancePaid > 0 ? $" Balance paid ₦{rep.BalancePaid:N0}{(rep.BalanceNote != null ? $" — {rep.BalanceNote}" : "")}." : ""));
 
             order.UpdatedAt = now;
@@ -147,12 +182,17 @@ public class ReplacementService : IReplacementService
         }
         catch { }
 
+        var tail = returnDisposition switch
+        {
+            RestockDecision.Restocked  => $"The returned item was restocked at {branch}.",
+            RestockDecision.WrittenOff => "The returned item was written off as damaged.",
+            _                          => "The returned item is in Inventory → Returns for a put-back / write-off decision.",
+        };
         return new ReplacementResult
         {
             Success = true,
             ReplacementId = rep.Id,
-            Message = $"Replacement {number} raised — {np.Name} ×{newQty} deducted at {branch}. "
-                + "The returned item is now in Inventory → Returns to restock for a put-back / write-off decision."
+            Message = $"Replacement {number} raised — {np.Name} ×{newQty} deducted at {branch}. " + tail
         };
     }
 
