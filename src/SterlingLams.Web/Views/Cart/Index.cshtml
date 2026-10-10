@@ -92,7 +92,7 @@
                 {
                     <div id="discount-line" class="flex justify-between text-sm mb-2">
                         <span class="text-emerald-600">@(Model.IsAutomaticDiscount ? "Promo" : "Discount") (@Model.DiscountDescription)</span>
-                        <span id="discount-amount-display" class="text-emerald-600">@(Model.FreeShipping && Model.DiscountAmount == 0 ? "Free shipping" : Model.FormattedDiscount)</span>
+                        <span id="discount-amount-display" class="text-emerald-600">@(Model.FreeShipping && Model.DiscountAmount == 0 ? "Free standard delivery" : Model.FormattedDiscount)</span>
                     </div>
                 }
                 else

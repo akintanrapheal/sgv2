@@ -190,6 +190,7 @@
                     <div id="delivery-options-section" class="mt-8 hidden">
                         <h3 class="text-xs tracking-[0.2em] uppercase text-neutral-500 mb-4">Select Delivery Option</h3>
                         <div id="delivery-options-grid" class="grid grid-cols-1 gap-3 sm:grid-cols-2"></div>
+                        <p id="free-ship-msg" class="hidden mt-3 text-xs leading-snug rounded-md bg-amber-50 border border-amber-200 text-amber-800 px-3 py-2"></p>
                         <p id="delivery-error" class="text-xs text-red-500 mt-2 hidden">Please choose a delivery option.</p>
                         <p id="delivery-fee-confirm" class="hidden mt-3 text-sm font-semibold" style="color:#ed028b"></p>
                         <p id="delivery-zone-note" class="text-xs text-neutral-400 mt-3"></p>
@@ -278,7 +279,7 @@
                         </div>
                         <div id="co-discount-line" class="flex justify-between text-sm @(Model.HasDiscount ? "" : "hidden")">
                             <span class="text-emerald-600 font-light">Discount (<span id="co-discount-label">@Model.AppliedDiscountCode</span>)</span>
-                            <span id="co-discount-amount" class="text-emerald-600">@(Model.Cart.FreeShipping && Model.DiscountAmount == 0 ? "Free shipping" : Model.FormattedDiscount)</span>
+                            <span id="co-discount-amount" class="text-emerald-600">@(Model.Cart.FreeShipping && Model.DiscountAmount == 0 ? "Free standard delivery" : Model.FormattedDiscount)</span>
                         </div>
 
                         @* Discount-code entry — so a customer who skipped the cart can still apply a code here. *@
@@ -419,16 +420,21 @@ const SUBTOTAL = @Model.Subtotal.ToString("F2", System.Globalization.CultureInfo
 let DISCOUNT = @Model.DiscountAmount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 let FREE_SHIPPING = @(Model.Cart.FreeShipping ? "true" : "false");
 let FREE_SHIPPING_LA_ONLY = @(Model.Cart.FreeShippingLagosAbujaOnly ? "true" : "false");
-// Free shipping applies to this order? It only covers Glams Standard Delivery (3–5 working days) — a
-// customer who upgrades to Priority or Same-Day pays for that. A Lagos/Abuja-only voucher additionally
-// waives the fee only for those zones.
-function freeShippingAppliesHere() {
+// The free-shipping voucher is valid for THIS address (voucher present, and for a Lagos/Abuja-only
+// voucher, the address is in those zones). Independent of which delivery option is selected — this is
+// what decides whether the Standard option is shown as free.
+function freeShipEligibleHere() {
     if (!FREE_SHIPPING) return false;
-    var selType = (document.getElementById('selected-delivery-type')?.value || '').toLowerCase();
-    if (selType !== 'standard') return false;
     if (!FREE_SHIPPING_LA_ONLY) return true;
     var k = stateKeyFor(currentStateValue() || '');
     return k === 'Lagos' || k === 'Abuja';
+}
+// The fee is actually waived? Only when the voucher is eligible here AND the chosen option is Glams
+// Standard (3–5 working days). Upgrading to Priority or Same-Day is still charged.
+function freeShippingAppliesHere() {
+    if (!freeShipEligibleHere()) return false;
+    var selType = (document.getElementById('selected-delivery-type')?.value || '').toLowerCase();
+    return selType === 'standard';
 }
 const LOYALTY_DISCOUNT = @Model.LoyaltyMaxDiscount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 let CURRENT_FEE = 0;
@@ -561,7 +567,15 @@ function renderDeliveryOptions(options, key, zoneName) {
         // One clean price: the "from ₦" starting price (floor). The exact zone fee is still applied to
         // the order total when the option is picked (data-fee below).
         const floor = (opt.from && Number(opt.from) > 0) ? Number(opt.from) : Number(opt.fee);
-        const priceHtml = `<span class="text-[11px] uppercase tracking-wider text-neutral-400 font-bold mr-1">from</span>&#8358;${floor.toLocaleString()}`;
+        // A free-delivery voucher only covers Glams Standard — show that option as FREE with a note,
+        // so it's obvious which method the discount applies to.
+        const freeHere = freeShipEligibleHere() && opt.type === 'Standard';
+        const priceHtml = freeHere
+            ? `<span class="font-semibold" style="color:#059669">FREE</span>`
+            : `<span class="text-[11px] uppercase tracking-wider text-neutral-400 font-bold mr-1">from</span>&#8358;${floor.toLocaleString()}`;
+        const freeNoteHtml = freeHere
+            ? `<p class="text-xs font-semibold mt-1" style="color:#059669">Free with your discount code</p>`
+            : '';
         // Per-method plain SVG line icon (⚡ same-day, 🚚 priority, 📦 standard).
         const iconPaths = {
             SameDay:  '<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z"/>',
@@ -578,6 +592,7 @@ function renderDeliveryOptions(options, key, zoneName) {
                     <p class="text-[15px] font-semibold text-neutral-900 whitespace-nowrap">${priceHtml}</p>
                 </div>
                 <p class="text-xs font-semibold text-neutral-500 mt-1">${opt.timeframe}</p>
+                ${freeNoteHtml}
                 ${noteHtml}
             </div>
         `;
@@ -630,18 +645,55 @@ function selectDeliveryType(type, fee) {
     updateSummary(fee, !type);
     if (type) document.getElementById('delivery-error')?.classList.add('hidden');
 
+    var waived = freeShippingAppliesHere();   // voucher eligible AND Standard chosen
+
+    // A free-delivery voucher only covers Glams Standard. If one is active and the customer picks a
+    // faster (paid) option, say so plainly and point them back to Standard.
+    var msgEl = document.getElementById('free-ship-msg');
+    if (msgEl) {
+        if (freeShipEligibleHere() && type && type.toLowerCase() !== 'standard') {
+            msgEl.textContent = 'Your free-delivery code only covers Glams Standard Delivery (3–5 working days). '
+                + 'Choose Glams Standard Delivery for ₦0 delivery — Glams Priority and Same-Day are charged separately.';
+            msgEl.classList.remove('hidden');
+        } else {
+            msgEl.classList.add('hidden');
+        }
+    }
+
     // Confirm the EXACT delivery cost for the customer's chosen area, e.g. "Delivery to Festac — ₦5,500".
     var confirmEl = document.getElementById('delivery-fee-confirm');
     if (confirmEl) {
         var placeEl = document.getElementById('city-input');
         var place = (placeEl && placeEl.value.trim()) || currentStateValue() || 'your area';
         if (type) {
-            confirmEl.textContent = Number(fee) > 0
-                ? `Delivery to ${place} — ₦${Number(fee).toLocaleString()}`
-                : `Free delivery to ${place}`;
+            confirmEl.textContent = waived
+                ? `Free delivery to ${place} with your discount code`
+                : (Number(fee) > 0
+                    ? `Delivery to ${place} — ₦${Number(fee).toLocaleString()}`
+                    : `Free delivery to ${place}`);
             confirmEl.classList.remove('hidden');
         } else {
             confirmEl.classList.add('hidden');
+        }
+    }
+}
+
+// Re-render the delivery options (e.g. after a discount is applied/removed on this page) so the Standard
+// "FREE" badge and the warning message update, keeping the current selection.
+function refreshDeliveryOptions() {
+    var ff = document.querySelector('input[name="FulfillmentType"]:checked');
+    if (!ff || ff.value === 'StorePickup') return;         // pickup has no delivery options
+    var state = currentStateValue();
+    if (!state) return;
+    var prevType = document.getElementById('selected-delivery-type').value;
+    onStateChanged(state);                                  // rebuilds the option cards
+    if (prevType) {
+        var el = document.querySelector('.delivery-opt-card input[value="' + prevType + '"]');
+        if (el && !el.disabled) {
+            document.querySelectorAll('.delivery-opt-card').forEach(function (c) { setOptionSelected(c, false); });
+            setOptionSelected(el.closest('.delivery-opt-card'), true);
+            el.checked = true;
+            el.dispatchEvent(new Event('change'));         // re-runs selectDeliveryType → fee + messages
         }
     }
 }
@@ -750,12 +802,13 @@ function validateDeliveryFields() {
                     FREE_SHIPPING = !!data.freeShipping;
                     FREE_SHIPPING_LA_ONLY = !!data.freeShippingLaOnly;
                     if (lineLabel) lineLabel.textContent = data.code;
-                    if (lineAmt) lineAmt.textContent = (data.freeShipping && (!data.discountAmount)) ? 'Free shipping' : data.discount;
+                    if (lineAmt) lineAmt.textContent = (data.freeShipping && (!data.discountAmount)) ? 'Free standard delivery' : data.discount;
                     if (line) line.classList.remove('hidden');
                     if (appliedLabel) appliedLabel.textContent = data.code;
                     if (appliedDesc) appliedDesc.textContent = data.description || '';
                     if (appliedEl) appliedEl.classList.remove('hidden');
                     if (inputWrap) inputWrap.classList.add('hidden');
+                    refreshDeliveryOptions();   // show the Standard "FREE" badge / warning for the new voucher
                     updateSummary(CURRENT_FEE);
                 }).catch(function () { applyBtn.disabled = false; applyBtn.textContent = 'Apply'; if (errorEl) { errorEl.textContent = 'Could not apply the code. Try again.'; errorEl.classList.remove('hidden'); } });
             });
@@ -771,6 +824,7 @@ function validateDeliveryFields() {
                     if (appliedEl) appliedEl.classList.add('hidden');
                     if (inputWrap) inputWrap.classList.remove('hidden');
                     if (input) input.value = '';
+                    refreshDeliveryOptions();   // drop the Standard "FREE" badge / warning now the voucher is gone
                     updateSummary(CURRENT_FEE);
                 });
             });
