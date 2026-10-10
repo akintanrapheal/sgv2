@@ -64,16 +64,19 @@ public class ReplacementService : IReplacementService
         var storeId = order.FulfillingStoreId ?? order.PickupStoreId ?? 0;
         if (storeId <= 0) return Fail("This order has no branch, so stock can't be moved. Add a fulfilling branch first.");
 
-        // Resolve the replacement item's name/variant (for the record + history), validating it exists.
+        // Resolve the replacement item's name/variant/SKU (for the record, history, and the line swap below).
         var np = await _db.Products.Where(p => p.Id == newProductId)
-            .Select(p => new { p.Id, p.Name }).FirstOrDefaultAsync();
+            .Select(p => new { p.Id, p.Name, p.Sku }).FirstOrDefaultAsync();
         if (np == null) return Fail("Replacement product not found.");
         string? newVariantName = null;
+        string? newSku = np.Sku;
         if (newVariantId is int vid && vid > 0)
         {
-            newVariantName = await _db.ProductVariants.Where(v => v.Id == vid && v.ProductId == newProductId)
-                .Select(v => v.Name).FirstOrDefaultAsync();
-            if (newVariantName == null) return Fail("Replacement variant not found on that product.");
+            var nv = await _db.ProductVariants.Where(v => v.Id == vid && v.ProductId == newProductId)
+                .Select(v => new { v.Name, v.Sku }).FirstOrDefaultAsync();
+            if (nv == null) return Fail("Replacement variant not found on that product.");
+            newVariantName = nv.Name;
+            newSku = string.IsNullOrWhiteSpace(nv.Sku) ? np.Sku : nv.Sku;
         }
         else newVariantId = null;
 
@@ -152,10 +155,27 @@ public class ReplacementService : IReplacementService
 
             var newLabel = $"{np.Name}{(newVariantName != null ? $" ({newVariantName})" : "")}";
             var oldLabel = $"{bad.ProductName}{(bad.VariantName != null ? $" ({bad.VariantName})" : "")}";
+
+            // Swap the order LINE to the replacement item so every screen that reads the order (admin order
+            // detail, the EPOS pack/collect view, receipts, labels) shows what the customer is actually
+            // getting — not the item they no longer want. Only for a clean whole-line 1:1 swap; price and
+            // quantity are kept so the paid total is unchanged (replacements never refund). The original
+            // item is preserved on the OrderReplacement record + the note below.
+            var lineSwapped = rep.OldQuantity == bad.Quantity && newQty == bad.Quantity;
+            if (lineSwapped)
+            {
+                bad.ProductId = np.Id;
+                bad.ProductVariantId = newVariantId;
+                bad.ProductName = np.Name;
+                bad.VariantName = newVariantName;
+                bad.ProductSku = newSku;
+            }
+
             OrderNotes.AddSystem(_db, order.Id,
                 $"Replacement {number}: {oldLabel} ×{rep.OldQuantity} → {newLabel} ×{newQty}"
                 + (rep.Reason != null ? $" ({rep.Reason})" : "")
                 + $". New item stock deducted at {branch}; {returnedFate}."
+                + (lineSwapped ? " Order line updated to the new item." : " Order line left unchanged (partial/qty-mismatch replacement).")
                 + (rep.BalancePaid > 0 ? $" Balance paid ₦{rep.BalancePaid:N0}{(rep.BalanceNote != null ? $" — {rep.BalanceNote}" : "")}." : ""));
 
             order.UpdatedAt = now;

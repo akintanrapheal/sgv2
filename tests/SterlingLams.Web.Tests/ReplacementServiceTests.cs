@@ -79,6 +79,29 @@ public class ReplacementServiceTests
     }
 
     [Fact]
+    public async Task Create_swaps_the_order_line_to_the_replacement_item()
+    {
+        using var t = new TestDb();
+        var store = t.SeedStore("Ikota", "Lagos", "Ajah");
+        var user = t.SeedUser();
+        var bad = t.SeedProduct();
+        var rep = t.SeedProduct();
+        t.SetStock(rep.Id, store.Id, onHand: 5);
+        var order = PaidOrder(t, user, store, bad, qty: 1);
+        var lineId = order.Items.First().Id;
+
+        var res = await Svc(t).CreateAsync(order.Id, lineId, rep.Id, null,
+            newQty: 1, reason: "changed mind", balancePaid: 0, balanceNote: null, userId: "u1", userName: "Staff");
+
+        Assert.True(res.Success, res.Message);
+        // The order line now points at the replacement product, so every order view shows the new item.
+        var line = t.Db.OrderItems.Single(i => i.Id == lineId);
+        Assert.Equal(rep.Id, line.ProductId);
+        Assert.Equal(rep.Name, line.ProductName);
+        Assert.Equal(1, line.Quantity);   // quantity + price untouched (no refund)
+    }
+
+    [Fact]
     public async Task Create_with_writeoff_disposition_nets_the_returned_item_to_zero_and_logs_damage()
     {
         using var t = new TestDb();
