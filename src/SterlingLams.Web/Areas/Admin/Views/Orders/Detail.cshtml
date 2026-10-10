@@ -288,6 +288,14 @@
                                class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-neutral-400" />
                         <input name="reason" type="text" placeholder="Reason — why the item can't be kept (optional)"
                                class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-neutral-400" />
+                        <div class="pt-1">
+                            <label class="block text-[11px] text-neutral-500 mb-1">Returned item — what to do with it</label>
+                            <div class="flex flex-col gap-1.5 text-xs text-neutral-700">
+                                <label class="inline-flex items-center gap-2"><input type="radio" name="returnDisposition" value="restock" checked /> Put it back in stock (restock now)</label>
+                                <label class="inline-flex items-center gap-2"><input type="radio" name="returnDisposition" value="writeoff" /> Write off — damaged (don't restock)</label>
+                                <label class="inline-flex items-center gap-2"><input type="radio" name="returnDisposition" value="later" /> Decide later (send to Inventory → Returns)</label>
+                            </div>
+                        </div>
                         <button type="submit"
                                 class="w-full py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-black transition-colors">
                             Raise replacement
@@ -351,7 +359,11 @@
                         if (+pidEl.value <= 0) { alert('Pick a replacement item first.'); return false; }
                         if (+qtyEl.value <= 0) { alert('Enter a quantity.'); return false; }
                         if (chosenStock > 0 && +qtyEl.value > chosenStock) { alert('Only ' + chosenStock + ' in stock at this branch.'); return false; }
-                        return confirm('Raise this replacement? The replacement item\'s stock will be deducted now.');
+                        var disp = (document.querySelector('input[name="returnDisposition"]:checked') || {}).value || 'restock';
+                        var fate = disp === 'writeoff' ? 'written off as damaged (not restocked)'
+                                 : disp === 'later' ? 'sent to Inventory → Returns to decide later'
+                                 : 'put back in stock (restocked now)';
+                        return confirm('Raise this replacement?\n\nThe new item\'s stock is deducted now, and the returned item will be ' + fate + '.');
                     };
                 })();
             </script>

@@ -39,8 +39,10 @@ public class ReplacementServiceTests
         t.SetStock(rep.Id, store.Id, onHand: 5);
         var order = PaidOrder(t, user, store, bad, qty: 3);
 
+        // "Decide later" disposition leaves the returned item for Inventory → Returns.
         var res = await Svc(t).CreateAsync(order.Id, order.Items.First().Id, rep.Id, null,
-            newQty: 2, reason: "tarnished", balancePaid: 0, balanceNote: null, userId: "u1", userName: "Staff");
+            newQty: 2, reason: "tarnished", balancePaid: 0, balanceNote: null, userId: "u1", userName: "Staff",
+            returnDisposition: RestockDecision.Pending);
 
         Assert.True(res.Success, res.Message);
         Assert.Equal(3, t.Inv(rep.Id, store.Id).QuantityOnHand);   // 5 − 2 sent out
@@ -50,6 +52,52 @@ public class ReplacementServiceTests
         Assert.Equal(2, row.NewQuantity);
         Assert.Equal(2, row.OldQuantity);                          // capped at the ordered qty (3) → 2
         Assert.Equal(store.Id, row.StoreId);
+    }
+
+    [Fact]
+    public async Task Create_with_restock_disposition_puts_the_returned_item_back_now()
+    {
+        using var t = new TestDb();
+        var store = t.SeedStore("Ikota", "Lagos", "Ajah");
+        var user = t.SeedUser();
+        var bad = t.SeedProduct();
+        var rep = t.SeedProduct();
+        t.SetStock(rep.Id, store.Id, onHand: 5);
+        t.SetStock(bad.Id, store.Id, onHand: 0);
+        var order = PaidOrder(t, user, store, bad, qty: 1);
+
+        // Default disposition (restock): the returned item goes straight back on the shelf.
+        var res = await Svc(t).CreateAsync(order.Id, order.Items.First().Id, rep.Id, null,
+            newQty: 1, reason: null, balancePaid: 0, balanceNote: null, userId: "u1", userName: "Staff");
+
+        Assert.True(res.Success, res.Message);
+        Assert.Equal(4, t.Inv(rep.Id, store.Id).QuantityOnHand);   // 5 − 1 sent out
+        Assert.Equal(1, t.Inv(bad.Id, store.Id).QuantityOnHand);   // returned item restocked immediately
+        var row = t.Db.OrderReplacements.Single();
+        Assert.Equal(RestockDecision.Restocked, row.RestockDecision);
+        Assert.Equal(1, row.RestockedQuantity);
+    }
+
+    [Fact]
+    public async Task Create_with_writeoff_disposition_nets_the_returned_item_to_zero_and_logs_damage()
+    {
+        using var t = new TestDb();
+        var store = t.SeedStore("Ikota", "Lagos", "Ajah");
+        var user = t.SeedUser();
+        var bad = t.SeedProduct();
+        var rep = t.SeedProduct();
+        t.SetStock(rep.Id, store.Id, onHand: 5);
+        t.SetStock(bad.Id, store.Id, onHand: 0);
+        var order = PaidOrder(t, user, store, bad, qty: 1);
+
+        var res = await Svc(t).CreateAsync(order.Id, order.Items.First().Id, rep.Id, null,
+            newQty: 1, reason: "tarnished", balancePaid: 0, balanceNote: null, userId: "u1", userName: "Staff",
+            returnDisposition: RestockDecision.WrittenOff);
+
+        Assert.True(res.Success, res.Message);
+        Assert.Equal(0, t.Inv(bad.Id, store.Id).QuantityOnHand);   // in then written off → nets to zero
+        Assert.True(t.Db.StockMovements.Any(m => m.ProductId == bad.Id && m.Type == StockMovementType.Damage));
+        Assert.Equal(RestockDecision.WrittenOff, t.Db.OrderReplacements.Single().RestockDecision);
     }
 
     [Fact]
@@ -83,7 +131,8 @@ public class ReplacementServiceTests
         t.SetStock(bad.Id, store.Id, onHand: 0);
         var order = PaidOrder(t, user, store, bad, qty: 1);
         var svc = Svc(t);
-        await svc.CreateAsync(order.Id, order.Items.First().Id, rep.Id, null, 1, null, 0, null, "u1", "Staff");
+        await svc.CreateAsync(order.Id, order.Items.First().Id, rep.Id, null, 1, null, 0, null, "u1", "Staff",
+            returnDisposition: RestockDecision.Pending);
         var repId = t.Db.OrderReplacements.Single().Id;
 
         var res = await svc.ResolveStockAsync(repId, restockQty: 1, reason: null, userId: "inv1");
@@ -107,7 +156,8 @@ public class ReplacementServiceTests
         t.SetStock(bad.Id, store.Id, onHand: 0);
         var order = PaidOrder(t, user, store, bad, qty: 1);
         var svc = Svc(t);
-        await svc.CreateAsync(order.Id, order.Items.First().Id, rep.Id, null, 1, null, 0, null, "u1", "Staff");
+        await svc.CreateAsync(order.Id, order.Items.First().Id, rep.Id, null, 1, null, 0, null, "u1", "Staff",
+            returnDisposition: RestockDecision.Pending);
         var repId = t.Db.OrderReplacements.Single().Id;
 
         var res = await svc.ResolveStockAsync(repId, restockQty: 0, reason: "Damaged", userId: "inv1");
