@@ -419,9 +419,13 @@ const SUBTOTAL = @Model.Subtotal.ToString("F2", System.Globalization.CultureInfo
 let DISCOUNT = @Model.DiscountAmount.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
 let FREE_SHIPPING = @(Model.Cart.FreeShipping ? "true" : "false");
 let FREE_SHIPPING_LA_ONLY = @(Model.Cart.FreeShippingLagosAbujaOnly ? "true" : "false");
-// Free shipping applies to this address? A Lagos/Abuja-only voucher only waives the fee for those zones.
+// Free shipping applies to this order? It only covers Glams Standard Delivery (3–5 working days) — a
+// customer who upgrades to Priority or Same-Day pays for that. A Lagos/Abuja-only voucher additionally
+// waives the fee only for those zones.
 function freeShippingAppliesHere() {
     if (!FREE_SHIPPING) return false;
+    var selType = (document.getElementById('selected-delivery-type')?.value || '').toLowerCase();
+    if (selType !== 'standard') return false;
     if (!FREE_SHIPPING_LA_ONLY) return true;
     var k = stateKeyFor(currentStateValue() || '');
     return k === 'Lagos' || k === 'Abuja';

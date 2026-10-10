@@ -652,7 +652,11 @@ public class CheckoutController : Controller
         decimal deliveryFee = 0;
         if (vm.FulfillmentType == FulfillmentChoice.Delivery)
             deliveryFee = await _zones.CalculateFeeAsync(vm.DeliveryAddress.State, vm.DeliveryAddress.City, vm.SelectedDeliveryType);
-        if (freeShipping) deliveryFee = 0;   // free-shipping discount waives the fee
+        // Free shipping only covers Glams Standard Delivery (3–5 working days). Faster options (Priority,
+        // Same-Day) are never waived — a customer can still upgrade for the difference.
+        bool freeShippingApplies = freeShipping
+            && string.Equals(vm.SelectedDeliveryType, "Standard", StringComparison.OrdinalIgnoreCase);
+        if (freeShippingApplies) deliveryFee = 0;   // free-shipping discount waives the fee
 
         // ── Loyalty redemption ──────────────────────────────────────────────
         // Earmark points + discount now (reduces the amount charged); the actual point deduction
