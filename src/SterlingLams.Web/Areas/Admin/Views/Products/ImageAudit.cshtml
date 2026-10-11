@@ -2,6 +2,8 @@
 @{
     ViewData["Title"] = "Image quality";
     var minWidth = (int)(ViewBag.MinWidth ?? 1000);
+    var stock = (string)(ViewBag.Stock ?? "instock");
+    var scopeLabel = stock == "outofstock" ? "Out-of-stock products" : stock == "all" ? "All products" : "In-stock products";
     string Badge(string sev) => sev == "Low"
         ? "bg-red-50 text-red-700 border-red-200"
         : "bg-amber-50 text-amber-700 border-amber-200";
@@ -26,6 +28,15 @@
                    class="w-40 border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
             <p class="text-[11px] text-neutral-400 mt-1">1000 is a good default (crisp on phones &amp; laptops).</p>
         </div>
+        <div>
+            <label class="block text-xs text-neutral-500 mb-1">Products</label>
+            <select name="stock" class="w-44 border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-neutral-400">
+                <option value="instock" selected="@(stock == "instock")">In stock only</option>
+                <option value="outofstock" selected="@(stock == "outofstock")">Out of stock only</option>
+                <option value="all" selected="@(stock == "all")">All products</option>
+            </select>
+            <p class="text-[11px] text-neutral-400 mt-1">Fix what's live on the website first.</p>
+        </div>
         <input type="hidden" name="run" value="true" />
         <button type="submit" class="px-5 py-2 bg-neutral-900 text-white text-sm rounded-sm hover:bg-black transition-colors">
             Run scan
@@ -35,6 +46,7 @@
     @if (Model != null)
     {
         <div class="text-sm text-neutral-600 mb-4 flex flex-wrap gap-x-6 gap-y-1">
+            <span class="text-neutral-800 font-medium">@scopeLabel</span>
             <span>Checked <strong>@Model.Checked</strong> of @Model.Total images</span>
             <span><strong class="@(Model.Flagged.Count > 0 ? "text-amber-700" : "text-emerald-700")">@Model.Flagged.Count</strong> below @minWidth px</span>
             @if (Model.Unreadable > 0)
@@ -55,8 +67,8 @@
         @if (Model.Flagged.Count == 0)
         {
             <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-6 text-center">
-                <p class="text-sm font-medium text-emerald-800">No blurry images found below @minWidth px.</p>
-                <p class="text-xs text-emerald-700 mt-1">Every active product and variant image is high enough resolution.</p>
+                <p class="text-sm font-medium text-emerald-800">No blurry images below @minWidth px — @scopeLabel.ToLower().</p>
+                <p class="text-xs text-emerald-700 mt-1">Every image in this set is high enough resolution.</p>
             </div>
         }
         else
@@ -70,6 +82,7 @@
                             <th class="px-4 py-2 font-medium">Image</th>
                             <th class="px-4 py-2 font-medium">Delivered size</th>
                             <th class="px-4 py-2 font-medium">Severity</th>
+                            <th class="px-4 py-2 font-medium">Stock</th>
                             <th class="px-4 py-2 font-medium"></th>
                         </tr>
                     </thead>
@@ -91,6 +104,16 @@
                                     <span class="inline-block text-[11px] font-medium px-2 py-0.5 rounded-full border @Badge(item.Severity)">
                                         @(item.Severity == "Low" ? "Very low" : "Soft")
                                     </span>
+                                </td>
+                                <td class="px-4 py-2">
+                                    @if (item.InStock)
+                                    {
+                                        <span class="inline-block text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">In stock</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="inline-block text-[11px] font-medium px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-500 border border-neutral-200">Out</span>
+                                    }
                                 </td>
                                 <td class="px-4 py-2 text-right">
                                     <a href="@item.Url" target="_blank" rel="noopener" class="text-xs text-neutral-400 hover:text-neutral-700">Open ↗</a>

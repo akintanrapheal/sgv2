@@ -51,13 +51,14 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         /// <summary>Image quality audit: lists active product/variant images whose delivered resolution is
         /// too low (blurry on the storefront) so they can be re-uploaded. On-demand (?run=1) since it
         /// fetches every image.</summary>
-        public async Task<IActionResult> ImageAudit(bool run = false, int minWidth = 1000, CancellationToken ct = default)
+        public async Task<IActionResult> ImageAudit(bool run = false, int minWidth = 1000, string stock = "instock", CancellationToken ct = default)
         {
             ViewData["Title"] = "Image quality";
             if (minWidth < 200) minWidth = 200;
             if (minWidth > 2000) minWidth = 2000;
             ViewBag.MinWidth = minWidth;
-            SterlingLams.Web.Services.ImageAuditResult? result = run ? await _imageAudit.ScanAsync(minWidth, ct: ct) : null;
+            ViewBag.Stock = stock;
+            SterlingLams.Web.Services.ImageAuditResult? result = run ? await _imageAudit.ScanAsync(minWidth, stockFilter: stock, ct: ct) : null;
             return View(result);
         }
 
