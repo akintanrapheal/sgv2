@@ -34,6 +34,12 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IRefundApprovalService, RefundApprovalService>();
         services.AddScoped<IReplacementService, ReplacementService>();
         services.AddScoped<IStorefrontCache, StorefrontCache>();
+        services.AddScoped<IImageAuditService, ImageAuditService>();
+        services.AddHttpClient("imageaudit", c =>
+        {
+            c.Timeout = TimeSpan.FromSeconds(15);
+            c.DefaultRequestHeaders.UserAgent.ParseAdd("SterlinGlams-ImageAudit/1.0");
+        });
 
         // ─── Logistics (Lagos delivery) integration — order push + delivered callback ──
         services.Configure<SterlingLams.Web.Services.Logistics.LogisticsOptions>(configuration.GetSection("Logistics"));
