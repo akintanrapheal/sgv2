@@ -27,6 +27,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         private const int PageSize = 30;
 
         private readonly SterlingLams.Web.Services.IImageStorageService _imageStorage;
+        private readonly SterlingLams.Web.Services.IImageAuditService _imageAudit;
         public ProductsController(
             ApplicationDbContext db,
             IWooCommerceImportService wooImporter,
@@ -34,7 +35,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             IConfiguration config,
             IStorefrontCache storefrontCache,
             SeoDescriptionGenerator seo,
-            SterlingLams.Web.Services.IImageStorageService imageStorage)
+            SterlingLams.Web.Services.IImageStorageService imageStorage,
+            SterlingLams.Web.Services.IImageAuditService imageAudit)
         {
             _db = db;
             _wooImporter = wooImporter;
@@ -43,6 +45,20 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             _storefrontCache = storefrontCache;
             _seo = seo;
             _imageStorage = imageStorage;
+            _imageAudit = imageAudit;
+        }
+
+        /// <summary>Image quality audit: lists active product/variant images whose delivered resolution is
+        /// too low (blurry on the storefront) so they can be re-uploaded. On-demand (?run=1) since it
+        /// fetches every image.</summary>
+        public async Task<IActionResult> ImageAudit(bool run = false, int minWidth = 1000, CancellationToken ct = default)
+        {
+            ViewData["Title"] = "Image quality";
+            if (minWidth < 200) minWidth = 200;
+            if (minWidth > 2000) minWidth = 2000;
+            ViewBag.MinWidth = minWidth;
+            SterlingLams.Web.Services.ImageAuditResult? result = run ? await _imageAudit.ScanAsync(minWidth, ct: ct) : null;
+            return View(result);
         }
 
         public async Task<IActionResult> Index(

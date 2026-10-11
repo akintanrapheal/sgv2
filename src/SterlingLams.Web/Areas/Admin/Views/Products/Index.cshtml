@@ -47,6 +47,11 @@
             <button type="submit" class="hidden"></button>
         </form>
     }
+    <a asp-area="Admin" asp-controller="Products" asp-action="ImageAudit"
+       class="px-4 py-2 border border-neutral-300 text-neutral-600 text-xs rounded-sm hover:border-neutral-500 transition-colors"
+       title="Find blurry (low-resolution) product images">
+        ◎ Image quality
+    </a>
     <a asp-area="Admin" asp-controller="Products" asp-action="Create"
        class="px-4 py-2 bg-neutral-900 text-white text-xs rounded-sm hover:bg-neutral-700 transition-colors">
         + New Product
