@@ -7,7 +7,7 @@ using SterlingLams.Web.Infrastructure;
 namespace SterlingLams.Web.Services;
 
 /// <summary>One image that a customer sees, with the resolution actually delivered to the storefront.</summary>
-public record ImageAuditItem(int ProductId, string ProductName, string Label, string Url, int Width, int Height, string Severity);
+public record ImageAuditItem(int ProductId, string ProductName, string Label, string Url, int Width, int Height, string Severity, bool InStock);
 
 public class ImageAuditResult
 {
@@ -17,16 +17,18 @@ public class ImageAuditResult
     public int Unreadable { get; set; }
     public bool Partial { get; set; }
     public int MinWidth { get; set; }
+    public string StockFilter { get; set; } = "instock";
     public long ElapsedMs { get; set; }
 }
 
 public interface IImageAuditService
 {
-    /// <summary>Fetches every active product + variant image at the size the product page requests and
-    /// flags any whose DELIVERED width is below <paramref name="minWidth"/> — i.e. the original upload is
-    /// too small, so it looks soft (the pipeline never upscales). Bounded by time + image count so an
-    /// admin request can't run away.</summary>
-    Task<ImageAuditResult> ScanAsync(int minWidth = 1000, int maxImages = 4000, CancellationToken ct = default);
+    /// <summary>Fetches active product + variant images at the size the product page requests and flags any
+    /// whose DELIVERED width is below <paramref name="minWidth"/> — i.e. the original upload is too small, so
+    /// it looks soft (the pipeline never upscales). <paramref name="stockFilter"/> ("instock" / "outofstock"
+    /// / "all") narrows it to products with (or without) sellable stock in a public store, so you can fix the
+    /// live catalogue first. Bounded by time + image count so an admin request can't run away.</summary>
+    Task<ImageAuditResult> ScanAsync(int minWidth = 1000, int maxImages = 4000, string stockFilter = "instock", CancellationToken ct = default);
 }
 
 public class ImageAuditService : IImageAuditService
@@ -49,27 +51,35 @@ public class ImageAuditService : IImageAuditService
         _log = log;
     }
 
-    public async Task<ImageAuditResult> ScanAsync(int minWidth = 1000, int maxImages = 4000, CancellationToken ct = default)
+    public async Task<ImageAuditResult> ScanAsync(int minWidth = 1000, int maxImages = 4000, string stockFilter = "instock", CancellationToken ct = default)
     {
         var sw = Stopwatch.StartNew();
-        var result = new ImageAuditResult { MinWidth = minWidth };
+        stockFilter = stockFilter?.ToLowerInvariant() switch { "outofstock" => "outofstock", "all" => "all", _ => "instock" };
+        var result = new ImageAuditResult { MinWidth = minWidth, StockFilter = stockFilter };
 
-        var products = await _db.Products
-            .Where(p => p.IsActive)
-            .OrderBy(p => p.Name)
-            .Select(p => new
-            {
-                p.Id,
-                p.Name,
-                Images = p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder).Select(i => i.Url).ToList(),
-                Variants = p.Variants.Where(v => v.IsActive && v.ImageUrl != null && v.ImageUrl != "")
-                    .Select(v => new { v.Name, Url = v.ImageUrl! }).ToList(),
-            })
-            .ToListAsync(ct);
+        // "In stock" = at least one sellable unit (on-hand minus reserved) in a store the storefront shows
+        // (active + public) — the same availability the customer sees.
+        var publicStoreIds = await _db.Stores.Where(s => s.IsActive && s.IsPublic).Select(s => s.Id).ToListAsync(ct);
+
+        var query = _db.Products.Where(p => p.IsActive).Select(p => new
+        {
+            p.Id,
+            p.Name,
+            InStock = _db.StoreInventories.Any(si => si.ProductId == p.Id
+                && publicStoreIds.Contains(si.StoreId) && (si.QuantityOnHand - si.QuantityReserved) > 0),
+            Images = p.Images.OrderByDescending(i => i.IsPrimary).ThenBy(i => i.SortOrder).Select(i => i.Url).ToList(),
+            Variants = p.Variants.Where(v => v.IsActive && v.ImageUrl != null && v.ImageUrl != "")
+                .Select(v => new { v.Name, Url = v.ImageUrl! }).ToList(),
+        });
+
+        if (stockFilter == "instock") query = query.Where(p => p.InStock);
+        else if (stockFilter == "outofstock") query = query.Where(p => !p.InStock);
+
+        var products = await query.OrderBy(p => p.Name).ToListAsync(ct);
 
         // Flatten to the distinct set of (product, label, source URL) we need to measure. De-dup by URL per
         // product so a variant that reuses the main photo isn't fetched twice.
-        var targets = new List<(int ProductId, string ProductName, string Label, string RawUrl)>();
+        var targets = new List<(int ProductId, string ProductName, bool InStock, string Label, string RawUrl)>();
         foreach (var p in products)
         {
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -77,12 +87,12 @@ public class ImageAuditService : IImageAuditService
             {
                 var url = p.Images[i];
                 if (string.IsNullOrWhiteSpace(url) || !seen.Add(url)) continue;
-                targets.Add((p.Id, p.Name, i == 0 ? "Main image" : $"Image {i + 1}", url));
+                targets.Add((p.Id, p.Name, p.InStock, i == 0 ? "Main image" : $"Image {i + 1}", url));
             }
             foreach (var v in p.Variants)
             {
                 if (!seen.Add(v.Url)) continue;
-                targets.Add((p.Id, p.Name, $"Colour: {v.Name}", v.Url));
+                targets.Add((p.Id, p.Name, p.InStock, $"Colour: {v.Name}", v.Url));
             }
         }
 
@@ -118,7 +128,7 @@ public class ImageAuditService : IImageAuditService
                 if (w < minWidth)
                 {
                     var severity = w < 600 ? "Low" : "Soft";
-                    flagged.Add(new ImageAuditItem(t.ProductId, t.ProductName, t.Label, t.RawUrl, w, h, severity));
+                    flagged.Add(new ImageAuditItem(t.ProductId, t.ProductName, t.Label, t.RawUrl, w, h, severity, t.InStock));
                 }
             }
             catch (OperationCanceledException) { /* budget hit — reported as Partial below */ }
