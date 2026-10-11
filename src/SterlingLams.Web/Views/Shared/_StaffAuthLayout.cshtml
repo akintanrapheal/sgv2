@@ -1,3 +1,5 @@
+@inject SterlingLams.Web.Services.ISettingsService Settings
+@{ var devCredit = await Settings.GetAsync("general.dev_credit", "Developed by Rapheal"); }
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -24,7 +26,7 @@
             @RenderBody()
         </div>
         <p class="text-center text-[11px] text-neutral-500 mt-6">Sterlin Glams Inventory &amp; Admin · authorised staff only</p>
-        <p class="text-center text-[10px] tracking-[0.28em] uppercase text-neutral-500 mt-3">Developed by Rapheal · &copy; @DateTime.UtcNow.Year</p>
+        <p class="text-center text-[10px] tracking-[0.28em] uppercase text-neutral-500 mt-3">@(string.IsNullOrWhiteSpace(devCredit) ? "" : devCredit + " · ")&copy; @DateTime.UtcNow.Year</p>
     </div>
     <script src="~/js/app.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
