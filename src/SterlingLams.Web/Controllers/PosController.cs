@@ -1682,6 +1682,29 @@ public class PosController : Controller
         return View(order);
     }
 
+    // 4x6" shipping label for a delivery order, available to the cashier at the EPOS — the SAME label the
+    // admin order page prints (the view is self-contained, so it's rendered directly from here). Auto-prints.
+    [Authorize, HttpGet]
+    public async Task<IActionResult> ShippingLabel(int id)
+    {
+        var order = await _db.Orders
+            .Include(o => o.Items)
+            .Include(o => o.DeliveryAddress)
+            .Include(o => o.FulfillingStore)
+            .Include(o => o.PickupStore)
+            .Include(o => o.User).Include(o => o.Customer)
+            .FirstOrDefaultAsync(o => o.Id == id);
+        if (order == null) return NotFound();
+        // The "From" branch: fulfilling branch, else pickup branch, else the first active branch.
+        var fromStore = order.FulfillingStore ?? order.PickupStore
+            ?? await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Id).FirstOrDefaultAsync();
+        ViewBag.FromStore = fromStore;
+        using (var qrGen = new QRCoder.QRCodeGenerator())
+        using (var qrData = qrGen.CreateQrCode(order.OrderNumber, QRCoder.QRCodeGenerator.ECCLevel.M))
+            ViewBag.QrDataUri = "data:image/png;base64," + System.Convert.ToBase64String(new QRCoder.PngByteQRCode(qrData).GetGraphic(6));
+        return View("~/Areas/Admin/Views/Orders/ShippingLabel.cshtml", order);
+    }
+
     // Lightweight poll for the fulfilment badge + "new order to pack" toast (see the Sell screen).
     [Authorize, HttpGet]
     public async Task<IActionResult> FulfilPoll(long sinceTicks = 0)
