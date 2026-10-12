@@ -454,6 +454,14 @@
                     <p class="text-[11px] text-neutral-400 mt-1">Stored encrypted; never shown back.</p>
                 </div>
             </div>
+            <label class="flex items-start gap-2.5 pt-1 cursor-pointer">
+                <input type="checkbox" name="cloudinary.disabled" value="true" @(Model.CloudinaryDisabled ? "checked" : "")
+                       class="mt-0.5 h-4 w-4 rounded border-neutral-300 text-brand-600 focus:ring-brand-500" />
+                <span class="text-sm text-neutral-700">
+                    Turn Cloudinary <b>OFF</b> (use R2 only)
+                    <span class="block text-[11px] text-neutral-400 mt-0.5">For testing: stops new uploads from using Cloudinary so you can confirm Cloudflare R2 works on its own — a failed R2 upload fails visibly instead of quietly falling back to Cloudinary. Existing Cloudinary images still display. Leave off for normal running.</span>
+                </span>
+            </label>
         </section>
 
         @* ─── Retainful (email marketing / win-back) ───────────────────────────── *@
