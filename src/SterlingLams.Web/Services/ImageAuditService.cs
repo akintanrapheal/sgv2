@@ -33,9 +33,6 @@ public interface IImageAuditService
 
 public class ImageAuditService : IImageAuditService
 {
-    // The product-detail main image requests this width (Detail.cshtml → Img.Cld(url, 1000) → 1280 bucket),
-    // so measuring at the same width tells us exactly what the customer gets.
-    private const int RequestWidth = 1280;
     private const int Concurrency = 16;
     private static readonly TimeSpan Budget = TimeSpan.FromSeconds(90);
     private static readonly TimeSpan PerRequest = TimeSpan.FromSeconds(10);
@@ -153,13 +150,14 @@ public class ImageAuditService : IImageAuditService
         return result;
     }
 
-    /// <summary>Fetches the image at the storefront's request width and reads its pixel size from the file
-    /// header only (a 64 KB range is enough for JPEG/PNG/WebP), falling back to a full fetch if the server
-    /// ignores Range or the header spans further.</summary>
+    /// <summary>Reads an image's ORIGINAL pixel size from its source bytes (header only — a 64 KB range is
+    /// enough for JPEG/PNG/WebP). It fetches the source directly, NOT the storefront delivery URL, so it
+    /// never triggers a Cloudflare on-the-fly transform (which would time out with a 524 and burn transform
+    /// quota when run across the whole catalogue).</summary>
     private async Task<(int Width, int Height)> MeasureAsync(string rawUrl, CancellationToken ct)
     {
-        var delivered = Img.Cld(rawUrl, RequestWidth) ?? rawUrl;
-        if (string.IsNullOrWhiteSpace(delivered) || !delivered.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        var measureUrl = OriginalUrl(rawUrl);
+        if (string.IsNullOrWhiteSpace(measureUrl) || !measureUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
             return (0, 0); // local/placeholder — can't measure
 
         var client = _httpFactory.CreateClient("imageaudit");
@@ -170,7 +168,7 @@ public class ImageAuditService : IImageAuditService
         // 1) Header-only range fetch.
         try
         {
-            using var req = new HttpRequestMessage(HttpMethod.Get, delivered);
+            using var req = new HttpRequestMessage(HttpMethod.Get, measureUrl);
             req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 65_535);
             using var res = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, reqCts.Token).ConfigureAwait(false);
             if (res.IsSuccessStatusCode)
@@ -186,12 +184,28 @@ public class ImageAuditService : IImageAuditService
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
         catch { /* fall through to a full fetch */ }
 
-        // 2) Full fetch fallback.
+        // 2) Full fetch fallback — does NOT throw on a non-success status, so a stray 5xx/timeout is counted
+        //    as "unreadable" rather than surfacing as an error (and reaching Sentry).
         using var reqCts2 = CancellationTokenSource.CreateLinkedTokenSource(ct);
         reqCts2.CancelAfter(PerRequest);
-        var bytes = await client.GetByteArrayAsync(delivered, reqCts2.Token).ConfigureAwait(false);
+        using var req2 = new HttpRequestMessage(HttpMethod.Get, measureUrl);
+        using var res2 = await client.SendAsync(req2, HttpCompletionOption.ResponseHeadersRead, reqCts2.Token).ConfigureAwait(false);
+        if (!res2.IsSuccessStatusCode) return (0, 0);
+        var bytes = await res2.Content.ReadAsByteArrayAsync(reqCts2.Token).ConfigureAwait(false);
         using var ms2 = new MemoryStream(bytes);
         var info2 = Image.Identify(ms2);
         return info2 != null ? (info2.Width, info2.Height) : (0, 0);
+    }
+
+    /// <summary>The ORIGINAL source URL for an image, with any Cloudinary delivery transform stripped (so we
+    /// measure the true uploaded resolution, not a baked-in thumbnail) and NOT routed through Cloudflare
+    /// transforms. R2 objects and other URLs are already the original and pass through unchanged.</summary>
+    private static string OriginalUrl(string url)
+    {
+        const string marker = "/image/upload/";
+        var i = url.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (i < 0) return url; // not a Cloudinary upload URL (R2 object, local, etc.) — already the original
+        var asset = Img.CloudinaryAssetPath(url);
+        return string.IsNullOrEmpty(asset) ? url : url[..(i + marker.Length)] + asset;
     }
 }
