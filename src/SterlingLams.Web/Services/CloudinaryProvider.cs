@@ -45,12 +45,15 @@ public sealed class CloudinaryProvider : ICloudinaryProvider
 
     public async Task<bool> IsConfiguredAsync()
     {
+        // Admin "turn Cloudinary off" switch — used to verify R2 works without the silent fallback.
+        if (await _settings.GetBoolAsync("cloudinary.disabled", false)) return false;
         var (cn, ak, asec) = await ResolveAsync();
         return cn.Length > 0 && ak.Length > 0 && asec.Length > 0;
     }
 
     public async Task<Cloudinary?> BuildAsync()
     {
+        if (await _settings.GetBoolAsync("cloudinary.disabled", false)) return null;
         var (cn, ak, asec) = await ResolveAsync();
         if (cn.Length == 0 || ak.Length == 0 || asec.Length == 0) return null;
         return new Cloudinary(new Account(cn, ak, asec)) { Api = { Secure = true } };

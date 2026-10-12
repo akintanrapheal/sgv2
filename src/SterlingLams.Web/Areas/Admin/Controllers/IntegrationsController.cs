@@ -123,6 +123,7 @@ public class IntegrationsController : AdminBaseController
             CloudinaryCloudName  = Plain("cloudinary.cloud_name", "Cloudinary:CloudName"),
             CloudinaryApiKeySet  = Set("cloudinary.api_key", "Cloudinary:ApiKey"),
             CloudinaryApiSecretSet = Set("cloudinary.api_secret", "Cloudinary:ApiSecret"),
+            CloudinaryDisabled   = await _settings.GetBoolAsync("cloudinary.disabled", false),
 
             RetainfulEnabled   = await _settings.GetBoolAsync("retainful.enabled", false),
             RetainfulApiKeySet = Set("retainful.api_key", null),
@@ -456,6 +457,7 @@ public class IntegrationsViewModel
     // Cloudinary (image hosting). Cloud name is not secret; the API key + secret are.
     public string CloudinaryCloudName { get; set; } = "";
     public bool CloudinaryApiKeySet { get; set; }
+    public bool CloudinaryDisabled { get; set; }
     public bool CloudinaryApiSecretSet { get; set; }
 
     // Retainful (email marketing / win-back). API key is secret.
