@@ -46,7 +46,7 @@ public class CartController : Controller
     public async Task<IActionResult> Index()
     {
         var cart = await GetCartAsync();
-        await ApplyAutomaticDiscountAsync(cart);
+        await RefreshDiscountAsync(cart);
         return View(cart);
     }
 
@@ -181,7 +181,7 @@ public class CartController : Controller
             }
         }
 
-        await ApplyAutomaticDiscountAsync(cart); // keep any spend-threshold promo in step with the new subtotal
+        await RefreshDiscountAsync(cart); // re-validate/refresh any code (manual or automatic) against the new cart
         SaveCart(cart);
         await SyncAbandonedAsync(cart);
 
@@ -326,14 +326,56 @@ public class CartController : Controller
     public async Task<IActionResult> RemoveDiscount()
     {
         var cart = await GetCartAsync();
+        ClearDiscount(cart);
+        SaveCart(cart);
+        return Json(new { success = true, total = cart.FormattedTotal });
+    }
+
+    private static void ClearDiscount(CartViewModel cart)
+    {
         cart.AppliedDiscountCode = null;
         cart.DiscountDescription = null;
         cart.DiscountAmount = 0;
         cart.FreeShipping = false;
         cart.FreeShippingLagosAbujaOnly = false;
         cart.IsAutomaticDiscount = false;
-        SaveCart(cart);
-        return Json(new { success = true, total = cart.FormattedTotal });
+    }
+
+    /// <summary>
+    /// Keeps the cart's discount honest on every load/update. A manually-applied code is RE-VALIDATED
+    /// against the live rules (so one that's since been disabled, expired, hit its usage cap, or whose
+    /// minimum the cart no longer meets stops applying — and a percentage/amount code's value tracks the
+    /// current cart); if it no longer qualifies it's dropped. When no valid manual code is applied, the
+    /// best automatic (no-code) promotion is applied instead. Location-restricted codes stay provisional
+    /// here (state unknown) and are enforced at checkout.
+    /// </summary>
+    private async Task RefreshDiscountAsync(CartViewModel cart)
+    {
+        if (cart.IsEmpty)
+        {
+            if (!string.IsNullOrEmpty(cart.AppliedDiscountCode)) { ClearDiscount(cart); SaveCart(cart); }
+            return;
+        }
+
+        var userId = _userManager.GetUserId(User);
+
+        // Re-check a code the shopper entered themselves — never trust the value frozen in the cookie.
+        if (!string.IsNullOrEmpty(cart.AppliedDiscountCode) && !cart.IsAutomaticDiscount)
+        {
+            var r = await _discounts.EvaluateAsync(cart.AppliedDiscountCode, cart, userId);
+            if (r.Success)
+            {
+                cart.DiscountDescription = r.Description;
+                cart.DiscountAmount = r.Amount;
+                cart.FreeShipping = r.FreeShipping;
+                cart.FreeShippingLagosAbujaOnly = r.FreeShippingLagosAbujaOnly;
+                SaveCart(cart);
+                return; // still valid — keep the shopper's own code
+            }
+            ClearDiscount(cart); // no longer valid — drop it, then try an automatic promo below
+        }
+
+        await ApplyAutomaticDiscountAsync(cart);
     }
 
     /// <summary>
@@ -364,12 +406,7 @@ public class CartController : Controller
         else if (cart.IsAutomaticDiscount)
         {
             // A previously auto-applied promo no longer qualifies — clear it
-            cart.AppliedDiscountCode = null;
-            cart.DiscountDescription = null;
-            cart.DiscountAmount = 0;
-            cart.FreeShipping = false;
-            cart.FreeShippingLagosAbujaOnly = false;
-            cart.IsAutomaticDiscount = false;
+            ClearDiscount(cart);
             SaveCart(cart);
         }
     }

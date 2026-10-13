@@ -121,7 +121,32 @@ public class CheckoutController : Controller
 
         var user = await _userManager.GetUserAsync(User);
 
-        // Re-apply automatic promotion (in case the customer skipped the cart page)
+        // Re-validate a manually-applied code so a disabled/expired/over-limit/under-minimum one stops
+        // showing here (the order-placement step below re-checks authoritatively before charging).
+        if (!string.IsNullOrEmpty(cart.AppliedDiscountCode) && !cart.IsAutomaticDiscount)
+        {
+            var r = await _discounts.EvaluateAsync(cart.AppliedDiscountCode, cart, user?.Id);
+            if (r.Success)
+            {
+                cart.DiscountDescription = r.Description;
+                cart.DiscountAmount      = r.Amount;
+                cart.FreeShipping        = r.FreeShipping;
+                cart.FreeShippingLagosAbujaOnly = r.FreeShippingLagosAbujaOnly;
+            }
+            else
+            {
+                cart.AppliedDiscountCode = null;
+                cart.DiscountDescription = null;
+                cart.DiscountAmount = 0;
+                cart.FreeShipping = false;
+                cart.FreeShippingLagosAbujaOnly = false;
+                cart.IsAutomaticDiscount = false;
+            }
+            SaveCart(cart);
+        }
+
+        // Re-apply automatic promotion (in case the customer skipped the cart page, or a now-invalid
+        // manual code was just cleared above)
         if (string.IsNullOrEmpty(cart.AppliedDiscountCode) || cart.IsAutomaticDiscount)
         {
             var auto = await _discounts.FindAutomaticAsync(cart, user?.Id);
