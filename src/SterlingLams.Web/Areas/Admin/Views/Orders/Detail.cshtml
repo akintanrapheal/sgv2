@@ -20,6 +20,19 @@
     </div>
 </div>
 
+@if (Model.Order.VoidedAt != null)
+{
+    <div class="mb-6 rounded-sm border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+        <span class="font-semibold">This order was VOIDED</span>
+        by @Model.Order.VoidedByName on @Model.Order.VoidedAt.Value.ToLocalTime().ToString("dd MMM yyyy, HH:mm").
+        Stock was returned to the branch and it was removed from the pack queue. No refund was issued.
+        @if (!string.IsNullOrWhiteSpace(Model.Order.VoidReason))
+        {
+            <span class="block mt-0.5 text-red-700">Reason: @Model.Order.VoidReason</span>
+        }
+    </div>
+}
+
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
     <!-- Order items -->
@@ -492,6 +505,30 @@
                 }
             </div>
         </div>
+
+        <!-- Void order (stock-only reversal, no refund) -->
+        @if (Model.CanVoid)
+        {
+            <div class="bg-white rounded-sm border border-red-100">
+                <div class="px-6 py-4 border-b border-red-100">
+                    <h2 class="text-sm font-medium text-red-700">Void order</h2>
+                    <p class="text-[11px] text-neutral-400 mt-0.5">For a mistaken, duplicate, test or fraudulent order. Returns the stock to the fulfilling branch and takes it off the EPOS pack queue. <span class="font-medium text-neutral-500">No money is refunded</span> — if the customer is owed money, use Issue a refund above instead.</p>
+                </div>
+                <form asp-area="Admin" asp-controller="Orders" asp-action="VoidOrder"
+                      asp-route-id="@Model.Order.Id" method="post"
+                      onsubmit="return confirm('Void order @Model.Order.OrderNumber? Stock goes back to the branch and it leaves the pack queue. This does NOT refund any money.');">
+                    @Html.AntiForgeryToken()
+                    <div class="px-6 py-4 space-y-3">
+                        <input name="reason" type="text" required maxlength="300" placeholder="Reason for voiding (required)"
+                               class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-xs focus:outline-none focus:border-red-400" />
+                        <button type="submit"
+                                class="w-full py-2 bg-red-600 text-white text-xs rounded-sm hover:bg-red-700 transition-colors">
+                            Void order
+                        </button>
+                    </div>
+                </form>
+            </div>
+        }
 
         <!-- Update Status -->
         <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">

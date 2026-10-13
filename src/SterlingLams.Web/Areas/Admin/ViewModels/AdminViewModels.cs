@@ -133,6 +133,8 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public int RefundStoreId { get; set; }
         public bool CanRefund { get; set; }
         public decimal RefundedTotal { get; set; }
+        /// <summary>Website order not yet shipped/collected/cancelled → it can be voided (stock back, no refund).</summary>
+        public bool CanVoid { get; set; }
 
         // ── Replacements (send a new item, bad one goes back to Inventory) ────
         public List<OrderReplacement> Replacements { get; set; } = new();

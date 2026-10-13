@@ -279,7 +279,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 Replacements = replacements,
                 // A replacement moves stock, so it needs a paid online order with a branch and not fully refunded.
                 CanReplace = order.IsPaid && order.Channel == OrderChannel.Online && order.Status != OrderStatus.Refunded
-                             && (order.FulfillingStoreId ?? order.PickupStoreId ?? 0) > 0
+                             && (order.FulfillingStoreId ?? order.PickupStoreId ?? 0) > 0,
+                // Void: a website order still in-store (not yet shipped/collected/cancelled/refunded/voided).
+                CanVoid = order.Channel == OrderChannel.Online && order.VoidedAt == null
+                          && order.Status is OrderStatus.Pending or OrderStatus.Confirmed or OrderStatus.Processing
+                             or OrderStatus.ReadyForPickup or OrderStatus.AwaitingTransfer
             };
 
             return View(vm);
@@ -688,6 +692,32 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 $"{(fullyRefunded ? " (full)" : " (partial)")}{restockIntent} — pending Finance approval");
             TempData["Success"] =
                 $"Refund request {refundNumber} for ₦{amount:N0} sent to Finance for approval. No money or stock has moved yet.";
+            return RedirectToAction(nameof(Detail), new { id });
+        }
+
+        // ── Void: nullify a website order and return its stock (no money moved) ────────────────────────
+        // The admin equivalent of the EPOS same-session void. Returns the stock to the fulfilling branch,
+        // drops the order out of the pack queue (→ Cancelled) and stamps who/when/why. Does NOT refund —
+        // use Refund for an order the customer is owed money on. Blocked once shipped/delivered/collected.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> VoidOrder(int id, string? reason)
+        {
+            if (string.IsNullOrWhiteSpace(reason))
+            {
+                TempData["Error"] = "Enter a reason before voiding the order — it's kept on the order's record.";
+                return RedirectToAction(nameof(Detail), new { id });
+            }
+
+            var order = await _db.Orders.Include(o => o.Items)
+                .FirstOrDefaultAsync(o => o.Id == id && o.Channel == OrderChannel.Online);
+            if (order == null) return NotFound();
+
+            var staff = await CurrentStaffNameAsync();
+            var (ok, error) = await _orderStatus.VoidOnlineOrderAsync(order, reason.Trim(), staff);
+            TempData[ok ? "Success" : "Error"] = ok
+                ? $"Order {order.OrderNumber} voided — stock returned to the branch and removed from the pack queue. No refund was issued."
+                : error;
             return RedirectToAction(nameof(Detail), new { id });
         }
 
