@@ -97,8 +97,9 @@ public class CashUpSplitTests
         // Nothing in the bank-transfer bucket for this gateway order.
         Assert.Equal(0m, allenVm.Tenders.First(x => x.Key == "WebsiteTransfer").Expected);
 
-        // Cash, Card and Bank transfer are counted at close; gift card + website are auto-recorded.
-        var countable = new[] { "Cash", "Card", "Transfer" };
+        // Cash, Card, Bank transfer and the two website buckets are counted at close (so the cashier can
+        // reconcile the online takings against Paystack / the bank); only gift card is auto-recorded.
+        var countable = new[] { "Cash", "Card", "Transfer", "WebsiteOnline", "WebsiteTransfer" };
         Assert.All(allenVm.Tenders.Where(x => countable.Contains(x.Key)), t => Assert.True(t.Countable));
         Assert.All(allenVm.Tenders.Where(x => !countable.Contains(x.Key)), t => Assert.False(t.Countable));
 
