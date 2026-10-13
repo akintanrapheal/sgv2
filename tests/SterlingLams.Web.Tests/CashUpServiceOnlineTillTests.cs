@@ -71,6 +71,38 @@ public class CashUpServiceOnlineTillTests
     }
 
     [Fact]
+    public async Task A_voided_website_order_is_excluded_from_the_cash_up()
+    {
+        using var t = new TestDb();
+        var user = t.SeedUser();
+        var (_, allen, _) = t.SeedBranches();
+        var p = t.SeedProduct(price: 5000m);
+
+        var onlineReg = new Register { Name = "Till 1", StoreId = allen.Id, IsActive = true, HandlesOnlineOrders = true };
+        t.Db.Registers.Add(onlineReg);
+        await t.Db.SaveChangesAsync();
+        var session = await OpenSessionAsync(t, onlineReg.Id, DateTime.UtcNow.AddHours(-2));
+
+        // A paid website order that was later VOIDED (stock returned, moved to Cancelled, no refund).
+        t.Db.Orders.Add(new Order
+        {
+            OrderNumber = "W-VOID", UserId = user.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.Delivery, Status = OrderStatus.Cancelled,
+            IsPaid = true, PaidAt = DateTime.UtcNow.AddHours(-1), PaymentProvider = "Paystack",
+            Currency = "NGN", Subtotal = 5000m, Total = 5000m, FulfillingStoreId = allen.Id,
+            VoidedAt = DateTime.UtcNow.AddMinutes(-30), VoidedByName = "Manager", VoidReason = "Test order",
+            Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 5000m } }
+        });
+        await t.Db.SaveChangesAsync();
+
+        var vm = await new CashUpService(t.Db).BuildAsync(session, interim: true, currentUserId: "");
+
+        // The voided order contributes nothing to the website takings or the transaction count.
+        Assert.Equal(0m, vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected);
+        Assert.Equal(0, vm.Transactions);
+    }
+
+    [Fact]
     public async Task Website_order_paid_before_the_till_opened_still_counts()
     {
         using var t = new TestDb();

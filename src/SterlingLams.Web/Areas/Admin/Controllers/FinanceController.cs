@@ -191,7 +191,8 @@ public class FinanceController : AdminBaseController
 
     private IQueryable<Order> PaidOrders(DateTime f, DateTime t, int? storeId, string channel)
     {
-        var q = _db.Orders.Where(o => o.IsPaid && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t);
+        // Voided orders (POS same-session voids and website voids alike) never count as revenue.
+        var q = _db.Orders.Where(o => o.IsPaid && o.VoidedAt == null && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t);
         if (storeId.HasValue) q = q.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
         if (channel == "Online") q = q.Where(o => o.Channel == OrderChannel.Online);
         else if (channel == "Pos") q = q.Where(o => o.Channel == OrderChannel.Pos);
@@ -699,7 +700,7 @@ public class FinanceController : AdminBaseController
         // 1) Sales / payments (money IN) — one row per payment, dated when it was taken.
         if (type is "" or "Sale")
         {
-            var payQ = _db.OrderPayments.Where(p => p.CreatedAt >= f && p.CreatedAt < t);
+            var payQ = _db.OrderPayments.Where(p => p.CreatedAt >= f && p.CreatedAt < t && p.Order.VoidedAt == null);
             if (storeId.HasValue) payQ = payQ.Where(p => p.Order.PickupStoreId == storeId || p.Order.FulfillingStoreId == storeId);
             if (channel == "Online") payQ = payQ.Where(p => p.Order.Channel == OrderChannel.Online);
             else if (channel == "Pos") payQ = payQ.Where(p => p.Order.Channel == OrderChannel.Pos);
@@ -721,7 +722,7 @@ public class FinanceController : AdminBaseController
             // so the query above misses them. Fall back to one Sale row per such paid order — dated by
             // when it was paid — so website revenue shows up in "money in" too. (Mirrors the Overview
             // and End-of-Day fallbacks; without it the ledger showed POS takings only.)
-            var fbQ = _db.Orders.Where(o => o.IsPaid && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t
+            var fbQ = _db.Orders.Where(o => o.IsPaid && o.VoidedAt == null && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t
                 && !_db.OrderPayments.Any(p => p.OrderId == o.Id));
             if (storeId.HasValue) fbQ = fbQ.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
             if (channel == "Online") fbQ = fbQ.Where(o => o.Channel == OrderChannel.Online);
@@ -1087,7 +1088,7 @@ public class FinanceController : AdminBaseController
 
         // Online orders carry the customer on UserId; a customer is "new" if their first paid online
         // order falls in range, otherwise "repeat".
-        var onlinePaid = _db.Orders.Where(o => o.IsPaid && o.Channel == OrderChannel.Online && o.UserId != "");
+        var onlinePaid = _db.Orders.Where(o => o.IsPaid && o.VoidedAt == null && o.Channel == OrderChannel.Online && o.UserId != "");
         var inRange = await onlinePaid.Where(o => (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t)
             .GroupBy(o => o.UserId)
             .Select(g => new { Uid = g.Key, Rev = g.Sum(o => o.Total), Cnt = g.Count(), Last = g.Max(o => o.PaidAt ?? o.CreatedAt) })
@@ -1402,6 +1403,9 @@ public class FinanceController : AdminBaseController
         var (f, t, fLocal, tLocal) = Range(from ?? today, to ?? today);
         channel = channel is "Online" or "Pos" ? channel : "";
 
+        // Voided sales STAY in the positive rows (dated at the sale) and are offset by a negative void row
+        // dated at the void time below — so the ledger shows both and the Net nets them to zero, exactly
+        // like a refund. (Don't filter voids out here, or the void would have nothing to offset.)
         var qry = _db.Orders.Where(o => o.IsPaid && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t);
         if (storeId.HasValue) qry = qry.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
         if (registerId.HasValue) qry = qry.Where(o => o.RegisterId == registerId);
@@ -1450,25 +1454,30 @@ public class FinanceController : AdminBaseController
             Items = rf.Items.Select(i => new CtItem(i.ProductName, i.VariantName, null, i.Quantity, i.UnitPrice)).ToList()
         }).ToListAsync();
 
-        // Voided till sales — shown as NEGATIVE rows dated at the VOID time (not the sale time), so an
-        // end-of-day check sees the reversal when it happened, just like a refund. Voids are POS-only, so
-        // there's nothing to show when the report is filtered to Website. The original sale still appears
-        // as its positive row (on the sale time), so sale + void net to zero for the day.
-        var includeVoids = channel != "Online";   // voids are POS-only — none when filtered to Website
-        var voidRaw = await _db.Orders.Where(o => includeVoids
-                && o.Channel == OrderChannel.Pos && o.VoidedAt != null
-                && o.VoidedAt >= f && o.VoidedAt < t
-                && (!storeId.HasValue || o.PickupStoreId == storeId || o.FulfillingStoreId == storeId)
-                && (!registerId.HasValue || o.RegisterId == registerId))
+        // Voided sales (POS same-session voids AND website voids) — shown as NEGATIVE rows dated at the
+        // VOID time (not the sale time), so an end-of-day check sees the reversal when it happened, just
+        // like a refund. The original sale still appears as its positive row (on the sale date), so sale +
+        // void net to zero. Honour the channel filter the same way the sale rows do.
+        var voidQ = _db.Orders.Where(o => o.VoidedAt != null
+            && o.VoidedAt >= f && o.VoidedAt < t
+            && (!storeId.HasValue || o.PickupStoreId == storeId || o.FulfillingStoreId == storeId)
+            && (!registerId.HasValue || o.RegisterId == registerId));
+        if (channel == "Online") voidQ = voidQ.Where(o => o.Channel == OrderChannel.Online);
+        else if (channel == "Pos") voidQ = voidQ.Where(o => o.Channel == OrderChannel.Pos);
+        var voidRaw = await voidQ
             .OrderByDescending(o => o.VoidedAt)
             .Select(o => new
             {
-                o.Id, o.OrderNumber, When = o.VoidedAt!.Value, StaffId = o.UserId,
+                o.Id, o.OrderNumber, When = o.VoidedAt!.Value, o.Channel,
+                StaffId = o.Channel == OrderChannel.Pos ? o.UserId : null,
                 StoreName = o.PickupStore != null ? o.PickupStore.Name : (o.FulfillingStore != null ? o.FulfillingStore.Name : null),
                 Device = o.Register != null ? o.Register.Name : null,
-                CustName = o.Customer != null ? (o.Customer.FirstName + " " + o.Customer.LastName) : null,
-                CustPhone = o.Customer != null ? o.Customer.PhoneNumber : null,
-                o.Total, o.VoidReason,
+                PosCustName = o.Customer != null ? (o.Customer.FirstName + " " + o.Customer.LastName) : null,
+                PosCustPhone = o.Customer != null ? o.Customer.PhoneNumber : null,
+                OnlineCustName = o.User != null ? (o.User.FirstName + " " + o.User.LastName) : null,
+                AddrName = o.DeliveryAddress != null ? o.DeliveryAddress.FullName : null,
+                AddrPhone = o.DeliveryAddress != null ? o.DeliveryAddress.Phone : null,
+                o.Total, o.DeliveryFee, o.VoidReason,
                 Items = o.Items.Select(i => new CtItem(i.ProductName, i.VariantName, i.ProductSku, i.Quantity, i.UnitPrice)).ToList()
             }).ToListAsync();
 
@@ -1516,13 +1525,18 @@ public class FinanceController : AdminBaseController
         var voidRows = voidRaw.Select(v =>
         {
             var staff = string.IsNullOrEmpty(v.StaffId) ? "" : staffNames.GetValueOrDefault(v.StaffId!, "—");
-            var name = v.CustName?.Trim();
+            var name = (v.Channel == OrderChannel.Pos ? v.PosCustName : (v.OnlineCustName ?? v.AddrName))?.Trim();
             if (string.IsNullOrWhiteSpace(name)) name = "Walk-in";
-            var customer = "Void — " + (string.IsNullOrWhiteSpace(v.CustPhone) ? name : $"{name} · {v.CustPhone}");
-            // Distinct id range so the "Show items" toggle never collides with a sale (+id) or refund (−id) row.
+            var phone = v.Channel == OrderChannel.Pos ? v.PosCustPhone : v.AddrPhone;
+            var customer = "Void — " + (string.IsNullOrWhiteSpace(phone) ? name : $"{name} · {phone}");
+            // Offset exactly what the positive sale row contributed: a website row shows product only
+            // (the delivery fee is Logistics, excluded above), a POS row has no delivery fee. So they
+            // net to zero. Distinct id range so "Show items" never collides with a sale (+id)/refund (−id).
+            var voidTotal = v.Channel == OrderChannel.Online ? v.Total - v.DeliveryFee : v.Total;
+            var device = v.Device ?? (v.Channel == OrderChannel.Online ? "Website" : "—");
             return new CtRow(-1_000_000_000 - v.Id, v.OrderNumber, v.When, staff, v.StoreName ?? "—",
-                v.Device ?? "—", customer, 0m, string.IsNullOrWhiteSpace(v.VoidReason) ? "—" : v.VoidReason!,
-                -v.Total, "Void", 0m, v.Items, IsVoid: true);
+                device, customer, 0m, string.IsNullOrWhiteSpace(v.VoidReason) ? "—" : v.VoidReason!,
+                -voidTotal, "Void", 0m, v.Items, IsVoid: true);
         }).ToList();
 
         var combined = rows.Concat(refRows).Concat(voidRows).OrderByDescending(r => r.When).ToList();
@@ -1744,7 +1758,7 @@ public class FinanceController : AdminBaseController
 
         // Payment channels: explicit POS tenders (Cash/Card/Transfer) + provider fallback
         // (e.g. Paystack for online, legacy POS) for orders that carry no tender rows.
-        var payQ = _db.OrderPayments.Where(p => p.Order.IsPaid
+        var payQ = _db.OrderPayments.Where(p => p.Order.IsPaid && p.Order.VoidedAt == null
             && (p.Order.PaidAt ?? p.Order.CreatedAt) >= f && (p.Order.PaidAt ?? p.Order.CreatedAt) < t);
         if (storeId.HasValue) payQ = payQ.Where(p => p.Order.PickupStoreId == storeId || p.Order.FulfillingStoreId == storeId);
         if (channel == "Online") payQ = payQ.Where(p => p.Order.Channel == OrderChannel.Online);
