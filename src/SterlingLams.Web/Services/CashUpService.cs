@@ -296,14 +296,15 @@ public class CashUpService : ICashUpService
         var tenders = new List<TenderLine>
         {
             // Cash, Card and Bank transfer are COUNTED at close (the cashier confirms the drawer, the card
-            // terminal total and the transfers received) so each shows an over/short. Gift card + website
-            // are auto-recorded (electronic / online), so they're read-only.
+            // terminal total and the transfers received) so each shows an over/short. The two website
+            // buckets are also countable so the cashier can reconcile them against Paystack / the bank
+            // (confirm the online takings landed) and see an over/short. Gift card stays auto-recorded.
             new("Cash",            "Cash",                    SumOf("Cash")     - cashRefunds,     C("Cash"),     Countable: true),
             new("Card",            "Card",                    ClampNet(SumOf("Card")     - cardRefunds),     C("Card"),     Countable: true),
             new("Transfer",        "Bank transfer",           ClampNet(SumOf("Transfer") - transferRefunds), C("Transfer"), Countable: true),
             new("GiftCard",        "Gift card",               giftCard,                            null),
-            new("WebsiteOnline",   "Website – paid online",   ClampNet(wOnlineGross   - wOnlineRefund),   null),
-            new("WebsiteTransfer", "Website – bank transfer", ClampNet(wTransferGross - wTransferRefund), null),
+            new("WebsiteOnline",   "Website – paid online",   ClampNet(wOnlineGross   - wOnlineRefund),   C("WebsiteOnline"),   Countable: true),
+            new("WebsiteTransfer", "Website – bank transfer", ClampNet(wTransferGross - wTransferRefund), C("WebsiteTransfer"), Countable: true),
         };
         if (overflow < 0)
             tenders.Add(new("RefundsBeyondSales", "Refunds (earlier sales)", overflow, null));
