@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -25,6 +26,13 @@ public interface IOrderStatusService
     Task<OrderStatusOutcome> ApplyAsync(Order order, OrderStatus newStatus, string staff,
         string? paymentMethod = null, string? confirmReason = null);
 
+    /// <summary>Voids a website order (the admin equivalent of the EPOS same-session void): returns the
+    /// order's stock to the fulfilling branch (restocks on-hand for a committed sale, or releases held
+    /// reservations + cancels/flags open transfers for an Awaiting-Transfer one), stamps who/when/why,
+    /// and moves it to Cancelled so it drops out of every EPOS/logistics pack queue. Does NOT touch money
+    /// — a paid order is NOT refunded here. The order must be loaded WITH its <see cref="Order.Items"/>.</summary>
+    Task<(bool Ok, string? Error)> VoidOnlineOrderAsync(Order order, string reason, string staff);
+
     /// <summary>Sends (or re-sends) the store-pickup QR pass email and stamps PickupReadyEmailedAt.</summary>
     Task SendPickupReadyEmailAsync(int orderId);
 
@@ -39,6 +47,7 @@ public sealed class OrderStatusService : IOrderStatusService
     private readonly ApplicationDbContext _db;
     private readonly IOrderFulfilmentService _fulfilment;
     private readonly ITransferWorkflowService _transfers;
+    private readonly IStockService _stock;
     private readonly Logistics.ILogisticsDispatchService _logistics;
     private readonly IEmailService _email;
     private readonly ISettingsService _settings;
@@ -49,7 +58,7 @@ public sealed class OrderStatusService : IOrderStatusService
     private readonly DeliveryZoneService _zones;
 
     public OrderStatusService(ApplicationDbContext db, IOrderFulfilmentService fulfilment,
-        ITransferWorkflowService transfers,
+        ITransferWorkflowService transfers, IStockService stock,
         Logistics.ILogisticsDispatchService logistics, IEmailService email, ISettingsService settings,
         IWhatsAppService whatsapp, IAuditService audit, IHttpContextAccessor http, LinkGenerator links,
         DeliveryZoneService zones)
@@ -57,6 +66,7 @@ public sealed class OrderStatusService : IOrderStatusService
         _db = db;
         _fulfilment = fulfilment;
         _transfers = transfers;
+        _stock = stock;
         _zones = zones;
         _logistics = logistics;
         _email = email;
@@ -65,6 +75,73 @@ public sealed class OrderStatusService : IOrderStatusService
         _audit = audit;
         _http = http;
         _links = links;
+    }
+
+    // Statuses a website order can be voided in — before the goods have physically left the store.
+    private static bool IsVoidable(OrderStatus s) => s is OrderStatus.Pending or OrderStatus.Confirmed
+        or OrderStatus.Processing or OrderStatus.ReadyForPickup or OrderStatus.AwaitingTransfer;
+
+    public async Task<(bool Ok, string? Error)> VoidOnlineOrderAsync(Order order, string reason, string staff)
+    {
+        if (order.Channel != OrderChannel.Online) return (false, "Only website orders can be voided here.");
+        if (order.VoidedAt != null) return (false, "This order is already voided.");
+        if (!IsVoidable(order.Status))
+            return (false, $"A {order.Status} order can't be voided — use Refund for orders that have shipped or been collected.");
+
+        var uid = _http.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        // Did fulfilment already deduct on-hand? A committed single-branch (or finalised cross-branch)
+        // sale has a fulfilling branch and NO outstanding reservations; an Awaiting-Transfer order still
+        // holds reservations and has not deducted on-hand, so releasing the holds is all that's needed.
+        var reservedUnits = await _db.StockReservations.Where(r => r.OrderId == order.Id).SumAsync(r => (int?)r.Quantity) ?? 0;
+        var committedSale = order.FulfillingStoreId != null && reservedUnits == 0
+            && order.Status is OrderStatus.Confirmed or OrderStatus.Processing or OrderStatus.ReadyForPickup;
+
+        // Release held reservations + open transfers first. These manage their own transactions, so they
+        // run OUTSIDE the restock/stamp transaction below (a committed sale has none, so this no-ops there).
+        if (!committedSale)
+            await ReleaseHoldsForCancelledOrderAsync(order, staff);
+
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        try
+        {
+            if (committedSale)
+            {
+                var storeId = order.FulfillingStoreId!.Value;
+                var returned = new System.Collections.Generic.List<string>();
+                foreach (var it in order.Items.Where(i => i.ProductId > 0 && i.Quantity > 0))
+                {
+                    var after = await _stock.ApplyAsync(it.ProductId, it.ProductVariantId, storeId, it.Quantity,
+                        StockMovementType.Void, order.OrderNumber, $"Order voided: {reason}", uid, materializeVariant: true);
+                    var label = it.ProductName + (string.IsNullOrEmpty(it.VariantName) ? "" : " – " + it.VariantName);
+                    returned.Add($"{label} ({after - it.Quantity}→{after})");
+                }
+                if (returned.Count > 0)
+                    OrderNotes.AddSystem(_db, order.Id, "Stock returned to the fulfilling branch on void: " + string.Join(", ", returned) + ".");
+            }
+
+            order.VoidedAt = DateTime.UtcNow;
+            order.VoidedByName = staff;
+            order.VoidReason = reason;
+            // Cancelled drops it out of every EPOS pack queue (to-pack needs Confirmed/Processing, pickups
+            // exclude Cancelled, awaiting-transfer needs AwaitingTransfer) and the logistics board.
+            order.Status = OrderStatus.Cancelled;
+            order.UpdatedAt = DateTime.UtcNow;
+            OrderNotes.AddSystem(_db, order.Id, $"Order VOIDED by {staff}: {reason}. "
+                + (committedSale ? "Stock returned to the fulfilling branch." : "Any held stock released.")
+                + " Removed from the pack queue. No refund issued.");
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+        }
+        catch (Exception ex)
+        {
+            await tx.RollbackAsync();
+            var inner = ex; while (inner.InnerException != null) inner = inner.InnerException;
+            return (false, "Couldn't void the order: " + inner.Message);
+        }
+
+        await LogAsync("Void", "Order", order.Id.ToString(), $"Order {order.OrderNumber} voided by {staff}: {reason}");
+        return (true, null);
     }
 
     private string BaseUrl()

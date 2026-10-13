@@ -22,7 +22,7 @@ public class OrderCancelReleasesHoldsTests
     private static OrderStatusService StatusSvc(TestDb t, OrderFulfilmentService fulfilment)
     {
         var transfers = new TransferWorkflowService(t.Db, new StockService(t.Db), fulfilment);
-        return new OrderStatusService(t.Db, fulfilment, transfers, new FakeLogistics(),
+        return new OrderStatusService(t.Db, fulfilment, transfers, new StockService(t.Db), new FakeLogistics(),
             new FakeEmail(), new FakeSettings(), new FakeWhatsApp(), new FakeAudit(),
             new HttpContextAccessor(), links: null!, zones: new DeliveryZoneService(new FakeSettings()));
     }
@@ -97,6 +97,87 @@ public class OrderCancelReleasesHoldsTests
         Assert.Equal(OrderStatus.Cancelled, (await t.Db.Orders.FindAsync(order.Id))!.Status);
         Assert.Equal(0, t.Inv(p.Id, allen.Id).QuantityReserved);
         Assert.Equal(3, t.Inv(p.Id, allen.Id).QuantityOnHand);
+    }
+
+    [Fact]
+    public async Task Voiding_a_single_branch_order_returns_on_hand_and_cancels()
+    {
+        using var t = new TestDb();
+        var user = t.SeedUser();
+        var (abuja, allen, ikota) = t.SeedBranches();
+        var p = t.SeedProduct();
+        t.SetStock(p.Id, allen.Id, 5);   // nearest branch ships now (committed sale, on-hand deducted)
+
+        var order = t.NewDeliveryOrder(user, "Lagos", "Ikeja", (p, 2));
+        var fulfilment = Fulfilment(t);
+        await fulfilment.FulfilPaidOrderAsync(order.Id);
+        Assert.Equal(3, t.Inv(p.Id, allen.Id).QuantityOnHand); // 2 sold
+
+        var tracked = await t.Db.Orders.Include(o => o.Items).FirstAsync(o => o.Id == order.Id);
+        var (ok, err) = await StatusSvc(t, fulfilment).VoidOnlineOrderAsync(tracked, "Customer changed mind", "Tester");
+
+        Assert.True(ok, err);
+        var after = await t.Db.Orders.FindAsync(order.Id);
+        Assert.NotNull(after!.VoidedAt);
+        Assert.Equal("Tester", after.VoidedByName);
+        Assert.Equal(OrderStatus.Cancelled, after.Status);        // dropped out of the pack queue
+        Assert.Equal(5, t.Inv(p.Id, allen.Id).QuantityOnHand);    // the 2 sold units are back
+    }
+
+    [Fact]
+    public async Task Voiding_an_awaiting_transfer_order_releases_holds_without_restocking_on_hand()
+    {
+        using var t = new TestDb();
+        var user = t.SeedUser();
+        var (abuja, allen, ikota) = t.SeedBranches();
+        var p = t.SeedProduct(price: 1000m);
+        t.SetStock(p.Id, abuja.Id, 1);
+        t.SetStock(p.Id, allen.Id, 1);
+        t.SetStock(p.Id, ikota.Id, 1);
+
+        var order = t.NewDeliveryOrder(user, "Lagos", "Ikeja", (p, 3));
+        var fulfilment = Fulfilment(t);
+        await fulfilment.FulfilPaidOrderAsync(order.Id);
+        Assert.Equal(OrderStatus.AwaitingTransfer, (await t.Db.Orders.FindAsync(order.Id))!.Status);
+
+        var tracked = await t.Db.Orders.Include(o => o.Items).FirstAsync(o => o.Id == order.Id);
+        var (ok, err) = await StatusSvc(t, fulfilment).VoidOnlineOrderAsync(tracked, "Fraudulent order", "Tester");
+
+        Assert.True(ok, err);
+        var after = await t.Db.Orders.FindAsync(order.Id);
+        Assert.NotNull(after!.VoidedAt);
+        Assert.Equal(OrderStatus.Cancelled, after.Status);
+        // Every hold freed, transfers cancelled, and on-hand untouched (no double restock on held stock).
+        Assert.Equal(0, await t.Db.StockReservations.CountAsync(r => r.OrderId == order.Id));
+        Assert.All(await t.Db.StockTransfers.Where(x => x.OrderId == order.Id).ToListAsync(),
+            x => Assert.Equal(TransferStatus.Cancelled, x.Status));
+        Assert.Equal(0, t.Inv(p.Id, abuja.Id).QuantityReserved);
+        Assert.Equal(1, t.Inv(p.Id, abuja.Id).QuantityOnHand);
+        Assert.Equal(1, t.Inv(p.Id, allen.Id).QuantityOnHand);
+        Assert.Equal(1, t.Inv(p.Id, ikota.Id).QuantityOnHand);
+    }
+
+    [Fact]
+    public async Task A_shipped_order_cannot_be_voided()
+    {
+        using var t = new TestDb();
+        var user = t.SeedUser();
+        var (abuja, allen, ikota) = t.SeedBranches();
+        var p = t.SeedProduct();
+        t.SetStock(p.Id, allen.Id, 5);
+
+        var order = t.NewDeliveryOrder(user, "Lagos", "Ikeja", (p, 1));
+        var fulfilment = Fulfilment(t);
+        await fulfilment.FulfilPaidOrderAsync(order.Id);
+        var tracked = await t.Db.Orders.Include(o => o.Items).FirstAsync(o => o.Id == order.Id);
+        tracked.Status = OrderStatus.Shipped;
+        await t.Db.SaveChangesAsync();
+
+        var (ok, err) = await StatusSvc(t, fulfilment).VoidOnlineOrderAsync(tracked, "too late", "Tester");
+
+        Assert.False(ok);
+        Assert.Null((await t.Db.Orders.FindAsync(order.Id))!.VoidedAt);
+        Assert.Equal(4, t.Inv(p.Id, allen.Id).QuantityOnHand); // unchanged — nothing returned
     }
 
     // ── minimal fakes ───────────────────────────────────────────────────────────
