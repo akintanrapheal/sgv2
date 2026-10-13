@@ -45,6 +45,19 @@ public class TransferManifestController : Controller
             .ToListAsync();
         ViewBag.ImageByProduct = imgRows.GroupBy(x => x.ProductId).ToDictionary(g => g.Key, g => g.First().Url);
 
+        // SKU per line: the variant's own SKU when the line is a variant, otherwise the product SKU.
+        var variantIds = transfer.Items.Where(i => i.ProductVariantId.HasValue)
+            .Select(i => i.ProductVariantId!.Value).Distinct().ToList();
+        var prodSku = await _db.Products.Where(p => productIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Sku }).ToDictionaryAsync(p => p.Id, p => p.Sku);
+        var varSku = await _db.ProductVariants.Where(v => variantIds.Contains(v.Id))
+            .Select(v => new { v.Id, v.Sku }).ToDictionaryAsync(v => v.Id, v => v.Sku);
+        ViewBag.SkuByItem = transfer.Items.ToDictionary(i => i.Id, i =>
+        {
+            if (i.ProductVariantId is int vid && varSku.TryGetValue(vid, out var vs) && !string.IsNullOrWhiteSpace(vs)) return vs!;
+            return (prodSku.TryGetValue(i.ProductId, out var ps) ? ps : null) ?? "";
+        });
+
         var uids = new[] { transfer.CreatedByUserId, transfer.ApprovedByUserId, transfer.DispatchedByUserId, transfer.ReceivedByUserId }
             .Where(u => u != null).Cast<string>().Distinct().ToList();
         ViewBag.Names = (await _db.Users.Where(u => uids.Contains(u.Id))
