@@ -37,22 +37,31 @@
     }
 </div>
 
-<form asp-area="Inventory" asp-controller="Transfers" asp-action="Index" method="get" class="mb-4 flex gap-2 flex-wrap">
-    <select name="storeId" onchange="this.form.submit()" class="@selectCls">
-        <option value="">All branches</option>
-        @foreach (var s in stores)
-        {
-            <option value="@s.Id" selected="@(storeId == s.Id)">@s.Name</option>
-        }
-    </select>
-    <select name="status" onchange="this.form.submit()" class="@selectCls">
-        <option value="all" selected="@(status == "all")">All statuses</option>
-        @foreach (var (st, filter) in TransferStatusDisplay.FilterOptions)
-        {
-            <option value="@filter" selected="@(status == filter)">@TransferStatusDisplay.Label(st)</option>
-        }
-    </select>
-</form>
+<div class="mb-4 flex gap-2 flex-wrap items-center justify-between">
+    <form asp-area="Inventory" asp-controller="Transfers" asp-action="Index" method="get" class="flex gap-2 flex-wrap">
+        <select name="storeId" onchange="this.form.submit()" class="@selectCls">
+            <option value="">All branches</option>
+            @foreach (var s in stores)
+            {
+                <option value="@s.Id" selected="@(storeId == s.Id)">@s.Name</option>
+            }
+        </select>
+        <select name="status" onchange="this.form.submit()" class="@selectCls">
+            <option value="all" selected="@(status == "all")">All statuses</option>
+            @foreach (var (st, filter) in TransferStatusDisplay.FilterOptions)
+            {
+                <option value="@filter" selected="@(status == filter)">@TransferStatusDisplay.Label(st)</option>
+            }
+        </select>
+    </form>
+    <div class="flex gap-2 items-center">
+        <span class="text-xs text-neutral-400">Export detail:</span>
+        <a asp-area="Inventory" asp-controller="Transfers" asp-action="ExportCsv" asp-route-storeId="@storeId" asp-route-status="@status"
+           class="px-3 py-2 border border-neutral-200 text-neutral-600 text-xs rounded-sm hover:border-emerald-400 hover:text-emerald-700 transition-colors">CSV</a>
+        <a asp-area="Inventory" asp-controller="Transfers" asp-action="ExportExcel" asp-route-storeId="@storeId" asp-route-status="@status"
+           class="px-3 py-2 border border-neutral-200 text-neutral-600 text-xs rounded-sm hover:border-emerald-400 hover:text-emerald-700 transition-colors">Excel</a>
+    </div>
+</div>
 
 @if (TempData["Success"] != null) { <div class="mb-4 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-sm px-4 py-2">@TempData["Success"]</div> }
 
