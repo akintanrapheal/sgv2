@@ -2,6 +2,7 @@
 @{
     Layout = null;
     var imageBy = ViewBag.ImageByProduct as Dictionary<int, string> ?? new();
+    var skuBy = ViewBag.SkuByItem as Dictionary<int, string> ?? new();
     var names = ViewBag.Names as Dictionary<string, string> ?? new();
     string qr = ViewBag.QrDataUri ?? "";
     string publicUrl = ViewBag.PublicUrl ?? "";
@@ -98,6 +99,7 @@
                 <th class="num">#</th>
                 <th>Photo</th>
                 <th>Product</th>
+                <th>SKU</th>
                 <th class="num">Qty</th>
                 <th class="num">Received ✓</th>
             </tr>
@@ -111,6 +113,7 @@
                     <td class="num">@(n++)</td>
                     <td>@if (!string.IsNullOrEmpty(img)) { <img class="thumb" src="@img" alt="" /> } else { <span class="thumb-empty"></span> }</td>
                     <td>@i.ProductName @if (!string.IsNullOrEmpty(i.VariantName)) { <span style="color:#6b7280"> · @i.VariantName</span> }</td>
+                    <td style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:#374151;">@(skuBy.TryGetValue(i.Id, out var sku) && !string.IsNullOrEmpty(sku) ? sku : "—")</td>
                     <td class="num">@Qty(i)</td>
                     <td class="num"><span class="chk"></span></td>
                 </tr>
@@ -118,7 +121,7 @@
         </tbody>
         <tfoot>
             <tr>
-                <td colspan="3">Total — @totalLines item@(totalLines == 1 ? "" : "s")</td>
+                <td colspan="4">Total — @totalLines item@(totalLines == 1 ? "" : "s")</td>
                 <td class="num">@totalPieces</td>
                 <td class="num"></td>
             </tr>

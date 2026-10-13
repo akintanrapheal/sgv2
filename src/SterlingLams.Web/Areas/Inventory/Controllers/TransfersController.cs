@@ -1,4 +1,6 @@
 using System.Security.Claims;
+using System.Text;
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Data;
@@ -53,18 +55,8 @@ public class TransfersController : InventoryAreaController
         ViewBag.StatusCounts = counts.ToDictionary(c => c.Status, c => c.Count);
         ViewBag.TotalCount = counts.Sum(c => c.Count);
 
-        IQueryable<StockTransfer> query = baseQuery.Include(t => t.FromStore).Include(t => t.ToStore).Include(t => t.Items);
-        query = status switch
-        {
-            "pending" => query.Where(t => t.Status == TransferStatus.PendingApproval),
-            "approved" => query.Where(t => t.Status == TransferStatus.Approved),
-            "intransit" => query.Where(t => t.Status == TransferStatus.InTransit),
-            "partial" => query.Where(t => t.Status == TransferStatus.PartiallyReceived),
-            "completed" => query.Where(t => t.Status == TransferStatus.Completed),
-            "rejected" => query.Where(t => t.Status == TransferStatus.Rejected),
-            "cancelled" => query.Where(t => t.Status == TransferStatus.Cancelled),
-            _ => query
-        };
+        IQueryable<StockTransfer> query = ApplyStatusFilter(
+            baseQuery.Include(t => t.FromStore).Include(t => t.ToStore).Include(t => t.Items), status);
 
         if (page < 1) page = 1;
         var filteredCount = await query.CountAsync();
@@ -73,6 +65,177 @@ public class TransfersController : InventoryAreaController
         var transfers = await query.OrderByDescending(t => t.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         return View(transfers);
+    }
+
+    // Shared status → query filter, used by the list and both exports so one source of truth.
+    private static IQueryable<StockTransfer> ApplyStatusFilter(IQueryable<StockTransfer> query, string status) => status switch
+    {
+        "pending" => query.Where(t => t.Status == TransferStatus.PendingApproval),
+        "approved" => query.Where(t => t.Status == TransferStatus.Approved),
+        "intransit" => query.Where(t => t.Status == TransferStatus.InTransit),
+        "partial" => query.Where(t => t.Status == TransferStatus.PartiallyReceived),
+        "completed" => query.Where(t => t.Status == TransferStatus.Completed),
+        "rejected" => query.Where(t => t.Status == TransferStatus.Rejected),
+        "cancelled" => query.Where(t => t.Status == TransferStatus.Cancelled),
+        _ => query
+    };
+
+    // Column headers for the detailed (one row per transferred item) export.
+    private static readonly string[] ExportHeaders =
+    {
+        "Transfer #", "Status", "From", "To", "Created", "Created by",
+        "Approved", "Approved by", "Dispatched", "Dispatched by", "Tracking", "Courier",
+        "Received", "Received by", "Cancelled/Rejected", "Cancelled/Rejected by", "Reason",
+        "Note", "Online order", "Product SKU", "Product", "Variant",
+        "Requested", "Approved qty", "Dispatched qty", "Received", "Damaged", "Won't fulfil", "Pending"
+    };
+
+    /// <summary>Builds the flat, one-row-per-item dataset for the export (respects the branch + status
+    /// filters, all pages). Cells are typed (DateTimes already in local/WAT time, quantities as ints)
+    /// so the Excel writer can format them and the CSV writer can stringify consistently.</summary>
+    private async Task<List<object?[]>> BuildExportRowsAsync(int? storeId, string status)
+    {
+        IQueryable<StockTransfer> query = _db.StockTransfers
+            .Include(t => t.FromStore).Include(t => t.ToStore).Include(t => t.Items);
+        if (storeId.HasValue)
+            query = query.Where(t => t.FromStoreId == storeId.Value || t.ToStoreId == storeId.Value);
+        var transfers = await ApplyStatusFilter(query, status)
+            .OrderByDescending(t => t.CreatedAt).ToListAsync();
+
+        // Resolve people's names and product SKUs / online-order numbers in one round-trip each.
+        var userIds = transfers.SelectMany(t => new[]
+            {
+                t.CreatedByUserId, t.ApprovedByUserId, t.RejectedByUserId,
+                t.DispatchedByUserId, t.ReceivedByUserId, t.CancelledByUserId
+            })
+            .Where(u => u != null).Cast<string>().Distinct().ToList();
+        var names = (await _db.Users.Where(u => userIds.Contains(u.Id))
+                .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email, u.UserName }).ToListAsync())
+            .ToDictionary(u => u.Id, u =>
+            {
+                var n = $"{u.FirstName} {u.LastName}".Trim();
+                return !string.IsNullOrWhiteSpace(n) ? n : (u.Email ?? u.UserName ?? u.Id);
+            });
+        string Name(string? id) => id != null && names.TryGetValue(id, out var n) ? n : "";
+
+        var productIds = transfers.SelectMany(t => t.Items).Select(i => i.ProductId).Distinct().ToList();
+        var skus = await _db.Products.Where(p => productIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => p.Sku ?? "");
+
+        var orderIds = transfers.Where(t => t.OrderId.HasValue).Select(t => t.OrderId!.Value).Distinct().ToList();
+        var orderNumbers = await _db.Orders.Where(o => orderIds.Contains(o.Id))
+            .ToDictionaryAsync(o => o.Id, o => o.OrderNumber);
+
+        DateTime? Local(DateTime? d) => d?.ToLocalTime();
+
+        var rows = new List<object?[]>();
+        foreach (var t in transfers)
+        {
+            var reason = !string.IsNullOrWhiteSpace(t.CancellationReason) ? t.CancellationReason
+                       : t.RejectionReason ?? "";
+            var whoEnded = t.Status == TransferStatus.Cancelled ? Name(t.CancelledByUserId)
+                         : t.Status == TransferStatus.Rejected ? Name(t.RejectedByUserId) : "";
+            var whenEnded = t.Status == TransferStatus.Cancelled ? Local(t.CancelledAt)
+                          : t.Status == TransferStatus.Rejected ? Local(t.RejectedAt) : null;
+            var orderNo = t.OrderId.HasValue && orderNumbers.TryGetValue(t.OrderId.Value, out var on) ? on : "";
+
+            // Header fields repeated on each item line so the sheet filters/pivots cleanly.
+            object?[] Head() => new object?[]
+            {
+                t.TransferNumber, TransferStatusDisplay.Label(t.Status), t.FromStore?.Name, t.ToStore?.Name,
+                Local(t.CreatedAt), Name(t.CreatedByUserId),
+                Local(t.ApprovedAt), Name(t.ApprovedByUserId),
+                Local(t.DispatchedAt), Name(t.DispatchedByUserId), t.TrackingNumber ?? "", t.CourierName ?? "",
+                Local(t.ReceivedAt), Name(t.ReceivedByUserId),
+                whenEnded, whoEnded, reason, t.Note ?? "", orderNo
+            };
+
+            if (t.Items.Count == 0)
+            {
+                rows.Add(Head().Concat(new object?[] { "", "", "", 0, null, null, null, null, null, 0 }).ToArray());
+                continue;
+            }
+            foreach (var i in t.Items)
+            {
+                var sku = skus.TryGetValue(i.ProductId, out var s) ? s : "";
+                rows.Add(Head().Concat(new object?[]
+                {
+                    sku, i.ProductName, i.VariantName ?? "",
+                    i.RequestedQty, i.ApprovedQty, i.DispatchedQty,
+                    i.ReceivedQty, i.DamagedQty, i.WontFulfilQty, i.PendingQty
+                }).ToArray());
+            }
+        }
+        return rows;
+    }
+
+    private static string ExportBaseName(string status)
+    {
+        var scope = status == "all" ? "" : "-" + status;
+        return $"stock-transfers{scope}_{DateTime.UtcNow.ToLocalTime():yyyyMMdd-HHmm}";
+    }
+
+    // Detailed CSV export (one row per transferred item), honouring the current branch + status filter.
+    public async Task<IActionResult> ExportCsv(int? storeId, string status = "all")
+    {
+        var rows = await BuildExportRowsAsync(storeId, status);
+        var sb = new StringBuilder();
+        Csv.AppendRow(sb, ExportHeaders);
+        foreach (var r in rows)
+            Csv.AppendRow(sb, r.Select(CsvCell).ToArray());
+        return File(Csv.ToBytes(sb), "text/csv", ExportBaseName(status) + ".csv");
+
+        static string CsvCell(object? v) => v switch
+        {
+            null => "",
+            DateTime d => d.ToString("yyyy-MM-dd HH:mm"),
+            _ => v.ToString() ?? ""
+        };
+    }
+
+    // Detailed Excel (.xlsx) export — same data as the CSV, with typed cells, a frozen bold header row,
+    // date formatting and an auto-filter so staff can sort/pivot.
+    public async Task<IActionResult> ExportExcel(int? storeId, string status = "all")
+    {
+        var rows = await BuildExportRowsAsync(storeId, status);
+
+        using var wb = new XLWorkbook();
+        var ws = wb.AddWorksheet("Transfers");
+
+        for (var c = 0; c < ExportHeaders.Length; c++)
+            ws.Cell(1, c + 1).Value = ExportHeaders[c];
+        var header = ws.Row(1);
+        header.Style.Font.Bold = true;
+        header.Style.Fill.BackgroundColor = XLColor.FromHtml("#F3F4F6");
+
+        for (var r = 0; r < rows.Count; r++)
+        {
+            var row = rows[r];
+            for (var c = 0; c < row.Length; c++)
+            {
+                var cell = ws.Cell(r + 2, c + 1);
+                switch (row[c])
+                {
+                    case null: break;
+                    case DateTime d:
+                        cell.Value = d;
+                        cell.Style.DateFormat.Format = "yyyy-mm-dd hh:mm";
+                        break;
+                    case int n: cell.Value = n; break;
+                    default: cell.Value = row[c]!.ToString(); break;
+                }
+            }
+        }
+
+        ws.SheetView.FreezeRows(1);
+        ws.RangeUsed()?.SetAutoFilter();
+        ws.Columns().AdjustToContents();
+
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return File(ms.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ExportBaseName(status) + ".xlsx");
     }
 
     public async Task<IActionResult> Create()
