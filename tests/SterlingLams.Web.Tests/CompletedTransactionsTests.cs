@@ -84,6 +84,37 @@ public class CompletedTransactionsTests
     }
 
     [Fact]
+    public async Task Voided_website_order_nets_to_zero_with_delivery_excluded()
+    {
+        using var t = new TestDb();
+        var (_, allen, _) = t.SeedBranches();
+        var user = t.SeedUser();
+        var p = t.SeedProduct(5000m);
+
+        t.Db.Orders.Add(new Order
+        {
+            OrderNumber = "W-VOID", UserId = user.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = allen.Id,
+            Status = OrderStatus.Cancelled, IsPaid = true, PaidAt = DateTime.UtcNow.AddMinutes(-20),
+            PaymentProvider = "Paystack", Currency = "NGN",
+            Subtotal = 5000m, DeliveryFee = 1500m, Total = 6500m,
+            VoidedAt = DateTime.UtcNow.AddMinutes(-5), VoidedByName = "Mgr", VoidReason = "Test order",
+            Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 5000m } }
+        });
+        await t.Db.SaveChangesAsync();
+
+        var vm = await LoadAsync(t);
+
+        // Positive sale row (product only, ₦5,000) + a negative void row (−₦5,000, delivery excluded) → nets to 0.
+        Assert.Contains(vm.Rows, r => !r.IsVoid && !r.IsRefund && r.Total == 5000m);
+        var voidRow = vm.Rows.Single(r => r.IsVoid);
+        Assert.Equal(-5000m, voidRow.Total);
+        Assert.Equal("Void", voidRow.Tender);
+        Assert.Equal(5000m, vm.VoidsTotal);
+        Assert.Equal(0m, vm.Net);
+    }
+
+    [Fact]
     public async Task Website_filter_excludes_void_rows()
     {
         using var t = new TestDb();

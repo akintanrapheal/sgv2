@@ -25,7 +25,7 @@ public static class EodDayRule
     /// payment tenders can never be selected by three slightly different versions of the same rule.
     /// </summary>
     public static Expression<Func<Order, bool>> InWindow(DateTime from, DateTime toExclusive) => o =>
-        o.IsPaid && (
+        o.IsPaid && o.VoidedAt == null && (
             o.Channel == OrderChannel.Pos
                 ? (o.PaidAt ?? o.CreatedAt) >= from && (o.PaidAt ?? o.CreatedAt) < toExclusive
                 : (o.PackedAt ?? o.PickupReadyEmailedAt) != null

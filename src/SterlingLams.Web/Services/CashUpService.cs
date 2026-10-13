@@ -168,6 +168,7 @@ public class CashUpService : ICashUpService
         foreach (var t in sentTransfers)
         {
             if (!sentOrderById.TryGetValue(t.OrderId!.Value, out var o)) continue;
+            if (o.VoidedAt != null) continue;   // a voided order is not revenue, even if its transfer shipped
             foreach (var ti in t.Items)
             {
                 var oi = o.Items.FirstOrDefault(x => x.ProductId == ti.ProductId && x.ProductVariantId == ti.ProductVariantId);
@@ -186,7 +187,7 @@ public class CashUpService : ICashUpService
         // (a) Orders THIS branch fulfils (delivery or pickup), paid within the window — its OWN-stock items.
         // Online-till only (see above).
         var fulfilledOrders = !isOnlineTill ? new List<Order>() : await _db.Orders
-            .Where(o => o.Channel == OrderChannel.Online && o.IsPaid
+            .Where(o => o.Channel == OrderChannel.Online && o.IsPaid && o.VoidedAt == null
                 && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded
                 && (o.FulfillingStoreId == storeId || o.PickupStoreId == storeId)
                 && (o.PaidAt ?? o.CreatedAt) >= onlineStart && (o.PaidAt ?? o.CreatedAt) < onlineEnd)

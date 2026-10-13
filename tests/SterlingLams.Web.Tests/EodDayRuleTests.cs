@@ -17,7 +17,8 @@ public class EodDayRuleTests
     private static readonly DateTime Wed = Mon.AddDays(2);
 
     private static Order Add(TestDb t, ApplicationUser u, OrderChannel channel, bool paid,
-        DateTime created, DateTime? paidAt = null, DateTime? packedAt = null, DateTime? pickupReadyAt = null)
+        DateTime created, DateTime? paidAt = null, DateTime? packedAt = null, DateTime? pickupReadyAt = null,
+        DateTime? voidedAt = null)
     {
         var o = new Order
         {
@@ -31,7 +32,8 @@ public class EodDayRuleTests
             CreatedAt = created,
             PaidAt = paidAt,
             PackedAt = packedAt,
-            PickupReadyEmailedAt = pickupReadyAt
+            PickupReadyEmailedAt = pickupReadyAt,
+            VoidedAt = voidedAt
         };
         t.Db.Orders.Add(o);
         t.Db.SaveChanges();
@@ -113,6 +115,19 @@ public class EodDayRuleTests
         var u = t.SeedUser();
         var pos = Add(t, u, OrderChannel.Pos, paid: false, created: Tue, paidAt: Tue);
         var web = Add(t, u, OrderChannel.Online, paid: false, created: Mon, packedAt: Tue);
+
+        var tue = OnTuesday(t);
+        Assert.DoesNotContain(pos.OrderNumber, tue);
+        Assert.DoesNotContain(web.OrderNumber, tue);
+    }
+
+    [Fact]
+    public void A_voided_sale_never_counts_on_any_day()
+    {
+        using var t = new TestDb();
+        var u = t.SeedUser();
+        var pos = Add(t, u, OrderChannel.Pos, paid: true, created: Tue.AddHours(12), paidAt: Tue.AddHours(12), voidedAt: Tue.AddHours(13));
+        var web = Add(t, u, OrderChannel.Online, paid: true, created: Mon, packedAt: Tue.AddHours(11), voidedAt: Tue.AddHours(12));
 
         var tue = OnTuesday(t);
         Assert.DoesNotContain(pos.OrderNumber, tue);
