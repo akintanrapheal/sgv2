@@ -105,6 +105,18 @@ public class TillController : InventoryAreaController
             }).ToList()
         };
 
+        // The online till also earns WEBSITE revenue, which is NOT tied to a TillSessionId (those orders are
+        // paid online, outside any shift) — so the per-session sum above misses it and an online-till row
+        // reads ₦0 even though its cash-up (what you see when you open the row) shows the website takings.
+        // Enrich online-till rows with the SAME website figure the detail uses, so the list matches what you
+        // open. Only online tills are affected (a handful), so the extra cash-up builds stay cheap.
+        foreach (var row in vm.Rows.Where(r => r.Session.Register?.HandlesOnlineOrders == true))
+        {
+            var cu = await _cashUp.BuildAsync(row.Session, interim: row.Session.ClosedAt == null, currentUserId: "");
+            row.Sales += cu.Tenders.Where(x => x.Key is "WebsiteOnline" or "WebsiteTransfer").Sum(x => x.Expected);
+            row.SaleCount = cu.Transactions;   // in-store sales + the website orders this till earned
+        }
+
         var posToday = _db.Orders.Where(o => o.Channel == OrderChannel.Pos && o.CreatedAt >= today);
         vm.SalesToday = await posToday.SumAsync(o => (decimal?)o.Total) ?? 0;
         vm.TxToday = await posToday.CountAsync();
