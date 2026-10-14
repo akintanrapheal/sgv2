@@ -37,13 +37,14 @@ public class TransfersController : InventoryAreaController
         return ok ? null : Json(new { success = false, message = "You don't have access to this transfer's branch." });
     }
 
-    public async Task<IActionResult> Index(int? storeId, string status = "all", int page = 1)
+    public async Task<IActionResult> Index(int? storeId, string status = "all", string q = "", int page = 1)
     {
         const int pageSize = 40;
         ViewData["Title"] = "Transfers";
         ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
         ViewBag.StoreId = storeId;
         ViewBag.Status = status;
+        ViewBag.Query = q ?? "";
 
         var baseQuery = _db.StockTransfers.AsQueryable();
         if (storeId.HasValue)
@@ -55,8 +56,8 @@ public class TransfersController : InventoryAreaController
         ViewBag.StatusCounts = counts.ToDictionary(c => c.Status, c => c.Count);
         ViewBag.TotalCount = counts.Sum(c => c.Count);
 
-        IQueryable<StockTransfer> query = ApplyStatusFilter(
-            baseQuery.Include(t => t.FromStore).Include(t => t.ToStore).Include(t => t.Items), status);
+        IQueryable<StockTransfer> query = ApplySearch(ApplyStatusFilter(
+            baseQuery.Include(t => t.FromStore).Include(t => t.ToStore).Include(t => t.Items), status), q);
 
         if (page < 1) page = 1;
         var filteredCount = await query.CountAsync();
@@ -65,6 +66,19 @@ public class TransfersController : InventoryAreaController
         var transfers = await query.OrderByDescending(t => t.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
         return View(transfers);
+    }
+
+    // Free-text search over transfer number, either branch name, or a line item's product — shared by the
+    // list and both exports so they always agree.
+    private static IQueryable<StockTransfer> ApplySearch(IQueryable<StockTransfer> query, string? q)
+    {
+        q = (q ?? "").Trim();
+        if (q.Length == 0) return query;
+        var like = $"%{q}%";
+        return query.Where(t => EF.Functions.ILike(t.TransferNumber, like)
+            || EF.Functions.ILike(t.FromStore.Name, like)
+            || EF.Functions.ILike(t.ToStore.Name, like)
+            || t.Items.Any(i => EF.Functions.ILike(i.ProductName, like)));
     }
 
     // Shared status → query filter, used by the list and both exports so one source of truth.
@@ -93,13 +107,13 @@ public class TransfersController : InventoryAreaController
     /// <summary>Builds the flat, one-row-per-item dataset for the export (respects the branch + status
     /// filters, all pages). Cells are typed (DateTimes already in local/WAT time, quantities as ints)
     /// so the Excel writer can format them and the CSV writer can stringify consistently.</summary>
-    private async Task<List<object?[]>> BuildExportRowsAsync(int? storeId, string status)
+    private async Task<List<object?[]>> BuildExportRowsAsync(int? storeId, string status, string q = "")
     {
         IQueryable<StockTransfer> query = _db.StockTransfers
             .Include(t => t.FromStore).Include(t => t.ToStore).Include(t => t.Items);
         if (storeId.HasValue)
             query = query.Where(t => t.FromStoreId == storeId.Value || t.ToStoreId == storeId.Value);
-        var transfers = await ApplyStatusFilter(query, status)
+        var transfers = await ApplySearch(ApplyStatusFilter(query, status), q)
             .OrderByDescending(t => t.CreatedAt).ToListAsync();
 
         // Resolve people's names and product SKUs / online-order numbers in one round-trip each.
@@ -175,10 +189,10 @@ public class TransfersController : InventoryAreaController
         return $"stock-transfers{scope}_{DateTime.UtcNow.ToLocalTime():yyyyMMdd-HHmm}";
     }
 
-    // Detailed CSV export (one row per transferred item), honouring the current branch + status filter.
-    public async Task<IActionResult> ExportCsv(int? storeId, string status = "all")
+    // Detailed CSV export (one row per transferred item), honouring the current branch + status + search.
+    public async Task<IActionResult> ExportCsv(int? storeId, string status = "all", string q = "")
     {
-        var rows = await BuildExportRowsAsync(storeId, status);
+        var rows = await BuildExportRowsAsync(storeId, status, q);
         var sb = new StringBuilder();
         Csv.AppendRow(sb, ExportHeaders);
         foreach (var r in rows)
@@ -195,9 +209,9 @@ public class TransfersController : InventoryAreaController
 
     // Detailed Excel (.xlsx) export — same data as the CSV, with typed cells, a frozen bold header row,
     // date formatting and an auto-filter so staff can sort/pivot.
-    public async Task<IActionResult> ExportExcel(int? storeId, string status = "all")
+    public async Task<IActionResult> ExportExcel(int? storeId, string status = "all", string q = "")
     {
-        var rows = await BuildExportRowsAsync(storeId, status);
+        var rows = await BuildExportRowsAsync(storeId, status, q);
 
         using var wb = new XLWorkbook();
         var ws = wb.AddWorksheet("Transfers");

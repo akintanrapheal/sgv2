@@ -7,6 +7,7 @@
     string status = ViewBag.Status ?? "all";
     var statusCounts = ViewBag.StatusCounts as Dictionary<TransferStatus, int> ?? new();
     int totalCount = ViewBag.TotalCount ?? 0;
+    string query = ViewBag.Query ?? "";
     var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
 }
 
@@ -53,12 +54,20 @@
                 <option value="@filter" selected="@(status == filter)">@TransferStatusDisplay.Label(st)</option>
             }
         </select>
+        <input type="search" name="q" value="@query" placeholder="Search transfer #, branch or product…"
+               class="@selectCls w-64 max-w-full" />
+        <button type="submit" class="px-4 py-2 bg-neutral-900 text-white text-sm rounded-sm hover:bg-black transition-colors">Search</button>
+        @if (!string.IsNullOrWhiteSpace(query))
+        {
+            <a asp-area="Inventory" asp-controller="Transfers" asp-action="Index" asp-route-storeId="@storeId" asp-route-status="@status"
+               class="px-2 py-2 text-xs text-neutral-500 hover:text-neutral-800 self-center">Clear</a>
+        }
     </form>
     <div class="flex gap-2 items-center">
         <span class="text-xs text-neutral-400">Export detail:</span>
-        <a asp-area="Inventory" asp-controller="Transfers" asp-action="ExportCsv" asp-route-storeId="@storeId" asp-route-status="@status"
+        <a asp-area="Inventory" asp-controller="Transfers" asp-action="ExportCsv" asp-route-storeId="@storeId" asp-route-status="@status" asp-route-q="@query"
            class="px-3 py-2 border border-neutral-200 text-neutral-600 text-xs rounded-sm hover:border-emerald-400 hover:text-emerald-700 transition-colors">CSV</a>
-        <a asp-area="Inventory" asp-controller="Transfers" asp-action="ExportExcel" asp-route-storeId="@storeId" asp-route-status="@status"
+        <a asp-area="Inventory" asp-controller="Transfers" asp-action="ExportExcel" asp-route-storeId="@storeId" asp-route-status="@status" asp-route-q="@query"
            class="px-3 py-2 border border-neutral-200 text-neutral-600 text-xs rounded-sm hover:border-emerald-400 hover:text-emerald-700 transition-colors">Excel</a>
     </div>
 </div>
