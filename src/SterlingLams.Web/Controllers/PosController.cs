@@ -1570,13 +1570,18 @@ public class PosController : Controller
                 && (o.Status == OrderStatus.Refunded || o.Status == OrderStatus.Cancelled))
             .Select(o => o.Id).ToListAsync()).ToHashSet();
         outbound = outbound.Where(t => !deadOrderIds.Contains(t.OrderId!.Value)).ToList();
-        var outOrderNums = await _db.Orders.Where(o => outOrderIds.Contains(o.Id))
-            .Select(o => new { o.Id, o.OrderNumber }).ToDictionaryAsync(o => o.Id, o => o.OrderNumber);
+        var outOrderInfo = await _db.Orders.Where(o => outOrderIds.Contains(o.Id))
+            .Select(o => new { o.Id, o.OrderNumber, o.FulfillmentType }).ToListAsync();
+        var outOrderNums = outOrderInfo.ToDictionary(o => o.Id, o => o.OrderNumber);
+        var outOrderFt = outOrderInfo.ToDictionary(o => o.Id, o => o.FulfillmentType.ToString());
         var toSend = outbound.Select(t => new
         {
             transferId = t.Id,
             number = t.TransferNumber,
             orderNumber = outOrderNums.GetValueOrDefault(t.OrderId!.Value, ""),
+            // "StorePickup" → the destination branch is where the customer collects, so the sending branch
+            // sees "send to <branch> for customer pickup" rather than the generic "merge".
+            fulfillmentType = outOrderFt.GetValueOrDefault(t.OrderId!.Value, ""),
             toStore = t.ToStore!.Name,
             itemCount = t.Items.Sum(i => i.ApprovedQty ?? i.RequestedQty),
             items = t.Items.Select(i => i.ProductName + (i.VariantName == null ? "" : " (" + i.VariantName + ")") + " ×" + (i.ApprovedQty ?? i.RequestedQty)).ToList(),
