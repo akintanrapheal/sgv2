@@ -286,16 +286,37 @@ public class ProductsController : Controller
         var isInWishlist = User.Identity?.IsAuthenticated == true
             && await _db.WishlistItems.AnyAsync(w => w.UserId == GetUserId() && w.ProductId == product.Id);
 
-        // NB: single-query (not split) on purpose — split + random ordering would re-roll the random
-        // pick per collection query and mismatch the includes. Take(4) keeps the cartesian tiny anyway.
+        // Related row ("you may also like"): project straight to the card fields instead of Include-ing the
+        // Images + StoreInventories collections. Two collection Includes on one root is a cartesian (and the
+        // MultipleCollectionIncludeWarning) — and here it can't be split, because AsSplitQuery + random order
+        // would re-roll the pick per sub-query. Projecting turns each collection into a cheap correlated
+        // subquery in the SELECT, so it stays a SINGLE random query with no cartesian and only the columns the
+        // card needs. Mirrors the SearchSuggestions projection.
         var relatedProducts = await _db.Products
             .AsNoTracking()
-            .Include(p => p.Images)
-            .Include(p => p.StoreInventories)
             .Where(p => p.CategoryId == product.CategoryId && p.Id != product.Id && p.IsActive)
             .OrderBy(_ => EF.Functions.Random())
             .Take(4)
+            .Select(p => new ProductCardViewModel
+            {
+                Id = p.Id,
+                Name = p.Name,
+                Slug = p.Slug,
+                Price = p.Price,
+                SalePrice = p.SalePrice,
+                SaleStartsAt = p.SaleStartsAt,
+                SaleEndsAt = p.SaleEndsAt,
+                PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
+                    .Select(i => i.Url).FirstOrDefault(),
+                SecondaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
+                    .Select(i => i.Url).Skip(1).FirstOrDefault(),
+                IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0)
+            })
             .ToListAsync();
+        // Placeholder for a product with no image — applied in memory so the SQL projection stays a plain
+        // subquery (no COALESCE-over-subquery to translate), matching the SearchSuggestions image pattern.
+        foreach (var r in relatedProducts)
+            if (string.IsNullOrEmpty(r.PrimaryImageUrl)) r.PrimaryImageUrl = "/images/placeholder.jpg";
 
         // Per-variant available across active branches, using the effective-row fallback (variant's
         // own row if stocked, else the product pool) — mirrors StockService/cart so the page, cart
@@ -372,21 +393,7 @@ public class ProductsController : Controller
             }).ToList(),
             Tags = product.Tags.Select(t => t.Name).ToList(),
             IsInWishlist = isInWishlist,
-            RelatedProducts = relatedProducts.Select(p => new ProductCardViewModel
-            {
-                Id = p.Id,
-                Name = p.Name,
-                Slug = p.Slug,
-                Price = p.Price,
-                SalePrice = p.SalePrice,
-                SaleStartsAt = p.SaleStartsAt,
-                SaleEndsAt = p.SaleEndsAt,
-                PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
-                    .Select(i => i.Url).FirstOrDefault() ?? "/images/placeholder.jpg",
-                SecondaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
-                    .Select(i => i.Url).Skip(1).FirstOrDefault(),
-                IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0)
-            }).ToList(),
+            RelatedProducts = relatedProducts,
             FrequentlyBoughtTogether = await _merch.FrequentlyBoughtTogetherAsync(product.Id, 4),
             OutOfStockMessage = await _settings.GetAsync("store.out_of_stock_msg",
                 "This item is currently out of stock. Check back soon.")
