@@ -84,11 +84,13 @@ public class PosController : Controller
     // Tokenised public manifest link (same sheet the Inventory System prints) — no login needed to view.
     private string ManifestUrl(int transferId) => "/t/manifest/" + _manifestTokens.Protect(transferId);
 
-    // In-store (POS) charge price. An explicit POS price wins; otherwise the normal POS price — the
-    // variant's own price, else the product's POS price, else its effective (sale-aware) price. So an
-    // item with no POS price set behaves exactly as before.
-    private static decimal PosCharge(Product p, ProductVariant? v) =>
-        v != null ? (v.PosPrice ?? v.Price ?? p.PosPrice ?? p.EffectivePrice)
+    // In-store (POS) charge price. An explicit POS price wins; otherwise the variant's own price, then the
+    // product's POS price. For a VARIABLE product the till is priced per variant and NEVER uses the website
+    // sale price — so when a variant has no price of its own it falls back to the product's REGULAR price
+    // (p.Price), matching the product-grid card and variant picker (see PosPricingTests). A SIMPLE product
+    // keeps its sale-aware website price (p.EffectivePrice) unless it has an explicit POS price.
+    internal static decimal PosCharge(Product p, ProductVariant? v) =>
+        v != null ? (v.PosPrice ?? v.Price ?? p.PosPrice ?? p.Price)
                   : (p.PosPrice ?? p.EffectivePrice);
 
     // POS card thumbnail. Uses Img.Cld so any small transform already baked into the stored URL is
