@@ -1578,6 +1578,7 @@ public class PosController : Controller
         {
             transferId = t.Id,
             number = t.TransferNumber,
+            orderId = t.OrderId!.Value,
             orderNumber = outOrderNums.GetValueOrDefault(t.OrderId!.Value, ""),
             // "StorePickup" → the destination branch is where the customer collects, so the sending branch
             // sees "send to <branch> for customer pickup" rather than the generic "merge".
@@ -1925,6 +1926,7 @@ public class PosController : Controller
         {
             success = true,
             transferId = t.Id,
+            orderId = t.OrderId,
             number = t.TransferNumber,
             orderNumber = order?.OrderNumber ?? "",
             toStore = t.ToStore!.Name,

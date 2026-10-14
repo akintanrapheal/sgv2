@@ -3212,7 +3212,11 @@
             + '</button>'
             + '<div class="flex items-center gap-2 mt-3">'
             +   '<button type="button" data-dispatch="' + o.transferId + '" class="flex-1 bg-brand-500 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-brand-600">Pack &amp; dispatch</button>'
-            +   (o.manifestUrl ? '<a href="' + esc(o.manifestUrl) + '" target="_blank" class="px-3 py-2.5 border border-neutral-200 text-neutral-600 rounded-lg text-xs">Manifest</a>' : '')
+            // Pickup supplied from here → print the order's packing slip (shows PICKUP + collection branch),
+            // not the inter-branch transfer manifest. Delivery merges still print the manifest.
+            +   (o.fulfillmentType === 'StorePickup' && o.orderId
+                    ? '<a href="' + window.__posBase + '/PackedOrderPrint/' + o.orderId + '" target="_blank" class="px-3 py-2.5 border border-neutral-200 text-neutral-600 rounded-lg text-xs">Packing slip</a>'
+                    : (o.manifestUrl ? '<a href="' + esc(o.manifestUrl) + '" target="_blank" class="px-3 py-2.5 border border-neutral-200 text-neutral-600 rounded-lg text-xs">Manifest</a>' : ''))
             + '</div></div>';
     }
     async function dispatchTransfer(id, btn) {
@@ -3422,9 +3426,11 @@
                     </div>
                     ${timeline}
                     <div class="border border-neutral-200 rounded-xl p-3 flex items-center justify-between">
-                        <div><p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-0.5">Delivery option</p>
-                        <p class="text-sm text-neutral-800">${d.deliveryType ? esc(d.deliveryType) : (d.fulfillmentType === 'StorePickup' ? 'Store pickup' : 'Standard')}</p></div>
-                        ${d.manifestUrl ? `<a href="${esc(d.manifestUrl)}" target="_blank" class="text-xs text-brand-600 underline">Print manifest</a>` : ''}
+                        <div><p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-0.5">${d.fulfillmentType === 'StorePickup' ? 'Collection' : 'Delivery option'}</p>
+                        <p class="text-sm text-neutral-800">${d.fulfillmentType === 'StorePickup' ? 'Store pickup' + (d.toStore ? ' · ' + esc(d.toStore) : '') : (d.deliveryType ? esc(d.deliveryType) : 'Standard')}</p></div>
+                        ${d.fulfillmentType === 'StorePickup' && d.orderId
+                            ? `<a href="${window.__posBase}/PackedOrderPrint/${d.orderId}" target="_blank" class="text-xs text-brand-600 underline">Packing slip</a>`
+                            : (d.manifestUrl ? `<a href="${esc(d.manifestUrl)}" target="_blank" class="text-xs text-brand-600 underline">Print manifest</a>` : '')}
                     </div>
                     ${d.note ? `<div class="border border-amber-200 bg-amber-50 rounded-xl p-3"><p class="text-[10px] uppercase tracking-wide text-amber-600 mb-1">Order note</p><p class="text-sm text-amber-800">${esc(d.note)}</p></div>` : ''}
                     ${dispatchBtn}
