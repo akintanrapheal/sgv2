@@ -89,14 +89,15 @@ public class CashUpService : ICashUpService
         // show in Finance, which attributes per order.)
         var isOnlineTill = session.Register?.HandlesOnlineOrders == true;
 
-        // Website orders belong to the Lagos DAY, not a till shift — they arrive 24/7, before the cashier
-        // opens the till AND after they close it. So the online till counts them across the WHOLE business
-        // day, not just its open→close clock (otherwise an order paid at 07:44 before a 09:24 open, or one
-        // confirmed at 13:12 after an early close, is silently dropped). The day is partitioned across the
-        // register's sessions by OPEN time: this session owns online orders from its open — or the start of
-        // the day if it's the day's first session — until the next session on this register opened (or the
-        // end of the day, capped at now). That captures the early/late orders while never double-counting
-        // across two sessions in one day. POS sales are tied to the session id, so they're unaffected.
+        // Website orders are dated by the day they were PACKED / marked ready (the day the branch did the
+        // work) — the SAME rule Finance's End of Day uses (see EodDayRule), so the two EODs agree. They
+        // belong to the Lagos DAY, not a single till shift — a branch may pack across sessions, before the
+        // cashier opens the till AND after they close it. So the online till counts them across the WHOLE
+        // business day, not just its open→close clock. The day is partitioned across the register's sessions
+        // by OPEN time: this session owns online orders packed from its open — or the start of the day if it's
+        // the day's first session — until the next session on this register opened (or the end of the day,
+        // capped at now). That captures the early/late packs while never double-counting across two sessions in
+        // one day. POS sales are tied to the session id, so they're unaffected.
         var onlineStart = session.OpenedAt;
         var onlineEnd = winEnd;
         if (isOnlineTill)
@@ -184,13 +185,17 @@ public class CashUpService : ICashUpService
             }
         }
 
-        // (a) Orders THIS branch fulfils (delivery or pickup), paid within the window — its OWN-stock items.
+        // (a) Orders THIS branch fulfils (delivery or pickup), PACKED / marked ready within the window — its
+        // OWN-stock items. Dated by the packed/ready time (the work event), matching Finance's EOD day rule,
+        // so a website order shows in the EPOS cash-up on the day it was packed, not the day it was paid.
         // Online-till only (see above).
         var fulfilledOrders = !isOnlineTill ? new List<Order>() : await _db.Orders
             .Where(o => o.Channel == OrderChannel.Online && o.IsPaid && o.VoidedAt == null
                 && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded
                 && (o.FulfillingStoreId == storeId || o.PickupStoreId == storeId)
-                && (o.PaidAt ?? o.CreatedAt) >= onlineStart && (o.PaidAt ?? o.CreatedAt) < onlineEnd)
+                && (o.PackedAt ?? o.PickupReadyEmailedAt) != null
+                && (o.PackedAt ?? o.PickupReadyEmailedAt) >= onlineStart
+                && (o.PackedAt ?? o.PickupReadyEmailedAt) < onlineEnd)
             .Include(o => o.Items).ThenInclude(i => i.Product).ThenInclude(p => p.Category)
             .ToListAsync();
         var fulfilledIds = fulfilledOrders.Select(o => o.Id).ToList();

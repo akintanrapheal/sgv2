@@ -50,6 +50,7 @@ public class CashUpSplitTests
             Status = OrderStatus.Processing,
             IsPaid = true,
             PaidAt = now.AddMinutes(-60),
+            PackedAt = now.AddMinutes(-20),   // packed within Allen's session window
             Currency = "NGN",
             Subtotal = 3 * 1000m + 2 * 2000m,
             DeliveryFee = 500m,
@@ -127,7 +128,7 @@ public class CashUpSplitTests
         {
             OrderNumber = "T-WT-1", UserId = buyer.Id, Channel = OrderChannel.Online,
             FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = allen.Id,
-            Status = OrderStatus.Processing, IsPaid = true, PaidAt = now.AddMinutes(-30),
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = now.AddMinutes(-30), PackedAt = now.AddMinutes(-20),
             PaymentProvider = "Transfer", Currency = "NGN",
             Subtotal = 2 * 2500m, DeliveryFee = 500m, Total = 2 * 2500m + 500m,
             Items = new List<OrderItem> { new() { ProductId = p.Id, ProductName = p.Name, Quantity = 2, UnitPrice = 2500m } },
@@ -158,7 +159,7 @@ public class CashUpSplitTests
         {
             OrderNumber = "T-WT-MAN", UserId = buyer.Id, Channel = OrderChannel.Online,
             FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = allen.Id,
-            Status = OrderStatus.Processing, IsPaid = true, PaidAt = now.AddMinutes(-30),
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = now.AddMinutes(-30), PackedAt = now.AddMinutes(-20),
             PaymentProvider = "Manual (Transfer)", Currency = "NGN",
             Subtotal = 2 * 2500m, DeliveryFee = 500m, Total = 2 * 2500m + 500m,
             Items = new List<OrderItem> { new() { ProductId = p.Id, ProductName = p.Name, Quantity = 2, UnitPrice = 2500m } },
@@ -231,7 +232,7 @@ public class CashUpSplitTests
         {
             OrderNumber = "T-WEB-R", UserId = buyer.Id, Channel = OrderChannel.Online,
             FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = allen.Id,
-            Status = OrderStatus.Processing, IsPaid = true, PaidAt = now.AddMinutes(-60),
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = now.AddMinutes(-60), PackedAt = now.AddMinutes(-20),
             Currency = "NGN", Subtotal = 2000m, Total = 2000m,
             Items = new List<OrderItem> { new() { ProductId = p.Id, ProductName = p.Name, Quantity = 2, UnitPrice = 1000m } },
         };
@@ -275,12 +276,12 @@ public class CashUpSplitTests
             PaymentProvider = "Card", Currency = "NGN", Subtotal = 10000m, Total = 10000m,
             Items = new List<OrderItem> { new() { ProductId = p.Id, ProductName = p.Name, Quantity = 2, UnitPrice = 5000m } },
         };
-        // Online order Allen fulfilled on an EARLIER day (paid before this session → not website sales this session)...
+        // Online order Allen PACKED on an EARLIER day (before this session's window → not website sales this session)...
         var web = new Order
         {
             OrderNumber = "T-WEBOLD", UserId = buyer.Id, Channel = OrderChannel.Online,
             FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = allen.Id,
-            Status = OrderStatus.Processing, IsPaid = true, PaidAt = now.AddHours(-26),
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = now.AddHours(-26), PackedAt = now.AddHours(-26),
             PaymentProvider = "Paystack", Currency = "NGN", Subtotal = 5000m, Total = 5000m,
             Items = new List<OrderItem> { new() { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 5000m } },
         };

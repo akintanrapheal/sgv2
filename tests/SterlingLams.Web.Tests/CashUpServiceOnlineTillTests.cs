@@ -48,6 +48,7 @@ public class CashUpServiceOnlineTillTests
             Status = OrderStatus.Confirmed,
             IsPaid = true,
             PaidAt = DateTime.UtcNow.AddHours(-1),
+            PackedAt = DateTime.UtcNow.AddMinutes(-30),   // packed within the open session's window
             PaymentProvider = "Paystack",
             Currency = "NGN",
             Subtotal = 5000m,
@@ -88,7 +89,8 @@ public class CashUpServiceOnlineTillTests
         {
             OrderNumber = "W-VOID", UserId = user.Id, Channel = OrderChannel.Online,
             FulfillmentType = FulfillmentType.Delivery, Status = OrderStatus.Cancelled,
-            IsPaid = true, PaidAt = DateTime.UtcNow.AddHours(-1), PaymentProvider = "Paystack",
+            IsPaid = true, PaidAt = DateTime.UtcNow.AddHours(-1), PackedAt = DateTime.UtcNow.AddMinutes(-40),
+            PaymentProvider = "Paystack",
             Currency = "NGN", Subtotal = 5000m, Total = 5000m, FulfillingStoreId = allen.Id,
             VoidedAt = DateTime.UtcNow.AddMinutes(-30), VoidedByName = "Manager", VoidReason = "Test order",
             Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 5000m } }
@@ -103,7 +105,7 @@ public class CashUpServiceOnlineTillTests
     }
 
     [Fact]
-    public async Task Website_order_paid_before_the_till_opened_still_counts()
+    public async Task Website_order_packed_before_the_till_opened_still_counts()
     {
         using var t = new TestDb();
         var user = t.SeedUser();
@@ -119,7 +121,7 @@ public class CashUpServiceOnlineTillTests
         var dayStart = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(day);
         var opened = dayStart.AddHours(9).AddMinutes(24);     // till opened 09:24
         var closed = dayStart.AddHours(19);                   // closed 19:00
-        var paidEarly = dayStart.AddHours(7).AddMinutes(44);  // order paid 07:44 — BEFORE the till opened
+        var packedEarly = dayStart.AddHours(7).AddMinutes(44);// order packed 07:44 — BEFORE the till opened
 
         var session = new TillSession { RegisterId = reg.Id, OpenedByUserId = "dorathy", OpenedAt = opened, ClosedAt = closed, OpeningFloat = 0 };
         t.Db.TillSessions.Add(session);
@@ -127,7 +129,7 @@ public class CashUpServiceOnlineTillTests
         {
             OrderNumber = "W-EARLY", UserId = user.Id, Channel = OrderChannel.Online,
             FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = abuja.Id,
-            Status = OrderStatus.Processing, IsPaid = true, PaidAt = paidEarly,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = dayStart.AddHours(6), PackedAt = packedEarly,
             PaymentProvider = "Paystack", Currency = "NGN", Subtotal = 24450m, DeliveryFee = 3500m, Total = 27950m,
             Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 24450m } }
         });
@@ -136,13 +138,54 @@ public class CashUpServiceOnlineTillTests
         var tracked = await t.Db.TillSessions.Include(x => x.Register).FirstAsync(x => x.Id == session.Id);
         var vm = await new CashUpService(t.Db).BuildAsync(tracked, interim: false, currentUserId: "");
 
-        // Counted despite being paid before the till opened; merchandise only (delivery excluded).
+        // Counted despite being packed before the till opened; merchandise only (delivery excluded).
         Assert.Equal(24450m, vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected);
         Assert.Equal(1, vm.Transactions);
     }
 
     [Fact]
-    public async Task Website_order_confirmed_after_the_till_closed_still_counts()
+    public async Task Website_order_paid_one_day_but_packed_the_next_counts_on_the_packed_day()
+    {
+        // The exact reported case: an order came in (paid) one day and the branch packed it the next morning.
+        // It must land on the EPOS cash-up for the day it was PACKED (matching Finance's EOD), not the paid day.
+        using var t = new TestDb();
+        var user = t.SeedUser();
+        var (abuja, _, _) = t.SeedBranches();
+        var p = t.SeedProduct(10000m);
+        var reg = new Register { Name = "Abuja Pos 1", StoreId = abuja.Id, IsActive = true, HandlesOnlineOrders = true };
+        t.Db.Registers.Add(reg);
+        await t.Db.SaveChangesAsync();
+
+        // Two fully-past Lagos days so both windows sit before "now" (deterministic whatever time this runs).
+        var paidDay = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(SterlingLams.Web.Services.ReportCalendar.Today.AddDays(-2));
+        var packedDay = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(SterlingLams.Web.Services.ReportCalendar.Today.AddDays(-1));
+
+        var paidDaySession   = new TillSession { RegisterId = reg.Id, OpenedByUserId = "a", OpenedAt = paidDay.AddHours(9),   ClosedAt = paidDay.AddHours(19) };
+        var packedDaySession = new TillSession { RegisterId = reg.Id, OpenedByUserId = "a", OpenedAt = packedDay.AddHours(9), ClosedAt = packedDay.AddHours(19) };
+        t.Db.TillSessions.AddRange(paidDaySession, packedDaySession);
+        t.Db.Orders.Add(new Order
+        {
+            OrderNumber = "SGW-XDAY", UserId = user.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = abuja.Id,
+            Status = OrderStatus.Processing, IsPaid = true,
+            PaidAt = paidDay.AddHours(15), PackedAt = packedDay.AddHours(11),
+            PaymentProvider = "Paystack", Currency = "NGN", Subtotal = 10000m, DeliveryFee = 2000m, Total = 12000m,
+            Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 10000m } }
+        });
+        await t.Db.SaveChangesAsync();
+
+        var svc = new CashUpService(t.Db);
+        var paidVm = await svc.BuildAsync(await t.Db.TillSessions.Include(x => x.Register).FirstAsync(x => x.Id == paidDaySession.Id), interim: false, currentUserId: "");
+        var packedVm = await svc.BuildAsync(await t.Db.TillSessions.Include(x => x.Register).FirstAsync(x => x.Id == packedDaySession.Id), interim: false, currentUserId: "");
+
+        decimal Web(CloseSummaryVm vm) => vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected;
+        Assert.Equal(0m, Web(paidVm));          // NOT on the day it was paid
+        Assert.Equal(10000m, Web(packedVm));    // ON the day it was packed (merchandise only, delivery excluded)
+        Assert.Equal(1, packedVm.Transactions);
+    }
+
+    [Fact]
+    public async Task Website_order_packed_after_the_till_closed_still_counts()
     {
         using var t = new TestDb();
         var user = t.SeedUser();
@@ -158,7 +201,7 @@ public class CashUpServiceOnlineTillTests
         var dayStart = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(day);
         var opened = dayStart.AddHours(9);                   // till opened 09:00
         var closed = dayStart.AddHours(13);                  // closed early at 13:00
-        var paidLate = dayStart.AddHours(13).AddMinutes(12); // website bank transfer confirmed 13:12 — AFTER close
+        var packedLate = dayStart.AddHours(13).AddMinutes(12);// packed 13:12 — AFTER the early close
 
         var session = new TillSession { RegisterId = reg.Id, OpenedByUserId = "lucy", OpenedAt = opened, ClosedAt = closed, OpeningFloat = 0 };
         t.Db.TillSessions.Add(session);
@@ -166,7 +209,7 @@ public class CashUpServiceOnlineTillTests
         {
             OrderNumber = "SGW-LATE", UserId = user.Id, Channel = OrderChannel.Online,
             FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = abuja.Id,
-            Status = OrderStatus.Processing, IsPaid = true, PaidAt = paidLate,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = dayStart.AddHours(10), PackedAt = packedLate,
             PaymentProvider = "Manual (Transfer)", Currency = "NGN", Subtotal = 16950m, DeliveryFee = 7500m, Total = 24450m,
             Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 16950m } }
         });
@@ -175,7 +218,7 @@ public class CashUpServiceOnlineTillTests
         var tracked = await t.Db.TillSessions.Include(x => x.Register).FirstAsync(x => x.Id == session.Id);
         var vm = await new CashUpService(t.Db).BuildAsync(tracked, interim: false, currentUserId: "");
 
-        // A website bank-transfer confirmed after the till closed still lands in the day's cash-up.
+        // A website order packed after the till closed still lands in the day's cash-up.
         Assert.Equal(16950m, vm.Tenders.First(x => x.Key == "WebsiteTransfer").Expected);
         Assert.Equal(1, vm.Transactions);
     }
