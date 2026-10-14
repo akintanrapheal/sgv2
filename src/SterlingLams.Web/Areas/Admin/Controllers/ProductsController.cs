@@ -28,6 +28,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
         private readonly SterlingLams.Web.Services.IImageStorageService _imageStorage;
         private readonly SterlingLams.Web.Services.IImageAuditService _imageAudit;
+        private readonly IStockService _stock;
         public ProductsController(
             ApplicationDbContext db,
             IWooCommerceImportService wooImporter,
@@ -36,7 +37,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             IStorefrontCache storefrontCache,
             SeoDescriptionGenerator seo,
             SterlingLams.Web.Services.IImageStorageService imageStorage,
-            SterlingLams.Web.Services.IImageAuditService imageAudit)
+            SterlingLams.Web.Services.IImageAuditService imageAudit,
+            IStockService stock)
         {
             _db = db;
             _wooImporter = wooImporter;
@@ -46,6 +48,59 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             _seo = seo;
             _imageStorage = imageStorage;
             _imageAudit = imageAudit;
+            _stock = stock;
+        }
+
+        /// <summary>
+        /// Simple→variable transition: when a product becomes variable with exactly ONE active variant
+        /// whose own stock is still empty, move the product-pool (null-variant) on-hand onto that variant,
+        /// per store, so the stock "lives on the variant" (the model's rule) instead of being stranded on
+        /// the pool — where the Track Stock editor reads 0 while the storefront still sees it via fallback.
+        /// Moves through the stock ledger (net-zero per store) and zeroes the pool so totals don't double.
+        /// Idempotent + conservative: no-ops unless there's exactly one variant, the variant is empty, the
+        /// pool has on-hand, and nothing is reserved/held (so order reservations are never mis-attributed).
+        /// </summary>
+        private async Task InheritPoolStockToSingleVariantAsync(int productId, string? userId)
+        {
+            var variantIds = await _db.ProductVariants.Where(v => v.ProductId == productId && v.IsActive)
+                .Select(v => v.Id).ToListAsync();
+            if (variantIds.Count != 1) return;
+            var vid = variantIds[0];
+
+            var invRows = await _db.StoreInventories.Where(si => si.ProductId == productId).ToListAsync();
+            var poolRows = invRows.Where(r => r.ProductVariantId == null).ToList();
+            var variantRows = invRows.Where(r => r.ProductVariantId == vid).ToList();
+
+            // Nothing to inherit, variant already has its own stock, or there are active holds → leave it.
+            if (!poolRows.Any(r => r.QuantityOnHand > 0)) return;
+            if (variantRows.Any(r => r.QuantityOnHand != 0 || r.QuantityReserved != 0)) return;
+            if (invRows.Any(r => r.QuantityReserved != 0)) return;
+
+            var refNo = $"VAR-{DateTime.UtcNow:yyMMddHHmmss}";
+            foreach (var pool in poolRows.Where(r => r.QuantityOnHand > 0))
+            {
+                var qty = pool.QuantityOnHand;
+                await _stock.ApplyAsync(productId, vid, pool.StoreId, qty, StockMovementType.Adjustment,
+                    refNo, "Stock inherited from the product pool on conversion to a variable product", userId, materializeVariant: true);
+                await _stock.ApplyAsync(productId, null, pool.StoreId, -qty, StockMovementType.Adjustment,
+                    refNo, "Stock moved to the variant on conversion to a variable product", userId);
+                // Carry over the reorder settings + any inbound-on-order onto the new variant row. The row
+                // ApplyAsync just created is tracked-but-unsaved, so read it from Local (a DB query misses it).
+                var vrow = _db.StoreInventories.Local.FirstOrDefault(si => si.ProductId == productId
+                    && si.ProductVariantId == vid && si.StoreId == pool.StoreId);
+                if (vrow != null)
+                {
+                    vrow.MinStock = pool.MinStock;
+                    vrow.MaxStock = pool.MaxStock;
+                    vrow.StockAlerts = pool.StockAlerts;
+                    vrow.OnOrder = pool.OnOrder;
+                    pool.OnOrder = 0;
+                }
+            }
+            await _db.SaveChangesAsync();
+            await _storefrontCache.EvictAsync();
+            await LogAsync("Update", "Product", productId.ToString(),
+                "Converted to variable — product-pool stock moved onto the single variant (per branch).");
         }
 
         /// <summary>Image quality audit: lists active product/variant images whose delivered resolution is
@@ -473,6 +528,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             }
 
             await _db.SaveChangesAsync();
+            // Simple→variable with a single variant: move the stranded product-pool stock onto the variant.
+            await InheritPoolStockToSingleVariantAsync(id, null);
             if (created > 0)
                 await LogAsync("Update", "Product", id.ToString(),
                     $"Generated {created} variant(s) for '{product.Name}'");
@@ -635,6 +692,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var isNew = vm.Id == 0;
             await _db.SaveChangesAsync();
             await _storefrontCache.EvictAsync();
+
+            // Simple→variable with a single variant: carry the pool stock onto the variant so it isn't
+            // stranded (storefront sees it via fallback, but the Track Stock editor would read 0). No-op
+            // otherwise (self-guarded: needs one variant, an empty variant, pool on-hand, nothing reserved).
+            if (product.ProductType == "variable")
+                await InheritPoolStockToSingleVariantAsync(product.Id, null);
 
             var changes = isNew ? null : SterlingLams.Web.Services.AuditChanges.Build(
                 ("Name", oldName, product.Name),
