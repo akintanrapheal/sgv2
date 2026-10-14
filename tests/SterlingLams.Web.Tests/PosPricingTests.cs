@@ -57,6 +57,31 @@ public class PosPricingTests
     }
 
     [Fact]
+    public async Task Variable_variant_with_no_own_price_charges_regular_price_not_website_sale()
+    {
+        // Regression: a product converted simple→variable leaves the generated variant with no price of its
+        // own (Price/PosPrice null) while the product still carries a website SalePrice. The till CARD showed
+        // the regular price (₦6,950) but PosCharge used to fall through to p.EffectivePrice (the ₦4,950 sale),
+        // so the item rang up at a different price than shown. Charge must equal the card: the regular price.
+        using var t = new TestDb();
+        var cat = SeedCategory(t, "Rings");
+        var p = new Product
+        {
+            Name = "Gold Stone Ring", Slug = "gold-stone-ring", ProductType = "variable",
+            IsActive = true, CategoryId = cat.Id,
+            Price = 6950m, SalePrice = 4950m,     // website on sale at ₦4,950
+            PosPrice = null,
+            Variants = { new ProductVariant { Name = "8", IsActive = true } } // no own price (just converted)
+        };
+        t.Db.Products.Add(p);
+        await t.Db.SaveChangesAsync();
+
+        var variant = p.Variants.Single();
+        Assert.Equal(6950m, SterlingLams.Web.Controllers.PosController.PosCharge(p, variant)); // regular, not sale
+        Assert.Equal(await CardPriceAsync(t, p.Id), SterlingLams.Web.Controllers.PosController.PosCharge(p, variant)); // card == charge
+    }
+
+    [Fact]
     public async Task Simple_product_card_uses_pos_price_when_set()
     {
         using var t = new TestDb();
