@@ -60,6 +60,10 @@ public class StockTransfer
     public DateTime? CancelledAt { get; set; }
     public string? CancellationReason { get; set; }
 
+    /// <summary>Reason captured when a PARTIALLY received transfer is closed — the staffer must say what
+    /// happened to the never-arrived (pending) units and whether they were returned to origin or written off.</summary>
+    public string? CompletionReason { get; set; }
+
     public ICollection<StockTransferItem> Items { get; set; } = new List<StockTransferItem>();
 }
 
@@ -84,8 +88,11 @@ public class StockTransferItem
     public int? ReceivedQty { get; set; }
     public int? DamagedQty { get; set; }
     public int? WontFulfilQty { get; set; }
+    /// <summary>Pending units that were RETURNED to the origin branch when the transfer was closed (added
+    /// back to the sending branch's stock). Distinct from won't-fulfil, which is a confirmed loss.</summary>
+    public int? ReturnedQty { get; set; }
 
-    /// <summary>Units still in transit / unaccounted: dispatched − received − damaged − won't-fulfil.</summary>
+    /// <summary>Units still in transit / unaccounted: dispatched − received − damaged − won't-fulfil − returned.</summary>
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public int PendingQty => Math.Max(0, (DispatchedQty ?? 0) - (ReceivedQty ?? 0) - (DamagedQty ?? 0) - (WontFulfilQty ?? 0));
+    public int PendingQty => Math.Max(0, (DispatchedQty ?? 0) - (ReceivedQty ?? 0) - (DamagedQty ?? 0) - (WontFulfilQty ?? 0) - (ReturnedQty ?? 0));
 }

@@ -2944,6 +2944,9 @@ namespace SterlingLams.Web.Migrations
                     b.Property<string>("CancelledByUserId")
                         .HasColumnType("text");
 
+                    b.Property<string>("CompletionReason")
+                        .HasColumnType("text");
+
                     b.Property<string>("CourierName")
                         .HasColumnType("text");
 
@@ -3051,6 +3054,9 @@ namespace SterlingLams.Web.Migrations
                         .HasColumnType("integer");
 
                     b.Property<int>("RequestedQty")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ReturnedQty")
                         .HasColumnType("integer");
 
                     b.Property<int>("StockTransferId")

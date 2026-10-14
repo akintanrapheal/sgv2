@@ -39,7 +39,10 @@ public interface ITransferWorkflowService
     Task<TransferActionResult> RejectAsync(int transferId, string reason, string? userId);
     Task<TransferActionResult> DispatchAsync(int transferId, List<ItemQtyDto> items, string? trackingNumber, string? courierName, string? notes, string? userId);
     Task<TransferActionResult> ReceiveAsync(int transferId, List<ReceiveLineDto> lines, string? notes, string? userId);
-    Task<TransferActionResult> CompleteAsync(int transferId, string? userId);
+    /// <summary>Closes a partially-received transfer. The never-arrived (pending) units must be resolved
+    /// with a reason: <paramref name="disposition"/> "return" adds them back to the origin branch's stock,
+    /// "writeoff" confirms them as a loss (they left the source at dispatch and never arrive).</summary>
+    Task<TransferActionResult> CompleteAsync(int transferId, string disposition, string reason, string? userId);
     Task<TransferActionResult> CancelAsync(int transferId, string reason, string? userId);
 }
 
@@ -413,15 +416,55 @@ public class TransferWorkflowService : ITransferWorkflowService
         return TransferActionResult.Ok();
     }
 
-    public async Task<TransferActionResult> CompleteAsync(int transferId, string? userId)
+    public async Task<TransferActionResult> CompleteAsync(int transferId, string disposition, string reason, string? userId)
     {
-        var transfer = await _db.StockTransfers.FirstOrDefaultAsync(t => t.Id == transferId);
+        reason = (reason ?? "").Trim();
+        if (reason.Length == 0) return TransferActionResult.Fail("A reason is required to close a partial transfer.");
+        var returnToOrigin = string.Equals(disposition, "return", StringComparison.OrdinalIgnoreCase);
+        if (!returnToOrigin && !string.Equals(disposition, "writeoff", StringComparison.OrdinalIgnoreCase))
+            return TransferActionResult.Fail("Choose whether the pending stock is returned to origin or written off.");
+
+        var transfer = await _db.StockTransfers.Include(t => t.Items).Include(t => t.FromStore)
+            .FirstOrDefaultAsync(t => t.Id == transferId);
         if (transfer == null) return TransferActionResult.Fail("Transfer not found.");
         if (transfer.Status != TransferStatus.PartiallyReceived)
             return TransferActionResult.Fail("Transfer is not partially received.");
 
+        await using var tx = await _db.Database.BeginTransactionAsync();
+        var resolved = new List<string>();
+        foreach (var item in transfer.Items)
+        {
+            var pending = item.PendingQty;
+            if (pending <= 0) continue;
+            if (returnToOrigin)
+            {
+                // Put the never-arrived units back into the SENDING branch's stock (reverses the dispatch
+                // deduction — use when they were found / never actually left / sent back).
+                await _stock.ApplyAsync(item.ProductId, item.ProductVariantId, transfer.FromStoreId, pending,
+                    StockMovementType.Transfer, transfer.TransferNumber,
+                    $"Pending units returned to {transfer.FromStore.Name} on close: {reason}", userId, materializeVariant: true);
+                item.ReturnedQty = (item.ReturnedQty ?? 0) + pending;
+            }
+            else
+            {
+                // Confirmed loss: they left the source at dispatch and never arrived. No stock moves (the
+                // dispatch deduction stands as the write-off); record it as won't-fulfil.
+                item.WontFulfilQty = (item.WontFulfilQty ?? 0) + pending;
+            }
+            resolved.Add($"{pending}× {item.ProductName}{(string.IsNullOrEmpty(item.VariantName) ? "" : " (" + item.VariantName + ")")}");
+        }
+
         transfer.Status = TransferStatus.Completed;
+        transfer.CompletionReason = (returnToOrigin ? "Returned to origin" : "Written off") + ": " + reason;
         await _db.SaveChangesAsync();
+        await tx.CommitAsync();
+
+        if (transfer.OrderId.HasValue && resolved.Count > 0)
+            OrderNotes.AddSystem(_db, transfer.OrderId.Value,
+                $"Transfer {transfer.TransferNumber} closed — pending {string.Join(", ", resolved)} "
+                + (returnToOrigin ? $"returned to {transfer.FromStore.Name}" : "written off") + $": {reason}");
+        if (transfer.OrderId.HasValue && resolved.Count > 0) await _db.SaveChangesAsync();
+
         return TransferActionResult.Ok();
     }
 

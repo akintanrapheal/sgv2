@@ -399,14 +399,17 @@ public class TransfersController : InventoryAreaController
         return Json(new { success = true });
     }
 
+    public class CompleteRequest { public string Disposition { get; set; } = ""; public string Reason { get; set; } = ""; }
+
     [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> Complete(int id)
+    public async Task<IActionResult> Complete(int id, [FromBody] CompleteRequest req)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var deny = await DenyIfNoStoreAccessAsync(id, from: false, to: true); if (deny != null) return deny;
-        var result = await _workflow.CompleteAsync(id, userId);
+        var result = await _workflow.CompleteAsync(id, req?.Disposition ?? "", req?.Reason ?? "", userId);
         if (!result.Success) return Json(new { success = false, message = result.Error });
-        await LogTransferAsync(id, "Complete", "Marked as completed (shortage acknowledged)");
+        var how = string.Equals(req?.Disposition, "return", StringComparison.OrdinalIgnoreCase) ? "returned to origin" : "written off";
+        await LogTransferAsync(id, "Complete", $"Closed — pending stock {how} ({req?.Reason?.Trim()})");
         return Json(new { success = true });
     }
 
