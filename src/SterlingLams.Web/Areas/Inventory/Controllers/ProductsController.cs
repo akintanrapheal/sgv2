@@ -791,14 +791,33 @@ public class ProductsController : InventoryAreaController
         var inv = await _db.StoreInventories
             .Where(si => si.ProductId == id && si.ProductVariantId == variantId)
             .ToDictionaryAsync(si => si.StoreId);
+
+        // In-transit (OUT): units this branch has already DISPATCHED on a transfer but the destination
+        // hasn't received yet — they've left this branch's on-hand, so they're shown as "in transit",
+        // not available. (Reserved units are still physically here — shown as "held to send".)
+        var inTransitByStore = (await _db.StockTransfers
+            .Where(t => (t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived)
+                && t.Items.Any(i => i.ProductId == id && i.ProductVariantId == variantId))
+            .SelectMany(t => t.Items
+                .Where(i => i.ProductId == id && i.ProductVariantId == variantId)
+                .Select(i => new { t.FromStoreId, Qty = (i.DispatchedQty ?? 0) - (i.ReceivedQty ?? 0) - (i.DamagedQty ?? 0) - (i.WontFulfilQty ?? 0) }))
+            .ToListAsync())
+            .GroupBy(x => x.FromStoreId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => Math.Max(0, x.Qty)));
+
         var locations = stores.Select(s =>
         {
             inv.TryGetValue(s.Id, out var r);
+            var onHand = r?.QuantityOnHand ?? 0;
+            var reserved = r?.QuantityReserved ?? 0;
             return new
             {
                 storeId = s.Id,
                 name = s.Name,
-                onHand = r?.QuantityOnHand ?? 0,
+                onHand,
+                reserved,                                   // held for orders / an approved transfer (still here)
+                available = Math.Max(0, onHand - reserved), // free to sell now
+                inTransit = inTransitByStore.GetValueOrDefault(s.Id, 0), // dispatched, on the way out
                 min = r?.MinStock,
                 max = r?.MaxStock,
                 onOrder = r?.OnOrder ?? 0,

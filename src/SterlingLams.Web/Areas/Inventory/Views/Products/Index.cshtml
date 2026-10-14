@@ -655,6 +655,19 @@
     function tsReasonOptions() {
         return '<option value="">Reason (optional)</option>' + tsReasons.map(function (r) { return '<option value="' + r + '">' + r + '</option>'; }).join('');
     }
+    // When some of this branch's on-hand is committed to a transfer/order, spell out where it is so the
+    // "Current stock" number isn't mistaken for what's sellable: Available (free now), Held to send
+    // (approved transfer, still here), In transit (dispatched, on the way out). Hidden when nothing moves.
+    function tsStockBreakdown(l) {
+        var reserved = l.reserved || 0, inTransit = l.inTransit || 0;
+        if (!reserved && !inTransit) return '';
+        var available = (l.available != null) ? l.available : Math.max(0, (l.onHand || 0) - reserved);
+        var parts = ['<span class="font-medium text-neutral-700">Available ' + available + '</span>'];
+        if (reserved) parts.push('Held to send ' + reserved);
+        if (inTransit) parts.push('In transit ' + inTransit);
+        return '<div class="-mt-1 text-[11px] text-neutral-500 bg-amber-50 border border-amber-100 rounded px-2 py-1">'
+            + parts.join(' · ') + '</div>';
+    }
     function tsCard(l) {
         return '<div class="border border-neutral-200 rounded-md p-3 space-y-3" data-store="' + l.storeId + '" data-onorder="' + (l.onOrder || 0) + '">'
             + '<div><label class="block text-[11px] text-neutral-400 mb-1">Location</label>'
@@ -662,6 +675,7 @@
             + '<div><label class="block text-[11px] text-neutral-400 mb-1">Reason (optional)</label>'
             + '<select data-f="reason" class="w-full border border-neutral-200 rounded-md px-3 py-2.5 text-sm bg-white">' + tsReasonOptions() + '</select></div>'
             + tsStepRow('Current stock', 'onHand', l.onHand)
+            + tsStockBreakdown(l)
             + tsStepRow('Min', 'min', l.min)
             + tsStepRow('Max', 'max', l.max)
             + '<div class="border-t border-neutral-100 pt-3 flex items-center justify-between">'
