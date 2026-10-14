@@ -1726,7 +1726,11 @@ public class PosController : Controller
         var awaitQ = _db.Orders.Where(o => o.Channel == OrderChannel.Online && o.FulfillingStoreId == storeId
             && o.Status == OrderStatus.AwaitingTransfer);
         // Outbound order transfers this branch must pack & send; inbound ones already on their way here.
-        var outboundQ = _db.StockTransfers.Where(t => t.FromStoreId == storeId && t.OrderId != null && t.Status == TransferStatus.Approved);
+        // Drop transfers whose order was cancelled/refunded (incl. voided → Cancelled) so the badge matches
+        // the FulfilOrders list, which already hides them — otherwise a stale "send to merge" keeps counting.
+        var outboundQ = _db.StockTransfers.Where(t => t.FromStoreId == storeId && t.OrderId != null
+            && t.Status == TransferStatus.Approved
+            && !_db.Orders.Any(o => o.Id == t.OrderId && (o.Status == OrderStatus.Cancelled || o.Status == OrderStatus.Refunded)));
         var inboundInTransitQ = _db.StockTransfers.Where(t => t.ToStoreId == storeId && t.OrderId != null
             && (t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived));
 
