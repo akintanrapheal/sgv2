@@ -155,6 +155,8 @@ public class ProductsController : InventoryAreaController
         ViewBag.ButtonColours = await _db.Products
             .Where(p => p.PosButtonColour != null && p.PosButtonColour != "")
             .Select(p => p.PosButtonColour!).Distinct().OrderBy(c => c).ToListAsync();
+        // Active branches for the per-store "Stock export" dropdown.
+        ViewBag.Stores = await _db.Stores.Where(s => s.IsActive).OrderBy(s => s.Name).ToListAsync();
         return View(products);
     }
 
@@ -479,6 +481,74 @@ public class ProductsController : InventoryAreaController
             sb.AppendLine($"\"{r.Name}\",\"{r.Sku}\",\"{r.Barcode}\",\"{r.Category}\",{r.Price},{r.IsActive},{r.TrackStock}");
         var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
         return File(bytes, "text/csv", $"products_{DateTime.UtcNow:yyyyMMdd}.csv");
+    }
+
+    // Per-store "in stock" export: one row per sellable unit (simple product or active variant) that has
+    // on-hand stock AT THIS BRANCH, with the branch's on-hand + on-order and a sale-price valuation.
+    // Columns match the EposNow-style sheet the owner uses: Category, SKU, Product Name, Barcode,
+    // Current Stock, On Order, Sale Price, Total Value.
+    public async Task<IActionResult> ExportStock(int storeId)
+    {
+        var store = await _db.Stores.FirstOrDefaultAsync(s => s.Id == storeId);
+        if (store == null) return NotFound();
+
+        var products = await _db.Products
+            .AsNoTracking()
+            .AsSplitQuery()   // two collection includes (variants + this store's inventory) → split to avoid a cartesian
+            .Include(p => p.Category)
+            .Include(p => p.Variants.Where(v => v.IsActive))
+            .Include(p => p.StoreInventories.Where(si => si.StoreId == storeId))
+            .Where(p => !p.IsArchived && p.IsActive)
+            .ToListAsync();
+
+        // One row per sellable unit with on-hand > 0 at this branch. Simple products use the product-pool
+        // inventory row (ProductVariantId == null); variable products use each active variant's OWN row
+        // (so N variants never each report the shared pool and double-count).
+        var rows = new List<(string Cat, string Sku, string Name, string Barcode, int Stock, int OnOrder, decimal Price)>();
+        foreach (var p in products)
+        {
+            var cat = p.Category?.Name ?? "";
+            var variants = p.Variants.Where(v => v.IsActive).ToList();
+            if (variants.Count > 0)
+            {
+                foreach (var v in variants)
+                {
+                    var si = p.StoreInventories.FirstOrDefault(x => x.ProductVariantId == v.Id);
+                    var onHand = si?.QuantityOnHand ?? 0;
+                    if (onHand <= 0) continue;
+                    rows.Add((cat, p.Sku ?? "", $"{p.Name} {v.Name}".Trim(), v.Barcode ?? p.Barcode ?? "",
+                        onHand, si?.OnOrder ?? 0, SterlingLams.Web.Models.Domain.VariantPricing.EffectivePrice(p, v)));
+                }
+            }
+            else
+            {
+                var si = p.StoreInventories.FirstOrDefault(x => x.ProductVariantId == null);
+                var onHand = si?.QuantityOnHand ?? 0;
+                if (onHand <= 0) continue;
+                rows.Add((cat, p.Sku ?? "", p.Name, p.Barcode ?? "",
+                    onHand, si?.OnOrder ?? 0, SterlingLams.Web.Models.Domain.VariantPricing.EffectivePrice(p, null)));
+            }
+        }
+
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        static string Csv(string? s) => (s ?? "").IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0
+            ? "\"" + (s ?? "").Replace("\"", "\"\"") + "\"" : (s ?? "");
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Category,SKU,Product Name,Barcode,Current Stock,On Order,Sale Price,Total Value");
+        foreach (var r in rows.OrderBy(r => r.Cat, StringComparer.OrdinalIgnoreCase).ThenBy(r => r.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var totalValue = (long)Math.Round(r.Stock * r.Price, MidpointRounding.AwayFromZero);
+            sb.AppendLine(string.Join(",", Csv(r.Cat), Csv(r.Sku), Csv(r.Name), Csv(r.Barcode),
+                r.Stock, r.OnOrder, r.Price.ToString("0.0", inv), totalValue.ToString(inv)));
+        }
+
+        // Filename like "Abuja_in_stock.csv" — the branch name without the "Sterlin Glams " prefix.
+        var shortName = store.Name.Replace("Sterlin Glams ", "", StringComparison.OrdinalIgnoreCase).Trim();
+        if (string.IsNullOrWhiteSpace(shortName)) shortName = store.Name;
+        foreach (var ch in System.IO.Path.GetInvalidFileNameChars()) shortName = shortName.Replace(ch, '_');
+
+        var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        return File(bytes, "text/csv", $"{shortName}_in_stock.csv");
     }
 
     // Generate Labels builder — pick products (search/scan or bulk by location/category),
