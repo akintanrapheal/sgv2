@@ -42,6 +42,18 @@ public class DeliveryZoneServiceTests
         Assert.Equal(0m, await svc.SameDayFeeAsync(state, area)); // no local same-day for Oyo
     }
 
+    // The checkout UI (PRICING.zones) + the area dropdown are built from the CUSTOMER zones, so Oyo must be
+    // absent there too — otherwise the client still shows the local Oyo Express/Standard options and an area
+    // picker. Lagos/Abuja stay. (The admin editor uses the raw GetZonesAsync, so Oyo stays editable there.)
+    [Fact]
+    public async Task Customer_zones_exclude_Oyo_but_keep_Lagos_and_Abuja()
+    {
+        var zones = await new DeliveryZoneService(new DefaultsSettings()).GetCustomerZonesAsync();
+        Assert.DoesNotContain(zones, z => string.Equals(z.State, "Oyo", System.StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(zones, z => z.State == "Lagos");
+        Assert.Contains(zones, z => z.State == "Abuja");
+    }
+
     [Fact]
     public async Task Lagos_keeps_its_local_zones_and_express()
     {

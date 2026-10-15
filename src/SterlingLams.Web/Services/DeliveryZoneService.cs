@@ -150,13 +150,24 @@ public class DeliveryZoneService
     }
 
     // Oyo/Ibadan local delivery is OFF until the Ibadan storefront opens. While the Ibadan branch isn't
-    // serving customers, an Oyo/Ibadan order ships from Lagos like any other interstate order, so it's
-    // charged the nationwide Standard rate (shipping.national_standard_fee, ₦7,500) with NO local
-    // Express / Same-Day option — exactly like every other state. This wins over whatever the saved
-    // shipping.delivery_zones holds, so it's a guaranteed rule, not a data edit. To reopen local Oyo
-    // delivery: reactivate the Ibadan branch, restore the local Oyo rates in DefaultZones, and flip this
-    // to true.
+    // serving customers, an Oyo/Ibadan order ships from Lagos like any other interstate order — so Oyo is a
+    // plain interstate state EVERYWHERE a customer sees it: one nationwide Standard option, a free-text city
+    // (no area picker), and no Express/Same-Day. Enforced by GetCustomerZonesAsync dropping the Oyo zones, so
+    // it holds for the checkout UI (PRICING.zones), the area dropdown AND the server fee — regardless of what
+    // the saved shipping.delivery_zones holds. To reopen local Oyo delivery: reactivate + publish the Ibadan
+    // branch, restore the local Oyo rates, and flip this to true.
     private const bool OyoLocalDeliveryEnabled = false;
+
+    /// <summary>The zones shown to CUSTOMERS — the saved/default zones minus any gated while a branch is
+    /// closed (Oyo/Ibadan until the Ibadan storefront opens). The Admin zone editor uses the raw
+    /// <see cref="GetZonesAsync"/> instead, so the gated zones stay editable and are preserved on save.</summary>
+    public async Task<List<DeliveryZoneDef>> GetCustomerZonesAsync()
+    {
+        var zones = await GetZonesAsync();
+        if (!OyoLocalDeliveryEnabled)
+            zones = zones.Where(z => !string.Equals(z.State, "Oyo", StringComparison.OrdinalIgnoreCase)).ToList();
+        return zones;
+    }
 
     /// <summary>Finds the zone covering <paramref name="area"/> within the state; else the state's
     /// first (default) zone. Returns null for states with no zones (National).</summary>
@@ -164,7 +175,6 @@ public class DeliveryZoneService
     {
         var key = StateKey(state);
         if (key == "National") return null;
-        if (!OyoLocalDeliveryEnabled && key == "Oyo") return null; // Oyo = nationwide interstate until Ibadan opens
         var stateZones = zones.Where(z => string.Equals(z.State, key, StringComparison.OrdinalIgnoreCase)).ToList();
         if (stateZones.Count == 0) return null;
 
@@ -185,7 +195,7 @@ public class DeliveryZoneService
     {
         var stdOn = await _settings.GetBoolAsync("shipping.standard_enabled", true);
         var expOn = await _settings.GetBoolAsync("shipping.express_enabled", true);
-        var zone = ResolveZone(await GetZonesAsync(), state, area);
+        var zone = ResolveZone(await GetCustomerZonesAsync(), state, area);
         if (zone != null)
         {
             var list = new List<DeliveryOption>();
@@ -245,7 +255,7 @@ public class DeliveryZoneService
     {
         // Same-day uses the resolved distance zone's own same-day fee (like Express/Standard).
         if (string.Equals(deliveryType, "SameDay", StringComparison.OrdinalIgnoreCase))
-            return ResolveZone(await GetZonesAsync(), state, area)?.SameDayFee ?? 0m;
+            return ResolveZone(await GetCustomerZonesAsync(), state, area)?.SameDayFee ?? 0m;
 
         var options = await GetOptionsAsync(state, area);
         var match = options.FirstOrDefault(o => o.Type.Equals(deliveryType, StringComparison.OrdinalIgnoreCase))
@@ -289,7 +299,7 @@ public class DeliveryZoneService
 
     /// <summary>Resolved same-day fee for a customer's state + area (0 when no zone / not set).</summary>
     public async Task<decimal> SameDayFeeAsync(string state, string? area)
-        => ResolveZone(await GetZonesAsync(), state, area)?.SameDayFee ?? 0m;
+        => ResolveZone(await GetCustomerZonesAsync(), state, area)?.SameDayFee ?? 0m;
 
     // ── Rank branches by proximity to a customer (for online fulfilment) ──────
     public static List<Models.Domain.Store> RankStoresByProximity(
@@ -407,7 +417,7 @@ public class DeliveryZoneService
     public async Task<List<string>> AreasForStateAsync(string state)
     {
         var key = StateKey(state);
-        return (await GetZonesAsync())
+        return (await GetCustomerZonesAsync())
             .Where(z => string.Equals(z.State, key, StringComparison.OrdinalIgnoreCase))
             .SelectMany(z => z.Areas)
             .Distinct(StringComparer.OrdinalIgnoreCase)
