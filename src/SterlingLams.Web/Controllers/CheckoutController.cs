@@ -121,32 +121,7 @@ public class CheckoutController : Controller
 
         var user = await _userManager.GetUserAsync(User);
 
-        // Re-validate a manually-applied code so a disabled/expired/over-limit/under-minimum one stops
-        // showing here (the order-placement step below re-checks authoritatively before charging).
-        if (!string.IsNullOrEmpty(cart.AppliedDiscountCode) && !cart.IsAutomaticDiscount)
-        {
-            var r = await _discounts.EvaluateAsync(cart.AppliedDiscountCode, cart, user?.Id);
-            if (r.Success)
-            {
-                cart.DiscountDescription = r.Description;
-                cart.DiscountAmount      = r.Amount;
-                cart.FreeShipping        = r.FreeShipping;
-                cart.FreeShippingLagosAbujaOnly = r.FreeShippingLagosAbujaOnly;
-            }
-            else
-            {
-                cart.AppliedDiscountCode = null;
-                cart.DiscountDescription = null;
-                cart.DiscountAmount = 0;
-                cart.FreeShipping = false;
-                cart.FreeShippingLagosAbujaOnly = false;
-                cart.IsAutomaticDiscount = false;
-            }
-            SaveCart(cart);
-        }
-
-        // Re-apply automatic promotion (in case the customer skipped the cart page, or a now-invalid
-        // manual code was just cleared above)
+        // Re-apply automatic promotion (in case the customer skipped the cart page)
         if (string.IsNullOrEmpty(cart.AppliedDiscountCode) || cart.IsAutomaticDiscount)
         {
             var auto = await _discounts.FindAutomaticAsync(cart, user?.Id);
@@ -249,9 +224,11 @@ public class CheckoutController : Controller
     // Build the client-side delivery-pricing JSON (zone detection + fees).
     private async Task<string> BuildDeliveryPricingJsonAsync(CartViewModel cart, List<Models.Domain.Store> activeStores)
     {
-        // Distance zones per state (Lagos/Abuja), each with its own Standard + Express fees and the
-        // areas it covers — the checkout resolves the fee from the customer's chosen area.
-        var zones = await _zones.GetZonesAsync();
+        // Distance zones per state (Lagos/Abuja), each with its own Standard + Express fees and the areas
+        // it covers — the checkout resolves the fee from the customer's chosen area. Customer-facing zones
+        // only, so a gated state (Oyo/Ibadan until the Ibadan store opens) is absent → it falls through to
+        // the single nationwide option with a free-text city, like any other interstate state.
+        var zones = await _zones.GetCustomerZonesAsync();
         var byState = zones
             .GroupBy(z => z.State, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.Select(z => new
