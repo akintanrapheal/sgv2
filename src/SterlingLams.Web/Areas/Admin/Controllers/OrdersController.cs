@@ -105,7 +105,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         }
 
         public async Task<IActionResult> Index(string status = "", string q = "", string channel = "",
-            string paid = "", string? from = null, string? to = null, int page = 1)
+            string source = "", string paid = "", string? from = null, string? to = null, int page = 1)
         {
             ViewData["Title"] = "Orders";
 
@@ -122,6 +122,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             if (!string.IsNullOrWhiteSpace(channel) && Enum.TryParse<OrderChannel>(channel, out var channelEnum))
                 query = query.Where(o => o.Channel == channelEnum);
+
+            // Source (website orders only): "staff" = a signed-in staffer placed it; "customer" = self-service.
+            if (source == "staff") query = query.Where(o => o.PlacedByStaffUserId != null);
+            else if (source == "customer") query = query.Where(o => o.Channel == OrderChannel.Online && o.PlacedByStaffUserId == null);
 
             if (paid == "paid") query = query.Where(o => o.IsPaid);
             else if (paid == "unpaid") query = query.Where(o => !o.IsPaid);
@@ -159,6 +163,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                     IsPaid = o.IsPaid,
                     FulfillmentType = o.FulfillmentType.ToString(),
                     IsPos = o.Channel == OrderChannel.Pos,
+                    PlacedByStaff = o.PlacedByStaffUserId != null,
+                    PlacedByStaffName = o.PlacedByStaffName,
                     CreatedAt = o.CreatedAt
                 })
                 .ToListAsync();
@@ -179,6 +185,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 StatusFilter = status,
                 SearchQuery = q,
                 ChannelFilter = channel,
+                SourceFilter = source,
                 PaidFilter = paid,
                 DateFrom = from ?? "",
                 DateTo = to ?? "",
@@ -870,7 +877,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
         }
 
         public async Task<IActionResult> ExportCsv(string status = "", string q = "",
-            string channel = "", string paid = "", string? from = null, string? to = null)
+            string channel = "", string source = "", string paid = "", string? from = null, string? to = null)
         {
             var query = _db.Orders.Include(o => o.User).AsQueryable();
 
@@ -879,6 +886,9 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
 
             if (!string.IsNullOrWhiteSpace(channel) && Enum.TryParse<OrderChannel>(channel, out var channelEnum))
                 query = query.Where(o => o.Channel == channelEnum);
+
+            if (source == "staff") query = query.Where(o => o.PlacedByStaffUserId != null);
+            else if (source == "customer") query = query.Where(o => o.Channel == OrderChannel.Online && o.PlacedByStaffUserId == null);
 
             if (paid == "paid") query = query.Where(o => o.IsPaid);
             else if (paid == "unpaid") query = query.Where(o => !o.IsPaid);
@@ -899,6 +909,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 {
                     o.OrderNumber,
                     Channel = o.Channel.ToString(),
+                    // Website order source: staff-placed (phone/WhatsApp) vs customer self-service. POS is in-store.
+                    Source = o.Channel == OrderChannel.Pos ? "In-store"
+                             : (o.PlacedByStaffUserId != null ? "Staff" : "Website"),
+                    PlacedBy = o.PlacedByStaffName ?? "",
                     // The buyer, not the cashier: on a POS sale Order.User is staff.
                     CustomerName = o.Channel == OrderChannel.Pos
                         ? (o.Customer != null ? o.Customer.FirstName + " " + o.Customer.LastName : "Walk-in")
@@ -918,11 +932,11 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .ToListAsync();
 
             var sb = new StringBuilder();
-            Csv.AppendRow(sb, "Order #", "Channel", "Customer Name", "Customer Email", "Total", "Subtotal",
+            Csv.AppendRow(sb, "Order #", "Channel", "Source", "Placed By", "Customer Name", "Customer Email", "Total", "Subtotal",
                 "Delivery Fee", "Status", "Fulfillment", "Paid", "Payment Ref", "Created At");
 
             foreach (var o in orders)
-                Csv.AppendRow(sb, o.OrderNumber, o.Channel, o.CustomerName, o.CustomerEmail,
+                Csv.AppendRow(sb, o.OrderNumber, o.Channel, o.Source, o.PlacedBy, o.CustomerName, o.CustomerEmail,
                     o.Total.ToString("0.##"), o.Subtotal.ToString("0.##"), o.DeliveryFee.ToString("0.##"),
                     o.Status, o.Fulfillment, o.IsPaid ? "Yes" : "No", o.PaymentRef,
                     // Stored UTC, shown in West Africa Time like every other timestamp in the admin.

@@ -1485,6 +1485,12 @@ namespace SterlingLams.Web.Migrations
                     b.Property<string>("PickupToken")
                         .HasColumnType("text");
 
+                    b.Property<string>("PlacedByStaffName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("PlacedByStaffUserId")
+                        .HasColumnType("text");
+
                     b.Property<int?>("RegisterId")
                         .HasColumnType("integer");
 

@@ -504,6 +504,13 @@ public class CheckoutController : Controller
         // ── Resolve user (authenticated or guest) ──────────────────────────
         ApplicationUser? user = await _userManager.GetUserAsync(User);
 
+        // Who is OPERATING this checkout, for the "staff-placed vs customer" tag on the Orders list. When a
+        // signed-in staff member rings an order through for a customer (phone/WhatsApp), GetUserAsync(User)
+        // is that staffer; a shopper has no backend roles. Captured before the guest fallback reassigns
+        // `user`. A role → staff-placed.
+        var operatorUser = user;
+        var placedByStaff = operatorUser != null && (await _userManager.GetRolesAsync(operatorUser)).Count > 0;
+
         if (user == null)
         {
             // Guest checkout: email is always required (for the confirmation + receipt).
@@ -735,6 +742,9 @@ public class CheckoutController : Controller
         {
             OrderNumber = orderNumber,
             UserId = user.Id,
+            // Staff-placed (phone/WhatsApp) vs customer self-service — see operatorUser above.
+            PlacedByStaffUserId = placedByStaff ? operatorUser!.Id : null,
+            PlacedByStaffName = placedByStaff ? operatorUser!.FullName : null,
             ContactName = contactName,
             ContactPhone = Infrastructure.PhoneNumbers.Canonical(contactPhone),
             FulfillmentType = vm.FulfillmentType == FulfillmentChoice.StorePickup
