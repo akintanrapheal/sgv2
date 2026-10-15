@@ -87,6 +87,7 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public string StatusFilter { get; set; } = "";
         public string SearchQuery { get; set; } = "";
         public string ChannelFilter { get; set; } = "";   // "" | Online | Pos
+        public string SourceFilter { get; set; } = "";     // "" | customer | staff  (website orders only)
         public string PaidFilter { get; set; } = "";       // "" | paid | unpaid
         public string DateFrom { get; set; } = "";
         public string DateTo { get; set; } = "";
@@ -106,6 +107,9 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         public bool IsPaid { get; set; }
         public string FulfillmentType { get; set; } = "";
         public bool IsPos { get; set; }   // walk-in till sale — shown as "In-store" / "Paid & collected"
+        // Website order placed by a signed-in staff member (phone/WhatsApp order) vs the customer themselves.
+        public bool PlacedByStaff { get; set; }
+        public string? PlacedByStaffName { get; set; }
         public DateTime CreatedAt { get; set; }
     }
 

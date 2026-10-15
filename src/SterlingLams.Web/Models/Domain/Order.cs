@@ -53,6 +53,13 @@ public class Order
     /// <summary>Where the sale came from. POS orders are rung up in-store by a cashier.</summary>
     public OrderChannel Channel { get; set; } = OrderChannel.Online;
 
+    /// <summary>For a WEBSITE (Online) order: the staff member who placed it on the customer's behalf (a
+    /// phone/WhatsApp order a signed-in staffer rang through the storefront), captured at checkout. Null
+    /// means a customer placed it themselves (self-service). Lets the Orders list tell the two apart.</summary>
+    public string? PlacedByStaffUserId { get; set; }
+    /// <summary>Denormalised name of <see cref="PlacedByStaffUserId"/> for display without a join.</summary>
+    public string? PlacedByStaffName { get; set; }
+
     /// <summary>Cash handling for POS sales.</summary>
     public decimal? AmountTendered { get; set; }
     public decimal? ChangeGiven { get; set; }

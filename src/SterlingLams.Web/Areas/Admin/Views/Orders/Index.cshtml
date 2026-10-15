@@ -8,6 +8,7 @@
 @{
     var selCls = "border border-neutral-200 rounded-sm px-2 py-2 text-xs bg-white focus:outline-none focus:border-neutral-400";
     bool anyFilter = !string.IsNullOrEmpty(Model.ChannelFilter) || !string.IsNullOrEmpty(Model.PaidFilter)
+                     || !string.IsNullOrEmpty(Model.SourceFilter)
                      || !string.IsNullOrEmpty(Model.DateFrom) || !string.IsNullOrEmpty(Model.DateTo)
                      || !string.IsNullOrEmpty(Model.SearchQuery);
 }
@@ -23,6 +24,7 @@
         </button>
         <a asp-area="Admin" asp-controller="Orders" asp-action="ExportCsv"
            asp-route-status="@Model.StatusFilter" asp-route-q="@Model.SearchQuery" asp-route-channel="@Model.ChannelFilter"
+           asp-route-source="@Model.SourceFilter"
            asp-route-paid="@Model.PaidFilter" asp-route-from="@Model.DateFrom" asp-route-to="@Model.DateTo"
            class="px-4 py-2 border border-neutral-300 text-neutral-700 text-xs rounded-sm hover:border-neutral-500 transition-colors whitespace-nowrap">
             ↓ Export CSV
@@ -33,6 +35,11 @@
             <option value="">All channels</option>
             <option value="Online" selected="@(Model.ChannelFilter == "Online")">Online</option>
             <option value="Pos" selected="@(Model.ChannelFilter == "Pos")">In-store (EPOS)</option>
+        </select>
+        <select name="source" onchange="this.form.submit()" class="@selCls" title="Website orders: placed by the customer vs rung through by staff">
+            <option value="">Any source</option>
+            <option value="customer" selected="@(Model.SourceFilter == "customer")">Customer (website)</option>
+            <option value="staff" selected="@(Model.SourceFilter == "staff")">Staff-placed</option>
         </select>
         <select name="paid" onchange="this.form.submit()" class="@selCls">
             <option value="">Any payment</option>
@@ -61,6 +68,7 @@
         var count = Model.StatusCounts.TryGetValue(s, out var c) ? c : 0;
         <a asp-area="Admin" asp-controller="Orders" asp-action="Index"
            asp-route-status="@s" asp-route-q="@Model.SearchQuery" asp-route-channel="@Model.ChannelFilter"
+           asp-route-source="@Model.SourceFilter"
            asp-route-paid="@Model.PaidFilter" asp-route-from="@Model.DateFrom" asp-route-to="@Model.DateTo"
            class="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-sm transition-colors @(isActive ? "bg-neutral-900 text-white" : "bg-white text-neutral-600 border border-neutral-200 hover:border-neutral-400")">
             @label
@@ -125,6 +133,22 @@
                     <td class="px-4 py-3">
                         <p class="text-xs font-medium text-neutral-800">@o.CustomerName</p>
                         <p class="text-[10px] text-neutral-400">@o.CustomerEmail</p>
+                        @* Website order: tell a customer self-checkout apart from one a staffer rang through. *@
+                        @if (!o.IsPos)
+                        {
+                            @if (o.PlacedByStaff)
+                            {
+                                <span class="inline-flex items-center gap-1 mt-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200"
+                                      title="Placed by staff@(string.IsNullOrWhiteSpace(o.PlacedByStaffName) ? "" : " · " + o.PlacedByStaffName)">
+                                    👤 Staff@(string.IsNullOrWhiteSpace(o.PlacedByStaffName) ? "" : " · " + o.PlacedByStaffName)
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="inline-flex items-center gap-1 mt-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200"
+                                      title="Placed by the customer on the website">🌐 Website</span>
+                            }
+                        }
                     </td>
                     <td class="px-4 py-3 text-xs font-medium">₦@o.Total.ToString("N0")</td>
                     <td class="px-4 py-3 text-xs text-neutral-600">@(o.IsPos ? "In-store" : o.FulfillmentType == "StorePickup" ? "Store pickup" : o.FulfillmentType)</td>
