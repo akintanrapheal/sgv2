@@ -1076,24 +1076,12 @@ public class CheckoutController : Controller
                 var intro = await _settings.GetAsync("email.order_confirmed.intro",
                     "Your order {order} ({date}) has been received and is now being processed.");
 
-                // Per-item primary image (absolute URL for email clients).
-                var baseUrl = (_config["App:BaseUrl"] ?? "").TrimEnd('/');
-                var pids = order.Items.Select(i => i.ProductId).Distinct().ToList();
-                var imgMap = await _db.ProductImages.Where(im => pids.Contains(im.ProductId))
-                    .GroupBy(im => im.ProductId)
-                    .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
-                    .ToDictionaryAsync(x => x.Pid, x => x.Url);
-                string? AbsImg(int pid)
-                {
-                    var u = imgMap.GetValueOrDefault(pid);
-                    if (string.IsNullOrWhiteSpace(u)) return null;
-                    return u.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? u
-                         : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + u.TrimStart('/'));
-                }
+                // Per-item image — the chosen variant's own picture when set, else the product primary.
+                var img = await SterlingLams.Web.Services.OrderEmailImages.ResolverAsync(_db, order.Items, _config["App:BaseUrl"]);
 
                 var items = order.Items.Select(i =>
                     new SterlingLams.Web.Services.OrderEmailTemplate.Item(
-                        i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId), i.ProductSku)).ToList();
+                        i.ProductName, i.VariantName, i.Quantity, i.LineTotal, img(i), i.ProductSku)).ToList();
 
                 var custName = !string.IsNullOrWhiteSpace(order.ContactName) ? order.ContactName!.Trim() : (order.User?.FullName ?? order.DeliveryAddress?.FullName ?? "");
                 var (billing, shipping, pickupLabel) = SterlingLams.Web.Services.OrderEmailTemplate.AddressBlocksFor(order, custName, customerEmail);
@@ -1158,21 +1146,9 @@ public class CheckoutController : Controller
     // Email Customizer ("New order alert (admin)").
     private async Task<string> BuildAdminOrderAlertAsync(Order order, string? customerEmail)
     {
-        var baseUrl = (_config["App:BaseUrl"] ?? "").TrimEnd('/');
-        var pids = order.Items.Select(i => i.ProductId).Distinct().ToList();
-        var imgMap = await _db.ProductImages.Where(im => pids.Contains(im.ProductId))
-            .GroupBy(im => im.ProductId)
-            .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
-            .ToDictionaryAsync(x => x.Pid, x => x.Url);
-        string? AbsImg(int pid)
-        {
-            var u = imgMap.GetValueOrDefault(pid);
-            if (string.IsNullOrWhiteSpace(u)) return null;
-            return u.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? u
-                 : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + u.TrimStart('/'));
-        }
+        var img = await SterlingLams.Web.Services.OrderEmailImages.ResolverAsync(_db, order.Items, _config["App:BaseUrl"]);
         var items = order.Items.Select(i => new SterlingLams.Web.Services.OrderEmailTemplate.Item(
-            i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId), i.ProductSku)).ToList();
+            i.ProductName, i.VariantName, i.Quantity, i.LineTotal, img(i), i.ProductSku)).ToList();
 
         var custName = !string.IsNullOrWhiteSpace(order.ContactName) ? order.ContactName!.Trim() : (order.User?.FullName ?? order.DeliveryAddress?.FullName ?? "");
         var (billing, shipping, pickupLabel) = SterlingLams.Web.Services.OrderEmailTemplate.AddressBlocksFor(order, custName, customerEmail);
