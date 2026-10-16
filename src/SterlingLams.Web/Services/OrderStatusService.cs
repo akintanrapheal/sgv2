@@ -418,22 +418,10 @@ public sealed class OrderStatusService : IOrderStatusService
 
         var firstName = string.IsNullOrWhiteSpace(buyer?.FirstName) ? "there" : buyer!.FirstName;
         var introHtml = OrderEmailTemplate.ApplyPlaceholders(introText, order.OrderNumber, order.CreatedAt, firstName);
-        // Per-item primary image, made absolute for email clients (Cloudinary URLs already are).
-        var pids = order.Items.Select(i => i.ProductId).Distinct().ToList();
-        var imgMap = await _db.ProductImages.Where(im => pids.Contains(im.ProductId))
-            .GroupBy(im => im.ProductId)
-            .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
-            .ToDictionaryAsync(x => x.Pid, x => x.Url);
-        var baseUrl = BaseUrl();
-        string? AbsImg(int pid)
-        {
-            var u = imgMap.GetValueOrDefault(pid);
-            if (string.IsNullOrWhiteSpace(u)) return null;
-            return u.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? u
-                 : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + u.TrimStart('/'));
-        }
+        // Per-item image — the chosen variant's own picture when set, else the product primary.
+        var img = await OrderEmailImages.ResolverAsync(_db, order.Items, BaseUrl());
         var items = order.Items
-            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId), i.ProductSku))
+            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, img(i), i.ProductSku))
             .ToList();
 
         var body = OrderEmailTemplate.BuildStatusUpdate(subject, introHtml, order.OrderNumber, items, order.Total);
@@ -476,25 +464,13 @@ public sealed class OrderStatusService : IOrderStatusService
         var buyerName = !string.IsNullOrWhiteSpace(order.ContactName) ? order.ContactName!.Trim()
             : (string.IsNullOrWhiteSpace(buyer?.FullName) ? "a customer" : buyer!.FullName);
 
-        // Per-item primary image, made absolute for email clients.
-        var pids = order.Items.Select(i => i.ProductId).Distinct().ToList();
-        var imgMap = await _db.ProductImages.Where(im => pids.Contains(im.ProductId))
-            .GroupBy(im => im.ProductId)
-            .Select(g => new { Pid = g.Key, Url = g.OrderByDescending(x => x.IsPrimary).Select(x => x.Url).FirstOrDefault() })
-            .ToDictionaryAsync(x => x.Pid, x => x.Url);
-        var baseUrl = BaseUrl();
-        string? AbsImg(int pid)
-        {
-            var u = imgMap.GetValueOrDefault(pid);
-            if (string.IsNullOrWhiteSpace(u)) return null;
-            return u.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? u
-                 : (string.IsNullOrEmpty(baseUrl) ? null : baseUrl + "/" + u.TrimStart('/'));
-        }
         // Same rich layout as the website new-order email (logo shell, ORDER DETAILS, product table,
         // SUBTOTAL/SHIPPING/TOTAL/PAYMENT, billing + shipping blocks). Only the intro says it was
         // confirmed manually, and PAYMENT shows "Manual (…)". Phone + full pickup address included.
+        // Per-item image — the chosen variant's own picture when set, else the product primary.
+        var img = await OrderEmailImages.ResolverAsync(_db, order.Items, BaseUrl());
         var items = order.Items
-            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, AbsImg(i.ProductId), i.ProductSku))
+            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, img(i), i.ProductSku))
             .ToList();
 
         var (billing, shipping, pickupLabel) = OrderEmailTemplate.AddressBlocksFor(order, buyerName, buyer?.Email);

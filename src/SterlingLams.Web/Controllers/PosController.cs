@@ -2031,9 +2031,10 @@ public class PosController : Controller
         var introText = await _settings.GetAsync($"email.{key}.intro", defaultIntro);
         var firstName = string.IsNullOrWhiteSpace(order.User.FirstName) ? "there" : order.User.FirstName;
         var introHtml = OrderEmailTemplate.ApplyPlaceholders(introText, order.OrderNumber, order.CreatedAt, firstName);
-        var imgs = await PrimaryImagesAsync(order.Items.Select(i => i.ProductId).Distinct().ToList());
+        // Variant's own picture when set, else the product primary (image URLs are absolute Cloudinary/R2).
+        var img = await OrderEmailImages.ResolverAsync(_db, order.Items, null);
         var items = order.Items
-            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, imgs.GetValueOrDefault(i.ProductId), i.ProductSku))
+            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, img(i), i.ProductSku))
             .ToList();
         var body = OrderEmailTemplate.BuildStatusUpdate(subject, introHtml, order.OrderNumber, items, order.Total);
         var sent = await _email.SendAsync(email!, subject, body, order.User.FullName);
@@ -2059,9 +2060,10 @@ public class PosController : Controller
         var introHtml = OrderEmailTemplate.ApplyPlaceholders(introText, order.OrderNumber, order.CreatedAt, firstName);
         var baseUrl = $"{Request.Scheme}://{Request.Host}";
         var passUrl = $"{baseUrl}/pickup/{order.PickupToken}";
-        var imgs = await PrimaryImagesAsync(order.Items.Select(i => i.ProductId).Distinct().ToList());
+        // Variant's own picture when set, else the product primary.
+        var img = await OrderEmailImages.ResolverAsync(_db, order.Items, baseUrl);
         var items = order.Items
-            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, imgs.GetValueOrDefault(i.ProductId), i.ProductSku))
+            .Select(i => new OrderEmailTemplate.Item(i.ProductName, i.VariantName, i.Quantity, i.LineTotal, img(i), i.ProductSku))
             .ToList();
         string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
         var store = order.PickupStore;
