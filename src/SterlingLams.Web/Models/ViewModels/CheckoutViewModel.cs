@@ -44,6 +44,10 @@ public class CheckoutViewModel : IValidatableObject
     /// order has an item that must ship from a branch far from the customer.</summary>
     public bool TimeframeAcknowledged { get; set; }
 
+    /// <summary>Customer-care / staff only: place the order unpaid (no gateway) for the payment to be
+    /// confirmed later in Admin. Honoured server-side only when the operator is staff/customer-care.</summary>
+    public bool PayLater { get; set; }
+
     // Payment
     public string PaymentProvider { get; set; } = "Paystack";
     public string? PaystackPublicKey { get; set; }

@@ -36,10 +36,10 @@
             <option value="Online" selected="@(Model.ChannelFilter == "Online")">Online</option>
             <option value="Pos" selected="@(Model.ChannelFilter == "Pos")">In-store (EPOS)</option>
         </select>
-        <select name="source" onchange="this.form.submit()" class="@selCls" title="Website orders: placed by the customer vs rung through by staff">
+        <select name="source" onchange="this.form.submit()" class="@selCls" title="Website orders: placed by the customer vs placed by customer care / staff">
             <option value="">Any source</option>
-            <option value="customer" selected="@(Model.SourceFilter == "customer")">Customer (website)</option>
-            <option value="staff" selected="@(Model.SourceFilter == "staff")">Staff-placed</option>
+            <option value="customer" selected="@(Model.SourceFilter == "customer")">Website (customer)</option>
+            <option value="staff" selected="@(Model.SourceFilter == "staff")">Customer care</option>
         </select>
         <select name="paid" onchange="this.form.submit()" class="@selCls">
             <option value="">Any payment</option>
@@ -109,6 +109,7 @@
                 <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Customer</th>
                 <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Total</th>
                 <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Fulfillment</th>
+                <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Source</th>
                 <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Paid</th>
                 <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Status</th>
                 <th class="text-left px-4 py-3 text-xs text-neutral-400 font-medium">Date</th>
@@ -117,7 +118,7 @@
         <tbody class="divide-y divide-neutral-50">
             @if (!Model.Orders.Any())
             {
-                <tr><td colspan="8" class="px-6 py-12 text-center text-neutral-400 text-sm">No orders found.</td></tr>
+                <tr><td colspan="9" class="px-6 py-12 text-center text-neutral-400 text-sm">No orders found.</td></tr>
             }
             @foreach (var o in Model.Orders)
             {
@@ -133,25 +134,24 @@
                     <td class="px-4 py-3">
                         <p class="text-xs font-medium text-neutral-800">@o.CustomerName</p>
                         <p class="text-[10px] text-neutral-400">@o.CustomerEmail</p>
-                        @* Website order: tell a customer self-checkout apart from one a staffer rang through. *@
-                        @if (!o.IsPos)
-                        {
-                            @if (o.PlacedByStaff)
-                            {
-                                <span class="inline-flex items-center gap-1 mt-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200"
-                                      title="Placed by staff@(string.IsNullOrWhiteSpace(o.PlacedByStaffName) ? "" : " · " + o.PlacedByStaffName)">
-                                    👤 Staff@(string.IsNullOrWhiteSpace(o.PlacedByStaffName) ? "" : " · " + o.PlacedByStaffName)
-                                </span>
-                            }
-                            else
-                            {
-                                <span class="inline-flex items-center gap-1 mt-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200"
-                                      title="Placed by the customer on the website">🌐 Website</span>
-                            }
-                        }
                     </td>
                     <td class="px-4 py-3 text-xs font-medium">₦@o.Total.ToString("N0")</td>
                     <td class="px-4 py-3 text-xs text-neutral-600">@(o.IsPos ? "In-store" : o.FulfillmentType == "StorePickup" ? "Store pickup" : o.FulfillmentType)</td>
+                    <td class="px-4 py-3 text-xs">
+                        @if (o.IsPos)
+                        {
+                            <span class="text-neutral-400">In-store</span>
+                        }
+                        else if (o.PlacedByStaff)
+                        {
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-medium"
+                                  title="@(string.IsNullOrWhiteSpace(o.PlacedByStaffName) ? "Placed by customer care" : "Placed by " + o.PlacedByStaffName)">👤 Customer care</span>
+                        }
+                        else
+                        {
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 font-medium">🌐 Website</span>
+                        }
+                    </td>
                     <td class="px-4 py-3">
                         @if (o.IsPaid)
                         {
