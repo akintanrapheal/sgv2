@@ -1,6 +1,9 @@
 @model SterlingLams.Web.Models.ViewModels.CheckoutViewModel
 @{
     ViewData["Title"] = "Checkout";
+    // Customer-care / staff placing an order for a customer (see CheckoutController). Shows the customer
+    // details fields even when signed in, and a "place now, confirm payment later" option.
+    var careOp = ViewBag.IsCareOperator == true;
 }
 
 <div class="max-w-5xl mx-auto px-6 py-12">
@@ -8,18 +11,29 @@
         <h1 class="font-cormorant text-4xl font-light">Checkout</h1>
     </div>
 
+    @if (careOp)
+    {
+        <div class="max-w-5xl mx-auto mb-8 border border-amber-300 bg-amber-50 rounded-lg px-5 py-3 text-sm text-amber-800">
+            👤 <strong>Customer-care mode</strong> — you're placing this order on a customer's behalf. Enter the
+            <strong>customer's</strong> name, phone and address below. You can place it now and confirm the payment in Admin once received.
+        </div>
+    }
+
     <form asp-action="PlaceOrder" method="post" id="checkout-form">
         @Html.AntiForgeryToken()
         <input type="hidden" name="SelectedDeliveryType" id="selected-delivery-type" value="" />
         <input type="hidden" name="TimeframeAcknowledged" id="ack-input" value="false" />
+        @* Set by the checkout buttons (customer-care only): "true" = place unpaid for later confirmation.
+           A hidden input (not the button's value) so it survives the timeframe modal's re-submit. *@
+        <input type="hidden" name="PayLater" id="paylater-input" value="false" />
 
         <div class="grid md:grid-cols-5 gap-12">
 
             <!-- ─── Left: Fulfillment + Details ─────────────────────────── -->
             <div class="md:col-span-3 space-y-10">
 
-                @* ── Guest Contact Section (unauthenticated only) ─────────── *@
-                @if (User.Identity?.IsAuthenticated != true)
+                @* ── Contact Section: guests, OR customer-care placing for a customer ─────────── *@
+                @if (User.Identity?.IsAuthenticated != true || careOp)
                 {
                     <section class="border border-brand-200 bg-brand-50 p-6">
                         <div class="flex items-start gap-4 mb-5">
@@ -28,32 +42,39 @@
                                       d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                             </svg>
                             <div>
-                                <p class="text-xs tracking-[0.2em] uppercase text-brand-600 mb-1">Checking Out as Guest</p>
-                                <p class="text-sm text-neutral-600 font-light">
-                                    Already have an account?
-                                    <a asp-controller="Account" asp-action="Login" asp-route-returnUrl="/Checkout"
-                                       class="text-brand-500 hover:text-brand-700 underline underline-offset-2">Sign in</a>
-                                    for faster checkout and order tracking.
-                                </p>
+                                <p class="text-xs tracking-[0.2em] uppercase text-brand-600 mb-1">@(careOp ? "Customer details" : "Checking Out as Guest")</p>
+                                @if (careOp)
+                                {
+                                    <p class="text-sm text-neutral-600 font-light">The customer you're placing this order for. Their name &amp; phone appear on the order.</p>
+                                }
+                                else
+                                {
+                                    <p class="text-sm text-neutral-600 font-light">
+                                        Already have an account?
+                                        <a asp-controller="Account" asp-action="Login" asp-route-returnUrl="/Checkout"
+                                           class="text-brand-500 hover:text-brand-700 underline underline-offset-2">Sign in</a>
+                                        for faster checkout and order tracking.
+                                    </p>
+                                }
                             </div>
                         </div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Full Name <span class="pickup-req text-red-400 hidden">*</span></label>
-                                <input asp-for="GuestName" type="text" autocomplete="name"
+                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">@(careOp ? "Customer's Name" : "Full Name") <span class="@(careOp ? "" : "pickup-req hidden") text-red-400">*</span></label>
+                                <input asp-for="GuestName" type="text" autocomplete="name" required="@careOp"
                                        class="form-input @(ViewData.ModelState["GuestName"]?.Errors.Any() == true ? "border-red-400" : "")" placeholder="Jane Smith" />
                                 <span asp-validation-for="GuestName" class="text-xs text-red-500 mt-1 block"></span>
                             </div>
                             <div>
-                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Email <span class="text-red-400">*</span></label>
-                                <input asp-for="GuestEmail" type="email" autocomplete="email" required
+                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Email @(careOp ? "(optional)" : "")<span class="@(careOp ? "hidden" : "") text-red-400">*</span></label>
+                                <input asp-for="GuestEmail" type="email" autocomplete="email" required="@(!careOp)"
                                        class="form-input @(ViewData.ModelState["GuestEmail"]?.Errors.Any() == true ? "border-red-400" : "")"
                                        placeholder="your@email.com" />
                                 <span asp-validation-for="GuestEmail" class="text-xs text-red-500 mt-1 block"></span>
                             </div>
                             <div>
-                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">Phone <span class="pickup-req text-red-400 hidden">*</span></label>
-                                <input asp-for="GuestPhone" type="tel" autocomplete="tel"
+                                <label class="block text-xs tracking-[0.15em] uppercase text-neutral-500 mb-2">@(careOp ? "Customer's Phone" : "Phone") <span class="@(careOp ? "" : "pickup-req hidden") text-red-400">*</span></label>
+                                <input asp-for="GuestPhone" type="tel" autocomplete="tel" required="@careOp"
                                        class="form-input @(ViewData.ModelState["GuestPhone"]?.Errors.Any() == true ? "border-red-400" : "")" placeholder="+234 800 000 0000" />
                                 <span asp-validation-for="GuestPhone" class="text-xs text-red-500 mt-1 block"></span>
                                 <span class="pickup-req hidden text-xs text-neutral-400 mt-1 block">Required for store pickup.</span>
@@ -379,7 +400,7 @@
                         </div>
                     }
 
-                    <button type="submit"
+                    <button type="submit" onclick="document.getElementById('paylater-input').value='false'"
                             class="w-full bg-brand-500 text-white text-xs tracking-[0.2em] uppercase py-4 hover:bg-brand-600 transition-colors duration-300">
                         Proceed to Payment
                     </button>
@@ -387,6 +408,19 @@
                     <p class="text-[11px] text-neutral-400 text-center mt-4 font-light">
                         You'll be redirected to Paystack's secure payment page.
                     </p>
+
+                    @if (careOp)
+                    {
+                        @* Customer-care: place the order without the gateway and confirm payment later in Admin.
+                           Sets the hidden PayLater flag; the server honours it only for staff/customer-care. *@
+                        <button type="submit" id="pay-later-btn" onclick="document.getElementById('paylater-input').value='true'"
+                                class="w-full mt-3 bg-white border border-neutral-800 text-neutral-900 text-xs tracking-[0.2em] uppercase py-4 hover:bg-neutral-900 hover:text-white transition-colors duration-300">
+                            Place order — confirm payment later
+                        </button>
+                        <p class="text-[11px] text-neutral-400 text-center mt-2 font-light">
+                            Creates the order unpaid. Record the payment in Admin → Orders once the customer pays.
+                        </p>
+                    }
 
                     <div class="mt-5 pt-5 border-t border-neutral-100">
                         @{ ViewData["PaymentBadgesCaption"] = "Your payment is secure · 256-bit SSL"; }

@@ -200,6 +200,16 @@ public class CheckoutController : Controller
 
         vm.GiftCardsAvailable = await _giftCards.RedemptionEnabledAsync();
 
+        // Customer-care / staff mode: a signed-in staffer, or the dedicated customer-care account, is
+        // placing an order for a customer. The view then shows customer name/phone fields + a "place now,
+        // confirm payment later" option. Matches the server gate in PlaceOrder.
+        if (user != null)
+        {
+            var careEmail = (await _settings.GetAsync("orders.customer_care_email", "")).Trim();
+            ViewBag.IsCareOperator = (await _userManager.GetRolesAsync(user)).Count > 0
+                || (careEmail.Length > 0 && string.Equals(user.Email, careEmail, StringComparison.OrdinalIgnoreCase));
+        }
+
         return View(vm);
     }
 
@@ -509,7 +519,10 @@ public class CheckoutController : Controller
         // is that staffer; a shopper has no backend roles. Captured before the guest fallback reassigns
         // `user`. A role → staff-placed.
         var operatorUser = user;
-        var placedByStaff = operatorUser != null && (await _userManager.GetRolesAsync(operatorUser)).Count > 0;
+        var careEmail = (await _settings.GetAsync("orders.customer_care_email", "")).Trim();
+        var placedByStaff = operatorUser != null
+            && ((await _userManager.GetRolesAsync(operatorUser)).Count > 0
+                || (careEmail.Length > 0 && string.Equals(operatorUser.Email, careEmail, StringComparison.OrdinalIgnoreCase)));
 
         if (user == null)
         {
@@ -853,6 +866,21 @@ public class CheckoutController : Controller
         // No stock is held before payment — it's committed first-come-first-served when payment
         // lands (FulfilPaidOrderAsync). If an item sells out before this customer pays, the
         // payment is auto-cancelled + refunded at the callback.
+
+        // Customer-care / staff "place now, confirm payment later": the operator placed this for a
+        // customer (phone/WhatsApp) and will record the payment in Admin once it's received. Skip the
+        // gateway entirely — the order stays unpaid + Pending and is exempt from the auto-cancel sweeper
+        // (PlacedByStaffUserId is set), so it waits for manual confirmation. Server-gated on placedByStaff,
+        // so a normal shopper can never trigger it.
+        if (placedByStaff && vm.PayLater)
+        {
+            SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
+                $"Placed by customer care ({order.PlacedByStaffName}) — payment to be confirmed in Admin.");
+            await _db.SaveChangesAsync();
+            CartStore.Clear(HttpContext);
+            TempData["Success"] = $"Order {order.OrderNumber} placed for the customer. Confirm the payment in Admin → Orders once it's received.";
+            return RedirectToAction("Confirmation", new { orderNumber = order.OrderNumber, token = ConfirmationToken(order.OrderNumber) });
+        }
 
         // Snapshot the cart for abandoned-cart recovery (emailed later if payment isn't completed).
         await CaptureAbandonedCartAsync(user.Email, cart);

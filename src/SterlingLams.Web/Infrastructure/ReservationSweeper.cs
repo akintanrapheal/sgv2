@@ -50,11 +50,14 @@ public class ReservationSweeper : BackgroundService
         var cutoff = DateTime.UtcNow - TimeSpan.FromMinutes(ttlMinutes);
 
         // Unpaid, still-pending online orders past the cutoff. (POS sales are paid at the till;
-        // staff-confirmed orders leave Pending, so they're never swept.)
+        // staff-confirmed orders leave Pending, so they're never swept.) Customer-care / staff-placed
+        // orders are DELIBERATELY left unpaid for manual confirmation (pay-later), so they're exempt —
+        // otherwise a phone/WhatsApp order would auto-cancel before staff record the payment.
         var staleOrderIds = await db.Orders
             .Where(o => o.Channel == OrderChannel.Online
                      && !o.IsPaid
                      && o.Status == OrderStatus.Pending
+                     && o.PlacedByStaffUserId == null
                      && o.CreatedAt < cutoff)
             .Select(o => o.Id)
             .ToListAsync(ct);
