@@ -402,6 +402,25 @@
             {
                 <p class="text-[11px] text-neutral-400 mt-2 pt-2 border-t border-neutral-100">Served by <span class="text-neutral-600">@Model.CashierName</span></p>
             }
+            @* Order source: website self-checkout vs placed by customer care / staff. *@
+            @if (Model.Order.Channel == SterlingLams.Web.Models.Domain.OrderChannel.Online)
+            {
+                <div class="mt-2 pt-2 border-t border-neutral-100">
+                    @if (!string.IsNullOrEmpty(Model.Order.PlacedByStaffUserId))
+                    {
+                        <span class="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">👤 Customer care</span>
+                        @if (!string.IsNullOrWhiteSpace(Model.Order.PlacedByStaffName))
+                        {
+                            <span class="text-[11px] text-neutral-500 ml-1">placed by @Model.Order.PlacedByStaffName</span>
+                        }
+                    }
+                    else
+                    {
+                        <span class="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200">🌐 Website</span>
+                        <span class="text-[11px] text-neutral-500 ml-1">placed by the customer</span>
+                    }
+                </div>
+            }
         </div>
 
         <!-- Resend email -->
