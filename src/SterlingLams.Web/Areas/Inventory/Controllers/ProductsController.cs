@@ -113,6 +113,7 @@ public class ProductsController : InventoryAreaController
                 CategoryName = p.Category != null ? p.Category.Name : "—",
                 ImageUrl = p.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault(),
                 IsActive = p.IsActive,
+                HiddenFromPos = p.HiddenFromPos,
                 TrackStock = p.TrackStock,
                 ButtonColour = p.PosButtonColour,
                 Description = p.ShortDescription ?? p.Description,
@@ -1148,6 +1149,7 @@ public class InvProductRow
     public string CategoryName { get; set; } = "";
     public string? ImageUrl { get; set; }
     public bool IsActive { get; set; }
+    public bool HiddenFromPos { get; set; }
     public bool TrackStock { get; set; }
     public string? ButtonColour { get; set; }
     public string? Description { get; set; }
