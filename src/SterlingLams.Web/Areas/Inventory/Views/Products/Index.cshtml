@@ -207,7 +207,14 @@
                     foreach (var r in rows)
                     {
                         <tr class="hover:bg-neutral-50">
-                            <td data-col="name" class="px-4 py-3 text-neutral-800">@r.Name</td>
+                            <td data-col="name" class="px-4 py-3 text-neutral-800">
+                                @r.Name
+                                @if (p.HiddenFromPos)
+                                {
+                                    <span class="ml-1.5 inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 align-middle"
+                                          title="Not shown on the EPOS till. Open Edit and tick 'Available at the till' to show it.">Hidden from till</span>
+                                }
+                            </td>
                             <td data-col="sku" class="px-4 py-3 text-neutral-600">@(r.Sku ?? "—")</td>
                             <td data-col="category" class="px-4 py-3 text-neutral-600">@p.CategoryName</td>
                             <td data-col="price" class="px-4 py-3 text-right text-neutral-800">@Money(r.Price)</td>
