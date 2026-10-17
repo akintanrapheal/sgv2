@@ -118,6 +118,11 @@
         <input type="checkbox" name="isActive" value="true" checked="@Model.IsActive" /> Active (visible &amp; sellable)
     </label>
 
+    <label class="flex items-center gap-2 text-sm text-neutral-700">
+        <input type="checkbox" name="availableAtTill" value="true" checked="@(!Model.HiddenFromPos)" /> Available at the till (EPOS)
+        <span class="text-neutral-400 text-xs font-light">untick to hide from the EPOS product search</span>
+    </label>
+
     <div class="flex items-center gap-3 pt-2">
         @if (ViewData["CanManageInventory"] as bool? ?? true)
         {

@@ -316,7 +316,7 @@ public class ProductsController : InventoryAreaController
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Save(int id, string name, string? sku, string? barcode, decimal price,
         int? categoryId, int lowStockThreshold, bool isActive, string? description, string? buttonColour,
-        decimal? posPrice = null)
+        bool availableAtTill, decimal? posPrice = null)
     {
         if (string.IsNullOrWhiteSpace(name) || categoryId == null)
         {
@@ -336,6 +336,10 @@ public class ProductsController : InventoryAreaController
         product.CategoryId = categoryId.Value;
         product.LowStockThreshold = lowStockThreshold;
         product.IsActive = isActive;
+        // "Available at the till" is the inverse of HiddenFromPos — a cashier can mark an item unavailable
+        // on the EPOS, and this is the only place to turn it back on (a hidden product can't be found in the
+        // EPOS search to re-enable it there).
+        product.HiddenFromPos = !availableAtTill;
         product.PosButtonColour = string.IsNullOrWhiteSpace(buttonColour) ? null : buttonColour.Trim();
         product.Description = SterlingLams.Web.Services.ProductHtml.Sanitize(description);
         product.UpdatedAt = DateTime.UtcNow;
