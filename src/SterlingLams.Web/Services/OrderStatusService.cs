@@ -163,6 +163,12 @@ public sealed class OrderStatusService : IOrderStatusService
         // payment off the gateway). These never went through the storefront's checkout alert, so fire the
         // admin "new order" alert at the end, once stock/fulfilment have settled.
         var manuallyConfirmed = newStatus == OrderStatus.Confirmed && !order.IsPaid;
+        // Reviving a CANCELLED order back to a live/fulfilling status is also an order the orders inbox
+        // never heard about via the checkout alert — e.g. one auto-cancelled for non-payment that staff
+        // bring back after confirming the money landed on Paystack out of band. Alert them too.
+        var revivedFromCancelled = old == OrderStatus.Cancelled
+            && newStatus is OrderStatus.Confirmed or OrderStatus.Processing
+                or OrderStatus.ReadyForPickup or OrderStatus.Shipped or OrderStatus.Delivered;
 
         // Confirming an as-yet-unpaid order means the money has arrived out of band — a transfer the
         // shop received, cash/card on pickup, etc. Mark it paid so it reconciles in Finance and can be
@@ -258,9 +264,10 @@ public sealed class OrderStatusService : IOrderStatusService
             }
         }
 
-        // Manually-confirmed (off-gateway) orders didn't go through the checkout new-order alert — fire it
-        // now so the shop's orders inbox sees them just like a website order. Best-effort.
-        if (manuallyConfirmed)
+        // Orders that didn't reach the orders inbox via the checkout new-order alert — a manual off-gateway
+        // confirm, or a cancelled order brought back to life — fire it now so the inbox sees them just like
+        // a website order. Best-effort.
+        if (manuallyConfirmed || revivedFromCancelled)
             await SendNewOrderAdminAlertAsync(order.Id);
 
         return OrderStatusOutcome.Applied;
