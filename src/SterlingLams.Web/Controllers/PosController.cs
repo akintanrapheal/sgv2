@@ -2903,6 +2903,12 @@ public class PosController : Controller
         public int LoyaltyPointsToRedeem { get; set; }
         /// <summary>Manager PIN, supplied when discount approval is required (pos.approval_discounts).</summary>
         public string? ManagerPin { get; set; }
+        /// <summary>An ORDER-LEVEL discount applied to the whole sale (on top of any per-line discounts).
+        /// The client sends the computed amount; the server re-clamps it to the remaining total. Reason +
+        /// type (Percentage/Amount/NewPrice) are for the receipt + the Finance "Discount Reason" column.</summary>
+        public decimal OrderDiscount { get; set; }
+        public string? OrderDiscountReason { get; set; }
+        public string? OrderDiscountType { get; set; }
     }
     public class TillCashier { public string Id { get; set; } = ""; public string Name { get; set; } = ""; public bool PinPending { get; set; } }
 
@@ -3074,17 +3080,25 @@ public class PosController : Controller
                 await _stock.ApplyAsync(prod.Id, variant?.Id, storeId, -qty, StockMovementType.Sale, orderNumber, userId: userId);
         }
 
+        // Order-level discount: applied to the WHOLE sale on top of any per-line discounts. Clamp it to
+        // what's left after line discounts so Total can never go negative. It rides on DiscountAmount (the
+        // part beyond the line-discount sum is the order discount — the receipt + Finance already read it
+        // that way), and its reason lands on DiscountCode so it shows in the "Discount Reason" column.
+        var orderDiscount = Math.Max(0m, Math.Min(req.OrderDiscount, subtotal - totalDiscount));
         order.Subtotal = subtotal;
-        order.DiscountAmount = totalDiscount;
-        order.Total = subtotal - totalDiscount;
+        order.DiscountAmount = totalDiscount + orderDiscount;
+        order.Total = subtotal - totalDiscount - orderDiscount;
+        if (orderDiscount > 0 && !string.IsNullOrWhiteSpace(req.OrderDiscountReason))
+            order.DiscountCode = req.OrderDiscountReason.Trim();
 
-        // Manager approval for line discounts over the configured threshold (loss prevention), when
-        // enabled. Returning here rolls back the staged stock deductions (tx disposed uncommitted).
+        // Manager approval for discounts over the configured threshold (loss prevention), when enabled —
+        // counts the line discounts AND the order discount. Returning here rolls back the staged stock.
         string discountApprovalNote = "";
-        if (totalDiscount > 0 && await _settings.GetBoolAsync("pos.approval_discounts", false))
+        var discountForApproval = totalDiscount + orderDiscount;
+        if (discountForApproval > 0 && await _settings.GetBoolAsync("pos.approval_discounts", false))
         {
             var minPct = await _settings.GetDecimalAsync("pos.approval_discount_min_pct", 0);
-            var pct = subtotal > 0 ? totalDiscount / subtotal * 100m : 0m;
+            var pct = subtotal > 0 ? discountForApproval / subtotal * 100m : 0m;
             if (pct >= minPct)
             {
                 var mgr = await ValidateManagerPinAsync(req.ManagerPin);
@@ -3172,6 +3186,10 @@ public class PosController : Controller
         public string? CustomerUserId { get; set; }
         public DateTime? CreatedAt { get; set; }          // when the sale was rung up offline (client UTC)
         public List<TillLine> Items { get; set; } = new();
+        /// <summary>Order-level discount captured offline (see TillCheckout.OrderDiscount).</summary>
+        public decimal OrderDiscount { get; set; }
+        public string? OrderDiscountReason { get; set; }
+        public string? OrderDiscountType { get; set; }
     }
     public class SyncSalesRequest { public List<OfflineSale> Sales { get; set; } = new(); }
 
@@ -3286,9 +3304,13 @@ public class PosController : Controller
                 shortfalls.Add($"{prod.Name}{(variant != null ? " – " + variant.Name : "")} (short {qty - deduct})");
         }
 
+        // Order-level discount captured offline — same handling as the online Checkout.
+        var orderDiscount = Math.Max(0m, Math.Min(sale.OrderDiscount, subtotal - totalDiscount));
         order.Subtotal = subtotal;
-        order.DiscountAmount = totalDiscount;
-        order.Total = subtotal - totalDiscount;
+        order.DiscountAmount = totalDiscount + orderDiscount;
+        order.Total = subtotal - totalDiscount - orderDiscount;
+        if (orderDiscount > 0 && !string.IsNullOrWhiteSpace(sale.OrderDiscountReason))
+            order.DiscountCode = sale.OrderDiscountReason.Trim();
         order.AmountTendered = sale.AmountTendered > 0 ? sale.AmountTendered : order.Total;
         order.ChangeGiven = Math.Max(0, (order.AmountTendered ?? order.Total) - order.Total);
         _db.Orders.Add(order);
