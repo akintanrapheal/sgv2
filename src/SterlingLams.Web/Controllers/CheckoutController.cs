@@ -36,6 +36,7 @@ public class CheckoutController : Controller
     private readonly SterlingLams.Web.Services.IZephielClient _zephiel;
     private readonly SterlingLams.Web.Services.IPostHogClient _posthog;
     private readonly SterlingLams.Web.Services.IRetainfulClient _retainful;
+    private readonly SterlingLams.Web.Services.IOrderNotificationService _orderNotifications;
     private readonly IDataProtector _confirmTokenProtector;
 
     public CheckoutController(
@@ -60,7 +61,8 @@ public class CheckoutController : Controller
         IDataProtectionProvider dataProtection,
         SterlingLams.Web.Services.IZephielClient zephiel,
         SterlingLams.Web.Services.IPostHogClient posthog,
-        SterlingLams.Web.Services.IRetainfulClient retainful)
+        SterlingLams.Web.Services.IRetainfulClient retainful,
+        SterlingLams.Web.Services.IOrderNotificationService orderNotifications)
     {
         _db = db;
         _payment = payment;
@@ -83,6 +85,7 @@ public class CheckoutController : Controller
         _zephiel = zephiel;
         _posthog = posthog;
         _retainful = retainful;
+        _orderNotifications = orderNotifications;
         _confirmTokenProtector = dataProtection.CreateProtector("Checkout.Confirmation.v1");
     }
 
@@ -913,6 +916,16 @@ public class CheckoutController : Controller
             return await RedisplayCheckoutAsync(vm);
         }
 
+        // Persist the gateway reference now, BEFORE the redirect. If the payment succeeds but neither
+        // the browser callback nor the webhook captures it (customer closed the tab, webhook missed),
+        // the PaymentReconciliationService / the sweeper's pre-cancel check can re-verify this exact
+        // reference against the gateway and confirm the order instead of it being lost.
+        if (!string.IsNullOrEmpty(result.Reference))
+        {
+            order.PaymentReference = result.Reference;
+            await _db.SaveChangesAsync();
+        }
+
         return Redirect(result.AuthorizationUrl!);
     }
 
@@ -994,7 +1007,10 @@ public class CheckoutController : Controller
             await _loyalty.AccrueForOrderAsync(order.Id);
             await _logistics.PushOrderAsync(order.Id);
 
-            await SendOrderEmailsAsync(order.Id);
+            // Only email on the transition to paid. If the webhook (or the reconciliation sweep)
+            // already captured this payment, it has sent these emails — don't send them twice.
+            if (wasUnpaid)
+                await SendOrderEmailsAsync(order.Id);
         }
 
         // Clear cart
@@ -1056,118 +1072,11 @@ public class CheckoutController : Controller
     /// Emails the customer an order confirmation and (optionally) alerts the admin of a new order.
     /// Respects the Notifications settings toggles. Never throws — email must not break checkout.
     /// </summary>
-    private async Task SendOrderEmailsAsync(int orderId)
-    {
-        try
-        {
-            var order = await _db.Orders.Include(o => o.Items)
-                .Include(o => o.DeliveryAddress).Include(o => o.PickupStore).Include(o => o.User)
-                .FirstOrDefaultAsync(o => o.Id == orderId);
-            if (order == null) return;
-
-            var customerEmail = order.User?.Email
-                ?? await _db.Users.Where(u => u.Id == order.UserId).Select(u => u.Email).FirstOrDefaultAsync();
-
-            // Customer confirmation — rich WooCommerce-style layout (editable in Email Customizer).
-            if (!string.IsNullOrWhiteSpace(customerEmail)
-                && await _settings.GetBoolAsync("notifications.order_confirmed", true))
-            {
-                var subject = await _settings.GetAsync("email.order_confirmed.subject", "Your order is being processed");
-                var intro = await _settings.GetAsync("email.order_confirmed.intro",
-                    "Your order {order} ({date}) has been received and is now being processed.");
-
-                // Per-item image — the chosen variant's own picture when set, else the product primary.
-                var img = await SterlingLams.Web.Services.OrderEmailImages.ResolverAsync(_db, order.Items, _config["App:BaseUrl"]);
-
-                var items = order.Items.Select(i =>
-                    new SterlingLams.Web.Services.OrderEmailTemplate.Item(
-                        i.ProductName, i.VariantName, i.Quantity, i.LineTotal, img(i), i.ProductSku)).ToList();
-
-                var custName = !string.IsNullOrWhiteSpace(order.ContactName) ? order.ContactName!.Trim() : (order.User?.FullName ?? order.DeliveryAddress?.FullName ?? "");
-                var (billing, shipping, pickupLabel) = SterlingLams.Web.Services.OrderEmailTemplate.AddressBlocksFor(order, custName, customerEmail);
-
-                // Glams-branded shipping line, e.g. "₦4,000.00 via Glams Priority Delivery (within 48 hrs)".
-                var shippingLabel = await _zones.EmailShippingLabelAsync(order, pickupLabel);
-
-                var introHtml = SterlingLams.Web.Services.OrderEmailTemplate.ApplyPlaceholders(
-                    intro, "#" + order.OrderNumber, order.CreatedAt, custName);
-                var body = SterlingLams.Web.Services.OrderEmailTemplate.Build(
-                    heading: subject,
-                    introHtml: introHtml,
-                    orderNumber: order.OrderNumber,
-                    orderDate: order.CreatedAt,
-                    items: items,
-                    subtotal: order.Subtotal,
-                    shippingLabel: shippingLabel,
-                    total: order.Total,
-                    // Friendly payment line like the old site: the Paystack channels the customer could use.
-                    paymentMethod: (order.PaymentProvider ?? "").Contains("Paystack", StringComparison.OrdinalIgnoreCase)
-                        ? "Debit/Credit Card, Bank Transfer, USSD, Opay"
-                        : (string.IsNullOrWhiteSpace(order.PaymentProvider) ? "—" : order.PaymentProvider),
-                    billingLines: billing,
-                    shippingLines: shipping);
-                await _email.SendAsync(customerEmail!, subject, body, ct: HttpContext.RequestAborted);
-            }
-
-            // WhatsApp order confirmation — self-gated by whatsapp.notify.order_confirmed + a customer
-            // phone, independent of the email setting above. Fire-and-forget (own scope, never throws).
-            _ = _whatsapp.NotifyOrderAsync(order.Id, SterlingLams.Web.Services.WhatsAppOrderEvent.OrderConfirmed);
-
-            // Admin new-order alert
-            if (await _settings.GetBoolAsync("notifications.new_order", true))
-            {
-                // New-order alert recipients: the dedicated new-order list, falling back to the
-                // general admin email when that list is left blank.
-                var adminEmail = await _settings.GetAsync("notifications.new_order_emails", "");
-                if (string.IsNullOrWhiteSpace(adminEmail))
-                    adminEmail = await _settings.GetAsync("notifications.admin_email", "");
-                if (!string.IsNullOrWhiteSpace(adminEmail))
-                {
-                    // Rich admin alert — same layout as the customer confirmation (images, colour,
-                    // quantities, billing + shipping, pickup vs delivery). Subject/intro editable in
-                    // the Email Customizer ("New order alert (admin)").
-                    var adminSubjectT = await _settings.GetAsync("email.new_order_admin.subject", "New order {order}");
-                    var adminSubject = adminSubjectT.Replace("{order}", order.OrderNumber) + $" — ₦{order.Total:N0}";
-                    var adminBody = await BuildAdminOrderAlertAsync(order, customerEmail);
-                    var fromAlerts = await _settings.GetAsync("email.from_alerts", "");
-                    foreach (var addr in SterlingLams.Web.Infrastructure.EmailRecipients.Split(adminEmail))
-                        await _email.SendAsync(addr, adminSubject, adminBody, ct: HttpContext.RequestAborted, fromOverride: fromAlerts);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed sending order emails for order {OrderId}", orderId);
-        }
-    }
-
-    // Rich "new order received" admin body: mirrors the customer confirmation (product images, colour,
-    // quantities, billing + shipping, or "Pickup at …" for store pickup). Subject/intro editable in the
-    // Email Customizer ("New order alert (admin)").
-    private async Task<string> BuildAdminOrderAlertAsync(Order order, string? customerEmail)
-    {
-        var img = await SterlingLams.Web.Services.OrderEmailImages.ResolverAsync(_db, order.Items, _config["App:BaseUrl"]);
-        var items = order.Items.Select(i => new SterlingLams.Web.Services.OrderEmailTemplate.Item(
-            i.ProductName, i.VariantName, i.Quantity, i.LineTotal, img(i), i.ProductSku)).ToList();
-
-        var custName = !string.IsNullOrWhiteSpace(order.ContactName) ? order.ContactName!.Trim() : (order.User?.FullName ?? order.DeliveryAddress?.FullName ?? "");
-        var (billing, shipping, pickupLabel) = SterlingLams.Web.Services.OrderEmailTemplate.AddressBlocksFor(order, custName, customerEmail);
-        var shippingLabel = await _zones.EmailShippingLabelAsync(order, pickupLabel);
-
-        var subjectT = await _settings.GetAsync("email.new_order_admin.subject", "New order {order}");
-        var introT = await _settings.GetAsync("email.new_order_admin.intro",
-            "A new order has come in — full details below. View it in the admin dashboard under Orders.");
-        var heading = subjectT.Replace("{order}", order.OrderNumber);
-        var introHtml = SterlingLams.Web.Services.OrderEmailTemplate.ApplyPlaceholders(
-                introT, "#" + order.OrderNumber, order.CreatedAt, custName)
-            + (string.IsNullOrWhiteSpace(customerEmail) ? ""
-               : $"<br/><span style=\"color:#78716c;font-size:13px;\">From {System.Net.WebUtility.HtmlEncode(customerEmail)}</span>");
-
-        return SterlingLams.Web.Services.OrderEmailTemplate.Build(
-            heading: heading, introHtml: introHtml, orderNumber: order.OrderNumber, orderDate: order.CreatedAt,
-            items: items, subtotal: order.Subtotal, shippingLabel: shippingLabel, total: order.Total,
-            paymentMethod: order.PaymentProvider ?? "—", billingLines: billing, shippingLines: shipping);
-    }
+    // Customer confirmation + admin new-order alert. The implementation lives in
+    // IOrderNotificationService so the same emails also go out when a payment is captured without a
+    // browser request in play (the Paystack webhook / the payment-reconciliation sweep).
+    private Task SendOrderEmailsAsync(int orderId)
+        => _orderNotifications.SendNewOrderEmailsAsync(orderId, HttpContext.RequestAborted);
 
     /// <summary>Increments the global usage count on the discount code an order used.</summary>
     private async Task IncrementDiscountUsageAsync(Order order)

@@ -14,40 +14,28 @@ public class WebhooksController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly IPaymentService _payment;
-    private readonly SterlingLams.Web.Services.IOrderFulfilmentService _fulfilment;
-    private readonly SterlingLams.Web.Services.ILoyaltyService _loyalty;
-    private readonly SterlingLams.Web.Services.IGiftCardService _giftCards;
+    private readonly SterlingLams.Web.Services.IPaymentCaptureService _capture;
     private readonly SterlingLams.Web.Services.Logistics.ILogisticsDispatchService _logistics;
     private readonly ISubscriptionPaymentService _subPay;
     private readonly ILogger<WebhooksController> _logger;
 
     private readonly SterlingLams.Web.Services.IAuditService _audit;
-    private readonly SterlingLams.Web.Services.IWhatsAppService _whatsapp;
-    private readonly SterlingLams.Web.Services.IPostHogClient _posthog;
 
     public WebhooksController(
         ApplicationDbContext db,
         IPaymentService payment,
-        SterlingLams.Web.Services.IOrderFulfilmentService fulfilment,
-        SterlingLams.Web.Services.ILoyaltyService loyalty,
-        SterlingLams.Web.Services.IGiftCardService giftCards,
+        SterlingLams.Web.Services.IPaymentCaptureService capture,
         SterlingLams.Web.Services.Logistics.ILogisticsDispatchService logistics,
         ISubscriptionPaymentService subPay,
         SterlingLams.Web.Services.IAuditService audit,
-        SterlingLams.Web.Services.IWhatsAppService whatsapp,
-        SterlingLams.Web.Services.IPostHogClient posthog,
         ILogger<WebhooksController> logger)
     {
         _db = db;
         _payment = payment;
-        _fulfilment = fulfilment;
-        _loyalty = loyalty;
-        _giftCards = giftCards;
+        _capture = capture;
         _logistics = logistics;
         _subPay = subPay;
         _audit = audit;
-        _whatsapp = whatsapp;
-        _posthog = posthog;
         _logger = logger;
     }
 
@@ -151,65 +139,13 @@ public class WebhooksController : ControllerBase
             if (order == null && !string.IsNullOrEmpty(reference))
                 order = await _db.Orders.FirstOrDefaultAsync(o => o.PaymentReference == reference);
 
-            if (order != null && !order.IsPaid)
+            if (order != null && !order.IsPaid && !string.IsNullOrEmpty(reference))
             {
-                // Verify the amount actually paid covers what we charged. The HMAC already proves the
-                // payload is genuinely from Paystack, but this guards against a stale/mismatched
-                // charge (e.g. a partial payment) marking a full order as paid.
-                if (amount + 0.01m < order.Total)
-                {
-                    _logger.LogWarning(
-                        "Paystack webhook amount mismatch for {OrderNumber}: paid {Paid} but order total is {Total}",
-                        order.OrderNumber, amount, order.Total);
-                    order.AdminNotes = $"[{DateTime.UtcNow:u}] Webhook amount mismatch: paid ₦{amount:N2} vs total ₦{order.Total:N2}. Needs review; not auto-fulfilled.";
-                    await _db.SaveChangesAsync();
-                    return Ok(); // ack so Paystack stops retrying; flagged for a human
-                }
-
-                var wasUnpaid = !order.IsPaid;
-                var prevStatus = order.Status;
-                order.IsPaid = true;
-                order.PaidAt = DateTime.UtcNow;
-                order.Status = OrderStatus.Confirmed;
-                order.PaymentReference = reference;
-                order.PaymentProvider = "Paystack";
-                if (wasUnpaid)
-                {
-                    SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
-                        $"Payment via Paystack successful (Transaction Reference: {reference}).");
-                    if (prevStatus != OrderStatus.Confirmed)
-                        SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
-                            $"Order status changed from {prevStatus} to Confirmed (payment received).");
-                }
-                await _db.SaveChangesAsync();
-                if (wasUnpaid)
-                {
-                    try { await _audit.LogAsync("Payment", "Order", order.Id.ToString(), $"Payment received for {order.OrderNumber} — ₦{order.Total:N0} (Paystack)"); } catch { }
-                    _ = _whatsapp.NotifyOrderAsync(order.Id, SterlingLams.Web.Services.WhatsAppOrderEvent.PaymentReceived);
-                    // Authoritative funnel completion — fires whether or not the shopper returned to the site.
-                    await _posthog.CaptureAsync(order.UserId ?? $"order_{order.OrderNumber}", "order_paid", new
-                    {
-                        value = order.Total, currency = "NGN", order_number = order.OrderNumber,
-                        payment_provider = "Paystack", channel = "online",
-                    });
-                }
-
-                // Deduct stock through the in-house ledger. Idempotent, so it's safe whether the
-                // browser callback already fulfilled this order or the webhook is the only path
-                // that fires (e.g. customer closed the tab right after paying). If the item sold
-                // out before this payment landed, the service auto-cancels + refunds — skip loyalty.
-                var outcome = await _fulfilment.FulfilPaidOrderAsync(order.Id);
-                if (outcome == SterlingLams.Web.Services.FulfilOutcome.SoldOut)
-                {
-                    _logger.LogWarning("Order {OrderNumber} sold out before its webhook-confirmed payment — auto-refunded.", order.OrderNumber);
-                    return Ok();
-                }
-                await _loyalty.RedeemForOrderAsync(order.Id);
-                await _giftCards.RedeemForOrderAsync(order.Id);
-                await _loyalty.AccrueForOrderAsync(order.Id);
-                await _logistics.PushOrderAsync(order.Id);
-
-                _logger.LogInformation("Order {OrderNumber} marked as paid via webhook", order.OrderNumber);
+                // Confirm + fulfil through the shared capture path (idempotent — guards on IsPaid, so
+                // the browser callback and this webhook can both fire for the same payment and only the
+                // first does the work). It also sends the customer confirmation + admin new-order alert,
+                // so an order paid when the shopper never returned to the site is still notified.
+                await _capture.CaptureAsync(order.Id, reference, amount, "Paystack");
             }
         }
 
