@@ -1466,10 +1466,13 @@ public class FinanceController : AdminBaseController
 
         // Voided sales (POS same-session voids AND website voids) — shown as NEGATIVE rows dated at the
         // VOID time (not the sale time), so an end-of-day check sees the reversal when it happened, just
-        // like a refund. The original sale still appears as its positive row (on the sale date), so sale +
-        // void net to zero. Honour the channel filter the same way the sale rows do.
+        // like a refund. The original sale still appears as its positive row, so sale + void net to zero.
+        // A WEBSITE order only earns a positive row once it's PACKED (above), so only show a void row for a
+        // website order that WAS packed — otherwise a never-packed-then-voided order would leave an orphan
+        // negative with nothing to offset. POS sales always have a positive row. Honour the channel filter.
         var voidQ = _db.Orders.Where(o => o.VoidedAt != null
             && o.VoidedAt >= f && o.VoidedAt < t
+            && (o.Channel == OrderChannel.Pos || (o.PackedAt ?? o.PickupReadyEmailedAt) != null)
             && (!storeId.HasValue || o.PickupStoreId == storeId || o.FulfillingStoreId == storeId)
             && (!registerId.HasValue || o.RegisterId == registerId));
         if (channel == "Online") voidQ = voidQ.Where(o => o.Channel == OrderChannel.Online);
