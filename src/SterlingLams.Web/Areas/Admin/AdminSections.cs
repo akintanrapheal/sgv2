@@ -125,6 +125,16 @@ public static class AdminSections
         return false;
     }
 
+    /// <summary>True if the signed-in user is a member of staff — any backoffice role (full-access or a
+    /// default staff role). Used for staff-only storefront behaviour (e.g. still seeing out-of-stock
+    /// products that are hidden from customers).</summary>
+    public static bool IsStaff(ClaimsPrincipal? user)
+    {
+        if (user?.Identity?.IsAuthenticated != true) return false;
+        if (user.IsInRole(AdminRole)) return true;
+        return DefaultStaffRoles.Any(user.IsInRole);
+    }
+
     // ── The business owner ────────────────────────────────────────────────────
     /// <summary>
     /// Accounts allowed to perform owner-only destructive actions (currently: deleting audit
