@@ -379,7 +379,7 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 var outcome = await _orderStatus.ApplyAsync(order, newStatus, staff, paymentMethod, confirmReason);
 
                 if (outcome == OrderStatusOutcome.SoldOut)
-                    TempData["Error"] = $"Order {order.OrderNumber} can't be confirmed — an item is out of stock. It was cancelled.";
+                    TempData["Error"] = $"Order {order.OrderNumber} can't be confirmed — one or more items are out of stock. Restock them, then confirm again. (See the order's notes for details.)";
                 else
                     TempData["Success"] = $"Order {order.OrderNumber} updated to {order.Status}.";
             }

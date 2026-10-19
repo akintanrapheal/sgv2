@@ -196,7 +196,46 @@ public sealed class OrderStatusService : IOrderStatusService
             && newStatus is OrderStatus.Confirmed or OrderStatus.Processing
                 or OrderStatus.ReadyForPickup or OrderStatus.Shipped or OrderStatus.Delivered;
 
-        if (needsFulfil)
+        if (needsFulfil && revivedFromCancelled)
+        {
+            // Reviving a CANCELLED order needs special handling. The fulfilment engine treats
+            // Cancelled/Refunded as terminal and no-ops on them — so if we called it while the order
+            // was still Cancelled, NO stock would actually be deducted, the order would be left
+            // "Confirmed but unfulfilled", and the fulfilment-retry service would then re-run against
+            // the still-out-of-stock items and silently flip it back to Cancelled (the SGW-30403 bug).
+            //
+            // So move it out of the terminal state FIRST (persisted, so the engine's fresh load sees a
+            // non-terminal status and actually fulfils). If an item is out of stock, BLOCK the revive:
+            // keep it Cancelled and DON'T auto-refund — a human is deliberately bringing this order
+            // back, so we tell them to restock instead of silently cancelling/refunding it.
+            order.Status = newStatus;
+            order.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            var outcome = await _fulfilment.FulfilPaidOrderAsync(order.Id, refundOnSoldOut: false);
+            await _db.Entry(order).ReloadAsync();
+
+            if (outcome == FulfilOutcome.SoldOut)
+            {
+                order.Status = OrderStatus.Cancelled;
+                order.UpdatedAt = DateTime.UtcNow;
+                OrderNotes.AddSystem(_db, order.Id,
+                    $"Revive blocked by {staff}: one or more items are out of stock. Restock them, then confirm the order again. Kept Cancelled; no refund issued.");
+                await _db.SaveChangesAsync();
+                return OrderStatusOutcome.SoldOut;
+            }
+
+            // The engine advances cross-branch orders to Awaiting Transfer (the transfer flow must run)
+            // — don't override that. Otherwise honour the status the staff picked.
+            if (order.Status != OrderStatus.AwaitingTransfer)
+            {
+                order.Status = newStatus;
+                OrderNotes.AddSystem(_db, order.Id, $"Revived to {newStatus} by {staff} (stock deducted).");
+            }
+            order.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
+        else if (needsFulfil)
         {
             var outcome = await _fulfilment.FulfilPaidOrderAsync(order.Id);
             await _db.Entry(order).ReloadAsync();

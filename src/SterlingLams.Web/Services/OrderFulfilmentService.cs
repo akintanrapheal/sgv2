@@ -27,8 +27,12 @@ public interface IOrderFulfilmentService
     /// first-come-first-served. Idempotent and safe to call from every payment-confirmation path
     /// (browser callback and webhook). Returns SoldOut if an item is no longer available.
     /// If the order needs stock from other branches it's left "Awaiting transfer" and finalised
-    /// later by <see cref="FinalizeAwaitingOrderAsync"/> once the transfers are received.</summary>
-    Task<FulfilOutcome> FulfilPaidOrderAsync(int orderId);
+    /// later by <see cref="FinalizeAwaitingOrderAsync"/> once the transfers are received.
+    /// <paramref name="refundOnSoldOut"/> defaults true (auto-refund + cancel on sold-out, as the
+    /// payment paths want). Pass false when a human is deliberately bringing a cancelled order back
+    /// to life — then sold-out just returns SoldOut (nothing written, no refund) so the caller can
+    /// block the revive and ask staff to restock instead of silently re-cancelling.</summary>
+    Task<FulfilOutcome> FulfilPaidOrderAsync(int orderId, bool refundOnSoldOut = true);
 
     /// <summary>Called when a transfer tied to an online order is received. If all of the order's
     /// transfers are now in, commits the sale at the fulfilling branch and marks the order ready
@@ -217,7 +221,7 @@ public class OrderFulfilmentService : IOrderFulfilmentService
     /// Variant-aware: allocation/transfer/sale all run against each line's effective row.
     /// Idempotent. Failures are logged, never thrown — the customer has already paid.
     /// </summary>
-    public async Task<FulfilOutcome> FulfilPaidOrderAsync(int orderId)
+    public async Task<FulfilOutcome> FulfilPaidOrderAsync(int orderId, bool refundOnSoldOut = true)
     {
         try
         {
@@ -428,7 +432,10 @@ public class OrderFulfilmentService : IOrderFulfilmentService
 
             if (soldOut)
             {
-                await RefundSoldOutAsync(order);
+                // Default (payment paths): auto-refund + cancel the lost-race order. When a human is
+                // reviving a cancelled order (refundOnSoldOut=false), write nothing — the caller blocks
+                // the revive and asks staff to restock, so we must not refund or re-cancel here.
+                if (refundOnSoldOut) await RefundSoldOutAsync(order);
                 return FulfilOutcome.SoldOut;
             }
             if (awaitingTransfer) await NotifyTransfersRequestedAsync(order, fulfilStoreForEmail!, sourceNotices);
