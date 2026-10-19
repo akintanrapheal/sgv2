@@ -122,6 +122,28 @@
 <body class="bg-canvas text-neutral-900 font-inter antialiased">
     <partial name="_GoogleTagManagerNoScript" />
 
+    @* Order attribution — captured CLIENT-SIDE into cookies so the page itself sets no cookie and
+       stays cacheable (output cache + Cloudflare). Runs on every load, including cache hits. First-touch
+       origin (utm_source → external referrer → Direct), set once; plus a page-view counter. Checkout
+       reads sg_oa / sg_opv. *@
+    <script>
+        (function () {
+            try {
+                var d = document, host = location.host;
+                function getC(n) { var m = d.cookie.match('(^|;)\\s*' + n + '\\s*=\\s*([^;]+)'); return m ? decodeURIComponent(m.pop()) : ''; }
+                function setC(n, v) { d.cookie = n + '=' + encodeURIComponent(v) + ';path=/;max-age=2592000;samesite=lax'; }
+                if (!getC('sg_oa')) {
+                    var utm = new URLSearchParams(location.search).get('utm_source'), origin = 'Direct';
+                    if (utm) origin = utm.slice(0, 100);
+                    else if (d.referrer) { try { var rh = new URL(d.referrer).host; if (rh && rh !== host) origin = rh; } catch (e) { } }
+                    setC('sg_oa', origin);
+                }
+                var pv = parseInt(getC('sg_opv') || '0', 10) || 0;
+                setC('sg_opv', String(Math.min(pv + 1, 99999)));
+            } catch (e) { }
+        })();
+    </script>
+
     <!-- ─── Page loader (self-drawing line diamond; hidden by app.js once ready) ── -->
     @{
         // How long to keep the drawing diamond up on each page. "Staff only" lets the owner enjoy it
