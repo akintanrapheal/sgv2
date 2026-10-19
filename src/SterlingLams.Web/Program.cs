@@ -101,7 +101,15 @@ if (!string.IsNullOrWhiteSpace(connectionString))
         ConnectionIdleLifetime = 60,     // prune pooled conns idle > 60s, before the proxy kills them
         ConnectionPruningInterval = 10,
         Timeout = 15,                    // connection-open timeout (s)
-        CommandTimeout = 30
+        CommandTimeout = 30,
+        // Cap the pool WELL BELOW the managed Postgres connection limit (Render's small plan ≈ 97).
+        // The default is 100 per instance, so a traffic/bot flood could open ~100 connections and
+        // exhaust Postgres itself ("Database unavailable" / "Timeout during connection attempt",
+        // taking the whole site down — 2026-10-19 outage). With a hard cap, a flood instead queues
+        // on our side (fails fast at Timeout) and the database stays up. Leaves ample headroom for
+        // Render's reserved connections + migrations + any direct psql session.
+        MaxPoolSize = 40,
+        MinPoolSize = 2
     }.ConnectionString;
 }
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
