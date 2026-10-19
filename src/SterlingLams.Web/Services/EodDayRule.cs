@@ -31,4 +31,19 @@ public static class EodDayRule
                 : (o.PackedAt ?? o.PickupReadyEmailedAt) != null
                   && (o.PackedAt ?? o.PickupReadyEmailedAt) >= from
                   && (o.PackedAt ?? o.PickupReadyEmailedAt) < toExclusive);
+
+    /// <summary>
+    /// Same day-assignment as <see cref="InWindow"/> — POS by paid date, website by packed/ready-for-pickup
+    /// date (and left out until it's actually packed) — but WITHOUT excluding voided orders. The Completed
+    /// Transactions ledger keeps a voided sale as its positive row on the sale's day and offsets it with a
+    /// separate negative void row dated at the void, so it must still select voided sales here (otherwise the
+    /// void row would have nothing to net against).
+    /// </summary>
+    public static Expression<Func<Order, bool>> InWindowIncludingVoids(DateTime from, DateTime toExclusive) => o =>
+        o.IsPaid && (
+            o.Channel == OrderChannel.Pos
+                ? (o.PaidAt ?? o.CreatedAt) >= from && (o.PaidAt ?? o.CreatedAt) < toExclusive
+                : (o.PackedAt ?? o.PickupReadyEmailedAt) != null
+                  && (o.PackedAt ?? o.PickupReadyEmailedAt) >= from
+                  && (o.PackedAt ?? o.PickupReadyEmailedAt) < toExclusive);
 }
