@@ -261,6 +261,10 @@ builder.Services.AddScoped<SterlingLams.Web.Services.IEmailService, SterlingLams
 builder.Services.AddScoped<SterlingLams.Web.Services.IAbandonedCartCapture, SterlingLams.Web.Services.AbandonedCartCapture>();
 builder.Services.AddScoped<SterlingLams.Web.Services.BarcodeImportService>();
 builder.Services.AddScoped<SterlingLams.Web.Services.StockImportService>();
+// New-order emails (customer confirmation + admin alert) + the shared verified-payment capture path,
+// used by the checkout callback, the Paystack webhook and the payment-reconciliation sweep.
+builder.Services.AddScoped<SterlingLams.Web.Services.IOrderNotificationService, SterlingLams.Web.Services.OrderNotificationService>();
+builder.Services.AddScoped<SterlingLams.Web.Services.IPaymentCaptureService, SterlingLams.Web.Services.PaymentCaptureService>();
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 // Per-IP throttle on auth & email-sending endpoints (brute-force / abuse protection).
@@ -284,6 +288,9 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.ReservationSwe
 // Retries paid-but-unfulfilled online orders (self-heals transient failures) and alerts the
 // admin for ones that stay stuck (e.g. genuine stock shortage). See OP-2.
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.FulfilmentRetryService>();
+// Catches payments that succeeded at the gateway but were never captured (callback + webhook both
+// missed): re-verifies recent unpaid online orders and confirms any the gateway reports as paid.
+builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.PaymentReconciliationService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.LowStockAlertService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.BackInStockNotifier>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.AbandonedCartService>();

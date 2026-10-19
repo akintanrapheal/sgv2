@@ -44,6 +44,8 @@ public class ReservationSweeper : BackgroundService
         var fulfil = scope.ServiceProvider.GetRequiredService<IOrderFulfilmentService>();
         var settings = scope.ServiceProvider.GetRequiredService<ISettingsService>();
         var audit = scope.ServiceProvider.GetRequiredService<IAuditService>();
+        var payment = scope.ServiceProvider.GetRequiredService<SterlingLams.Web.Services.Payment.IPaymentService>();
+        var capture = scope.ServiceProvider.GetRequiredService<IPaymentCaptureService>();
 
         var ttlMinutes = (int)await settings.GetDecimalAsync("order.reservation_timeout_minutes", DefaultTtlMinutes);
         if (ttlMinutes < 1) ttlMinutes = DefaultTtlMinutes;
@@ -62,21 +64,51 @@ public class ReservationSweeper : BackgroundService
             .Select(o => o.Id)
             .ToListAsync(ct);
 
+        var cancelled = 0;
+        var recovered = 0;
         foreach (var id in staleOrderIds)
         {
-            await fulfil.ReleaseReservationAsync(id); // defensive: release any legacy reservation rows
             var order = await db.Orders.FindAsync(new object[] { id }, ct);
-            if (order != null && !order.IsPaid && order.Status == OrderStatus.Pending)
+            if (order == null || order.IsPaid || order.Status != OrderStatus.Pending) continue;
+
+            // Last-chance reconcile BEFORE cancelling: the money may actually have landed while both
+            // the browser callback and the webhook were missed. If the order carries a gateway
+            // reference (stored at payment initiation), re-verify it and capture instead of cancelling.
+            if (!string.IsNullOrWhiteSpace(order.PaymentReference))
             {
-                order.Status = OrderStatus.Cancelled;
-                order.UpdatedAt = DateTime.UtcNow;
-                OrderNotes.AddSystem(db, id, $"Order auto-cancelled: payment not received within {ttlMinutes} minutes.");
-                await db.SaveChangesAsync(ct);
-                try { await audit.LogAsync("Cancel", "Order", id.ToString(), $"Order {order.OrderNumber} auto-cancelled — unpaid for over {ttlMinutes} min"); } catch { }
+                try
+                {
+                    var v = await payment.VerifyPaymentAsync(order.PaymentReference);
+                    if (v.IsPaid)
+                    {
+                        await capture.CaptureAsync(order.Id,
+                            string.IsNullOrWhiteSpace(v.Reference) ? order.PaymentReference! : v.Reference!,
+                            v.AmountPaid, payment.ProviderName, ct);
+                        recovered++;
+                        _logger.LogWarning("Order {OrderNumber} was paid after all — captured instead of auto-cancelling.", order.OrderNumber);
+                        continue;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Pre-cancel payment verify failed for order {Id}; treating as unpaid.", id);
+                }
             }
+
+            await fulfil.ReleaseReservationAsync(id); // defensive: release any legacy reservation rows
+            // Re-read under the same context in case the release/verify above changed anything.
+            if (order.IsPaid || order.Status != OrderStatus.Pending) continue;
+            order.Status = OrderStatus.Cancelled;
+            order.UpdatedAt = DateTime.UtcNow;
+            OrderNotes.AddSystem(db, id, $"Order auto-cancelled: payment not received within {ttlMinutes} minutes.");
+            await db.SaveChangesAsync(ct);
+            cancelled++;
+            try { await audit.LogAsync("Cancel", "Order", id.ToString(), $"Order {order.OrderNumber} auto-cancelled — unpaid for over {ttlMinutes} min"); } catch { }
         }
 
-        if (staleOrderIds.Count > 0)
-            _logger.LogInformation("Auto-cancelled {Count} unpaid order(s) past the {Ttl}-minute timeout.", staleOrderIds.Count, ttlMinutes);
+        if (cancelled > 0)
+            _logger.LogInformation("Auto-cancelled {Count} unpaid order(s) past the {Ttl}-minute timeout.", cancelled, ttlMinutes);
+        if (recovered > 0)
+            _logger.LogInformation("Recovered {Count} order(s) that were actually paid, during the pre-cancel verify.", recovered);
     }
 }
