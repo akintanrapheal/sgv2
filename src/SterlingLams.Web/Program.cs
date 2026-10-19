@@ -575,9 +575,8 @@ app.UseMiddleware<SterlingLams.Web.Infrastructure.LegacyUrlRedirectMiddleware>()
 app.UseRouting();
 app.UseRateLimiter();
 app.UseSession();
-// Order attribution is now captured CLIENT-SIDE into cookies (sg_oa / sg_opv) — see the inline script
-// in _Layout and OrderAttributionMiddleware. The old per-request session write set a cookie that made
-// the storefront pages uncacheable; dropping it lets the output cache + Cloudflare serve them.
+// Track storefront origin + page views per session for order attribution (needs session).
+app.UseMiddleware<SterlingLams.Web.Infrastructure.OrderAttributionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
 
