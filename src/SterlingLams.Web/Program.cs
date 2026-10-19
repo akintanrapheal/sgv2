@@ -241,7 +241,19 @@ builder.Services.AddSession(options =>
 // Antiforgery cookie carries the framework name by default (".AspNetCore.Antiforgery.<hash>").
 // Only the COOKIE is renamed here — the form field/header names are left at their defaults because
 // ~58 client-side references depend on them; renaming those is a separate, wider change.
-builder.Services.AddAntiforgery(o => o.Cookie.Name = "sg_af");
+builder.Services.AddAntiforgery(o =>
+{
+    o.Cookie.Name = "sg_af";
+    // The framework default for this cookie is SameSite=Strict, which in-app browsers (Instagram /
+    // WhatsApp / Facebook webviews) and cross-site entries routinely fail to send back — the add-to-cart
+    // POST then arrives with no antiforgery cookie, returns 400, and the shopper sees "couldn't add to
+    // bag". Lax matches the auth cookie (sg_auth) and still blocks cross-site CSRF (the token pair is the
+    // real protection). Secure in prod; SameAsRequest in dev (http://localhost).
+    o.Cookie.SameSite = SameSiteMode.Lax;
+    o.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        ? CookieSecurePolicy.SameAsRequest
+        : CookieSecurePolicy.Always;
+});
 
 // HSTS: the framework default is only 30 days. A year is the recommended value (and the minimum
 // for the browser preload list). IncludeSubDomains is deliberately NOT set — it would force HTTPS
