@@ -36,7 +36,11 @@ public class ProductsController : Controller
         var query = _db.Products.Where(p => p.IsActive);
 
         // Admin toggle: hide products that are out of stock everywhere (simple or all-variants-out).
-        var hideOos = await _settings.GetBoolAsync("storefront.hide_out_of_stock", false);
+        // Staff (any backoffice role) are exempt — they keep seeing the full catalogue, including the
+        // sold-out items hidden from customers (rendered with the usual "Sold Out" badge), so they can
+        // spot what's missing while browsing the live site. Customers still don't see them.
+        var hideOos = await _settings.GetBoolAsync("storefront.hide_out_of_stock", false)
+            && !SterlingLams.Web.Areas.Admin.AdminSections.IsStaff(User);
         if (hideOos)
             query = query.Where(p => p.StoreInventories.Any(si => si.QuantityOnHand > 0));
 
@@ -278,7 +282,9 @@ public class ProductsController : Controller
         // hiding every option on a fully sold-out product would leave an empty picker instead of a
         // readable sold-out page.
         var anyStock = product.StoreInventories.Any(si => si.QuantityOnHand > 0);
-        var hideOos = anyStock && await _settings.GetBoolAsync("storefront.hide_out_of_stock", false);
+        // Staff see every variant option even when hide-out-of-stock is on (see the listing above).
+        var hideOos = anyStock && await _settings.GetBoolAsync("storefront.hide_out_of_stock", false)
+            && !SterlingLams.Web.Areas.Admin.AdminSections.IsStaff(User);
 
         // Track for the "Recently viewed" merchandising row (cookie-based; works for guests).
         SterlingLams.Web.Infrastructure.RecentlyViewed.Record(Request, Response, product.Id);

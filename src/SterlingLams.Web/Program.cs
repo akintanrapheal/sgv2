@@ -330,6 +330,10 @@ builder.Services.AddOutputCache(options =>
     options.AddPolicy("Storefront", policy => policy
         .Expire(TimeSpan.FromSeconds(60))
         .SetVaryByQuery("*")
+        // Staff see out-of-stock products that are hidden from customers, so their rendered HTML can
+        // differ — give them a separate cache entry so a staff view is never served to a customer.
+        .VaryByValue(ctx => new KeyValuePair<string, string>(
+            "staff", SterlingLams.Web.Areas.Admin.AdminSections.IsStaff(ctx.User) ? "1" : "0"))
         .Tag("storefront"));
 });
 
