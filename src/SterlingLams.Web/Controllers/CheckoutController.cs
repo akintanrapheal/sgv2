@@ -772,8 +772,8 @@ public class CheckoutController : Controller
             // Order attribution (WooCommerce-style)
             CustomerIp = HttpContext.Connection.RemoteIpAddress?.ToString(),
             DeviceType = SterlingLams.Web.Infrastructure.OrderAttributionMiddleware.DeviceFromUserAgent(Request.Headers.UserAgent.ToString()),
-            Origin = HttpContext.Session.GetString(SterlingLams.Web.Infrastructure.OrderAttributionMiddleware.OriginKey) ?? "Direct",
-            SessionPageViews = HttpContext.Session.GetInt32(SterlingLams.Web.Infrastructure.OrderAttributionMiddleware.PageViewsKey),
+            Origin = SterlingLams.Web.Infrastructure.OrderAttributionMiddleware.OriginFrom(Request),
+            SessionPageViews = SterlingLams.Web.Infrastructure.OrderAttributionMiddleware.PageViewsFrom(Request),
             Subtotal = cart.Subtotal,
             DeliveryFee = deliveryFee,
             DeliveryType = vm.FulfillmentType == FulfillmentChoice.Delivery && !string.IsNullOrWhiteSpace(vm.SelectedDeliveryType)
