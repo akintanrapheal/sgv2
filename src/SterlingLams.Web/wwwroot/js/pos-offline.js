@@ -106,7 +106,9 @@
       discount += lineDisc;
       lines.push({ name: prod ? prod.name : ('#' + it.productId), variant: variantName, qty: qty, lineTotal: unit * qty - lineDisc });
     });
-    var total = subtotal - discount;
+    // Order-level discount (on top of per-line discounts), clamped to what's left.
+    var orderDisc = Math.max(0, Math.min(sale.orderDiscount || 0, subtotal - discount));
+    var total = subtotal - discount - orderDisc;
     var tendered = sale.amountTendered > 0 ? sale.amountTendered : total;
     var change = Math.max(0, tendered - total);
 
@@ -118,7 +120,10 @@
       amountTendered: sale.amountTendered || 0,
       customerUserId: sale.customerUserId || null,
       createdAt: new Date().toISOString(),
-      items: items
+      items: items,
+      orderDiscount: sale.orderDiscount || 0,
+      orderDiscountReason: sale.orderDiscountReason || null,
+      orderDiscountType: sale.orderDiscountType || null
     });
     saveQueue();
 

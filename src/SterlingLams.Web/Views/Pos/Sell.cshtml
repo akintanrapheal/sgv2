@@ -313,8 +313,8 @@
                             <span>ITEMS</span>
                             <span id="cart-count" class="font-medium text-neutral-700">0</span>
                         </div>
-                        <div class="flex justify-between">
-                            <span>TOTAL DISCOUNT</span>
+                        <div id="order-discount-row" class="flex justify-between items-center cursor-pointer select-none hover:text-neutral-700" title="Tap to discount the whole order">
+                            <span>TOTAL DISCOUNT <span class="text-[10px] text-brand-500 font-semibold">(tap)</span></span>
                             <span id="cart-total-discount" class="font-medium text-emerald-600">₦0</span>
                         </div>
                         <div id="till-loyalty-row" class="hidden flex justify-between items-center">
@@ -1415,6 +1415,9 @@
     const payBtn = document.getElementById('till-pay');
     const voidBtn = document.getElementById('till-void-btn');
     let cart = [], method = '', customer = null, splitPayments = null;  // no payment type pre-selected — cashier must choose
+    // Order-level discount applied to the WHOLE sale (on top of per-line discounts). amount is the raw
+    // value picked; it's re-clamped to the current line-discounted total wherever it's used.
+    let orderDiscount = { amount: 0, reason: null, type: null };
     let loyalty = { enabled: false, balance: 0, pointValue: 0, redeem: 0 };
 
     // ── Cart persistence ────────────────────────────────────────────────────────
@@ -1473,6 +1476,8 @@
         renderCart();
     }
     function grossTotal() { return cart.reduce((s, c) => s + c.unitPrice * c.qty - (c.discountAmount || 0), 0); }
+    // The order discount, clamped so it can never exceed what's left after per-line discounts.
+    function orderDiscountAmount() { return Math.max(0, Math.min(orderDiscount.amount || 0, grossTotal())); }
     function maxRedeemPoints() {
         if (!loyalty.enabled || loyalty.pointValue <= 0) return 0;
         return Math.min(loyalty.balance, Math.floor(grossTotal() / loyalty.pointValue));
@@ -1640,7 +1645,9 @@
     }
 
     function renderCart() {
-        const totalDiscount = cart.reduce((s, c) => s + (c.discountAmount || 0), 0);
+        if (!cart.length) orderDiscount = { amount: 0, reason: null, type: null };   // clear when the bag empties
+        // TOTAL DISCOUNT shows per-line discounts PLUS the order-level discount.
+        const totalDiscount = cart.reduce((s, c) => s + (c.discountAmount || 0), 0) + orderDiscountAmount();
         renderLoyalty();                    // clamps loyalty.redeem to the current cart, toggles the row
         const total = cartTotal();          // gross − line discounts − loyalty redemption
         const count = cart.reduce((s, c) => s + c.qty, 0);
@@ -1705,7 +1712,7 @@
     }
 
     // Pay is only enabled once there's a cart AND an attached customer (mandatory on EPOS).
-    function cartTotal() { return Math.max(0, grossTotal() - loyaltyDiscount()); }
+    function cartTotal() { return Math.max(0, grossTotal() - orderDiscountAmount() - loyaltyDiscount()); }
     function splitOk() {
         if (!splitPayments) return false;
         const paid = splitPayments.reduce((s, p) => s + p.amount, 0);
@@ -1966,6 +1973,9 @@
                         customerUserId: customer?.id || null,
                         loyaltyPointsToRedeem: loyalty.redeem || 0,
                         managerPin: managerPin,
+                        orderDiscount: orderDiscountAmount(),
+                        orderDiscountReason: orderDiscount.reason,
+                        orderDiscountType: orderDiscount.type,
                         payments: (method === 'Split' && splitPayments) ? splitPayments : null,
                         items: cart.map(c => ({ productId: c.productId, variantId: c.variantId, quantity: c.qty, note: c.note || null, discountAmount: c.discountAmount || 0, discountReason: c.discountReason || null, discountType: c.discountType || null, custom: c.custom || false, name: c.custom ? c.name : null, unitPrice: c.custom ? c.unitPrice : null })) })
                 });
@@ -2234,6 +2244,7 @@
     document.getElementById('modal-tab-discount').addEventListener('click', () => switchModalTab('discount'));
     document.getElementById('item-modal-close').addEventListener('click', () => itemModal.classList.add('hidden'));
     itemModal.addEventListener('click', e => { if (e.target === itemModal) itemModal.classList.add('hidden'); });
+    document.getElementById('order-discount-row')?.addEventListener('click', openOrderDiscountModal);
 
     document.getElementById('item-note-clear').addEventListener('click', () => { document.getElementById('item-note-input').value = ''; });
     document.getElementById('item-note-done').addEventListener('click', () => {
@@ -2325,6 +2336,16 @@
     });
 
     function applyDiscount(reasonName, type, value) {
+        // Order-level discount (modalItemIdx === -1): applies to the whole sale (after per-line discounts).
+        if (modalItemIdx === -1) {
+            const base = grossTotal();
+            let amt = 0;
+            if (type === 'Percentage') amt = base * (value / 100);
+            else if (type === 'Amount') amt = value;
+            else if (type === 'NewPrice') amt = Math.max(0, base - value);
+            orderDiscount = { amount: Math.min(Math.max(0, amt), base), reason: reasonName, type: type };
+            return;
+        }
         const c = cart[modalItemIdx];
         if (!c) return;
         const lineTotal = c.unitPrice * c.qty;
@@ -2335,6 +2356,15 @@
         c.discountAmount = Math.min(Math.max(0, discountAmount), lineTotal);
         c.discountReason = reasonName;
         c.discountType = type;
+    }
+
+    // Open the shared discount modal in ORDER mode (whole sale) rather than for a single line.
+    function openOrderDiscountModal() {
+        if (!cart.length) { showError('Add an item before applying a discount.'); return; }
+        modalItemIdx = -1;
+        modalItemName.textContent = 'Whole order';
+        switchModalTab('discount');
+        itemModal.classList.remove('hidden');
     }
 
     // Boot
