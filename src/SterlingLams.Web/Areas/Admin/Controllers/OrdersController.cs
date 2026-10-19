@@ -258,6 +258,13 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 custAov = paidCount > 0 ? custRevenue / paidCount : 0;
             }
 
+            // Stock this order is still HOLDING (reservations) + any open inter-branch transfers. Normally
+            // zero once an order is terminal, but a sold-out auto-cancel (older builds) could leave units
+            // stranded as "held to send" — surface a "Release held stock" action in that case.
+            var heldUnits = await _db.StockReservations.Where(r => r.OrderId == id).SumAsync(r => (int?)r.Quantity) ?? 0;
+            var openHoldTransfers = await _db.StockTransfers.CountAsync(t => t.OrderId == id
+                && t.Status != TransferStatus.Cancelled && t.Status != TransferStatus.Completed && t.Status != TransferStatus.Rejected);
+
             // For a POS sale the buyer is Order.Customer (may be null → walk-in) and Order.User is the
             // cashier. For an online order Order.User IS the buyer and there is no cashier.
             var isPos = order.Channel == OrderChannel.Pos;
@@ -290,7 +297,12 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 // Void: a website order still in-store (not yet shipped/collected/cancelled/refunded/voided).
                 CanVoid = order.Channel == OrderChannel.Online && order.VoidedAt == null
                           && order.Status is OrderStatus.Pending or OrderStatus.Confirmed or OrderStatus.Processing
-                             or OrderStatus.ReadyForPickup or OrderStatus.AwaitingTransfer
+                             or OrderStatus.ReadyForPickup or OrderStatus.AwaitingTransfer,
+                // Release held stock: a cancelled/refunded order that's still holding units ("held to send").
+                HeldUnits = heldUnits,
+                CanReleaseHolds = order.Channel == OrderChannel.Online
+                                  && order.Status is OrderStatus.Cancelled or OrderStatus.Refunded
+                                  && (heldUnits > 0 || openHoldTransfers > 0)
             };
 
             return View(vm);
@@ -724,6 +736,22 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             var (ok, error) = await _orderStatus.VoidOnlineOrderAsync(order, reason.Trim(), staff);
             TempData[ok ? "Success" : "Error"] = ok
                 ? $"Order {order.OrderNumber} voided — stock returned to the branch and removed from the pack queue. No refund was issued."
+                : error;
+            return RedirectToAction(nameof(Detail), new { id });
+        }
+
+        // ── Release held stock: free units a cancelled/refunded order is still holding ─────────────────
+        // For an order that ended Cancelled/Refunded but whose reservations were never released (so the
+        // units show "held to send" / Available 0 forever). Returns them to available. No money moved.
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public async Task<IActionResult> ReleaseHolds(int id)
+        {
+            var staff = await CurrentStaffNameAsync();
+            var (ok, released, error) = await _orderStatus.ReleaseHeldStockAsync(id, staff);
+            var number = await _db.Orders.Where(o => o.Id == id).Select(o => o.OrderNumber).FirstOrDefaultAsync();
+            TempData[ok ? "Success" : "Error"] = ok
+                ? $"Released {released} held unit(s) from {number} back to available stock."
                 : error;
             return RedirectToAction(nameof(Detail), new { id });
         }

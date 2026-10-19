@@ -549,6 +549,32 @@
             </div>
         }
 
+        <!-- Release held stock (cancelled/refunded order still holding units) -->
+        @if (Model.CanReleaseHolds)
+        {
+            <div class="bg-white rounded-sm border border-amber-200">
+                <div class="px-6 py-4 border-b border-amber-100">
+                    <h2 class="text-sm font-medium text-amber-700">Release held stock</h2>
+                    <p class="text-[11px] text-neutral-500 mt-0.5">
+                        This @Model.Order.Status.ToString().ToLower() order is still <span class="font-medium text-amber-700">holding @Model.HeldUnits unit(s)</span> of stock
+                        (they show as “held to send”, so they can’t be sold or re-ordered). Releasing returns them to available stock at the branch.
+                        No money is moved.
+                    </p>
+                </div>
+                <form asp-area="Admin" asp-controller="Orders" asp-action="ReleaseHolds"
+                      asp-route-id="@Model.Order.Id" method="post"
+                      onsubmit="return confirm('Release the held stock from @Model.Order.OrderNumber back to available? No money is moved.');">
+                    @Html.AntiForgeryToken()
+                    <div class="px-6 py-4">
+                        <button type="submit"
+                                class="w-full py-2 bg-amber-600 text-white text-xs rounded-sm hover:bg-amber-700 transition-colors">
+                            Release @Model.HeldUnits held unit(s) back to stock
+                        </button>
+                    </div>
+                </form>
+            </div>
+        }
+
         <!-- Update Status -->
         <div class="bg-white rounded-sm border border-neutral-100 px-6 py-4">
             <h2 class="text-sm font-medium mb-1">Update Status</h2>

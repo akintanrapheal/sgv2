@@ -140,6 +140,11 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         /// <summary>Website order not yet shipped/collected/cancelled → it can be voided (stock back, no refund).</summary>
         public bool CanVoid { get; set; }
 
+        /// <summary>Units this order is still HOLDING (reservations) — normally 0 once terminal.</summary>
+        public int HeldUnits { get; set; }
+        /// <summary>Cancelled/refunded order still holding stock → a "Release held stock" action is offered.</summary>
+        public bool CanReleaseHolds { get; set; }
+
         // ── Replacements (send a new item, bad one goes back to Inventory) ────
         public List<OrderReplacement> Replacements { get; set; } = new();
         /// <summary>Paid online order, not fully refunded, with a branch to move stock → a replacement can be raised.</summary>

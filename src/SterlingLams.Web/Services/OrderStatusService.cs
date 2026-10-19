@@ -33,6 +33,12 @@ public interface IOrderStatusService
     /// — a paid order is NOT refunded here. The order must be loaded WITH its <see cref="Order.Items"/>.</summary>
     Task<(bool Ok, string? Error)> VoidOnlineOrderAsync(Order order, string reason, string staff);
 
+    /// <summary>Frees stock still HELD for an already-cancelled/refunded order whose holds were never
+    /// released (e.g. one auto-cancelled by the sold-out path before that released reservations): releases
+    /// the reservation rows (+ QuantityReserved) and cancels/flags any open inter-branch transfers, so the
+    /// units return to "available". On-hand is not touched. Returns the number of held units freed.</summary>
+    Task<(bool Ok, int Released, string? Error)> ReleaseHeldStockAsync(int orderId, string staff);
+
     /// <summary>Sends (or re-sends) the store-pickup QR pass email and stamps PickupReadyEmailedAt.</summary>
     Task SendPickupReadyEmailAsync(int orderId);
 
@@ -310,6 +316,27 @@ public sealed class OrderStatusService : IOrderStatusService
             await SendNewOrderAdminAlertAsync(order.Id);
 
         return OrderStatusOutcome.Applied;
+    }
+
+    public async Task<(bool Ok, int Released, string? Error)> ReleaseHeldStockAsync(int orderId, string staff)
+    {
+        var order = await _db.Orders.FirstOrDefaultAsync(o => o.Id == orderId);
+        if (order == null) return (false, 0, "Order not found.");
+        // Only for terminal orders (a live order's holds are intentional — don't let staff free stock
+        // out from under an order that's still going to ship).
+        if (order.Status is not (OrderStatus.Cancelled or OrderStatus.Refunded))
+            return (false, 0, "Only a cancelled or refunded order's held stock can be released here.");
+
+        var held = await _db.StockReservations.Where(r => r.OrderId == order.Id).SumAsync(r => (int?)r.Quantity) ?? 0;
+        var openTransfers = await _db.StockTransfers.CountAsync(t => t.OrderId == order.Id
+            && t.Status != TransferStatus.Cancelled && t.Status != TransferStatus.Completed && t.Status != TransferStatus.Rejected);
+        if (held == 0 && openTransfers == 0)
+            return (false, 0, "This order isn't holding any stock.");
+
+        await ReleaseHoldsForCancelledOrderAsync(order, staff);
+        await LogAsync("Update", "Order", order.Id.ToString(),
+            $"Released held stock for {order.OrderNumber} ({held} unit(s)) by {staff}");
+        return (true, held, null);
     }
 
     /// <summary>Frees stock still held for a cancelled order: the fulfilling branch's reservation rows

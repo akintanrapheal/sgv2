@@ -880,6 +880,24 @@ public class ProductsController : InventoryAreaController
             .GroupBy(x => x.FromStoreId)
             .ToDictionary(g => g.Key, g => g.Sum(x => Math.Max(0, x.Qty)));
 
+        // Which orders are HOLDING the reserved units at each branch — so staff can jump straight to the
+        // order and release them (a cancelled order that never freed its hold shows up here as the culprit).
+        var heldByStore = (await _db.StockReservations
+                .Where(res => res.ProductId == id && res.ProductVariantId == variantId)
+                .Select(res => new { res.StoreId, res.OrderId, res.Quantity, res.Order.OrderNumber, res.Order.Status })
+                .ToListAsync())
+            .GroupBy(x => x.StoreId)
+            .ToDictionary(g => g.Key, g => g
+                .GroupBy(x => new { x.OrderId, x.OrderNumber, x.Status })
+                .Select(og => new
+                {
+                    orderId = og.Key.OrderId,
+                    orderNumber = og.Key.OrderNumber,
+                    status = og.Key.Status.ToString(),
+                    qty = og.Sum(x => x.Quantity),
+                    url = Url.Action("Detail", "Orders", new { area = "Admin", id = og.Key.OrderId })
+                }).ToList());
+
         var locations = stores.Select(s =>
         {
             inv.TryGetValue(s.Id, out var r);
@@ -893,6 +911,7 @@ public class ProductsController : InventoryAreaController
                 reserved,                                   // held for orders / an approved transfer (still here)
                 available = Math.Max(0, onHand - reserved), // free to sell now
                 inTransit = inTransitByStore.GetValueOrDefault(s.Id, 0), // dispatched, on the way out
+                heldBy = heldByStore.GetValueOrDefault(s.Id),            // the order(s) holding `reserved` here
                 min = r?.MinStock,
                 max = r?.MaxStock,
                 onOrder = r?.OnOrder ?? 0,
