@@ -674,6 +674,9 @@ public class OrderFulfilmentService : IOrderFulfilmentService
     private async Task RefundSoldOutAsync(Order order)
     {
         order.Status = OrderStatus.Cancelled;
+        // Free any stock this order was holding so a sold-out cancel never strands units as
+        // "held to send" (they'd show Available 0 forever). Idempotent; best-effort.
+        try { await ReleaseReservationAsync(order.Id); } catch { /* never break the cancel */ }
         string note;
         try
         {

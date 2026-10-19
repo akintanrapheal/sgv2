@@ -691,8 +691,18 @@
         var parts = ['<span class="font-medium text-neutral-700">Available ' + available + '</span>'];
         if (reserved) parts.push('Held to send ' + reserved);
         if (inTransit) parts.push('In transit ' + inTransit);
-        return '<div class="-mt-1 text-[11px] text-neutral-500 bg-amber-50 border border-amber-100 rounded px-2 py-1">'
-            + parts.join(' · ') + '</div>';
+        var html = '<div class="-mt-1 text-[11px] text-neutral-500 bg-amber-50 border border-amber-100 rounded px-2 py-1">'
+            + parts.join(' · ');
+        // Spell out which order(s) are holding the reserved units, linked to the order so staff can free
+        // them (a cancelled order that never released its hold shows up here as the culprit).
+        if (l.heldBy && l.heldBy.length) {
+            html += '<div class="mt-1 pt-1 border-t border-amber-200/70 text-neutral-500">Held by: '
+                + l.heldBy.map(function (h) {
+                    return '<a href="' + h.url + '" class="text-amber-700 hover:underline">' + h.orderNumber
+                        + '</a> (' + h.qty + (h.status ? ', ' + h.status.toLowerCase() : '') + ')';
+                }).join(', ') + '</div>';
+        }
+        return html + '</div>';
     }
     function tsCard(l) {
         return '<div class="border border-neutral-200 rounded-md p-3 space-y-3" data-store="' + l.storeId + '" data-onorder="' + (l.onOrder || 0) + '">'
