@@ -34,7 +34,8 @@ public class CompletedTransactionsTests
         {
             OrderNumber = "W-DEL", UserId = user.Id, Channel = OrderChannel.Online,
             FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = allen.Id,
-            Status = OrderStatus.Processing, IsPaid = true, PaidAt = DateTime.UtcNow,
+            // Website orders appear on Completed Transactions on their PACKED day (like the EOD report).
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = DateTime.UtcNow, PackedAt = DateTime.UtcNow,
             PaymentProvider = "Paystack", Currency = "NGN",
             Subtotal = 5000m, DeliveryFee = 1500m, Total = 6500m,
             Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 5000m } }
@@ -95,7 +96,9 @@ public class CompletedTransactionsTests
         {
             OrderNumber = "W-VOID", UserId = user.Id, Channel = OrderChannel.Online,
             FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = allen.Id,
+            // Packed (so it earned a positive row on its packed day) then voided — the two net to zero.
             Status = OrderStatus.Cancelled, IsPaid = true, PaidAt = DateTime.UtcNow.AddMinutes(-20),
+            PackedAt = DateTime.UtcNow.AddMinutes(-15),
             PaymentProvider = "Paystack", Currency = "NGN",
             Subtotal = 5000m, DeliveryFee = 1500m, Total = 6500m,
             VoidedAt = DateTime.UtcNow.AddMinutes(-5), VoidedByName = "Mgr", VoidReason = "Test order",
@@ -173,5 +176,31 @@ public class CompletedTransactionsTests
         Assert.Equal(20000m, abujaRow.Ops.WebsiteAmount);        // 25,000 − 5,000 delivery = product only
         Assert.Equal(20000m, abujaRow.Ops.PackedWebsiteAmount);
         Assert.Equal(1, abujaRow.Ops.PackedWebsiteOrders);
+    }
+
+    [Fact]
+    public async Task Paid_but_unpacked_website_order_does_not_appear()
+    {
+        using var t = new TestDb();
+        var (_, allen, _) = t.SeedBranches();
+        var user = t.SeedUser();
+        var p = t.SeedProduct(5000m);
+
+        // Paid online order that hasn't been packed/fulfilled yet — not a completed transaction until it is.
+        t.Db.Orders.Add(new Order
+        {
+            OrderNumber = "W-UNPACKED", UserId = user.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = allen.Id,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = DateTime.UtcNow,
+            PaymentProvider = "Paystack", Currency = "NGN",
+            Subtotal = 5000m, DeliveryFee = 1500m, Total = 6500m,
+            Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 5000m } }
+        });
+        await t.Db.SaveChangesAsync();
+
+        var vm = await LoadAsync(t);
+
+        Assert.Empty(vm.Rows);       // appears only once packed
+        Assert.Equal(0m, vm.Total);
     }
 }

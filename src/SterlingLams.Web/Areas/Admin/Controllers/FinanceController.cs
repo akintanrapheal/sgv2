@@ -1403,18 +1403,28 @@ public class FinanceController : AdminBaseController
         var (f, t, fLocal, tLocal) = Range(from ?? today, to ?? today);
         channel = channel is "Online" or "Pos" ? channel : "";
 
-        // Voided sales STAY in the positive rows (dated at the sale) and are offset by a negative void row
-        // dated at the void time below — so the ledger shows both and the Net nets them to zero, exactly
-        // like a refund. (Don't filter voids out here, or the void would have nothing to offset.)
-        var qry = _db.Orders.Where(o => o.IsPaid && (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t);
+        // Which day a sale belongs to: a POS sale on its PAID date (reconciles to tonight's drawer), a
+        // WEBSITE order on the day it was PACKED / marked ready for pickup — and left out entirely until
+        // that happens — so finance reconciles a website order as a completed transaction when the branch
+        // actually fulfils it, matching the End of Day + cash-up reports (EodDayRule). Voided sales STAY in
+        // the positive rows (dated at the sale) and are offset by a negative void row dated at the void time
+        // below, so the ledger shows both and the Net nets them to zero — hence the void-INCLUSIVE variant.
+        var qry = _db.Orders.Where(Services.EodDayRule.InWindowIncludingVoids(f, t));
         if (storeId.HasValue) qry = qry.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
         if (registerId.HasValue) qry = qry.Where(o => o.RegisterId == registerId);
         if (channel == "Online") qry = qry.Where(o => o.Channel == OrderChannel.Online);
         else if (channel == "Pos") qry = qry.Where(o => o.Channel == OrderChannel.Pos);
 
-        var raw = await qry.OrderByDescending(o => o.PaidAt ?? o.CreatedAt).Select(o => new
+        var raw = await qry.OrderByDescending(o => o.Channel == OrderChannel.Pos
+                ? (o.PaidAt ?? o.CreatedAt)
+                : (o.PackedAt ?? o.PickupReadyEmailedAt ?? o.PaidAt ?? o.CreatedAt)).Select(o => new
         {
-            o.Id, o.OrderNumber, When = o.PaidAt ?? o.CreatedAt, o.Channel,
+            // POS sale = paid date; website order = the day it was packed / marked ready for pickup.
+            o.Id, o.OrderNumber,
+            When = o.Channel == OrderChannel.Pos
+                ? (o.PaidAt ?? o.CreatedAt)
+                : (o.PackedAt ?? o.PickupReadyEmailedAt ?? o.PaidAt ?? o.CreatedAt),
+            o.Channel,
             StaffId = o.Channel == OrderChannel.Pos ? o.UserId : null,
             StoreName = o.PickupStore != null ? o.PickupStore.Name : (o.FulfillingStore != null ? o.FulfillingStore.Name : null),
             Device = o.Register != null ? o.Register.Name : null,
@@ -1456,10 +1466,13 @@ public class FinanceController : AdminBaseController
 
         // Voided sales (POS same-session voids AND website voids) — shown as NEGATIVE rows dated at the
         // VOID time (not the sale time), so an end-of-day check sees the reversal when it happened, just
-        // like a refund. The original sale still appears as its positive row (on the sale date), so sale +
-        // void net to zero. Honour the channel filter the same way the sale rows do.
+        // like a refund. The original sale still appears as its positive row, so sale + void net to zero.
+        // A WEBSITE order only earns a positive row once it's PACKED (above), so only show a void row for a
+        // website order that WAS packed — otherwise a never-packed-then-voided order would leave an orphan
+        // negative with nothing to offset. POS sales always have a positive row. Honour the channel filter.
         var voidQ = _db.Orders.Where(o => o.VoidedAt != null
             && o.VoidedAt >= f && o.VoidedAt < t
+            && (o.Channel == OrderChannel.Pos || (o.PackedAt ?? o.PickupReadyEmailedAt) != null)
             && (!storeId.HasValue || o.PickupStoreId == storeId || o.FulfillingStoreId == storeId)
             && (!registerId.HasValue || o.RegisterId == registerId));
         if (channel == "Online") voidQ = voidQ.Where(o => o.Channel == OrderChannel.Online);
