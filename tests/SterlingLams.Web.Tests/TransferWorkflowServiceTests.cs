@@ -13,7 +13,7 @@ public class TransferWorkflowServiceTests
     private sealed class StubFulfilment : IOrderFulfilmentService
     {
         public Task ReleaseReservationAsync(int orderId) => Task.CompletedTask;
-        public Task<FulfilOutcome> FulfilPaidOrderAsync(int orderId) => Task.FromResult(FulfilOutcome.Fulfilled);
+        public Task<FulfilOutcome> FulfilPaidOrderAsync(int orderId, bool refundOnSoldOut = true) => Task.FromResult(FulfilOutcome.Fulfilled);
         public Task FinalizeAwaitingOrderAsync(int orderId) => Task.CompletedTask;
         public Task NotifyLogisticsDispatchAsync(int orderId, string? orderUrl) => Task.CompletedTask;
     }
