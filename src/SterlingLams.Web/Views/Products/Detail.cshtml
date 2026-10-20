@@ -785,6 +785,24 @@
 
 @section Scripts {
 <script nonce="@Context.Items["csp-nonce"]">
+// GA4 view_item — product-interest funnel step (above add_to_cart). No-ops unless the GA tag is loaded.
+(function () {
+    try {
+        if (!window.gtag) return;
+        gtag('event', 'view_item', {
+            currency: 'NGN',
+            value: @Model.EffectivePrice.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
+            items: [{
+                item_id: '@Model.Id',
+                item_name: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Name)),
+                item_category: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.CategoryName)),
+                price: @Model.EffectivePrice.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)
+            }]
+        });
+    } catch (e) { /* analytics must never break the product page */ }
+})();
+</script>
+<script nonce="@Context.Items["csp-nonce"]">
 (function () {
     let selectedVariantId = null;
     let qty = 1;

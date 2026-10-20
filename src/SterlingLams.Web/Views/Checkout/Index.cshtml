@@ -455,6 +455,29 @@
     var box = document.getElementById('checkout-server-errors');
     if (box) { try { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} }
 })();
+// GA4 begin_checkout — the funnel step between add_to_cart and purchase (previously unmeasured, so the
+// in-checkout drop-off was invisible). Guarded by sessionStorage keyed to the cart so a validation-error
+// reload with the same bag doesn't double-count. No-ops unless the GA tag is loaded.
+(function () {
+    try {
+        if (!window.gtag) return;
+        var key = 'ga-begin-checkout-@(Model.Subtotal.ToString("F0", System.Globalization.CultureInfo.InvariantCulture))-@(Model.Cart.Items.Sum(i => i.Quantity))';
+        if (sessionStorage.getItem(key)) return;
+        gtag('event', 'begin_checkout', {
+            currency: 'NGN',
+            value: @Model.Subtotal.ToString("F2", System.Globalization.CultureInfo.InvariantCulture),
+            items: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+                Model.Cart.Items.Select(i => new {
+                    item_id = i.ProductId.ToString(),
+                    item_name = i.ProductName,
+                    item_variant = i.VariantName,
+                    price = i.UnitPrice,
+                    quantity = i.Quantity
+                })))
+        });
+        sessionStorage.setItem(key, '1');
+    } catch (e) { /* analytics must never break checkout */ }
+})();
 // ── Pricing data from server ───────────────────────────────────────────────
 const PRICING = @Html.Raw(Model.DeliveryPricingJson);
 const SUBTOTAL = @Model.Subtotal.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
