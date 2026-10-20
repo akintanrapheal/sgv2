@@ -248,7 +248,7 @@ public class ProductsController : Controller
         // root would cartesian-explode into tens of thousands of rows for a many-variant product like
         // the alphabet necklace (26 variants × 26 images × 81 stock rows). AsSplitQuery loads each
         // collection with its own query (~150 rows total), and AsNoTracking skips change tracking.
-        var product = await _db.Products
+        var product = await DbRead.RetryAsync(() => _db.Products
             .AsNoTracking()
             .AsSplitQuery()
             .Include(p => p.Category)
@@ -256,7 +256,7 @@ public class ProductsController : Controller
             .Include(p => p.Variants).ThenInclude(v => v.AttributeValues).ThenInclude(av => av.Attribute)
             .Include(p => p.StoreInventories).ThenInclude(si => si.Store)
             .Include(p => p.Tags)
-            .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive);
+            .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive));
 
         if (product == null)
         {
@@ -291,7 +291,7 @@ public class ProductsController : Controller
         SterlingLams.Web.Infrastructure.RecentlyViewed.Record(Request, Response, product.Id);
 
         var isInWishlist = User.Identity?.IsAuthenticated == true
-            && await _db.WishlistItems.AnyAsync(w => w.UserId == GetUserId() && w.ProductId == product.Id);
+            && await DbRead.RetryAsync(() => _db.WishlistItems.AnyAsync(w => w.UserId == GetUserId() && w.ProductId == product.Id));
 
         // Related row ("you may also like"): project straight to the card fields instead of Include-ing the
         // Images + StoreInventories collections. Two collection Includes on one root is a cartesian (and the
@@ -299,7 +299,7 @@ public class ProductsController : Controller
         // would re-roll the pick per sub-query. Projecting turns each collection into a cheap correlated
         // subquery in the SELECT, so it stays a SINGLE random query with no cartesian and only the columns the
         // card needs. Mirrors the SearchSuggestions projection.
-        var relatedProducts = await _db.Products
+        var relatedProducts = await DbRead.RetryAsync(() => _db.Products
             .AsNoTracking()
             .Where(p => p.CategoryId == product.CategoryId && p.Id != product.Id && p.IsActive)
             .OrderBy(_ => EF.Functions.Random())
@@ -319,7 +319,7 @@ public class ProductsController : Controller
                     .Select(i => i.Url).Skip(1).FirstOrDefault(),
                 IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0)
             })
-            .ToListAsync();
+            .ToListAsync());
         // Placeholder for a product with no image — applied in memory so the SQL projection stays a plain
         // subquery (no COALESCE-over-subquery to translate), matching the SearchSuggestions image pattern.
         foreach (var r in relatedProducts)
@@ -410,10 +410,10 @@ public class ProductsController : Controller
         vm.ReviewsEnabled = await _settings.GetBoolAsync("reviews.enabled", true);
         if (vm.ReviewsEnabled)
         {
-            var approved = await _db.ProductReviews
+            var approved = await DbRead.RetryAsync(() => _db.ProductReviews
                 .Where(r => r.ProductId == product.Id && r.IsApproved)
                 .OrderByDescending(r => r.CreatedAt)
-                .ToListAsync();
+                .ToListAsync());
             vm.ReviewCount = approved.Count;
             vm.AverageRating = approved.Count > 0 ? Math.Round(approved.Average(r => r.Rating), 1) : 0;
             vm.RatingBreakdown = Enumerable.Range(1, 5).ToDictionary(s => s, s => approved.Count(r => r.Rating == s));
@@ -426,7 +426,7 @@ public class ProductsController : Controller
             {
                 var uid = GetUserId();
                 vm.CanReview = true;
-                vm.HasReviewed = await _db.ProductReviews.AnyAsync(r => r.ProductId == product.Id && r.UserId == uid);
+                vm.HasReviewed = await DbRead.RetryAsync(() => _db.ProductReviews.AnyAsync(r => r.ProductId == product.Id && r.UserId == uid));
             }
         }
 
