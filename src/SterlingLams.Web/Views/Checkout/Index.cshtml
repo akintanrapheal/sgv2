@@ -392,7 +392,7 @@
                     }
                     @if (checkoutErrors.Count > 0)
                     {
-                        <div class="mb-4 border border-red-300 bg-red-50 text-red-700 text-xs rounded-sm px-3 py-2.5" role="alert">
+                        <div id="checkout-server-errors" class="mb-4 border border-red-300 bg-red-50 text-red-700 text-xs rounded-sm px-3 py-2.5" role="alert">
                             @foreach (var m in checkoutErrors)
                             {
                                 <p>@m</p>
@@ -448,6 +448,13 @@
 
 @section Scripts {
 <script nonce="@Context.Items["csp-nonce"]">
+// A server-side rejection the client can't predict (e.g. "Payment could not be initiated", minimum
+// order, far-stock timeframe) re-renders the checkout at the TOP of the page. The error box sits lower
+// in the form, so bring it into view on load — otherwise the shopper sees a blank reload and gives up.
+(function () {
+    var box = document.getElementById('checkout-server-errors');
+    if (box) { try { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} }
+})();
 // ── Pricing data from server ───────────────────────────────────────────────
 const PRICING = @Html.Raw(Model.DeliveryPricingJson);
 const SUBTOTAL = @Model.Subtotal.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
