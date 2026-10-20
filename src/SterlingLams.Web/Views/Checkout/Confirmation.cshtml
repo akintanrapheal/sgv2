@@ -130,12 +130,20 @@
         (function () {
             try {
                 var key = 'ga-purchase-@Model.OrderNumber';
-                if (!window.gtag || sessionStorage.getItem(key)) return;
-                gtag('event', 'purchase', {
-                    transaction_id: '@Model.OrderNumber',
-                    value: @Model.Total.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    currency: 'NGN',
-                    items: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(gaItems))
+                if (sessionStorage.getItem(key)) return;
+                var items = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(gaItems));
+                var v = @Model.Total.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                // Push to the GTM dataLayer (so GTM can own GA4/Ads/Meta purchase) AND the on-page GA tag
+                // if it's loaded. meta_event_id matches the server-side Meta CAPI so GTM's pixel dedupes.
+                window.dataLayer = window.dataLayer || [];
+                window.dataLayer.push({ ecommerce: null });
+                window.dataLayer.push({
+                    event: 'purchase',
+                    ecommerce: { transaction_id: '@Model.OrderNumber', value: v, currency: 'NGN', items: items },
+                    meta_event_id: '@SterlingLams.Web.Services.Marketing.MetaCapi.PurchaseEventId(Model.OrderNumber)'
+                });
+                if (window.gtag) gtag('event', 'purchase', {
+                    transaction_id: '@Model.OrderNumber', value: v, currency: 'NGN', items: items
                 });
                 sessionStorage.setItem(key, '1');
             } catch (e) { /* analytics must never break the confirmation page */ }
