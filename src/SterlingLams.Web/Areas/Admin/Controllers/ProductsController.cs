@@ -621,6 +621,15 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             if (vm.CategoryId is null or 0 || !vm.Categories.Any(c => c.Id == vm.CategoryId))
                 ModelState.AddModelError(nameof(vm.CategoryId), "Please select a category.");
 
+            // External code is unique (filtered index on non-empty values). Catch a duplicate up front
+            // with a friendly field error instead of letting it surface as a raw 500 (ongoing Sentry
+            // DbUpdateException / 23505 on IX_Products_ExternalCode). Blank is allowed on any number.
+            var externalCode = vm.ExternalCode?.Trim();
+            if (!string.IsNullOrEmpty(externalCode)
+                && await _db.Products.AnyAsync(p => p.ExternalCode == externalCode && p.Id != vm.Id))
+                ModelState.AddModelError(nameof(vm.ExternalCode),
+                    "Another product already uses this external code — it must be unique.");
+
             if (!ModelState.IsValid)
             {
                 ViewData["Title"] = vm.Id == 0 ? "New Product" : "Edit Product";
@@ -685,12 +694,24 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             product.IsActive = vm.IsActive;
             product.IsFeatured = vm.IsFeatured;
             product.IsNewArrival = vm.IsNewArrival;
-            product.ExternalCode = vm.ExternalCode?.Trim() ?? string.Empty;
+            product.ExternalCode = externalCode ?? string.Empty;
             product.CategoryId = vm.CategoryId!.Value;
             product.UpdatedAt = DateTime.UtcNow;
 
             var isNew = vm.Id == 0;
-            await _db.SaveChangesAsync();
+            try
+            {
+                await _db.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: "23505" })
+            {
+                // Safety net for a race (or any other blank-ExternalCode edge the up-front check misses):
+                // show the same friendly field error rather than a 500.
+                ModelState.AddModelError(nameof(vm.ExternalCode),
+                    "Another product already uses this external code — it must be unique.");
+                ViewData["Title"] = isNew ? "New Product" : "Edit Product";
+                return View("Edit", vm);
+            }
             await _storefrontCache.EvictAsync();
 
             // Simple→variable with a single variant: carry the pool stock onto the variant so it isn't
