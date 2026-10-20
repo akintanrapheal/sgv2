@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Data;
+using SterlingLams.Web.Infrastructure;
 using SterlingLams.Web.Models.Domain;
 using SterlingLams.Web.Models.ViewModels;
 
@@ -108,8 +109,8 @@ public class ProductsController : Controller
             _ => query.OrderBy(p => p.Name).ThenBy(p => p.Id)   // "name" + default
         };
 
-        var totalCount = await query.CountAsync();
-        var products = await query
+        var totalCount = await DbRead.RetryAsync(() => query.CountAsync());
+        var products = await DbRead.RetryAsync(() => query
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(p => new ProductCardViewModel
@@ -132,7 +133,7 @@ public class ProductsController : Controller
                 HasVariants = p.Variants.Any(v => v.IsActive),
                 CategoryName = p.Category.Name
             })
-            .ToListAsync();
+            .ToListAsync());
 
         // Variable products show a "₦min – ₦max" range on their card (one grouped query).
         await SterlingLams.Web.Infrastructure.ProductCardPricing.ApplyVariantPriceRangesAsync(products, _db);
@@ -141,11 +142,11 @@ public class ProductsController : Controller
         var cardIds = products.Select(c => c.Id).ToList();
         if (cardIds.Count > 0)
         {
-            var ratings = await _db.ProductReviews
+            var ratings = await DbRead.RetryAsync(() => _db.ProductReviews
                 .Where(r => cardIds.Contains(r.ProductId) && r.IsApproved)
                 .GroupBy(r => r.ProductId)
                 .Select(g => new { ProductId = g.Key, Count = g.Count(), Avg = g.Average(x => (double)x.Rating) })
-                .ToListAsync();
+                .ToListAsync());
             foreach (var c in products)
             {
                 var rr = ratings.FirstOrDefault(x => x.ProductId == c.Id);
@@ -154,16 +155,16 @@ public class ProductsController : Controller
         }
 
         var wishlistProductIds = User.Identity?.IsAuthenticated == true
-            ? (await _db.WishlistItems
+            ? (await DbRead.RetryAsync(() => _db.WishlistItems
                 .Where(w => w.UserId == GetUserId())
                 .Select(w => w.ProductId)
-                .ToListAsync()).ToHashSet()
+                .ToListAsync())).ToHashSet()
             : new HashSet<int>();
         foreach (var c in products) c.IsInWishlist = wishlistProductIds.Contains(c.Id);
 
         // Category navigation with live product counts (sidebar on desktop, top nav on mobile).
         // Counts respect the hide-out-of-stock toggle so they match what the listing shows.
-        filters.Categories = await _db.Categories
+        filters.Categories = await DbRead.RetryAsync(() => _db.Categories
             .Where(c => c.IsActive && c.Products.Any(p => p.IsActive
                 && (!hideOos || p.StoreInventories.Any(si => si.QuantityOnHand > 0))))
             .OrderBy(c => c.Name)
@@ -174,12 +175,12 @@ public class ProductsController : Controller
                 Count = c.Products.Count(p => p.IsActive
                     && (!hideOos || p.StoreInventories.Any(si => si.QuantityOnHand > 0)))
             })
-            .ToListAsync();
+            .ToListAsync());
 
         // Colour facet (from the variants' "Colour" attribute) + the price-slider ceiling, both over the
         // page scope so they stay stable as the shopper toggles colour/price.
-        filters.MaxCatalogPrice = await facetScope.Select(p => (decimal?)p.Price).MaxAsync() ?? 0m;
-        filters.AvailableColors = await (
+        filters.MaxCatalogPrice = await DbRead.RetryAsync(() => facetScope.Select(p => (decimal?)p.Price).MaxAsync()) ?? 0m;
+        filters.AvailableColors = await DbRead.RetryAsync(() => (
             from p in facetScope
             from v in p.Variants
             where v.IsActive
@@ -187,15 +188,15 @@ public class ProductsController : Controller
             where av.Attribute.Name.ToLower().StartsWith("colo")
             group p.Id by new { av.Value, av.ColorHex } into g
             select new ColorFacet { Value = g.Key.Value, Hex = g.Key.ColorHex, Count = g.Distinct().Count() }
-        ).OrderByDescending(f => f.Count).ThenBy(f => f.Value).ToListAsync();
+        ).OrderByDescending(f => f.Count).ThenBy(f => f.Value).ToListAsync());
 
         // Page heading: the category being viewed (real category name, or the menu-group label for an
         // "All <group>" page like Jewelry/Accessories), else the search term, else the "New In" listing,
         // else the default.
         string? pageTitle = null;
         if (!string.IsNullOrWhiteSpace(filters.Category))
-            pageTitle = await _db.Categories.Where(c => c.Slug == filters.Category)
-                    .Select(c => c.Name).FirstOrDefaultAsync()
+            pageTitle = await DbRead.RetryAsync(() => _db.Categories.Where(c => c.Slug == filters.Category)
+                    .Select(c => c.Name).FirstOrDefaultAsync())
                 ?? SterlingLams.Web.Infrastructure.StoreMenu.GroupLabelForSlug(filters.Category);
         else if (!string.IsNullOrWhiteSpace(filters.Search))
             pageTitle = $"Results for “{filters.Search.Trim()}”";

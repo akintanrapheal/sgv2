@@ -25,7 +25,7 @@ public static class ProductCardPricing
         var ids = cards.Where(c => c.HasVariants).Select(c => c.Id).ToList();
         if (ids.Count == 0) return;
 
-        var rows = await db.ProductVariants
+        var rows = await DbRead.RetryAsync(() => db.ProductVariants
             .Where(v => ids.Contains(v.ProductId) && v.IsActive)
             .Select(v => new
             {
@@ -33,7 +33,7 @@ public static class ProductCardPricing
                 v.Price,
                 v.SalePrice
             })
-            .ToListAsync();
+            .ToListAsync());
 
         var byProduct = rows.GroupBy(r => r.ProductId).ToDictionary(g => g.Key, g => g.ToList());
 
