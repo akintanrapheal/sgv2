@@ -258,9 +258,14 @@ builder.Services.AddAntiforgery(o =>
     // bag". Lax matches the auth cookie (sg_auth) and still blocks cross-site CSRF (the token pair is the
     // real protection). Secure in prod; SameAsRequest in dev (http://localhost).
     o.Cookie.SameSite = SameSiteMode.Lax;
-    o.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
-        ? CookieSecurePolicy.SameAsRequest
-        : CookieSecurePolicy.Always;
+    // SameAsRequest (not Always): behind Cloudflare→Render, real traffic is HTTPS (X-Forwarded-Proto
+    // honoured, see UseForwardedHeaders below) so the cookie is still Secure for every shopper. But
+    // Always makes @Html.AntiForgeryToken() THROW (DefaultAntiforgery.CheckSSLConfig) whenever a request
+    // reaches the origin WITHOUT that header and is seen as non-SSL — Render's internal health check and
+    // direct-to-origin http bots hitting a page that renders a form (e.g. the homepage). That 500'd those
+    // requests. SameAsRequest keeps the cookie Secure on https and simply skips Secure (no crash) on the
+    // rare non-https origin hit. The token pair + SameSite=Lax remain the real CSRF protection.
+    o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
 });
 
 // HSTS: the framework default is only 30 days. A year is the recommended value (and the minimum
