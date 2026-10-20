@@ -353,7 +353,11 @@ public class ProductsController : Controller
             Slug = product.Slug,
             Sku = product.Sku,
             Description = product.Description,
-            ShortDescription = product.ShortDescription,
+            // Short description is shown as PLAIN TEXT (HTML-encoded by Razor), but imported WooCommerce
+            // text carries HTML entities like &mdash; / &amp; / &rsquo; — which then render as the literal
+            // "&mdash;" instead of "—". Decode once here so the visible text + the meta description read
+            // correctly. (The full Description is rendered via Html.Raw, so it already decodes.)
+            ShortDescription = System.Net.WebUtility.HtmlDecode(product.ShortDescription),
             Price = product.Price,
             SalePrice = product.SalePrice,
             SaleStartsAt = product.SaleStartsAt,
