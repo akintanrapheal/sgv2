@@ -59,12 +59,12 @@ public class MerchandisingService : IMerchandisingService
 
             // Rank product ids by units sold. Over-fetch so inactive/deleted products can be
             // filtered out while still returning `take` cards.
-            var ranked = await q
+            var ranked = await SterlingLams.Web.Infrastructure.DbRead.RetryAsync(() => q
                 .GroupBy(oi => oi.ProductId)
                 .Select(g => new { ProductId = g.Key, Qty = g.Sum(x => x.Quantity) })
                 .OrderByDescending(x => x.Qty)
                 .Take(take * 3)
-                .ToListAsync();
+                .ToListAsync());
 
             var cards = await LoadCardsAsync(ranked.Select(r => r.ProductId).ToList());
             return ranked
@@ -79,13 +79,13 @@ public class MerchandisingService : IMerchandisingService
         _cache.GetOrCreateAsync($"merch:new:{take}", async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = CacheTtl;
-            var ids = await _db.Products
+            var ids = await SterlingLams.Web.Infrastructure.DbRead.RetryAsync(() => _db.Products
                 .Where(p => p.IsActive)
                 .OrderByDescending(p => p.IsNewArrival)
                 .ThenByDescending(p => p.CreatedAt)
                 .Take(take)
                 .Select(p => p.Id)
-                .ToListAsync();
+                .ToListAsync());
             return OrderBy(ids, await LoadCardsAsync(ids));
         })!;
 
@@ -98,13 +98,13 @@ public class MerchandisingService : IMerchandisingService
             // many of those orders they appear in (co-purchase frequency). Over-fetch to survive the
             // active/inactive filter in LoadCardsAsync.
             var orderIds = _db.OrderItems.Where(oi => oi.ProductId == productId).Select(oi => oi.OrderId);
-            var ranked = await _db.OrderItems
+            var ranked = await SterlingLams.Web.Infrastructure.DbRead.RetryAsync(() => _db.OrderItems
                 .Where(oi => orderIds.Contains(oi.OrderId) && oi.ProductId != productId)
                 .GroupBy(oi => oi.ProductId)
                 .Select(g => new { ProductId = g.Key, Orders = g.Select(x => x.OrderId).Distinct().Count() })
                 .OrderByDescending(x => x.Orders)
                 .Take(take * 3)
-                .ToListAsync();
+                .ToListAsync());
 
             var cards = await LoadCardsAsync(ranked.Select(r => r.ProductId).ToList());
             return ranked
