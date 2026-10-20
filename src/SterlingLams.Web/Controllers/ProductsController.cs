@@ -15,15 +15,18 @@ public class ProductsController : Controller
     private readonly ILogger<ProductsController> _logger;
     private readonly SterlingLams.Web.Services.IMerchandisingService _merch;
     private readonly SterlingLams.Web.Services.ISettingsService _settings;
+    private readonly Microsoft.Extensions.Caching.Memory.IMemoryCache _cache;
 
     public ProductsController(ApplicationDbContext db, ILogger<ProductsController> logger,
         SterlingLams.Web.Services.IMerchandisingService merch,
-        SterlingLams.Web.Services.ISettingsService settings)
+        SterlingLams.Web.Services.ISettingsService settings,
+        Microsoft.Extensions.Caching.Memory.IMemoryCache cache)
     {
         _db = db;
         _logger = logger;
         _merch = merch;
         _settings = settings;
+        _cache = cache;
     }
 
     // GET /products
@@ -164,19 +167,27 @@ public class ProductsController : Controller
         foreach (var c in products) c.IsInWishlist = wishlistProductIds.Contains(c.Id);
 
         // Category navigation with live product counts (sidebar on desktop, top nav on mobile).
-        // Counts respect the hide-out-of-stock toggle so they match what the listing shows.
-        filters.Categories = await DbRead.RetryAsync(() => _db.Categories
-            .Where(c => c.IsActive && c.Products.Any(p => p.IsActive
-                && (!hideOos || p.StoreInventories.Any(si => si.QuantityOnHand > 0))))
-            .OrderBy(c => c.Name)
-            .Select(c => new CategoryFilterOption
-            {
-                Name = c.Name,
-                Slug = c.Slug,
-                Count = c.Products.Count(p => p.IsActive
-                    && (!hideOos || p.StoreInventories.Any(si => si.QuantityOnHand > 0)))
-            })
-            .ToListAsync());
+        // Counts respect the hide-out-of-stock toggle so they match what the listing shows. This nav is
+        // GLOBAL (identical on every listing page) but its SQL is a per-category correlated COUNT with a
+        // stock EXISTS — ~2s on the small Render DB, and it ran on EVERY page view (top Sentry "Slow DB
+        // Query"). Cache it for a few minutes, keyed by the only input that changes it (hideOos), so it's
+        // computed once per window instead of per request. Counts can lag a few minutes — fine for a nav.
+        filters.Categories = await _cache.GetOrCreateAsync($"nav:categories:v2:{hideOos}", async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
+            return await DbRead.RetryAsync(() => _db.Categories
+                .Where(c => c.IsActive && c.Products.Any(p => p.IsActive
+                    && (!hideOos || p.StoreInventories.Any(si => si.QuantityOnHand > 0))))
+                .OrderBy(c => c.Name)
+                .Select(c => new CategoryFilterOption
+                {
+                    Name = c.Name,
+                    Slug = c.Slug,
+                    Count = c.Products.Count(p => p.IsActive
+                        && (!hideOos || p.StoreInventories.Any(si => si.QuantityOnHand > 0)))
+                })
+                .ToListAsync());
+        }) ?? new();
 
         // Colour facet (from the variants' "Colour" attribute) + the price-slider ceiling, both over the
         // page scope so they stay stable as the shopper toggles colour/price.
