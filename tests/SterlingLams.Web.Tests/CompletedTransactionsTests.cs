@@ -255,6 +255,41 @@ public class CompletedTransactionsTests
     }
 
     [Fact]
+    public async Task EndOfDay_credits_website_sales_to_the_supplying_branch()
+    {
+        // SGW-30516: Allen packs an item for an Ikota pickup order. Allen's EOD must show that sale as
+        // "website sales supplied", even though the payment was collected at Ikota's online till.
+        using var t = new TestDb();
+        var (_, allen, ikota) = t.SeedBranches();
+        var user = t.SeedUser();
+        var earring = t.SeedProduct(9950m);
+        var rest = t.SeedProduct(23900m);
+
+        t.Db.Orders.Add(new Order
+        {
+            OrderNumber = "SGW-EOD-SPLIT", UserId = user.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.StorePickup, PickupStoreId = ikota.Id, FulfillingStoreId = ikota.Id,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = DateTime.UtcNow, PackedAt = DateTime.UtcNow,
+            PaymentProvider = "Paystack", Currency = "NGN",
+            Subtotal = 33850m, DeliveryFee = 0m, Total = 33850m,
+            Items =
+            {
+                new OrderItem { ProductId = earring.Id, ProductName = earring.Name, Quantity = 1, UnitPrice = 9950m, FulfilledFromStoreId = allen.Id },
+                new OrderItem { ProductId = rest.Id, ProductName = rest.Name, Quantity = 1, UnitPrice = 23900m, FulfilledFromStoreId = ikota.Id },
+            }
+        });
+        await t.Db.SaveChangesAsync();
+
+        var ctrl = new FinanceController(t.Db, null!, null!, null!, null!);
+        var day = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd");
+        var result = await ctrl.EndOfDay(day, null);
+        var vm = (FinanceController.EndOfDayVm)((ViewResult)result).ViewData.Model!;
+
+        Assert.Equal(9950m, vm.Rows.Single(r => r.StoreId == allen.Id).Ops.WebsiteAmount);
+        Assert.Equal(23900m, vm.Rows.Single(r => r.StoreId == ikota.Id).Ops.WebsiteAmount);
+    }
+
+    [Fact]
     public async Task Paid_but_unpacked_website_order_does_not_appear()
     {
         using var t = new TestDb();

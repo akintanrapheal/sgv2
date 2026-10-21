@@ -1234,10 +1234,14 @@ public class FinanceController : AdminBaseController
         // Counter sales count on the day they were paid; website orders on the day they were packed.
         // See EodDayRule for why, and for the one place that rule is defined.
         var paidQ = _db.Orders.Where(Services.EodDayRule.InWindow(f, t));
-        if (storeId.HasValue) paidQ = paidQ.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId);
+        // Include orders this branch SUPPLIED a line on (not just its money-home orders) so a branch that
+        // packed items for another branch's order still gets a row showing those website sales.
+        if (storeId.HasValue) paidQ = paidQ.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId
+            || o.Items.Any(i => i.FulfilledFromStoreId == storeId));
         var orderRows = await paidQ.Select(o => new
         {
             o.Id,
+            // Money-home for the cash/tender columns: where payment was collected (online till / pickup store).
             Sid = o.PickupStoreId ?? o.FulfillingStoreId,
             Rid = o.RegisterId,
             Till = o.Register != null ? o.Register.Name : null,
@@ -1280,10 +1284,41 @@ public class FinanceController : AdminBaseController
         var itemQ = _db.OrderItems.Where(i => oids.Contains(i.OrderId));
         var itemRows = await itemQ.Select(i => new
         {
-            Sid = i.Order.PickupStoreId ?? i.Order.FulfillingStoreId,
+            // Items sold are credited to the branch that supplied each line (falls back to the money-home
+            // branch for POS lines and legacy online lines with no per-item store).
+            Sid = i.FulfilledFromStoreId ?? (i.Order.PickupStoreId ?? i.Order.FulfillingStoreId),
             i.Quantity,
             Line = i.Quantity * i.UnitPrice - i.DiscountAmount
         }).ToListAsync();
+
+        // Per-branch WEBSITE SALES: each online order's merchandise (delivery excluded) split across the
+        // branches that supplied its lines (OrderItem.FulfilledFromStoreId), matching Completed Transactions
+        // and the EPOS cash-up. This is a SEPARATE figure from the money columns above — payment stays with
+        // the branch that collected it (the online till), while the goods are credited to who packed them.
+        var webItemRows = await _db.OrderItems
+            .Where(i => oids.Contains(i.OrderId) && i.Order.Channel == OrderChannel.Online)
+            .Select(i => new
+            {
+                i.OrderId, i.Quantity, i.UnitPrice, i.FulfilledFromStoreId,
+                Fallback = i.Order.PickupStoreId ?? i.Order.FulfillingStoreId,
+                Packed = i.Order.PackedAt != null || i.Order.PickupReadyEmailedAt != null,
+                i.Order.Total, i.Order.DeliveryFee
+            }).ToListAsync();
+        var webByStore = new Dictionary<int?, (int Orders, decimal Amt, int Packed, decimal PackedAmt, int Await, decimal AwaitAmt)>();
+        foreach (var og in webItemRows.GroupBy(x => x.OrderId))
+        {
+            var head = og.First();
+            var merch = head.Total - head.DeliveryFee;   // website merchandise only
+            var items = og.Select(i => new ItemSplit("", null, null, i.Quantity, i.UnitPrice, i.FulfilledFromStoreId)).ToList();
+            foreach (var p in SplitByStore(items, head.Fallback, merch))
+            {
+                var c = webByStore.GetValueOrDefault(p.StoreId);
+                c.Orders++; c.Amt += p.Net;
+                if (head.Packed) { c.Packed++; c.PackedAmt += p.Net; }
+                else { c.Await++; c.AwaitAmt += p.Net; }
+                webByStore[p.StoreId] = c;
+            }
+        }
 
         // Till sessions closed that day, by branch — for the cash-drawer flow (opening/closing/transfer).
         var sessQ = _db.TillSessions.Include(sn => sn.Register)
@@ -1303,7 +1338,11 @@ public class FinanceController : AdminBaseController
         var sids = orderRows.Select(o => o.Sid)
             .Concat(refRows.Select(r => r.Sid))
             .Concat(expRows.Select(e => e.StoreId))
+            .Concat(webByStore.Keys)           // branches that supplied website goods (may not be a money-home)
+            .Concat(itemRows.Select(i => i.Sid))
             .Distinct().ToList();
+        // When filtering to one branch, show only that branch's row (it may appear via supply, not money-home).
+        if (storeId.HasValue) sids = sids.Where(s => s == storeId).ToList();
 
         var rows = sids.Select(sid =>
         {
@@ -1320,10 +1359,9 @@ public class FinanceController : AdminBaseController
                 .Select(g => new EodTillRow(g.Key, g.Count(), g.Sum(o => o.Total)))
                 .OrderByDescending(x => x.Gross).ToList();
 
-            // Operational & cash-flow figures.
-            var web = os.Where(o => o.Channel == OrderChannel.Online).ToList();
-            var packedWeb = web.Where(o => o.Packed).ToList();
-            var awaitingWeb = web.Where(o => !o.Packed).ToList();
+            // Operational & cash-flow figures. Website sales are the per-supplier figure (webByStore):
+            // what this branch actually packed, not the orders whose payment landed here.
+            var web = webByStore.GetValueOrDefault(sid);
             var ccontribs = contribs.Where(m => m.Sid == sid).ToList();
             var items = itemRows.Where(i => i.Sid == sid).ToList();
             var ssns = sessions.Where(x => x.Sid == sid).ToList();
@@ -1340,12 +1378,12 @@ public class FinanceController : AdminBaseController
                 CashPayments: ccontribs.Count(m => m.Method == "Cash"),
                 // Website amounts are merchandise only — delivery is logistics, not a product sale
                 // (consistent with Completed Transactions and the Overview "Online sales" figure).
-                WebsiteOrders: web.Count,
-                WebsiteAmount: web.Sum(o => o.Total - o.DeliveryFee),
-                PackedWebsiteOrders: packedWeb.Count,
-                PackedWebsiteAmount: packedWeb.Sum(o => o.Total - o.DeliveryFee),
-                AwaitingWebsiteOrders: awaitingWeb.Count,
-                AwaitingWebsiteAmount: awaitingWeb.Sum(o => o.Total - o.DeliveryFee),
+                WebsiteOrders: web.Orders,
+                WebsiteAmount: web.Amt,
+                PackedWebsiteOrders: web.Packed,
+                PackedWebsiteAmount: web.PackedAmt,
+                AwaitingWebsiteOrders: web.Await,
+                AwaitingWebsiteAmount: web.AwaitAmt,
                 ItemsSoldQty: items.Sum(i => i.Quantity),
                 ItemsSoldAmount: items.Sum(i => i.Line),
                 OpeningCash: openingCash,
@@ -1772,22 +1810,45 @@ public class FinanceController : AdminBaseController
             byDay.Add(new DayPoint(r.Day, 0, 0, 0, r.Refunds));
         var byPeriod = BucketPeriods(byDay, period);
 
-        // By branch (POS uses PickupStoreId; delivery-from-branch uses FulfillingStoreId).
-        var grossByStore = await paid.GroupBy(o => o.PickupStoreId ?? o.FulfillingStoreId)
+        // By branch. POS sales credit the selling store; website sales credit the branch that SUPPLIED
+        // each item (OrderItem.FulfilledFromStoreId), matching the EPOS cash-up and Completed Transactions,
+        // so a branch that packs goods for another branch's order sees those sales. The transaction count
+        // and delivery fee stay with the branch that collected payment (the online till / pickup store).
+        var acc = new Dictionary<int?, (int Count, decimal Gross, decimal Delivery)>();
+        void Add(int? sid, int count, decimal gross, decimal delivery)
+        {
+            var c = acc.GetValueOrDefault(sid);
+            acc[sid] = (c.Count + count, c.Gross + gross, c.Delivery + delivery);
+        }
+        var posByStore = await paid.Where(o => o.Channel != OrderChannel.Online)
+            .GroupBy(o => o.PickupStoreId ?? o.FulfillingStoreId)
             .Select(g => new { StoreId = g.Key, Count = g.Count(), Gross = g.Sum(o => o.Total), Delivery = g.Sum(o => o.DeliveryFee) })
             .ToListAsync();
+        foreach (var x in posByStore) Add(x.StoreId, x.Count, x.Gross, x.Delivery);
+        var webOrders = await paid.Where(o => o.Channel == OrderChannel.Online)
+            .Select(o => new { Fallback = o.PickupStoreId ?? o.FulfillingStoreId, o.Total, o.DeliveryFee,
+                Items = o.Items.Select(i => new { i.Quantity, i.UnitPrice, i.FulfilledFromStoreId }).ToList() })
+            .ToListAsync();
+        foreach (var o in webOrders)
+        {
+            var items = o.Items.Select(i => new ItemSplit("", null, null, i.Quantity, i.UnitPrice, i.FulfilledFromStoreId)).ToList();
+            foreach (var p in SplitByStore(items, o.Fallback, o.Total - o.DeliveryFee))
+                Add(p.StoreId, 0, p.Net, 0);                         // merchandise → supplying branch
+            Add(o.Fallback, 1, 0, o.DeliveryFee);                    // one transaction + delivery → money-home branch
+        }
         var refByStore = await refq.GroupBy(r => r.OriginalOrder.PickupStoreId ?? r.OriginalOrder.FulfillingStoreId)
             .Select(g => new { StoreId = g.Key, Refunds = g.Sum(x => x.Amount) }).ToListAsync();
         var refStoreMap = refByStore.ToDictionary(x => x.StoreId ?? -1, x => x.Refunds);
         string StoreLabel(int? id) =>
             id.HasValue && storeName.ContainsKey(id.Value) ? storeName[id.Value] : "Online / unassigned";
 
-        var byStore = grossByStore.Select(x => new StorePoint(
-                StoreLabel(x.StoreId), x.StoreId, x.Count, x.Gross, refStoreMap.GetValueOrDefault(x.StoreId ?? -1, 0), x.Delivery))
+        var byStore = acc.Select(kv => new StorePoint(
+                StoreLabel(kv.Key), kv.Key, kv.Value.Count, kv.Value.Gross + kv.Value.Delivery,
+                refStoreMap.GetValueOrDefault(kv.Key ?? -1, 0), kv.Value.Delivery))
             .ToList();
         // A branch can have refunds in the window without any sales in it (the by-day table already
         // handles that case). Without this its refunds appeared in the headline but nowhere here.
-        foreach (var r in refByStore.Where(r => grossByStore.All(g => g.StoreId != r.StoreId)))
+        foreach (var r in refByStore.Where(r => !acc.ContainsKey(r.StoreId)))
             byStore.Add(new StorePoint(StoreLabel(r.StoreId), r.StoreId, 0, 0, r.Refunds, 0));
         byStore = byStore.OrderByDescending(s => s.Gross).ThenByDescending(s => s.Refunds).ToList();
 
