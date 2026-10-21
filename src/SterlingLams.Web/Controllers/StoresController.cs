@@ -32,8 +32,21 @@ public class StoresController : Controller
         var store = await _db.Stores.FirstOrDefaultAsync(s => s.Slug == slug && s.IsActive && s.IsPublic);
         if (store == null) return NotFound();
 
-        // "Shop our collection" strip — reuse the merchandising cards (fully built: price, image, rating).
-        ViewBag.FeaturedProducts = await _merch.NewArrivalsAsync(8);
+        // "Shop our collection" strip — only show products that actually HAVE an image (newest items
+        // are often added before their photos, which left the strip full of "image coming soon"). Lead
+        // with best-sellers (established pieces, reliably photographed), top up with new arrivals.
+        static bool HasImage(SterlingLams.Web.Models.ViewModels.ProductCardViewModel c) =>
+            !string.IsNullOrEmpty(c.PrimaryImageUrl) &&
+            !c.PrimaryImageUrl.Contains("placeholder", StringComparison.OrdinalIgnoreCase);
+
+        var featured = (await _merch.BestSellersAsync(24)).Where(HasImage).Take(8).ToList();
+        if (featured.Count < 8)
+        {
+            var more = (await _merch.NewArrivalsAsync(24))
+                .Where(c => HasImage(c) && featured.All(f => f.Id != c.Id));
+            featured.AddRange(more.Take(8 - featured.Count));
+        }
+        ViewBag.FeaturedProducts = featured;
         return View(store);
     }
 }
