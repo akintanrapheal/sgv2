@@ -179,6 +179,82 @@ public class CompletedTransactionsTests
     }
 
     [Fact]
+    public async Task Split_online_order_credits_each_item_to_its_supplying_branch()
+    {
+        // SGW-30516: a pickup order at Ikota where Allen packed one item and transferred it to Ikota
+        // to merge. Each item must show under the branch that actually supplied it, not the whole
+        // order under the pickup branch — so Allen sees its sale and it lands in Allen's end-of-day.
+        using var t = new TestDb();
+        var (_, allen, ikota) = t.SeedBranches();
+        var user = t.SeedUser();
+        var earring = t.SeedProduct(9950m);    // packed/supplied by Allen
+        var rest = t.SeedProduct(23900m);      // supplied by Ikota (the pickup branch)
+
+        t.Db.Orders.Add(new Order
+        {
+            OrderNumber = "SGW-SPLIT", UserId = user.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.StorePickup, PickupStoreId = ikota.Id, FulfillingStoreId = ikota.Id,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = DateTime.UtcNow, PackedAt = DateTime.UtcNow,
+            PaymentProvider = "Paystack", Currency = "NGN",
+            Subtotal = 33850m, DeliveryFee = 0m, Total = 33850m,
+            Items =
+            {
+                new OrderItem { ProductId = earring.Id, ProductName = earring.Name, Quantity = 1, UnitPrice = 9950m, FulfilledFromStoreId = allen.Id },
+                new OrderItem { ProductId = rest.Id, ProductName = rest.Name, Quantity = 1, UnitPrice = 23900m, FulfilledFromStoreId = ikota.Id },
+            }
+        });
+        await t.Db.SaveChangesAsync();
+
+        var vm = await LoadAsync(t);
+
+        // Two sale rows — one per supplying branch — not one ₦33,850 row under Ikota.
+        var sales = vm.Rows.Where(r => !r.IsRefund && !r.IsVoid).ToList();
+        Assert.Equal(2, sales.Count);
+        Assert.Equal(9950m, sales.Single(r => r.Location == allen.Name).Total);
+        Assert.Equal(23900m, sales.Single(r => r.Location == ikota.Name).Total);
+        Assert.Equal(33850m, vm.Total);   // the split still sums to the order's merchandise total
+
+        // Filtering by Allen isolates Allen's packed item only.
+        var ctrl = new FinanceController(t.Db, null!, null!, null!, null!);
+        var from = DateTime.UtcNow.AddDays(-1).ToString("yyyy-MM-dd");
+        var to = DateTime.UtcNow.AddDays(1).ToString("yyyy-MM-dd");
+        var result = await ctrl.CompletedTransactions(from, to, allen.Id, null, null, null, 1);
+        var allenVm = (FinanceController.CompletedTxnVm)((ViewResult)result).ViewData.Model!;
+        var allenSale = allenVm.Rows.Single(r => !r.IsRefund && !r.IsVoid);
+        Assert.Equal(allen.Name, allenSale.Location);
+        Assert.Equal(9950m, allenSale.Total);
+        Assert.Equal(9950m, allenVm.Total);
+    }
+
+    [Fact]
+    public async Task Legacy_order_without_per_item_store_falls_back_to_pickup_branch()
+    {
+        // Orders packed before this feature have no FulfilledFromStoreId — they must still show as one
+        // row under the pickup/fulfilling branch (not vanish, not split).
+        using var t = new TestDb();
+        var (_, _, ikota) = t.SeedBranches();
+        var user = t.SeedUser();
+        var p = t.SeedProduct(5000m);
+
+        t.Db.Orders.Add(new Order
+        {
+            OrderNumber = "SGW-LEGACY", UserId = user.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.StorePickup, PickupStoreId = ikota.Id, FulfillingStoreId = ikota.Id,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = DateTime.UtcNow, PackedAt = DateTime.UtcNow,
+            PaymentProvider = "Paystack", Currency = "NGN",
+            Subtotal = 5000m, Total = 5000m,
+            Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 5000m } }  // FulfilledFromStoreId null
+        });
+        await t.Db.SaveChangesAsync();
+
+        var vm = await LoadAsync(t);
+
+        var row = vm.Rows.Single(r => !r.IsRefund && !r.IsVoid);
+        Assert.Equal(ikota.Name, row.Location);
+        Assert.Equal(5000m, row.Total);
+    }
+
+    [Fact]
     public async Task Paid_but_unpacked_website_order_does_not_appear()
     {
         using var t = new TestDb();
