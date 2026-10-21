@@ -40,9 +40,13 @@ public class SeoController : Controller
         {
             ($"{b}/",               null, "daily",   "1.0", null),
             ($"{b}/products",       null, "daily",   "0.9", null),
-            ($"{b}/Stores",         null, "monthly", "0.5", null),
-            ($"{b}/Home/About",     null, "monthly", "0.4", null),
-            ($"{b}/Home/Contact",   null, "monthly", "0.4", null),
+            // Lower-case paths so the sitemap lists the CANONICAL URL (canonical/og:url are lower-cased
+            // via SeoUrl). Listing /Stores or /Home/About here made Google file them as "Alternate page
+            // with proper canonical" against the real /stores, /home/about. (Query-param category URLs
+            // below keep their case — their canonical includes the query, which SeoUrl would drop.)
+            ($"{b}/stores",         null, "monthly", "0.5", null),
+            ($"{b}/home/about",     null, "monthly", "0.4", null),
+            ($"{b}/home/contact",   null, "monthly", "0.4", null),
             ($"{b}/journal",        null, "weekly",  "0.6", null),
         };
 
