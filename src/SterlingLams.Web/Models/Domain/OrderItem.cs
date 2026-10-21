@@ -23,5 +23,12 @@ public class OrderItem
     public string? DiscountType { get; set; }
     public string? ItemNote { get; set; }
     public string? ProductSku { get; set; }
+
+    /// <summary>The branch whose stock actually supplied this line (set at fulfilment). For a split
+    /// online order each line is credited to the branch that packed it — so finance by-store + EOD
+    /// attribute per item, not the whole order to the pickup branch. Null = legacy/unset: callers fall
+    /// back to the order's PickupStoreId/FulfillingStoreId.</summary>
+    public int? FulfilledFromStoreId { get; set; }
+
     public decimal LineTotal => (Quantity * UnitPrice) - DiscountAmount;
 }

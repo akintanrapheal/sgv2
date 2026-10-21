@@ -328,6 +328,7 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                     var reduced = new List<string>();
                     foreach (var line in order.Items)
                     {
+                        line.FulfilledFromStoreId = fulfilStore.Id;   // per-item store credit (all from this branch)
                         var after = await _stock.ApplyAsync(line.ProductId, line.ProductVariantId, fulfilStore.Id,
                             -line.Quantity, StockMovementType.Sale, order.OrderNumber,
                             $"Online order {order.OrderNumber}", order.UserId);
@@ -411,6 +412,22 @@ public class OrderFulfilmentService : IOrderFulfilmentService
                         }
                         _db.StockTransfers.Add(transfer);
                         sourceNotices.Add((sourceStore, transferNumber, emailItems));
+                    }
+
+                    // Per-item store credit: each line is credited to the branch whose stock supplied it
+                    // (from the allocation above). A line fully covered by the merge branch stays with it;
+                    // a line sourced elsewhere is credited to that branch (majority branch, fulfil branch on
+                    // a tie, for the rare case a single line is split across branches). The transfer that
+                    // physically merges the stock stays for the ledger but no longer moves the revenue.
+                    foreach (var line in order.Items)
+                    {
+                        var supplier = alloc
+                            .Where(kv => kv.Key.product == line.ProductId && kv.Key.variant == line.ProductVariantId)
+                            .OrderByDescending(kv => kv.Value)
+                            .ThenByDescending(kv => kv.Key.store == fulfilStore.Id)
+                            .Select(kv => (int?)kv.Key.store)
+                            .FirstOrDefault();
+                        line.FulfilledFromStoreId = supplier ?? fulfilStore.Id;
                     }
 
                     var prevStatus = order.Status;

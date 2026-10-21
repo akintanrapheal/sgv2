@@ -141,13 +141,14 @@
                         <div class="flex justify-between"><span class="text-neutral-500">Transfer payments</span><span class="text-neutral-800">@ops.TransferPayments</span></div>
                         <div class="flex justify-between"><span class="text-neutral-500">Items sold (qty)</span><span class="text-neutral-800">@ops.ItemsSoldQty</span></div>
                         <div class="flex justify-between col-span-2"><span class="text-neutral-500">Items sold (amount)</span><span class="text-neutral-800">@Money(ops.ItemsSoldAmount)</span></div>
-                        <div class="flex justify-between"><span class="text-neutral-500">Website orders</span><span class="text-neutral-800">@ops.WebsiteOrders</span></div>
-                        <div class="flex justify-between"><span class="text-neutral-500">Website amount</span><span class="text-neutral-800">@Money(ops.WebsiteAmount)</span></div>
+                        <div class="flex justify-between"><span class="text-neutral-500">Website orders supplied</span><span class="text-neutral-800">@ops.WebsiteOrders</span></div>
+                        <div class="flex justify-between"><span class="text-neutral-500">Website sales supplied</span><span class="text-neutral-800">@Money(ops.WebsiteAmount)</span></div>
                         <div class="flex justify-between"><span class="text-neutral-500">Packed website orders</span><span class="text-neutral-800">@ops.PackedWebsiteOrders</span></div>
                         <div class="flex justify-between"><span class="text-neutral-500">Packed website amount</span><span class="text-neutral-800">@Money(ops.PackedWebsiteAmount)</span></div>
                         <div class="flex justify-between"><span class="text-neutral-500">Awaiting website orders</span><span class="@(ops.AwaitingWebsiteOrders > 0 ? "text-amber-600 font-medium" : "text-neutral-800")">@ops.AwaitingWebsiteOrders</span></div>
                         <div class="flex justify-between"><span class="text-neutral-500">Awaiting website amount</span><span class="@(ops.AwaitingWebsiteAmount > 0 ? "text-amber-600 font-medium" : "text-neutral-800")">@Money(ops.AwaitingWebsiteAmount)</span></div>
                     </div>
+                    <p class="text-[11px] text-neutral-400 mt-1.5">Website sales are credited to the branch that packed each item; the payment sits under the branch that collected it (above).</p>
                 </div>
 
                 <div class="mt-4 pt-3 border-t border-neutral-100">
