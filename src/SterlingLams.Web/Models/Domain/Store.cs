@@ -16,6 +16,10 @@ public class Store
 
     public string? OpeningHours { get; set; }
 
+    /// <summary>Customer-facing description shown on the store's own landing page (/stores/{slug}).
+    /// Unique per-branch copy helps that page rank for local searches. Plain text; blank = template fallback.</summary>
+    public string? Description { get; set; }
+
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
 

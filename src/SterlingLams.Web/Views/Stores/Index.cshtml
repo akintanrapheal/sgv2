@@ -105,7 +105,9 @@
                         </svg>
                     </div>
 
-                    <h2 class="font-cormorant text-2xl font-light mb-2 group-hover:text-brand-600 transition-colors">@store.Name</h2>
+                    <a href="/stores/@store.Slug" class="block">
+                        <h2 class="font-cormorant text-2xl font-light mb-2 group-hover:text-brand-600 transition-colors">@store.Name</h2>
+                    </a>
                     <p class="text-sm text-neutral-500 font-light mb-1.5 leading-relaxed">@store.Address</p>
                     <p class="text-sm text-neutral-500 font-light mb-4">@store.City, @store.State</p>
 
@@ -122,16 +124,20 @@
                     }
 
                     <!-- push the button to the bottom so all cards' buttons align -->
-                    @if (store.Latitude.HasValue && store.Longitude.HasValue)
-                    {
-                        <div class="mt-auto pt-5">
+                    <div class="mt-auto pt-5 space-y-2.5">
+                        <a href="/stores/@store.Slug"
+                           class="block text-xs tracking-widest uppercase text-center font-medium rounded-sm bg-brand-500 text-white py-3 hover:bg-brand-600 transition-colors">
+                            Visit Store Page
+                        </a>
+                        @if (store.Latitude.HasValue && store.Longitude.HasValue)
+                        {
                             <a href="https://www.google.com/maps/dir/?api=1&destination=@store.Latitude,@store.Longitude"
                                target="_blank" rel="noopener"
-                               class="block text-xs tracking-widest uppercase text-center font-medium rounded-sm bg-brand-500 text-white py-3 hover:bg-brand-600 transition-colors">
+                               class="block text-xs tracking-widest uppercase text-center font-medium rounded-sm border border-neutral-300 text-neutral-700 py-3 hover:border-brand-400 hover:text-brand-500 transition-colors">
                                 Get Directions
                             </a>
-                        </div>
-                    }
+                        }
+                    </div>
                 </div>
             }
         </div>

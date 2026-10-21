@@ -67,6 +67,12 @@ public class SeoController : Controller
         foreach (var slug in cats)
             entries.Add(($"{b}/products?category={slug}", null, "weekly", "0.7", null));
 
+        // Per-store landing pages (customer-facing branches only).
+        var storeSlugs = await _db.Stores.Where(s => s.IsActive && s.IsPublic)
+            .Select(s => s.Slug).ToListAsync();
+        foreach (var slug in storeSlugs)
+            entries.Add(($"{b}/stores/{slug}", null, "monthly", "0.6", null));
+
         var products = await _db.Products
             .Where(p => p.IsActive)
             .Select(p => new

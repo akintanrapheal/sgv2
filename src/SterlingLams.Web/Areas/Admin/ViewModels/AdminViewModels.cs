@@ -714,6 +714,9 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
         [StringLength(250)]
         public string? OpeningHours { get; set; }
 
+        [StringLength(2000)]
+        public string? Description { get; set; }
+
         [Range(-90, 90, ErrorMessage = "Latitude must be between -90 and 90.")]
         public double? Latitude { get; set; }
 
