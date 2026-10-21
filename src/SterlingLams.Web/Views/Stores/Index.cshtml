@@ -1,4 +1,5 @@
 @model IList<SterlingLams.Web.Models.Domain.Store>
+@inject SterlingLams.Web.Services.ISettingsService SettingsService
 @{
     ViewData["Title"] = "Our Stores";
     // Show the minimal "Shop at Sterlin Glams / Need Help?" header on the store-locator page.
@@ -6,6 +7,57 @@
     var mapStores = Model.Where(s => s.Latitude.HasValue && s.Longitude.HasValue).ToList();
     var globeData = mapStores.Select(s => new { lat = s.Latitude!.Value, lng = s.Longitude!.Value }).ToList();
     string J(object o) => System.Text.Json.JsonSerializer.Serialize(o);
+
+    // ── Local SEO ───────────────────────────────────────────────────────────────
+    // Emit JewelryStore (LocalBusiness) structured data for each physical store so Google can rank and
+    // show them for "jewellery store Lagos/Abuja" style searches and in the local map pack. Address/geo/
+    // phone come straight from the Store record (same data the locator map uses). Only public stores are
+    // in Model (controller filters IsActive && IsPublic), so closed/hidden branches are not emitted.
+    var baseUrl = $"{Context.Request.Scheme}://{Context.Request.Host}";
+    var logo = await SettingsService.GetAsync("general.logo_url", "");
+    if (!string.IsNullOrEmpty(logo) && !logo.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        logo = baseUrl + (logo.StartsWith("/") ? logo : "/" + logo);
+    var ldOpts = new System.Text.Json.JsonSerializerOptions
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+    var storeGraph = Model.Select(s => new Dictionary<string, object?>
+    {
+        ["@type"] = "JewelryStore",
+        ["@id"] = $"{baseUrl}/Stores#{s.Slug}",
+        ["name"] = $"Sterlin Glams — {s.Name}",
+        ["image"] = string.IsNullOrEmpty(logo) ? null : logo,
+        ["url"] = $"{baseUrl}/Stores",
+        ["telephone"] = string.IsNullOrWhiteSpace(s.Phone) ? null : s.Phone,
+        ["email"] = string.IsNullOrWhiteSpace(s.Email) ? null : s.Email,
+        ["priceRange"] = "₦₦₦",
+        ["address"] = new Dictionary<string, object?>
+        {
+            ["@type"] = "PostalAddress",
+            ["streetAddress"] = s.Address,
+            ["addressLocality"] = s.City,
+            ["addressRegion"] = s.State,
+            ["addressCountry"] = "NG"
+        },
+        ["geo"] = (s.Latitude.HasValue && s.Longitude.HasValue) ? new Dictionary<string, object?>
+        {
+            ["@type"] = "GeoCoordinates",
+            ["latitude"] = s.Latitude!.Value,
+            ["longitude"] = s.Longitude!.Value
+        } : null,
+        ["openingHours"] = string.IsNullOrWhiteSpace(s.OpeningHours) ? null : s.OpeningHours,
+        ["parentOrganization"] = new Dictionary<string, object?>
+        {
+            ["@type"] = "Organization",
+            ["name"] = "Sterlin Glams",
+            ["url"] = baseUrl + "/"
+        }
+    }).ToList();
+    var localBusinessLd = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
+    {
+        ["@context"] = "https://schema.org",
+        ["@graph"] = storeGraph
+    }, ldOpts);
 }
 
 @section Styles {
@@ -15,6 +67,11 @@
         #stores-globe { position: absolute; left: 50%; top: 40px; transform: translateX(-50%); opacity: .55; }
         @@media (max-width: 767px) { #stores-globe { top: 8px; opacity: .4; } }
     </style>
+}
+
+@section Head {
+    @* Local SEO: JewelryStore (LocalBusiness) structured data for each physical store. *@
+    <script type="application/ld+json" nonce="@Context.Items["csp-nonce"]">@Html.Raw(localBusinessLd)</script>
 }
 
 <div class="relative overflow-hidden">
