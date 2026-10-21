@@ -56,6 +56,7 @@ public class StoresController : AdminBaseController
             Phone            = store.Phone,
             Email            = store.Email,
             OpeningHours     = store.OpeningHours,
+            Description      = store.Description,
             Latitude         = store.Latitude,
             Longitude        = store.Longitude,
             IsActive         = store.IsActive,
@@ -109,6 +110,7 @@ public class StoresController : AdminBaseController
         store.Phone            = vm.Phone?.Trim();
         store.Email            = vm.Email?.Trim();
         store.OpeningHours     = vm.OpeningHours?.Trim();
+        store.Description       = string.IsNullOrWhiteSpace(vm.Description) ? null : vm.Description.Trim();
         store.Latitude         = vm.Latitude;
         store.Longitude        = vm.Longitude;
         store.IsActive         = vm.IsActive;

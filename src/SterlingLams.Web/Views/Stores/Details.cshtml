@@ -1,0 +1,190 @@
+@model SterlingLams.Web.Models.Domain.Store
+@inject SterlingLams.Web.Services.ISettingsService SettingsService
+@{
+    var ci = System.Globalization.CultureInfo.InvariantCulture;
+    var cityState = string.Join(", ", new[] { Model.City, Model.State }.Where(x => !string.IsNullOrWhiteSpace(x)));
+    var latlng = (Model.Latitude.HasValue && Model.Longitude.HasValue)
+        ? $"{Model.Latitude.Value.ToString(ci)},{Model.Longitude.Value.ToString(ci)}" : null;
+
+    // ── SEO ──────────────────────────────────────────────────────────────────
+    ViewData["TitleFull"] = string.IsNullOrWhiteSpace(Model.City)
+        ? $"{Model.Name} — Sterlin Glams"
+        : $"{Model.Name} | Jewellery Store in {cityState}";
+    var metaDesc = !string.IsNullOrWhiteSpace(Model.Description)
+        ? (Model.Description!.Length > 155 ? Model.Description[..152] + "…" : Model.Description)
+        : $"Visit {Model.Name} at {Model.Address}, {Model.City}. Shop our collection of fine jewellery, watches and accessories"
+          + (string.IsNullOrWhiteSpace(Model.OpeningHours) ? "." : $" — {Model.OpeningHours}.");
+    ViewData["Description"] = metaDesc;
+    ViewData["OgType"] = "business.business";
+
+    var canonical = SterlingLams.Web.Infrastructure.SeoUrl.Canonical($"/stores/{Model.Slug}");
+    var logo = await SettingsService.GetAsync("general.logo_url", "");
+    if (!string.IsNullOrEmpty(logo) && !logo.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+        logo = SterlingLams.Web.Infrastructure.SeoUrl.Base + (logo.StartsWith("/") ? logo : "/" + logo);
+
+    // ── LocalBusiness (JewelryStore) structured data for THIS store ──────────
+    var ldOpts = new System.Text.Json.JsonSerializerOptions
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+    var storeLd = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object?>
+    {
+        ["@context"] = "https://schema.org",
+        ["@type"] = "JewelryStore",
+        ["@id"] = canonical + "#store",
+        ["name"] = Model.Name,
+        ["description"] = string.IsNullOrWhiteSpace(Model.Description) ? null : Model.Description,
+        ["image"] = string.IsNullOrEmpty(logo) ? null : logo,
+        ["url"] = canonical,
+        ["telephone"] = string.IsNullOrWhiteSpace(Model.Phone) ? null : Model.Phone,
+        ["email"] = string.IsNullOrWhiteSpace(Model.Email) ? null : Model.Email,
+        ["priceRange"] = "₦₦₦",
+        ["address"] = new Dictionary<string, object?>
+        {
+            ["@type"] = "PostalAddress",
+            ["streetAddress"] = Model.Address,
+            ["addressLocality"] = Model.City,
+            ["addressRegion"] = Model.State,
+            ["addressCountry"] = "NG"
+        },
+        ["geo"] = latlng == null ? null : new Dictionary<string, object?>
+        {
+            ["@type"] = "GeoCoordinates",
+            ["latitude"] = Model.Latitude!.Value,
+            ["longitude"] = Model.Longitude!.Value
+        },
+        ["openingHours"] = string.IsNullOrWhiteSpace(Model.OpeningHours) ? null : Model.OpeningHours,
+        ["parentOrganization"] = new Dictionary<string, object?>
+        {
+            ["@type"] = "Organization",
+            ["name"] = "Sterlin Glams",
+            ["url"] = SterlingLams.Web.Infrastructure.SeoUrl.Base + "/"
+        }
+    }, ldOpts);
+
+    var featured = ViewBag.FeaturedProducts as List<ProductCardViewModel> ?? new List<ProductCardViewModel>();
+}
+
+@section Head {
+    <script type="application/ld+json" nonce="@Context.Items["csp-nonce"]">@Html.Raw(storeLd)</script>
+}
+
+<div class="max-w-6xl mx-auto px-6 py-8 md:py-12">
+
+    @* Breadcrumb *@
+    <nav class="text-xs text-neutral-400 mb-6 tracking-wide" aria-label="Breadcrumb">
+        <a href="/" class="hover:text-brand-500">Home</a>
+        <span class="mx-1.5">/</span>
+        <a href="/stores" class="hover:text-brand-500">Our Stores</a>
+        <span class="mx-1.5">/</span>
+        <span class="text-neutral-600">@Model.Name</span>
+    </nav>
+
+    @* Hero *@
+    <div class="text-center mb-10 md:mb-12">
+        <p class="section-label text-brand-500">Visit us</p>
+        <h1 class="font-cormorant text-4xl md:text-5xl font-light mt-1">@Model.Name</h1>
+        @if (!string.IsNullOrWhiteSpace(cityState))
+        {
+            <p class="text-neutral-500 font-light mt-2">@cityState</p>
+        }
+        <span class="mt-4 block mx-auto w-16 h-px bg-gradient-to-r from-transparent via-brand-400 to-transparent"></span>
+    </div>
+
+    <div class="grid gap-8 md:grid-cols-2 items-start">
+
+        @* Left: details *@
+        <div class="order-2 md:order-1">
+            @if (!string.IsNullOrWhiteSpace(Model.Description))
+            {
+                <p class="text-neutral-600 font-light leading-relaxed mb-8 whitespace-pre-line">@Model.Description</p>
+            }
+
+            <div class="space-y-5">
+                <div class="flex items-start gap-3">
+                    <svg class="w-5 h-5 text-brand-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a2 2 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    <div>
+                        <p class="text-xs tracking-widest uppercase text-neutral-400 mb-0.5">Address</p>
+                        <p class="text-sm text-neutral-700 font-light leading-relaxed">@Model.Address<br />@cityState</p>
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(Model.OpeningHours))
+                {
+                    <div class="flex items-start gap-3">
+                        <svg class="w-5 h-5 text-brand-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <div>
+                            <p class="text-xs tracking-widest uppercase text-neutral-400 mb-0.5">Opening hours</p>
+                            <p class="text-sm text-neutral-700 font-light">@Model.OpeningHours</p>
+                        </div>
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(Model.Phone))
+                {
+                    <div class="flex items-start gap-3">
+                        <svg class="w-5 h-5 text-brand-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11 11 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                        <div>
+                            <p class="text-xs tracking-widest uppercase text-neutral-400 mb-0.5">Call us</p>
+                            <a href="tel:@Model.Phone" class="text-sm text-neutral-700 font-light hover:text-brand-500 transition-colors">@Model.Phone</a>
+                        </div>
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(Model.Email))
+                {
+                    <div class="flex items-start gap-3">
+                        <svg class="w-5 h-5 text-brand-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                        <div>
+                            <p class="text-xs tracking-widest uppercase text-neutral-400 mb-0.5">Email</p>
+                            <a href="mailto:@Model.Email" class="text-sm text-neutral-700 font-light hover:text-brand-500 transition-colors">@Model.Email</a>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @if (latlng != null)
+            {
+                <a href="https://www.google.com/maps/dir/?api=1&destination=@latlng" target="_blank" rel="noopener"
+                   class="inline-block mt-8 text-xs tracking-widest uppercase font-medium rounded-sm bg-brand-500 text-white px-8 py-3.5 hover:bg-brand-600 transition-colors">
+                    Get Directions
+                </a>
+            }
+        </div>
+
+        @* Right: map *@
+        <div class="order-1 md:order-2">
+            @if (latlng != null)
+            {
+                <div class="rounded-lg overflow-hidden border border-neutral-100 shadow-sm">
+                    <iframe src="https://www.google.com/maps?q=@latlng&z=15&output=embed"
+                            width="100%" height="380" style="border:0;" loading="lazy"
+                            referrerpolicy="no-referrer-when-downgrade" title="Map of @Model.Name"></iframe>
+                </div>
+            }
+            else
+            {
+                <div class="rounded-lg border border-neutral-100 bg-neutral-50 h-[380px] flex items-center justify-center text-neutral-400 text-sm">
+                    Map coming soon
+                </div>
+            }
+        </div>
+    </div>
+
+    @* Shop our collection *@
+    @if (featured.Count > 0)
+    {
+        <div class="mt-16 md:mt-20">
+            <div class="text-center mb-8">
+                <p class="section-label text-brand-500">In store &amp; online</p>
+                <h2 class="font-cormorant text-3xl font-light mt-1">Shop our collection</h2>
+            </div>
+            @await Html.PartialAsync("~/Views/Products/_ProductCards.cshtml", featured)
+            <div class="text-center mt-10">
+                <a href="/products" class="inline-block text-xs tracking-widest uppercase font-medium rounded-sm border border-neutral-800 text-neutral-900 px-10 py-3.5 hover:bg-neutral-900 hover:text-white transition-colors">
+                    View all products
+                </a>
+            </div>
+        </div>
+    }
+</div>
