@@ -205,15 +205,38 @@ public class ProductsController : Controller
         // Page heading: the category being viewed (real category name, or the menu-group label for an
         // "All <group>" page like Jewelry/Accessories), else the search term, else the "New In" listing,
         // else the default.
+        // Per-page SEO: a UNIQUE title + meta description for each category / search / "New In" listing
+        // (the bare /products page keeps its imported SEO, set in the view). Category pages previously
+        // fell through to the generic site-wide meta description — bad for ranking + duplicate snippets.
+        static string Clip(string s) => s.Length <= 160 ? s : s[..157].TrimEnd() + "…";
         string? pageTitle = null;
         if (!string.IsNullOrWhiteSpace(filters.Category))
-            pageTitle = await DbRead.RetryAsync(() => _db.Categories.Where(c => c.Slug == filters.Category)
-                    .Select(c => c.Name).FirstOrDefaultAsync())
-                ?? SterlingLams.Web.Infrastructure.StoreMenu.GroupLabelForSlug(filters.Category);
+        {
+            var cat = await DbRead.RetryAsync(() => _db.Categories.Where(c => c.Slug == filters.Category)
+                .Select(c => new { c.Name, c.Description }).FirstOrDefaultAsync());
+            var name = cat?.Name ?? SterlingLams.Web.Infrastructure.StoreMenu.GroupLabelForSlug(filters.Category);
+            pageTitle = name;
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                ViewData["TitleFull"] = $"Shop {name} Online in Nigeria | Sterlin Glams";
+                ViewData["Description"] = Clip(!string.IsNullOrWhiteSpace(cat?.Description)
+                    ? cat!.Description!
+                    : $"Shop our {name} collection at Sterlin Glams — elegant jewellery, watches and accessories with nationwide delivery across Nigeria and stores in Lagos & Abuja.");
+            }
+        }
         else if (!string.IsNullOrWhiteSpace(filters.Search))
-            pageTitle = $"Results for “{filters.Search.Trim()}”";
+        {
+            var term = filters.Search.Trim();
+            pageTitle = $"Results for “{term}”";
+            ViewData["TitleFull"] = $"Search: {term} | Sterlin Glams";
+            ViewData["Description"] = Clip($"Browse results for “{term}” at Sterlin Glams — jewellery, watches and accessories, with nationwide delivery across Nigeria.");
+        }
         else if (filters.SortBy == "newest" || filters.SortBy == "newness")
+        {
             pageTitle = "New In";
+            ViewData["TitleFull"] = "New In — Latest Arrivals | Sterlin Glams";
+            ViewData["Description"] = "Discover the latest arrivals at Sterlin Glams — new jewellery, watches and accessories. Nationwide delivery across Nigeria.";
+        }
 
         var vm = new ProductListViewModel
         {
