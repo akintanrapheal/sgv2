@@ -132,12 +132,9 @@ public class CashUpService : ICashUpService
         var giftCard = sales.Sum(o => o.GiftCardAmount);
 
         // ── Online orders: attribute ITEM revenue to the branch that supplied each item ───────────────
-        // A branch earns the item-price of (a) items it fulfils from its OWN stock on orders it fulfils,
-        // and (b) items it packs and SENDS to another branch to be merged ("Send to merge", counted when
-        // dispatched). The fulfilling branch's own total excludes items transferred IN from other branches,
-        // and DELIVERY FEES are never counted here (Logistics keeps those). So an order's item revenue is
-        // split across the branches that actually supplied the goods, with no double-counting.
-        int QtyOf(StockTransferItem ti) => ti.DispatchedQty ?? ti.ApprovedQty ?? ti.RequestedQty;
+        // A branch earns the item-price of every line it supplied (OrderItem.FulfilledFromStoreId), so a
+        // split order's revenue lands on the branches that actually packed the goods, with no double-count.
+        // DELIVERY FEES are never counted here (Logistics keeps those). See the attribution block below.
         var onlineLines = new List<SaleLine>();
         var onlineOrderIds = new HashSet<int>();
 
@@ -150,77 +147,39 @@ public class CashUpService : ICashUpService
             && o.PaymentProvider.Contains("Transfer", StringComparison.OrdinalIgnoreCase);
         decimal wOnlineGross = 0m, wTransferGross = 0m;
 
-        // (b) Items THIS branch SENT to merge, dispatched within the window. Only the online till claims
-        // website revenue — other tills skip the whole online attribution (empty set).
-        var sentTransfers = !isOnlineTill ? new List<StockTransfer>() : await _db.StockTransfers
-            .Where(t => t.FromStoreId == storeId && t.OrderId != null && t.DispatchedAt != null
-                && t.DispatchedAt >= onlineStart && t.DispatchedAt < onlineEnd
-                && (t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived
-                    || t.Status == TransferStatus.Completed))
-            .Include(t => t.Items)
-            .ToListAsync();
-        var sentOrderIds = sentTransfers.Select(t => t.OrderId!.Value).Distinct().ToList();
-        var sentOrders = sentOrderIds.Count == 0
-            ? new List<Order>()
-            : await _db.Orders.Where(o => sentOrderIds.Contains(o.Id))
-                .Include(o => o.Items).ThenInclude(i => i.Product).ThenInclude(p => p.Category)
-                .ToListAsync();
-        var sentOrderById = sentOrders.ToDictionary(o => o.Id);
-        foreach (var t in sentTransfers)
-        {
-            if (!sentOrderById.TryGetValue(t.OrderId!.Value, out var o)) continue;
-            if (o.VoidedAt != null) continue;   // a voided order is not revenue, even if its transfer shipped
-            foreach (var ti in t.Items)
-            {
-                var oi = o.Items.FirstOrDefault(x => x.ProductId == ti.ProductId && x.ProductVariantId == ti.ProductVariantId);
-                if (oi == null) continue;
-                var qty = QtyOf(ti);
-                if (qty <= 0) continue;
-                var perUnitDisc = oi.Quantity > 0 ? oi.DiscountAmount / oi.Quantity : 0m;
-                onlineLines.Add(new SaleLine(null, oi.ProductName,
-                    oi.Product?.Category?.Name ?? "Uncategorised", qty, qty * oi.UnitPrice, qty * perUnitDisc));
-                onlineOrderIds.Add(o.Id);
-                var netSent = qty * oi.UnitPrice - qty * perUnitDisc;
-                if (IsTransfer(o)) wTransferGross += netSent; else wOnlineGross += netSent;
-            }
-        }
-
-        // (a) Orders THIS branch fulfils (delivery or pickup), PACKED / marked ready within the window — its
-        // OWN-stock items. Dated by the packed/ready time (the work event), matching Finance's EOD day rule,
-        // so a website order shows in the EPOS cash-up on the day it was packed, not the day it was paid.
-        // Online-till only (see above).
-        var fulfilledOrders = !isOnlineTill ? new List<Order>() : await _db.Orders
+        // A branch earns the merchandise value of every online line it SUPPLIED — i.e. the line's
+        // OrderItem.FulfilledFromStoreId (set at fulfilment) is this store. Orders packed before that field
+        // existed, or lines left unset, fall back to the order's pickup/fulfilling branch (its effective
+        // supplier). Dated by the packed/ready time (the work event), matching Finance's EOD day rule, so a
+        // website order shows in the EPOS cash-up on the day it was packed, not the day it was paid.
+        //
+        // Using the per-item field (not dispatched transfers) makes attribution independent of transfer
+        // timing and of which branch merges/hands over the order: Allen is credited for an item it packed
+        // even when Ikota is the pickup branch that merges it. Online-till only — one till per store claims
+        // the online total, so a multi-till store doesn't count the same website sale twice.
+        var onlineOrders = !isOnlineTill ? new List<Order>() : await _db.Orders
             .Where(o => o.Channel == OrderChannel.Online && o.IsPaid && o.VoidedAt == null
                 && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded
-                && (o.FulfillingStoreId == storeId || o.PickupStoreId == storeId)
+                && (o.FulfillingStoreId == storeId || o.PickupStoreId == storeId
+                    || o.Items.Any(i => i.FulfilledFromStoreId == storeId))
                 && (o.PackedAt ?? o.PickupReadyEmailedAt) != null
                 && (o.PackedAt ?? o.PickupReadyEmailedAt) >= onlineStart
                 && (o.PackedAt ?? o.PickupReadyEmailedAt) < onlineEnd)
             .Include(o => o.Items).ThenInclude(i => i.Product).ThenInclude(p => p.Category)
             .ToListAsync();
-        var fulfilledIds = fulfilledOrders.Select(o => o.Id).ToList();
-        // Units that arrived FROM other branches for these orders — subtracted so only this branch's own
-        // stock counts (the senders are credited for those via their own (b) above).
-        var inbound = fulfilledIds.Count == 0
-            ? new List<StockTransfer>()
-            : await _db.StockTransfers.Where(t => t.ToStoreId == storeId && t.OrderId != null
-                    && fulfilledIds.Contains(t.OrderId!.Value))
-                .Include(t => t.Items).ToListAsync();
-        foreach (var o in fulfilledOrders)
+        foreach (var o in onlineOrders)
         {
+            var fallbackSid = o.PickupStoreId ?? o.FulfillingStoreId;
             foreach (var oi in o.Items)
             {
-                var transferredIn = inbound.Where(t => t.OrderId == o.Id).SelectMany(t => t.Items)
-                    .Where(ti => ti.ProductId == oi.ProductId && ti.ProductVariantId == oi.ProductVariantId)
-                    .Sum(QtyOf);
-                var ownQty = oi.Quantity - transferredIn;
-                if (ownQty <= 0) continue;
-                var perUnitDisc = oi.Quantity > 0 ? oi.DiscountAmount / oi.Quantity : 0m;
+                var supplier = oi.FulfilledFromStoreId ?? fallbackSid;   // null line → effective supplier
+                if (supplier != storeId) continue;                      // this branch didn't supply this line
+                if (oi.Quantity <= 0) continue;
                 onlineLines.Add(new SaleLine(null, oi.ProductName,
-                    oi.Product?.Category?.Name ?? "Uncategorised", ownQty, ownQty * oi.UnitPrice, ownQty * perUnitDisc));
+                    oi.Product?.Category?.Name ?? "Uncategorised", oi.Quantity, oi.Quantity * oi.UnitPrice, oi.DiscountAmount));
                 onlineOrderIds.Add(o.Id);
-                var netOwn = ownQty * oi.UnitPrice - ownQty * perUnitDisc;
-                if (IsTransfer(o)) wTransferGross += netOwn; else wOnlineGross += netOwn;
+                var net = oi.Quantity * oi.UnitPrice - oi.DiscountAmount;
+                if (IsTransfer(o)) wTransferGross += net; else wOnlineGross += net;
             }
         }
 
@@ -255,32 +214,19 @@ public class CashUpService : ICashUpService
             .Include(r => r.Items)
             .Include(r => r.OriginalOrder).ThenInclude(o => o.Items)
             .ToListAsync();
-        var refundOrderIds = onlineRefunds.Select(r => r.OriginalOrderId).Distinct().ToList();
-        var refundOrderTransfers = refundOrderIds.Count == 0
-            ? new List<StockTransfer>()
-            : await _db.StockTransfers.Where(t => t.OrderId != null && refundOrderIds.Contains(t.OrderId!.Value))
-                .Include(t => t.Items).ToListAsync();
         foreach (var r in onlineRefunds)
         {
             var o = r.OriginalOrder;
             if (o == null || o.Channel != OrderChannel.Online) continue;
-            var oTransfers = refundOrderTransfers.Where(t => t.OrderId == o.Id).ToList();
+            var fallbackSid = o.PickupStoreId ?? o.FulfillingStoreId;
             decimal branchRefund = 0m;
             foreach (var ri in r.Items)
             {
                 var oi = o.Items.FirstOrDefault(x => x.ProductId == ri.ProductId && x.ProductVariantId == ri.ProductVariantId);
-                var totalQty = oi?.Quantity ?? ri.Quantity;
-                if (totalQty <= 0) continue;
-                var sentQty = oTransfers.Where(t => t.FromStoreId == storeId).SelectMany(t => t.Items)
-                    .Where(ti => ti.ProductId == ri.ProductId && ti.ProductVariantId == ri.ProductVariantId).Sum(QtyOf);
-                var inboundQty = oTransfers.Where(t => t.ToStoreId == storeId).SelectMany(t => t.Items)
-                    .Where(ti => ti.ProductId == ri.ProductId && ti.ProductVariantId == ri.ProductVariantId).Sum(QtyOf);
-                var isFulfiller = o.FulfillingStoreId == storeId || o.PickupStoreId == storeId;
-                var ownQty = isFulfiller ? Math.Max(0, totalQty - inboundQty) : 0;
-                var branchQty = ownQty + sentQty;
-                if (branchQty <= 0) continue;
-                var branchShare = branchQty / (decimal)totalQty;           // this branch's share of the item
-                var refundedValue = ri.Quantity * ri.UnitPrice * branchShare;
+                var supplier = oi?.FulfilledFromStoreId ?? fallbackSid;    // which branch supplied the refunded line
+                if (supplier != storeId) continue;                        // not this branch's line — don't net it here
+                if (ri.Quantity <= 0) continue;
+                var refundedValue = ri.Quantity * ri.UnitPrice;
                 if (IsTransfer(o)) wTransferRefund += refundedValue; else wOnlineRefund += refundedValue;
                 branchRefund += refundedValue;
             }
