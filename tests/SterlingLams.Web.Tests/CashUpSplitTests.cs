@@ -7,8 +7,9 @@ namespace SterlingLams.Web.Tests;
 
 /// <summary>
 /// The end-of-day cash-up splits an online order's ITEM revenue across the branches that supplied the
-/// goods: the fulfilling branch earns its own-stock items, and a branch that packs & sends items to be
-/// merged earns those item prices. Delivery is never counted (Logistics keeps it).
+/// goods, by each line's OrderItem.FulfilledFromStoreId (set at fulfilment) — not by stock transfers. A
+/// branch that packs an item for another branch's order is credited for it regardless of transfer timing.
+/// Delivery is never counted (Logistics keeps it).
 /// </summary>
 public class CashUpSplitTests
 {
@@ -32,8 +33,8 @@ public class CashUpSplitTests
         using var t = new TestDb();
         var (_, allen, ikota) = t.SeedBranches();
         var buyer = t.SeedUser();
-        var pA = t.SeedProduct(1000m);   // 3 from Allen's own stock
-        var pB = t.SeedProduct(2000m);   // 2 sent by Ikota to merge
+        var pA = t.SeedProduct(1000m);   // 3 supplied by Allen
+        var pB = t.SeedProduct(2000m);   // 2 supplied by Ikota (packed there, merged at Allen)
 
         var now = DateTime.UtcNow;
         var allenSession = OpenSession(t, allen, now.AddHours(-2));
@@ -57,14 +58,15 @@ public class CashUpSplitTests
             Total = 3 * 1000m + 2 * 2000m + 500m,
             Items = new List<OrderItem>
             {
-                new() { ProductId = pA.Id, ProductName = pA.Name, Quantity = 3, UnitPrice = 1000m },
-                new() { ProductId = pB.Id, ProductName = pB.Name, Quantity = 2, UnitPrice = 2000m },
+                new() { ProductId = pA.Id, ProductName = pA.Name, Quantity = 3, UnitPrice = 1000m, FulfilledFromStoreId = allen.Id },
+                new() { ProductId = pB.Id, ProductName = pB.Name, Quantity = 2, UnitPrice = 2000m, FulfilledFromStoreId = ikota.Id },
             }
         };
         t.Db.Add(order);
         t.Db.SaveChanges();
 
-        // Ikota packed its 2× pB and sent them to Allen to merge (dispatched inside Ikota's session).
+        // Ikota also shipped its 2× pB to Allen to merge. The transfer is here to prove it is IGNORED now —
+        // attribution comes purely from each line's FulfilledFromStoreId, not from dispatched transfers.
         var transfer = new StockTransfer
         {
             TransferNumber = "TRF-1",
@@ -89,9 +91,9 @@ public class CashUpSplitTests
         // This order wasn't a manual bank-transfer, so its revenue lands in the "paid online" bucket.
         decimal Website(CloseSummaryVm vm) => vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected;
 
-        // Allen: only its own 3× pB... its own 3× pA = ₦3,000 (the 2× pB came from Ikota, so excluded).
+        // Allen: the 3× pA it supplied = ₦3,000 (the 2× pB are attributed to Ikota by FulfilledFromStoreId).
         Assert.Equal(3000m, Website(allenVm));
-        // Ikota: the 2× pB it sent to merge = ₦4,000.
+        // Ikota: the 2× pB it supplied = ₦4,000.
         Assert.Equal(4000m, Website(ikotaVm));
         // Together they equal the order's ITEM total — delivery (₦500) counted by neither.
         Assert.Equal(order.Subtotal, Website(allenVm) + Website(ikotaVm));
