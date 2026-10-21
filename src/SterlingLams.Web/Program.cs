@@ -316,6 +316,9 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.FulfilmentRetr
 // Catches payments that succeeded at the gateway but were never captured (callback + webhook both
 // missed): re-verifies recent unpaid online orders and confirms any the gateway reports as paid.
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.PaymentReconciliationService>();
+// One-time backfill of OrderItem.FulfilledFromStoreId for split orders fulfilled before that field
+// existed (so historical split orders show per-branch in Finance/EOD/cash-up). Self-guarding.
+builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.OrderItemStoreBackfillService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.LowStockAlertService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.BackInStockNotifier>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.AbandonedCartService>();
