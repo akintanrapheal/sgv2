@@ -1,0 +1,173 @@
+@using SterlingLams.Web.Models.Domain
+@model SterlingLams.Web.Areas.Admin.Controllers.CustomerIssuesController.CustomerIssuesVm
+@{
+    ViewData["Title"] = "Customer Issues";
+    System.Func<object, string> J = o => System.Text.Json.JsonSerializer.Serialize(o);
+    string Local(DateTime utc) => SterlingLams.Web.Services.ReportCalendar.ToLocal(utc).ToString("MMM d, HH:mm");
+
+    (string label, string cls) Badge(StorefrontIssueType t) => t switch
+    {
+        StorefrontIssueType.AddToCart   => ("Add to cart", "bg-amber-50 text-amber-700 border-amber-200"),
+        StorefrontIssueType.Payment     => ("Payment",     "bg-red-50 text-red-700 border-red-200"),
+        StorefrontIssueType.Checkout    => ("Checkout",    "bg-orange-50 text-orange-700 border-orange-200"),
+        StorefrontIssueType.ServerError => ("Error",       "bg-rose-50 text-rose-700 border-rose-200"),
+        _                               => ("Other",       "bg-neutral-100 text-neutral-600 border-neutral-200"),
+    };
+    Dictionary<string, string> rd(int p) => new()
+    {
+        ["page"] = p.ToString(), ["type"] = Model.Type, ["dateFrom"] = Model.DateFrom,
+        ["dateTo"] = Model.DateTo, ["resolved"] = Model.Resolved, ["q"] = Model.Q
+    };
+    int cartToday = Model.TodayByType.GetValueOrDefault(StorefrontIssueType.AddToCart);
+    int payToday  = Model.TodayByType.GetValueOrDefault(StorefrontIssueType.Payment);
+}
+@Html.AntiForgeryToken()
+
+@if (TempData["Success"] != null) { <div class="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm px-4 py-3 rounded-sm">@TempData["Success"]</div> }
+
+<div class="mb-4">
+    <h1 class="text-xl font-light text-neutral-900">Customer Issues</h1>
+    <p class="text-sm text-neutral-500">Problems customers hit while trying to buy — so you can see and fix what's costing sales. Times in WAT.</p>
+</div>
+
+<!-- Summary cards -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+    <div class="bg-white rounded-sm border border-neutral-100 p-4">
+        <p class="text-xs text-neutral-400 uppercase tracking-wide">Issues today</p>
+        <p class="text-2xl font-light text-neutral-900 mt-1">@Model.TodayTotal</p>
+        <p class="text-xs text-neutral-400 mt-1">@cartToday cart · @payToday payment</p>
+    </div>
+    <div class="bg-white rounded-sm border border-neutral-100 p-4">
+        <p class="text-xs text-neutral-400 uppercase tracking-wide">Last 7 days</p>
+        <p class="text-2xl font-light text-neutral-900 mt-1">@Model.WeekTotal</p>
+    </div>
+    <div class="bg-white rounded-sm border border-neutral-100 p-4">
+        <p class="text-xs text-neutral-400 uppercase tracking-wide">Unresolved</p>
+        <p class="text-2xl font-light @(Model.Unresolved > 0 ? "text-amber-600" : "text-neutral-900") mt-1">@Model.Unresolved</p>
+    </div>
+    <div class="bg-white rounded-sm border border-neutral-100 p-4">
+        <p class="text-xs text-neutral-400 uppercase tracking-wide">Abandoned payments (7d)</p>
+        <p class="text-2xl font-light text-neutral-900 mt-1">@Model.AbandonedCount</p>
+        <p class="text-xs text-neutral-400 mt-1">₦@Model.AbandonedValue.ToString("N0") nearly made</p>
+    </div>
+</div>
+
+<!-- Trend -->
+<div class="bg-white rounded-sm border border-neutral-100 p-4 mb-5">
+    <p class="text-xs text-neutral-400 uppercase tracking-wide mb-2">Issues per day (14 days)</p>
+    <canvas id="trendChart" height="70"></canvas>
+</div>
+
+<!-- Filters -->
+<form method="get" class="bg-white rounded-sm border border-neutral-100 p-4 mb-4">
+    <div class="flex flex-wrap gap-2 items-center">
+        <input type="text" name="q" value="@Model.Q" placeholder="Search reason, message, product, order, email…"
+               class="border border-neutral-200 rounded-sm px-3 py-1.5 text-xs focus:outline-none focus:border-neutral-400 min-w-[220px]" />
+        <select name="type" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-neutral-400">
+            <option value="">All types</option>
+            @foreach (var t in Enum.GetValues<StorefrontIssueType>())
+            {
+                <option value="@t" selected="@(Model.Type == t.ToString())">@Badge(t).label</option>
+            }
+        </select>
+        <select name="resolved" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-xs bg-white focus:outline-none focus:border-neutral-400">
+            <option value="" selected="@(Model.Resolved == "")">All</option>
+            <option value="open" selected="@(Model.Resolved == "open")">Unresolved</option>
+            <option value="done" selected="@(Model.Resolved == "done")">Resolved</option>
+        </select>
+        <input type="date" name="dateFrom" value="@Model.DateFrom" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-xs focus:outline-none focus:border-neutral-400" />
+        <input type="date" name="dateTo" value="@Model.DateTo" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-xs focus:outline-none focus:border-neutral-400" />
+        <button type="submit" class="bg-neutral-900 text-white text-xs px-4 py-1.5 rounded-sm hover:bg-neutral-700">Filter</button>
+        <a href="@Url.Action("Index")" class="text-xs text-neutral-500 px-2 py-1.5 hover:text-neutral-800">Reset</a>
+    </div>
+</form>
+
+<div class="flex items-center justify-between mb-2">
+    <p class="text-xs text-neutral-500">@Model.TotalRows issue(s)</p>
+    @if (Model.Unresolved > 0)
+    {
+        <form method="post" action="@Url.Action("ResolveAll")" onsubmit="return confirm('Mark all matching unresolved issues as resolved?');">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="type" value="@Model.Type" />
+            <button type="submit" class="text-xs text-neutral-500 hover:text-neutral-800 underline">Mark all resolved</button>
+        </form>
+    }
+</div>
+
+<!-- Feed -->
+<div class="bg-white rounded-sm border border-neutral-100 overflow-x-auto">
+    <table class="w-full text-sm">
+        <thead>
+            <tr class="text-left text-xs text-neutral-400 uppercase tracking-wide border-b border-neutral-100">
+                <th class="px-4 py-2.5 font-medium">When</th>
+                <th class="px-4 py-2.5 font-medium">Type</th>
+                <th class="px-4 py-2.5 font-medium">What happened</th>
+                <th class="px-4 py-2.5 font-medium">Context</th>
+                <th class="px-4 py-2.5 font-medium">Customer</th>
+                <th class="px-4 py-2.5 font-medium"></th>
+            </tr>
+        </thead>
+        <tbody>
+        @if (!Model.Rows.Any())
+        {
+            <tr><td colspan="6" class="px-4 py-10 text-center text-neutral-400 text-sm">No issues 🎉 — nothing to fix right now.</td></tr>
+        }
+        @foreach (var i in Model.Rows)
+        {
+            var b = Badge(i.Type);
+            <tr class="border-b border-neutral-50 @(i.Resolved ? "opacity-50" : "")">
+                <td class="px-4 py-2.5 text-neutral-500 whitespace-nowrap">@Local(i.CreatedAt)</td>
+                <td class="px-4 py-2.5"><span class="inline-block text-xs px-2 py-0.5 rounded-full border @b.cls">@b.label</span></td>
+                <td class="px-4 py-2.5">
+                    <div class="text-neutral-800">@i.Reason.Replace("_", " ")</div>
+                    @if (!string.IsNullOrWhiteSpace(i.Message)) { <div class="text-xs text-neutral-400 max-w-md">@i.Message</div> }
+                </td>
+                <td class="px-4 py-2.5 text-xs text-neutral-500">
+                    @if (!string.IsNullOrWhiteSpace(i.ProductName)) { <div>@i.ProductName</div> }
+                    @if (!string.IsNullOrWhiteSpace(i.OrderNumber)) { <div>@i.OrderNumber</div> }
+                    @if (!string.IsNullOrWhiteSpace(i.DeviceType)) { <div class="text-neutral-400">@i.DeviceType</div> }
+                </td>
+                <td class="px-4 py-2.5 text-xs text-neutral-500">
+                    @(string.IsNullOrWhiteSpace(i.ContactEmail) ? (i.UserId == null ? "Guest / anon" : "Signed-in") : i.ContactEmail)
+                    @if (!string.IsNullOrWhiteSpace(i.ContactPhone)) { <div class="text-neutral-400">@i.ContactPhone</div> }
+                </td>
+                <td class="px-4 py-2.5 text-right whitespace-nowrap">
+                    @if (i.Resolved)
+                    {
+                        <span class="text-xs text-emerald-600">✓ resolved</span>
+                    }
+                    else
+                    {
+                        <form method="post" action="@Url.Action("Resolve")" class="inline">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@i.Id" />
+                            <input type="hidden" name="returnUrl" value="@Context.Request.Path@Context.Request.QueryString" />
+                            <button type="submit" class="text-xs text-neutral-500 hover:text-neutral-900 underline">Mark resolved</button>
+                        </form>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
+
+@if (Model.TotalPages > 1)
+{
+    <div class="flex gap-1 mt-4 justify-center">
+        @if (Model.Page > 1) { <a href="@Url.Action("Index", rd(Model.Page - 1))" class="px-3 py-1.5 text-xs border border-neutral-200 rounded-sm hover:bg-neutral-50">Prev</a> }
+        <span class="px-3 py-1.5 text-xs text-neutral-500">Page @Model.Page of @Model.TotalPages</span>
+        @if (Model.Page < Model.TotalPages) { <a href="@Url.Action("Index", rd(Model.Page + 1))" class="px-3 py-1.5 text-xs border border-neutral-200 rounded-sm hover:bg-neutral-50">Next</a> }
+    </div>
+}
+
+<p class="text-xs text-neutral-400 mt-4">Full technical stack traces for server errors live in Sentry. Spike alerts are configured under Settings → Notifications.</p>
+
+@section Scripts {
+    <partial name="_ChartScripts" />
+    <script>
+        SLCharts.area('trendChart', @Html.Raw(J(Model.Trend.Select(p => p.Label))), [
+            { label: 'Issues', data: @Html.Raw(J(Model.Trend.Select(p => p.Count))) }
+        ]);
+    </script>
+}

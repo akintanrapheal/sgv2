@@ -319,6 +319,8 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.PaymentReconci
 // One-time backfill of OrderItem.FulfilledFromStoreId for split orders fulfilled before that field
 // existed (so historical split orders show per-branch in Finance/EOD/cash-up). Self-guarding.
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.OrderItemStoreBackfillService>();
+// Customer Issues monitor: alert on spikes (email/WhatsApp) + purge old issue records.
+builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.StorefrontIssueAlertService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.LowStockAlertService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.BackInStockNotifier>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.AbandonedCartService>();
@@ -353,6 +355,8 @@ builder.Services.AddControllersWithViews()
     .AddSessionStateTempDataProvider();
 
 builder.Services.AddHttpContextAccessor();
+// Customer Issues monitor: best-effort logger (singleton; opens its own DB scope per write).
+builder.Services.AddSingleton<SterlingLams.Web.Services.IStorefrontIssueLogger, SterlingLams.Web.Services.StorefrontIssueLogger>();
 
 // ─── Output caching ───────────────────────────────────────────────────────────
 // Opt-in only: nothing is cached unless an action carries [OutputCache(PolicyName="Storefront")].
@@ -587,6 +591,10 @@ app.UseSession();
 app.UseMiddleware<SterlingLams.Web.Infrastructure.OrderAttributionMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Watch customer-facing requests for ordering problems (server errors + rejected add-to-cart) for the
+// Admin → Customer Issues monitor. After auth so the signed-in customer is known; re-throws all errors.
+app.UseMiddleware<SterlingLams.Web.Infrastructure.StorefrontIssueMiddleware>();
 
 // Record storefront page views for the Admin → Traffic dashboard (off the request path).
 app.UseMiddleware<SterlingLams.Web.Infrastructure.Traffic.TrafficMiddleware>();

@@ -74,12 +74,23 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<LabelReprintEntry> LabelReprintQueue => Set<LabelReprintEntry>();
     public DbSet<TrafficHit> TrafficHits => Set<TrafficHit>();
     public DbSet<ApiCallDaily> ApiCallDaily => Set<ApiCallDaily>();
+    public DbSet<StorefrontIssue> StorefrontIssues => Set<StorefrontIssue>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
 
         builder.Entity<ApiCallDaily>(e => e.HasIndex(x => new { x.Day, x.Label }).IsUnique());
+
+        // ─── Customer issues monitor ────────────────────────────────────────
+        // The dashboard filters/groups by time + type, the spike alerter counts a recent window per type,
+        // and the feed shows unresolved first — index for all three.
+        builder.Entity<StorefrontIssue>(e =>
+        {
+            e.HasIndex(x => x.CreatedAt);
+            e.HasIndex(x => new { x.Type, x.CreatedAt });
+            e.HasIndex(x => new { x.Resolved, x.CreatedAt });
+        });
 
         // ─── Traffic hits (Admin → Traffic analytics) ───────────────────────
         // All dashboard queries filter/group by CreatedAt; index it (+ VisitorKey for distinct counts).
