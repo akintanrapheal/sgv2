@@ -37,6 +37,7 @@ public class CheckoutController : Controller
     private readonly SterlingLams.Web.Services.IPostHogClient _posthog;
     private readonly SterlingLams.Web.Services.IRetainfulClient _retainful;
     private readonly SterlingLams.Web.Services.IOrderNotificationService _orderNotifications;
+    private readonly SterlingLams.Web.Services.IStorefrontIssueLogger _issues;
     private readonly IDataProtector _confirmTokenProtector;
 
     public CheckoutController(
@@ -62,7 +63,8 @@ public class CheckoutController : Controller
         SterlingLams.Web.Services.IZephielClient zephiel,
         SterlingLams.Web.Services.IPostHogClient posthog,
         SterlingLams.Web.Services.IRetainfulClient retainful,
-        SterlingLams.Web.Services.IOrderNotificationService orderNotifications)
+        SterlingLams.Web.Services.IOrderNotificationService orderNotifications,
+        SterlingLams.Web.Services.IStorefrontIssueLogger issues)
     {
         _db = db;
         _payment = payment;
@@ -86,6 +88,7 @@ public class CheckoutController : Controller
         _posthog = posthog;
         _retainful = retainful;
         _orderNotifications = orderNotifications;
+        _issues = issues;
         _confirmTokenProtector = dataProtection.CreateProtector("Checkout.Confirmation.v1");
     }
 
@@ -838,6 +841,10 @@ public class CheckoutController : Controller
                 have += await _stock.GetAvailableAsync(grp.Key.ProductId, grp.Key.VariantId, sid);
             if (have < need)
             {
+                await _issues.LogAsync(SterlingLams.Web.Models.Domain.StorefrontIssueType.Checkout, "sold_out_at_checkout",
+                    $"\"{grp.First().ProductName}\" sold out between adding to bag and paying.",
+                    productId: grp.Key.ProductId, productName: grp.First().ProductName,
+                    contactEmail: user.Email, context: HttpContext);
                 TempData["Error"] = $"Sorry — \"{grp.First().ProductName}\" just sold out. Please review your bag.";
                 return RedirectToAction("Index", "Cart");
             }
@@ -850,6 +857,9 @@ public class CheckoutController : Controller
             vm.DeliveryAddress?.State, vm.DeliveryAddress?.City, vm.SelectedStoreId);
         if (delayedItems.Count > 0 && !vm.TimeframeAcknowledged)
         {
+            await _issues.LogAsync(SterlingLams.Web.Models.Domain.StorefrontIssueType.Checkout, "timeframe_not_acknowledged",
+                "Checkout blocked: delivery timeframe for far-branch items wasn't acknowledged.",
+                contactEmail: user.Email, context: HttpContext);
             ModelState.AddModelError("", "Please acknowledge the delivery timeframe for items shipping from another branch.");
             return await RedisplayCheckoutAsync(vm);
         }
@@ -947,6 +957,9 @@ public class CheckoutController : Controller
         if (!result.Success)
         {
             _logger.LogError("Payment initiation failed for order {OrderNumber}: {Error}", orderNumber, result.ErrorMessage);
+            await _issues.LogAsync(SterlingLams.Web.Models.Domain.StorefrontIssueType.Payment, "paystack_init_failed",
+                $"Payment couldn't be started with the gateway: {result.ErrorMessage}",
+                orderId: order.Id, orderNumber: order.OrderNumber, contactEmail: user.Email, context: HttpContext);
 
             // In Development, bypass payment gateway and simulate a successful payment
             if (_env.IsDevelopment())
@@ -986,6 +999,9 @@ public class CheckoutController : Controller
             // Payment failed — free the reserved stock so it returns to sale.
             var failed = await _db.Orders.FirstOrDefaultAsync(o => o.OrderNumber == result.OrderNumber);
             if (failed != null) await _fulfilment.ReleaseReservationAsync(failed.Id);
+            await _issues.LogAsync(SterlingLams.Web.Models.Domain.StorefrontIssueType.Payment, "payment_not_verified",
+                "Customer returned from the gateway but the payment couldn't be verified / wasn't successful.",
+                orderId: failed?.Id, orderNumber: result.OrderNumber, context: HttpContext);
             TempData["Error"] = "Payment could not be verified. Please contact support.";
             return RedirectToAction("Index", "Cart");
         }

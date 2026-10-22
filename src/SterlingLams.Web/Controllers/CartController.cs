@@ -16,15 +16,18 @@ public class CartController : Controller
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IStockService _stock;
     private readonly IAbandonedCartCapture _abandoned;
+    private readonly IStorefrontIssueLogger _issues;
 
     public CartController(ApplicationDbContext db, IDiscountService discounts,
-        UserManager<ApplicationUser> userManager, IStockService stock, IAbandonedCartCapture abandoned)
+        UserManager<ApplicationUser> userManager, IStockService stock, IAbandonedCartCapture abandoned,
+        IStorefrontIssueLogger issues)
     {
         _db = db;
         _discounts = discounts;
         _userManager = userManager;
         _stock = stock;
         _abandoned = abandoned;
+        _issues = issues;
     }
 
     /// <summary>Keep a signed-in shopper's abandoned-cart snapshot in step with their live bag, so an
@@ -59,13 +62,22 @@ public class CartController : Controller
             .FirstOrDefaultAsync(p => p.Id == productId && p.IsActive);
 
         if (product == null)
+        {
+            await _issues.LogAsync(StorefrontIssueType.AddToCart, "product_not_found",
+                "Add-to-cart for a product that no longer exists or is inactive.", productId: productId, context: HttpContext);
             return Json(new { success = false, message = "Product not found." });
+        }
 
         // Combined stock across all active branches is the ceiling (online fulfilment can
         // pull from any branch). StoreInventory is per-product, same as the POS ledger.
         var available = await CombinedAvailableAsync(productId, variantId);
         if (available <= 0)
+        {
+            await _issues.LogAsync(StorefrontIssueType.AddToCart, "out_of_stock",
+                "Customer tried to add an out-of-stock item to the bag.",
+                productId: productId, productName: product.Name, context: HttpContext);
             return Json(new { success = false, message = "This item is out of stock." });
+        }
 
         var cart = await GetCartAsync();
         var existing = cart.Items.FirstOrDefault(i => i.ProductId == productId && i.VariantId == variantId);
