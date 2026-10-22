@@ -729,8 +729,16 @@ public class CheckoutController : Controller
             }
         }
 
+        // Reuse a pending unpaid order from a retry instead of creating a duplicate. When a customer's
+        // payment fails or is abandoned and they try again, each attempt otherwise makes a new order row
+        // (the "two Cancelled + one Paid for one purchase" clutter). If this same customer has a recent,
+        // still-pending unpaid online order for the SAME items, we reuse that row below — all other fields
+        // are overwritten with this attempt's values. Staff/pay-later flows never reuse. See the transplant
+        // where the order is saved. Reuse keeps the existing order number (doesn't burn a new one).
+        var reuse = placedByStaff ? null : await FindReusablePendingOrderAsync(_db, user.Id, cart);
+
         // Build order — short sequential number, e.g. SL-30012.
-        var orderNumber = await _orderNumbers.NextAsync(OrderChannel.Online);
+        var orderNumber = reuse?.OrderNumber ?? await _orderNumbers.NextAsync(OrderChannel.Online);
 
         // Capture THIS order's buyer name/phone so a shared account (e.g. customer-care shell email used
         // for many different buyers) never makes an order show the wrong person. Prefer what was typed at
@@ -846,12 +854,47 @@ public class CheckoutController : Controller
             return await RedisplayCheckoutAsync(vm);
         }
 
-        _db.Orders.Add(order);
-        await _db.SaveChangesAsync();
+        if (reuse != null)
+        {
+            // Retry of a still-pending unpaid order for the same items: copy this attempt's values onto the
+            // existing row (keep its id / order number / created date) instead of inserting a duplicate.
+            reuse.PlacedByStaffUserId = order.PlacedByStaffUserId;
+            reuse.PlacedByStaffName = order.PlacedByStaffName;
+            reuse.ContactName = order.ContactName;
+            reuse.ContactPhone = order.ContactPhone;
+            reuse.FulfillmentType = order.FulfillmentType;
+            reuse.PickupStoreId = order.PickupStoreId;
+            reuse.DeliveryAddressId = order.DeliveryAddressId;
+            reuse.Notes = order.Notes;
+            reuse.WhatsAppOptIn = order.WhatsAppOptIn;
+            reuse.Subtotal = order.Subtotal;
+            reuse.DeliveryFee = order.DeliveryFee;
+            reuse.DeliveryType = order.DeliveryType;
+            reuse.DiscountCode = order.DiscountCode;
+            reuse.DiscountAmount = order.DiscountAmount;
+            reuse.LoyaltyPointsRedeemed = order.LoyaltyPointsRedeemed;
+            reuse.LoyaltyDiscount = order.LoyaltyDiscount;
+            reuse.GiftCardCode = order.GiftCardCode;
+            reuse.GiftCardAmount = order.GiftCardAmount;
+            reuse.Total = order.Total;
+            _db.OrderItems.RemoveRange(reuse.Items);
+            reuse.Items = order.Items;          // the freshly-built lines (not yet tracked)
+            order = reuse;
+            await _db.SaveChangesAsync();
 
-        SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
-            $"Order placed by customer ({(order.FulfillmentType == FulfillmentType.StorePickup ? "store pickup" : "delivery")}). Awaiting payment.");
-        await _db.SaveChangesAsync();
+            SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
+                "Customer retried checkout — reused this pending order instead of creating a new one. Awaiting payment.");
+            await _db.SaveChangesAsync();
+        }
+        else
+        {
+            _db.Orders.Add(order);
+            await _db.SaveChangesAsync();
+
+            SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id,
+                $"Order placed by customer ({(order.FulfillmentType == FulfillmentType.StorePickup ? "store pickup" : "delivery")}). Awaiting payment.");
+            await _db.SaveChangesAsync();
+        }
 
         try { await _audit.LogAsync("Order", "Order", order.Id.ToString(), $"Online order placed {order.OrderNumber} — ₦{order.Total:N0}"); } catch { }
 
@@ -1145,6 +1188,32 @@ public class CheckoutController : Controller
                 .SendPurchaseAsync(order, HttpContext, cts.Token);
         }
         catch { /* analytics must never break the confirmation page */ }
+    }
+
+    // A stable fingerprint of a set of order/cart lines: sorted "product:variant:qty". Two carts with the
+    // same products, variants and quantities produce the same signature regardless of order.
+    private static string CartSignature(IEnumerable<(int pid, int? vid, int qty)> items) =>
+        string.Join("|", items
+            .Select(x => $"{x.pid}:{(x.vid?.ToString() ?? "-")}:{x.qty}")
+            .OrderBy(s => s, StringComparer.Ordinal));
+
+    // Finds a recent, still-pending unpaid online order for this customer whose lines match the current
+    // cart exactly — i.e. the same purchase being retried after a failed/abandoned payment. Returns null if
+    // there's no such order (then a fresh one is created). Excludes paid, cancelled, staff/pay-later and
+    // voided orders so we only ever reuse a live, customer-placed attempt that's still awaiting payment.
+    internal static async Task<Models.Domain.Order?> FindReusablePendingOrderAsync(ApplicationDbContext _db, string userId, CartViewModel cart)
+    {
+        if (string.IsNullOrEmpty(userId) || cart.Items.Count == 0) return null;
+        var sig = CartSignature(cart.Items.Select(i => (i.ProductId, i.VariantId, i.Quantity)));
+        var cutoff = DateTime.UtcNow.AddHours(-24);
+        var candidates = await _db.Orders.Include(o => o.Items)
+            .Where(o => o.UserId == userId && o.Channel == OrderChannel.Online
+                && !o.IsPaid && o.Status == OrderStatus.Pending
+                && o.PlacedByStaffUserId == null && o.VoidedAt == null
+                && o.CreatedAt >= cutoff)
+            .OrderByDescending(o => o.CreatedAt).Take(10).ToListAsync();
+        return candidates.FirstOrDefault(o =>
+            CartSignature(o.Items.Select(i => (i.ProductId, i.ProductVariantId, i.Quantity))) == sig);
     }
 
     // Cart is persisted in a durable 30-day cookie (see CartStore), not volatile server session,
