@@ -1304,7 +1304,9 @@ public class FinanceController : AdminBaseController
                 Packed = i.Order.PackedAt != null || i.Order.PickupReadyEmailedAt != null,
                 i.Order.Total, i.Order.DeliveryFee
             }).ToListAsync();
-        var webByStore = new Dictionary<int?, (int Orders, decimal Amt, int Packed, decimal PackedAmt, int Await, decimal AwaitAmt)>();
+        // A Dictionary can't key on null; an online / unassigned supplier is null, so use a sentinel key.
+        const int NoStore = int.MinValue;
+        var webByStore = new Dictionary<int, (int Orders, decimal Amt, int Packed, decimal PackedAmt, int Await, decimal AwaitAmt)>();
         foreach (var og in webItemRows.GroupBy(x => x.OrderId))
         {
             var head = og.First();
@@ -1312,11 +1314,12 @@ public class FinanceController : AdminBaseController
             var items = og.Select(i => new ItemSplit("", null, null, i.Quantity, i.UnitPrice, i.FulfilledFromStoreId)).ToList();
             foreach (var p in SplitByStore(items, head.Fallback, merch))
             {
-                var c = webByStore.GetValueOrDefault(p.StoreId);
+                var key = p.StoreId ?? NoStore;
+                var c = webByStore.GetValueOrDefault(key);
                 c.Orders++; c.Amt += p.Net;
                 if (head.Packed) { c.Packed++; c.PackedAmt += p.Net; }
                 else { c.Await++; c.AwaitAmt += p.Net; }
-                webByStore[p.StoreId] = c;
+                webByStore[key] = c;
             }
         }
 
@@ -1338,7 +1341,7 @@ public class FinanceController : AdminBaseController
         var sids = orderRows.Select(o => o.Sid)
             .Concat(refRows.Select(r => r.Sid))
             .Concat(expRows.Select(e => e.StoreId))
-            .Concat(webByStore.Keys)           // branches that supplied website goods (may not be a money-home)
+            .Concat(webByStore.Keys.Select(k => k == NoStore ? (int?)null : k))  // branches that supplied website goods (may not be a money-home)
             .Concat(itemRows.Select(i => i.Sid))
             .Distinct().ToList();
         // When filtering to one branch, show only that branch's row (it may appear via supply, not money-home).
@@ -1361,7 +1364,7 @@ public class FinanceController : AdminBaseController
 
             // Operational & cash-flow figures. Website sales are the per-supplier figure (webByStore):
             // what this branch actually packed, not the orders whose payment landed here.
-            var web = webByStore.GetValueOrDefault(sid);
+            var web = webByStore.GetValueOrDefault(sid ?? NoStore);
             var ccontribs = contribs.Where(m => m.Sid == sid).ToList();
             var items = itemRows.Where(i => i.Sid == sid).ToList();
             var ssns = sessions.Where(x => x.Sid == sid).ToList();
@@ -1814,11 +1817,15 @@ public class FinanceController : AdminBaseController
         // each item (OrderItem.FulfilledFromStoreId), matching the EPOS cash-up and Completed Transactions,
         // so a branch that packs goods for another branch's order sees those sales. The transaction count
         // and delivery fee stay with the branch that collected payment (the online till / pickup store).
-        var acc = new Dictionary<int?, (int Count, decimal Gross, decimal Delivery)>();
+        // A Dictionary can't key on null, and an online / unassigned order has no store (null) — so use a
+        // sentinel key for it and map back to null when building the rows.
+        const int NoStore = int.MinValue;
+        var acc = new Dictionary<int, (int Count, decimal Gross, decimal Delivery)>();
         void Add(int? sid, int count, decimal gross, decimal delivery)
         {
-            var c = acc.GetValueOrDefault(sid);
-            acc[sid] = (c.Count + count, c.Gross + gross, c.Delivery + delivery);
+            var key = sid ?? NoStore;
+            var c = acc.GetValueOrDefault(key);
+            acc[key] = (c.Count + count, c.Gross + gross, c.Delivery + delivery);
         }
         var posByStore = await paid.Where(o => o.Channel != OrderChannel.Online)
             .GroupBy(o => o.PickupStoreId ?? o.FulfillingStoreId)
@@ -1842,13 +1849,16 @@ public class FinanceController : AdminBaseController
         string StoreLabel(int? id) =>
             id.HasValue && storeName.ContainsKey(id.Value) ? storeName[id.Value] : "Online / unassigned";
 
-        var byStore = acc.Select(kv => new StorePoint(
-                StoreLabel(kv.Key), kv.Key, kv.Value.Count, kv.Value.Gross + kv.Value.Delivery,
-                refStoreMap.GetValueOrDefault(kv.Key ?? -1, 0), kv.Value.Delivery))
+        var byStore = acc.Select(kv =>
+            {
+                int? sid = kv.Key == NoStore ? (int?)null : kv.Key;
+                return new StorePoint(StoreLabel(sid), sid, kv.Value.Count, kv.Value.Gross + kv.Value.Delivery,
+                    refStoreMap.GetValueOrDefault(sid ?? -1, 0), kv.Value.Delivery);
+            })
             .ToList();
         // A branch can have refunds in the window without any sales in it (the by-day table already
         // handles that case). Without this its refunds appeared in the headline but nowhere here.
-        foreach (var r in refByStore.Where(r => !acc.ContainsKey(r.StoreId)))
+        foreach (var r in refByStore.Where(r => !acc.ContainsKey(r.StoreId ?? NoStore)))
             byStore.Add(new StorePoint(StoreLabel(r.StoreId), r.StoreId, 0, 0, r.Refunds, 0));
         byStore = byStore.OrderByDescending(s => s.Gross).ThenByDescending(s => s.Refunds).ToList();
 

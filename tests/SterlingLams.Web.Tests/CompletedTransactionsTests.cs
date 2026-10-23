@@ -290,6 +290,57 @@ public class CompletedTransactionsTests
     }
 
     [Fact]
+    public async Task Overview_by_branch_handles_online_order_with_no_store()
+    {
+        // Regression: an online / unassigned order has no store (null). The per-branch Overview keyed a
+        // Dictionary on int? and a null key throws ArgumentNullException — crashing Finance → Overview.
+        using var t = new TestDb();
+        var u = t.SeedUser();
+        var p = t.SeedProduct(5000m);
+        t.Db.Orders.Add(new Order
+        {
+            OrderNumber = "W-NOSTORE", UserId = u.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.Delivery, PickupStoreId = null, FulfillingStoreId = null,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = DateTime.UtcNow, PackedAt = DateTime.UtcNow,
+            Currency = "NGN", Subtotal = 5000m, DeliveryFee = 1000m, Total = 6000m,
+            Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 5000m } }
+        });
+        await t.Db.SaveChangesAsync();
+
+        var ctrl = new FinanceController(t.Db, null!, null!, null!, null!);
+        var from = DateTime.UtcNow.AddDays(-1).ToString("yyyy-MM-dd");
+        var to = DateTime.UtcNow.AddDays(1).ToString("yyyy-MM-dd");
+        var result = await ctrl.Statement(from, to, null, null, null);   // Statement reuses BuildAsync (by-branch)
+        var vm = (FinanceController.FinanceVm)((ViewResult)result).ViewData.Model!;
+
+        Assert.Contains(vm.ByStore, s => s.StoreId == null);   // online/unassigned row present, no crash
+    }
+
+    [Fact]
+    public async Task EndOfDay_handles_online_order_with_no_store()
+    {
+        using var t = new TestDb();
+        var u = t.SeedUser();
+        var p = t.SeedProduct(5000m);
+        t.Db.Orders.Add(new Order
+        {
+            OrderNumber = "W-EOD-NOSTORE", UserId = u.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.Delivery, PickupStoreId = null, FulfillingStoreId = null,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = DateTime.UtcNow, PackedAt = DateTime.UtcNow,
+            Currency = "NGN", Subtotal = 5000m, DeliveryFee = 1000m, Total = 6000m,
+            Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 5000m } }
+        });
+        await t.Db.SaveChangesAsync();
+
+        var ctrl = new FinanceController(t.Db, null!, null!, null!, null!);
+        var day = DateTime.UtcNow.AddHours(1).ToString("yyyy-MM-dd");
+        var result = await ctrl.EndOfDay(day, null);
+        var vm = (FinanceController.EndOfDayVm)((ViewResult)result).ViewData.Model!;
+
+        Assert.Contains(vm.Rows, r => r.StoreId == null);   // online/unassigned row present, no crash
+    }
+
+    [Fact]
     public async Task Paid_but_unpacked_website_order_does_not_appear()
     {
         using var t = new TestDb();
