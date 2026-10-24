@@ -2462,7 +2462,7 @@ public class PosController : Controller
                 // variant picker and what's actually charged when added to the sale. Simple products keep
                 // the PosPrice-or-website-price fallback.
                 price = (p.ProductType == "variable" && p.Variants.Any(v => v.IsActive))
-                        ? p.Variants.Where(v => v.IsActive).Min(v => v.PosPrice ?? v.Price ?? p.Price)
+                        ? p.Variants.Where(v => v.IsActive).Min(v => v.PosPrice ?? v.Price ?? p.PosPrice ?? p.Price)
                         : (p.PosPrice ?? (p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
                         && (p.SaleStartsAt == null || p.SaleStartsAt <= DateTime.UtcNow)
                         && (p.SaleEndsAt == null || p.SaleEndsAt >= DateTime.UtcNow)
@@ -2471,7 +2471,7 @@ public class PosController : Controller
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
                 variants = p.ProductType == "variable"
                     ? p.Variants.Where(v => v.IsActive)
-                        .Select(v => new { id = v.Id, name = v.Name, price = v.PosPrice ?? v.Price, imageUrl = v.ImageUrl }).ToList()
+                        .Select(v => new { id = v.Id, name = v.Name, price = v.PosPrice ?? v.Price ?? p.PosPrice ?? p.Price, imageUrl = v.ImageUrl }).ToList()
                     : null
             })
             .ToListAsync();
@@ -2586,7 +2586,7 @@ public class PosController : Controller
                 // variant picker and what's actually charged when added to the sale. Simple products keep
                 // the PosPrice-or-website-price fallback.
                 price = (p.ProductType == "variable" && p.Variants.Any(v => v.IsActive))
-                        ? p.Variants.Where(v => v.IsActive).Min(v => v.PosPrice ?? v.Price ?? p.Price)
+                        ? p.Variants.Where(v => v.IsActive).Min(v => v.PosPrice ?? v.Price ?? p.PosPrice ?? p.Price)
                         : (p.PosPrice ?? (p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
                         && (p.SaleStartsAt == null || p.SaleStartsAt <= DateTime.UtcNow)
                         && (p.SaleEndsAt == null || p.SaleEndsAt >= DateTime.UtcNow)
@@ -2595,7 +2595,7 @@ public class PosController : Controller
                         ?? p.Images.Select(i => i.Url).FirstOrDefault(),
                 variants = p.ProductType == "variable"
                     ? p.Variants.Where(v => v.IsActive)
-                        .Select(v => new { id = v.Id, name = v.Name, barcode = v.Barcode, price = v.PosPrice ?? v.Price, imageUrl = v.ImageUrl }).ToList()
+                        .Select(v => new { id = v.Id, name = v.Name, barcode = v.Barcode, price = v.PosPrice ?? v.Price ?? p.PosPrice ?? p.Price, imageUrl = v.ImageUrl }).ToList()
                     : null
             })
             .ToListAsync();
@@ -2661,7 +2661,7 @@ public class PosController : Controller
                 // variant picker and what's actually charged when added to the sale. Simple products keep
                 // the PosPrice-or-website-price fallback.
                 price = (p.ProductType == "variable" && p.Variants.Any(v => v.IsActive))
-                        ? p.Variants.Where(v => v.IsActive).Min(v => v.PosPrice ?? v.Price ?? p.Price)
+                        ? p.Variants.Where(v => v.IsActive).Min(v => v.PosPrice ?? v.Price ?? p.PosPrice ?? p.Price)
                         : (p.PosPrice ?? (p.SalePrice != null && p.SalePrice > 0 && p.SalePrice < p.Price
                         && (p.SaleStartsAt == null || p.SaleStartsAt <= DateTime.UtcNow)
                         && (p.SaleEndsAt == null || p.SaleEndsAt >= DateTime.UtcNow)
