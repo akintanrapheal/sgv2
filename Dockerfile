@@ -39,7 +39,10 @@ WORKDIR /app
 # runs in UTC, so DateTime.ToLocalTime() would render times 1 hour behind. Install the
 # IANA zone database (tzdata) and set TZ so the process-wide local zone is WAT — this
 # makes every ToLocalTime() display the correct local clock. (Storage stays UTC.)
-RUN apt-get update && apt-get install -y --no-install-recommends tzdata libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/*
+# ca-certificates is installed (and thus upgraded to the latest bundle on each rebuild) so the trust
+# store stays current — e.g. distrusting the compromised eMudhra intermediate CAs — for the app's
+# outbound HTTPS (Paystack, R2, Twilio, SMTP, …). Rebuild (clear cache) after a CA advisory.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata libgssapi-krb5-2 && update-ca-certificates && rm -rf /var/lib/apt/lists/*
 ENV TZ=Africa/Lagos
 
 # Non-root user for security. The .NET runtime images already ship a pre-created

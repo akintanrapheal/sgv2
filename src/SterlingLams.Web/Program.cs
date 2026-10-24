@@ -423,13 +423,21 @@ app.UseHttpsRedirection();
 // an alias host, and a 301 there would read as unhealthy and 502 the service.
 app.Use(async (context, next) =>
 {
-    var wwwHost = "www." + new Uri(SterlingLams.Web.Infrastructure.SeoUrl.Base).Host; // e.g. www.sterlinglams.com
+    var baseUri = new Uri(SterlingLams.Web.Infrastructure.SeoUrl.Base);
+    var wwwHost = "www." + baseUri.Host; // e.g. www.sterlinglams.com
     if (context.Request.Host.Host.Equals(wwwHost, StringComparison.OrdinalIgnoreCase)
         && !context.Request.Path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase))
     {
-        context.Response.Redirect(
-            SterlingLams.Web.Infrastructure.SeoUrl.Base + context.Request.Path + context.Request.QueryString,
-            permanent: true);
+        // Redirect to the SAME path on the canonical apex host. Build the target with the scheme + host
+        // pinned to our base so the (user-controlled) path/query are only ever the path/query — they can
+        // never turn this into an off-site redirect (closes CodeQL cs/web/unvalidated-url-redirection).
+        var target = new UriBuilder(baseUri.Scheme, baseUri.Host)
+        {
+            Path = context.Request.Path.Value ?? "/",
+            Query = context.Request.QueryString.Value?.TrimStart('?') ?? string.Empty
+        };
+        if (!baseUri.IsDefaultPort) target.Port = baseUri.Port;
+        context.Response.Redirect(target.Uri.AbsoluteUri, permanent: true);
         return;
     }
     await next();
