@@ -75,7 +75,11 @@
                         <div class="text-neutral-600 mt-1">@(string.IsNullOrWhiteSpace(r.Place) ? "—" : r.Place)</div>
                         @if (r.IsDelivery && !string.IsNullOrWhiteSpace(r.DeliveryType))
                         {
-                            <div class="text-[11px] text-neutral-400">@r.DeliveryType</div>
+                            <div class="text-[11px] text-neutral-400">@(r.DeliveryType!.Trim().ToLowerInvariant() switch {
+                                "express" or "priority" => "Priority",
+                                "same-day" or "sameday" or "same day" => "Same-Day",
+                                "standard" => "Standard",
+                                _ => r.DeliveryType })</div>
                         }
                     </td>
                     <td class="px-4 py-3 text-neutral-600">@(string.IsNullOrWhiteSpace(r.Branch) ? "—" : r.Branch)</td>
