@@ -18,11 +18,17 @@ public class PosPricingTests
         await t.Db.Products.Where(x => x.IsActive && !x.HiddenFromPos && x.Id == productId)
             .Select(x => (decimal?)(
                 (x.ProductType == "variable" && x.Variants.Any(v => v.IsActive))
-                    ? x.Variants.Where(v => v.IsActive).Min(v => v.PosPrice ?? v.Price ?? x.Price)
+                    ? x.Variants.Where(v => v.IsActive).Min(v => v.PosPrice ?? v.Price ?? x.PosPrice ?? x.Price)
                     : (x.PosPrice ?? (x.SalePrice != null && x.SalePrice > 0 && x.SalePrice < x.Price
                             && (x.SaleStartsAt == null || x.SaleStartsAt <= DateTime.UtcNow)
                             && (x.SaleEndsAt == null || x.SaleEndsAt >= DateTime.UtcNow)
                         ? x.SalePrice.Value : x.Price))))
+            .SingleAsync();
+
+    // Mirrors the EPOS variant-picker price projection in PosController — must equal PosCharge.
+    private static async Task<decimal?> VariantPickerPriceAsync(TestDb t, int variantId) =>
+        await t.Db.ProductVariants.Where(v => v.Id == variantId)
+            .Select(v => (decimal?)(v.PosPrice ?? v.Price ?? v.Product.PosPrice ?? v.Product.Price))
             .SingleAsync();
 
     private static Category SeedCategory(TestDb t, string name)
@@ -79,6 +85,38 @@ public class PosPricingTests
         var variant = p.Variants.Single();
         Assert.Equal(6950m, SterlingLams.Web.Controllers.PosController.PosCharge(p, variant)); // regular, not sale
         Assert.Equal(await CardPriceAsync(t, p.Id), SterlingLams.Web.Controllers.PosController.PosCharge(p, variant)); // card == charge
+    }
+
+    [Fact]
+    public async Task Variant_picker_shows_each_variant_charged_price_not_the_cheapest_variant()
+    {
+        // Regression (Plain Gold Band Ring): every variant is the product's ₦11,950 except ONE odd variant
+        // with a ₦7,500 EPOS price. The picker projected `v.PosPrice ?? v.Price` → null for the normal
+        // variants, so the till showed the card's "from ₦7,500" for EVERY variant while charging ₦11,950 —
+        // a customer saw ₦7,500 but was billed ₦11,950. The picker price must equal what each variant charges.
+        using var t = new TestDb();
+        var cat = SeedCategory(t, "Rings");
+        var p = new Product
+        {
+            Name = "Plain Gold Band Ring", Slug = "plain-gold-band-ring", ProductType = "variable",
+            IsActive = true, CategoryId = cat.Id, Price = 11950m, PosPrice = null,
+            Variants =
+            {
+                new ProductVariant { Name = "9 / Gold", IsActive = true },                   // no own price
+                new ProductVariant { Name = "5-5 / Silver", IsActive = true, PosPrice = 7500m } // the odd one
+            }
+        };
+        t.Db.Products.Add(p);
+        await t.Db.SaveChangesAsync();
+
+        var normal = p.Variants.Single(v => v.Name == "9 / Gold");
+        var odd = p.Variants.Single(v => v.Name.StartsWith("5-5"));
+
+        Assert.Equal(11950m, await VariantPickerPriceAsync(t, normal.Id));   // shows its own price, not ₦7,500
+        Assert.Equal(7500m, await VariantPickerPriceAsync(t, odd.Id));
+        // Display == charge for every variant.
+        Assert.Equal(SterlingLams.Web.Controllers.PosController.PosCharge(p, normal), await VariantPickerPriceAsync(t, normal.Id));
+        Assert.Equal(SterlingLams.Web.Controllers.PosController.PosCharge(p, odd), await VariantPickerPriceAsync(t, odd.Id));
     }
 
     [Fact]
