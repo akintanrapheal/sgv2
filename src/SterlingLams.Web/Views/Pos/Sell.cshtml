@@ -3115,6 +3115,18 @@
 
     const money = n => '₦' + Math.round(n || 0).toLocaleString();
     const esc = s => (s == null ? '' : String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])));
+    // Customer-facing delivery label. The stored value is still "Express"; the website now calls it "Priority".
+    const deliveryLabel = t => {
+        switch ((t || '').toString().trim().toLowerCase()) {
+            case 'express':
+            case 'priority':  return 'Priority';
+            case 'same-day':
+            case 'sameday':
+            case 'same day':  return 'Same-Day';
+            case 'standard':  return 'Standard';
+            default:          return t || '';
+        }
+    };
     function toast(msg) {
         if (window.showToast) { window.showToast(msg); return; }
         const t = document.createElement('div');
@@ -3372,7 +3384,7 @@
             detailView.innerHTML = `
                 <div class="max-w-2xl mx-auto p-4 space-y-4">
                     <div class="flex items-center justify-between">
-                        <span class="text-xs uppercase tracking-wide text-neutral-400">${esc(d.fulfillmentType)}${d.deliveryType ? ' · ' + esc(d.deliveryType) : ''} · ${esc(d.status)}</span>
+                        <span class="text-xs uppercase tracking-wide text-neutral-400">${esc(d.fulfillmentType)}${d.deliveryType ? ' · ' + esc(deliveryLabel(d.deliveryType)) : ''} · ${esc(d.status)}</span>
                         <span class="text-sm font-semibold text-neutral-800">${money(d.total)}</span>
                     </div>
                     ${placed ? `<p class="text-[11px] text-neutral-400 -mt-2">Placed ${placed}</p>` : ''}
@@ -3380,7 +3392,7 @@
                         <p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-1">Items</p>
                         ${items}
                         <div class="flex justify-between text-xs text-neutral-500 pt-2"><span>Subtotal</span><span>${money(d.subtotal)}</span></div>
-                        <div class="flex justify-between text-xs text-neutral-500"><span>Delivery${d.deliveryType ? ' (' + esc(d.deliveryType) + ')' : ''}</span><span>${money(d.deliveryFee)}</span></div>
+                        <div class="flex justify-between text-xs text-neutral-500"><span>Delivery${d.deliveryType ? ' (' + esc(deliveryLabel(d.deliveryType)) + ')' : ''}</span><span>${money(d.deliveryFee)}</span></div>
                         <div class="flex justify-between text-sm font-semibold text-neutral-800 pt-1"><span>Total</span><span>${money(d.total)}</span></div>
                     </div>
                     ${incomingHtml ? `<div class="space-y-2"><p class="text-[10px] uppercase tracking-wide text-neutral-400">Arriving to merge</p>${incomingHtml}</div>` : ''}
@@ -3447,7 +3459,7 @@
             detailView.innerHTML = `
                 <div class="max-w-2xl mx-auto p-4 space-y-4">
                     <div class="flex items-center justify-between">
-                        <span class="text-xs uppercase tracking-wide text-neutral-400">Send${d.deliveryType ? ' · ' + esc(d.deliveryType) : ''} · ${esc(d.status)}</span>
+                        <span class="text-xs uppercase tracking-wide text-neutral-400">Send${d.deliveryType ? ' · ' + esc(deliveryLabel(d.deliveryType)) : ''} · ${esc(d.status)}</span>
                         <span class="text-sm font-semibold text-indigo-700">↥ ${esc(d.toStore)}</span>
                     </div>
                     <div class="border border-neutral-200 rounded-xl p-3">
@@ -3457,7 +3469,7 @@
                     ${timeline}
                     <div class="border border-neutral-200 rounded-xl p-3 flex items-center justify-between">
                         <div><p class="text-[10px] uppercase tracking-wide text-neutral-400 mb-0.5">${d.fulfillmentType === 'StorePickup' ? 'Collection' : 'Delivery option'}</p>
-                        <p class="text-sm text-neutral-800">${d.fulfillmentType === 'StorePickup' ? 'Store pickup' + (d.toStore ? ' · ' + esc(d.toStore) : '') : (d.deliveryType ? esc(d.deliveryType) : 'Standard')}</p></div>
+                        <p class="text-sm text-neutral-800">${d.fulfillmentType === 'StorePickup' ? 'Store pickup' + (d.toStore ? ' · ' + esc(d.toStore) : '') : (d.deliveryType ? esc(deliveryLabel(d.deliveryType)) : 'Standard')}</p></div>
                         ${d.fulfillmentType === 'StorePickup' && d.orderId
                             ? `<a href="${window.__posBase}/PackedOrderPrint/${d.orderId}" target="_blank" class="text-xs text-brand-600 underline">Packing slip</a>`
                             : (d.manifestUrl ? `<a href="${esc(d.manifestUrl)}" target="_blank" class="text-xs text-brand-600 underline">Print manifest</a>` : '')}
