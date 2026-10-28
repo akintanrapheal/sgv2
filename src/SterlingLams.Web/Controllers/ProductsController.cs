@@ -29,6 +29,9 @@ public class ProductsController : Controller
         _cache = cache;
     }
 
+    // Cached colour facet + price ceiling for a listing scope (see Index). One cache entry per scope.
+    private sealed record ProductFacetData(decimal MaxCatalogPrice, List<ColorFacet> Colors);
+
     // GET /products
     [Microsoft.AspNetCore.OutputCaching.OutputCache(PolicyName = "Storefront")]
     public async Task<IActionResult> Index(ProductFilterViewModel filters, int page = 1, int pageSize = 24)
@@ -190,17 +193,31 @@ public class ProductsController : Controller
         }) ?? new();
 
         // Colour facet (from the variants' "Colour" attribute) + the price-slider ceiling, both over the
-        // page scope so they stay stable as the shopper toggles colour/price.
-        filters.MaxCatalogPrice = await DbRead.RetryAsync(() => facetScope.Select(p => (decimal?)p.Price).MaxAsync()) ?? 0m;
-        filters.AvailableColors = await DbRead.RetryAsync(() => (
-            from p in facetScope
-            from v in p.Variants
-            where v.IsActive
-            from av in v.AttributeValues
-            where av.Attribute.Name.ToLower().StartsWith("colo")
-            group p.Id by new { av.Value, av.ColorHex } into g
-            select new ColorFacet { Value = g.Key.Value, Hex = g.Key.ColorHex, Count = g.Distinct().Count() }
-        ).OrderByDescending(f => f.Count).ThenBy(f => f.Value).ToListAsync());
+        // page scope so they stay stable as the shopper toggles colour/price. Like the category nav above,
+        // these are HEAVY — a GROUP BY across Products×Variants×AttributeValues, plus a MAX over the scope —
+        // and they depend only on the facet scope (hide-OOS + search + category), NOT on the sidebar filters
+        // (colour/price/stock) or the page number. A crawl hitting thousands of unique filter/page URLs
+        // otherwise reran both on EVERY request (top Sentry "Slow DB Query" + the 2026-10-28 outage). Cache
+        // per scope for a few minutes so each is computed once per window; the list can lag a few minutes,
+        // which is fine for a filter sidebar.
+        var facetKey = $"facet:v1:{hideOos}:{filters.Search?.Trim().ToLowerInvariant()}:{filters.Category?.Trim().ToLowerInvariant()}";
+        var facetData = await _cache.GetOrCreateAsync(facetKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
+            var maxPrice = await DbRead.RetryAsync(() => facetScope.Select(p => (decimal?)p.Price).MaxAsync()) ?? 0m;
+            var colors = await DbRead.RetryAsync(() => (
+                from p in facetScope
+                from v in p.Variants
+                where v.IsActive
+                from av in v.AttributeValues
+                where av.Attribute.Name.ToLower().StartsWith("colo")
+                group p.Id by new { av.Value, av.ColorHex } into g
+                select new ColorFacet { Value = g.Key.Value, Hex = g.Key.ColorHex, Count = g.Distinct().Count() }
+            ).OrderByDescending(f => f.Count).ThenBy(f => f.Value).ToListAsync());
+            return new ProductFacetData(maxPrice, colors);
+        }) ?? new ProductFacetData(0m, new());
+        filters.MaxCatalogPrice = facetData.MaxCatalogPrice;
+        filters.AvailableColors = facetData.Colors;
 
         // Page heading: the category being viewed (real category name, or the menu-group label for an
         // "All <group>" page like Jewelry/Accessories), else the search term, else the "New In" listing,
