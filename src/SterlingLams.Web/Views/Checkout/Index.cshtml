@@ -573,7 +573,7 @@ function onAreaChanged() {
     var fp = PRICING.fromPrices || {};
     if (en.express)  opts.push({ type: 'Express',  label: 'Glams Priority Delivery', fee: z.expressFee,  timeframe: 'within 48 hrs',      from: fp.express  });
     if (en.standard) opts.push({ type: 'Standard', label: 'Glams Standard Delivery', fee: z.standardFee, timeframe: '3 - 5 working days', from: fp.standard });
-    var sd = sameDayOptionFor(key, z);   // Lagos/Abuja only, when the whole order is in local stock
+    var sd = sameDayOptionFor(key, z);   // Lagos/Abuja/Oyo, when the whole order is in local stock
     if (sd) opts.unshift(sd);
     renderDeliveryOptions(opts, key, z.name);
 }
@@ -590,7 +590,7 @@ function nationalOptions() {
 function sameDayOptionFor(key, z) {
     var sd = PRICING.sameDay;
     if (!sd || !sd.enabled) return null;
-    var city = key === 'Lagos' ? sd.lagos : (key === 'Abuja' ? sd.abuja : null);
+    var city = key === 'Lagos' ? sd.lagos : (key === 'Abuja' ? sd.abuja : (key === 'Oyo' ? sd.oyo : null));
     if (!city || !city.available) return null;
     if (!z || !(z.sameDayFee > 0)) return null;   // a zone with no same-day fee isn't offered
     return {
