@@ -39,7 +39,7 @@ public class DeliveryZoneServiceTests
 
         // Local metro Standard rate, NOT the ₦7,500 national flat.
         Assert.Equal(2500m, await svc.CalculateFeeAsync(state, area, "Standard"));
-        Assert.Equal(0m, await svc.SameDayFeeAsync(state, area)); // no local same-day for Oyo
+        Assert.True(await svc.SameDayFeeAsync(state, area) > 0m); // Ibadan metro now offers same-day too
     }
 
     // The checkout UI (PRICING.zones) + the area dropdown are built from the CUSTOMER zones, so now that

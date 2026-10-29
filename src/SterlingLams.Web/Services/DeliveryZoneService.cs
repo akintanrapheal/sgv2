@@ -403,8 +403,9 @@ public class DeliveryZoneService
 
         // Oyo/Ibadan local zones — live now that OyoLocalDeliveryEnabled is true and the Ibadan branch is
         // open. These are the built-in FALLBACK rates; prod uses whatever is saved in Admin → Delivery Zones,
-        // which overrides them. Same-day is not offered for Oyo (SameDayFee stays 0).
-        new() { State = "Oyo", Name = "Ibadan metro", StandardFee = 2500, ExpressFee = 4000,
+        // which overrides them. Ibadan metro offers same-day too (like Lagos/Abuja); Greater Oyo does not
+        // (too far from the branch), so its SameDayFee stays 0.
+        new() { State = "Oyo", Name = "Ibadan metro", StandardFee = 2500, ExpressFee = 4000, SameDayFee = 5000,
             Areas = new() { "Bodija", "Dugbe", "Mokola", "Ring Road", "Challenge", "Iwo Road", "Agodi", "Jericho", "Jericho GRA", "University of Ibadan", "UI", "Samonda", "Sango", "Bashorun", "Akobo", "Ojoo", "Apata", "Eleyele", "Oluyole", "Molete", "Gate", "Orita Challenge", "Monatan", "Ojurin", "Agbowo", "Poly Ibadan", "Yemetu", "Beere", "Oke-Ado", "Felele", "New Garage", "Idi-Ape", "Basorun", "Adamasingba" } },
         new() { State = "Oyo", Name = "Greater Oyo", StandardFee = 3500, ExpressFee = 5500,
             Areas = new() { "Oyo Town", "Ogbomoso", "Iseyin", "Saki", "Eruwa", "Igboora", "Lalupon", "Moniya", "Akinyele", "Egbeda", "Lanlate" } },
