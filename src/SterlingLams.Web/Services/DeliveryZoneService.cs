@@ -401,14 +401,12 @@ public class DeliveryZoneService
         new() { State = "Abuja", Name = "Outer / satellite", StandardFee = 3500, ExpressFee = 5500, SameDayFee = 7000,
             Areas = new() { "Lugbe", "Kubwa", "Nyanya", "Karu", "Mararaba", "Gwagwalada", "Kuje", "Bwari", "Dei-Dei", "Zuba", "Airport Road", "Lokogoma", "Apo", "Gudu", "Durumi", "Idu", "Karmo", "Jahi" } },
 
-        // Oyo/Ibadan: these zones are INERT while OyoLocalDeliveryEnabled is false (see above) — Oyo is
-        // charged the nationwide interstate rate, Standard only, like every other state, because the
-        // Ibadan branch isn't open to fulfil local metro delivery. Kept here (areas + placeholder ₦7,500)
-        // so reopening is just: flip OyoLocalDeliveryEnabled, restore the local rates (≈2,500 std /
-        // 4,000 express), and reactivate the Ibadan branch.
-        new() { State = "Oyo", Name = "Ibadan metro", StandardFee = 7500, ExpressFee = 7500,
+        // Oyo/Ibadan local zones — live now that OyoLocalDeliveryEnabled is true and the Ibadan branch is
+        // open. These are the built-in FALLBACK rates; prod uses whatever is saved in Admin → Delivery Zones,
+        // which overrides them. Same-day is not offered for Oyo (SameDayFee stays 0).
+        new() { State = "Oyo", Name = "Ibadan metro", StandardFee = 2500, ExpressFee = 4000,
             Areas = new() { "Bodija", "Dugbe", "Mokola", "Ring Road", "Challenge", "Iwo Road", "Agodi", "Jericho", "Jericho GRA", "University of Ibadan", "UI", "Samonda", "Sango", "Bashorun", "Akobo", "Ojoo", "Apata", "Eleyele", "Oluyole", "Molete", "Gate", "Orita Challenge", "Monatan", "Ojurin", "Agbowo", "Poly Ibadan", "Yemetu", "Beere", "Oke-Ado", "Felele", "New Garage", "Idi-Ape", "Basorun", "Adamasingba" } },
-        new() { State = "Oyo", Name = "Greater Oyo", StandardFee = 7500, ExpressFee = 7500,
+        new() { State = "Oyo", Name = "Greater Oyo", StandardFee = 3500, ExpressFee = 5500,
             Areas = new() { "Oyo Town", "Ogbomoso", "Iseyin", "Saki", "Eruwa", "Igboora", "Lalupon", "Moniya", "Akinyele", "Egbeda", "Lanlate" } },
     };
 
