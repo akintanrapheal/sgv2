@@ -149,14 +149,13 @@ public class DeliveryZoneService
         return DefaultZones();
     }
 
-    // Oyo/Ibadan local delivery is OFF until the Ibadan storefront opens. While the Ibadan branch isn't
-    // serving customers, an Oyo/Ibadan order ships from Lagos like any other interstate order — so Oyo is a
-    // plain interstate state EVERYWHERE a customer sees it: one nationwide Standard option, a free-text city
-    // (no area picker), and no Express/Same-Day. Enforced by GetCustomerZonesAsync dropping the Oyo zones, so
-    // it holds for the checkout UI (PRICING.zones), the area dropdown AND the server fee — regardless of what
-    // the saved shipping.delivery_zones holds. To reopen local Oyo delivery: reactivate + publish the Ibadan
-    // branch, restore the local Oyo rates, and flip this to true.
-    private const bool OyoLocalDeliveryEnabled = false;
+    // Oyo/Ibadan local delivery. It was gated OFF while the Ibadan branch was closed (an Oyo order then
+    // shipped from Lagos at the flat national interstate rate — one Standard option, free-text city, no area
+    // picker). The Ibadan branch reopened 2026-10-29 (reactivated + made public, local Oyo rates set in
+    // Admin → Delivery Zones), so this is now TRUE: Oyo customers get the local Ibadan zones (area picker +
+    // the configured Standard/Express fees) instead of the flat national fee. Set back to false to close Oyo
+    // local delivery again if the Ibadan branch ever stops serving customers.
+    private const bool OyoLocalDeliveryEnabled = true;
 
     /// <summary>The zones shown to CUSTOMERS — the saved/default zones minus any gated while a branch is
     /// closed (Oyo/Ibadan until the Ibadan storefront opens). The Admin zone editor uses the raw
