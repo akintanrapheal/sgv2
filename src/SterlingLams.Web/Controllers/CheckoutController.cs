@@ -220,7 +220,8 @@ public class CheckoutController : Controller
     }
 
     // True when every item in the cart is in stock across the given zone's branches combined
-    // (Lagos = Ikota + Allen; Abuja = the Abuja branch) — the condition for same-day dispatch.
+    // (Lagos = Ikota + Allen; Abuja = the Abuja branch; Oyo = the Ibadan branch) — the condition for
+    // same-day dispatch.
     private async Task<bool> IsCartAvailableInZoneAsync(CartViewModel cart, SterlingLams.Web.Services.DeliveryZone zone, List<Models.Domain.Store> activeStores)
     {
         var zoneStoreIds = activeStores
@@ -275,6 +276,7 @@ public class CheckoutController : Controller
                 // distance zone (sameDayFee, sent per-zone above), like Express/Standard.
                 lagos = new { available = await IsCartAvailableInZoneAsync(cart, SterlingLams.Web.Services.DeliveryZone.Lagos, activeStores) },
                 abuja = new { available = await IsCartAvailableInZoneAsync(cart, SterlingLams.Web.Services.DeliveryZone.Abuja, activeStores) },
+                oyo   = new { available = await IsCartAvailableInZoneAsync(cart, SterlingLams.Web.Services.DeliveryZone.Oyo, activeStores) },
             };
         }
 
