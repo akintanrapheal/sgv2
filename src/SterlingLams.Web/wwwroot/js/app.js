@@ -436,9 +436,10 @@ function closeQuickView() {
 function fmtNaira(n) { return '₦' + Math.round(n).toLocaleString('en-US'); }
 
 function populateQuickView(d) {
-    qvState = { productId: d.id, price: d.price, salePrice: d.salePrice, variants: d.variants || [], selected: {}, variantId: null, defaultImage: d.primaryImage };
+    qvState = { productId: d.id, sku: d.sku, price: d.price, salePrice: d.salePrice, variants: d.variants || [], selected: {}, variantId: null, defaultImage: d.primaryImage };
     document.getElementById('qv-category').textContent = d.category || '';
     document.getElementById('qv-name').textContent = d.name;
+    setQvSku(d.sku);
     const img = document.getElementById('qv-image');
     img.src = d.primaryImage; img.alt = d.name;
     document.getElementById('qv-detail-link').href = '/products/' + d.slug;
@@ -479,6 +480,14 @@ function populateQuickView(d) {
 
     document.getElementById('qv-msg').classList.add('hidden');
     updateQuickViewPrice();
+}
+
+// Show the SKU line in the quick-view popup (hidden when the product/variant has no SKU).
+function setQvSku(sku) {
+    const el = document.getElementById('qv-sku');
+    if (!el) return;
+    if (sku) { el.textContent = 'SKU: ' + sku; el.classList.remove('hidden'); }
+    else { el.textContent = ''; el.classList.add('hidden'); }
 }
 
 // Render the per-branch stock list in the quick-view popup (mirrors the full product page).
@@ -538,6 +547,8 @@ function onQuickViewSelect() {
         matched = qvState.variants.find(v => entries.every(([k, val]) => v.attributes[k] === val)) || null;
         if (matched) qvState.variantId = matched.id;
     }
+    // SKU: the chosen variant's own SKU if it has one, else fall back to the product SKU.
+    setQvSku((matched && matched.sku) || qvState.sku);
     // Show the chosen variant's per-branch stock; otherwise prompt to pick.
     renderQvStock(matched ? matched.storeStock : null);
     document.getElementById('qv-msg').classList.add('hidden');

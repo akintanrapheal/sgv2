@@ -610,6 +610,7 @@ public class ProductsController : Controller
             name = product.Name,
             slug = product.Slug,
             category = product.Category.Name,
+            sku = product.Sku,
             price = product.Price,
             salePrice = onSale ? product.SalePrice : null,
             currency = product.Currency,
@@ -626,6 +627,7 @@ public class ProductsController : Controller
             variants = product.Variants.Where(v => v.IsActive).Select(v => new
             {
                 id = v.Id,
+                sku = v.Sku,
                 imageUrl = v.ImageUrl,
                 // Resolved, sale-aware prices (variant or base fallback) so the client shows the right figure.
                 price = VariantPricing.EffectivePrice(product, v),
