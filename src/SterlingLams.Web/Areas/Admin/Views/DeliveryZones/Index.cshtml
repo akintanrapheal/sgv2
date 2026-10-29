@@ -14,10 +14,10 @@
         <h1 class="text-xl font-semibold text-neutral-900">Delivery Zones</h1>
         <p class="text-sm text-neutral-500 mt-1 max-w-2xl">
             Group Lagos, Abuja &amp; Oyo (Ibadan) areas into distance bands and set the <strong>Standard</strong>,
-            <strong>Express</strong> and <strong>Same-day</strong> price for each. At checkout the customer picks
+            <strong>Priority</strong> and <strong>Same-day</strong> price for each. At checkout the customer picks
             their area and the matching zone's price is applied automatically. Areas you don't list fall back to
             the state's first zone; states with no zones use the flat National rate.
-            <span class="block mt-1 text-neutral-400">Glams Express (Same&nbsp;Day) shows for any zone with a same-day fee set, when the whole order is in local stock — turn it on in Settings → Shipping. Orders placed after the daily cut-off are delivered the next day (a note, not a block). A zone with a <strong>₦0 same-day fee is treated as “not offered”</strong>.</span>
+            <span class="block mt-1 text-neutral-400">Glams Same-Day Delivery shows for any zone with a same-day fee set, when the whole order is in local stock — turn it on in Settings → Shipping. Orders placed after the daily cut-off are delivered the next day (a note, not a block). A zone with a <strong>₦0 same-day fee is treated as “not offered”</strong>.</span>
         </p>
     </div>
     <div class="flex items-center gap-2 shrink-0">
@@ -106,9 +106,9 @@
         +   '</div>'
         +   '<div class="grid grid-cols-2 gap-3 mb-3">'
         +     fee('Standard fee (₦)', 'standardFee', z.standardFee)
-        +     fee('Express fee (₦)', 'expressFee', z.expressFee)
+        +     fee('Priority fee (₦)', 'expressFee', z.expressFee)
         +     txt('Standard timeframe', 'standardDays', z.standardDays || '2 - 4 working days')
-        +     txt('Express timeframe', 'expressDays', z.expressDays || '24 - 48 hours')
+        +     txt('Priority timeframe', 'expressDays', z.expressDays || '24 - 48 hours')
         +   '</div>'
         +   '<div class="grid grid-cols-2 gap-3 mb-3">'
         +     fee('Same-day fee (₦) — 0 = off', 'sameDayFee', z.sameDayFee)
