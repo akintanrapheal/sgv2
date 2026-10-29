@@ -149,14 +149,13 @@ public class DeliveryZoneService
         return DefaultZones();
     }
 
-    // Oyo/Ibadan local delivery is OFF until the Ibadan storefront opens. While the Ibadan branch isn't
-    // serving customers, an Oyo/Ibadan order ships from Lagos like any other interstate order — so Oyo is a
-    // plain interstate state EVERYWHERE a customer sees it: one nationwide Standard option, a free-text city
-    // (no area picker), and no Express/Same-Day. Enforced by GetCustomerZonesAsync dropping the Oyo zones, so
-    // it holds for the checkout UI (PRICING.zones), the area dropdown AND the server fee — regardless of what
-    // the saved shipping.delivery_zones holds. To reopen local Oyo delivery: reactivate + publish the Ibadan
-    // branch, restore the local Oyo rates, and flip this to true.
-    private const bool OyoLocalDeliveryEnabled = false;
+    // Oyo/Ibadan local delivery. It was gated OFF while the Ibadan branch was closed (an Oyo order then
+    // shipped from Lagos at the flat national interstate rate — one Standard option, free-text city, no area
+    // picker). The Ibadan branch reopened 2026-10-29 (reactivated + made public, local Oyo rates set in
+    // Admin → Delivery Zones), so this is now TRUE: Oyo customers get the local Ibadan zones (area picker +
+    // the configured Standard/Express fees) instead of the flat national fee. Set back to false to close Oyo
+    // local delivery again if the Ibadan branch ever stops serving customers.
+    private const bool OyoLocalDeliveryEnabled = true;
 
     /// <summary>The zones shown to CUSTOMERS — the saved/default zones minus any gated while a branch is
     /// closed (Oyo/Ibadan until the Ibadan storefront opens). The Admin zone editor uses the raw
@@ -402,14 +401,13 @@ public class DeliveryZoneService
         new() { State = "Abuja", Name = "Outer / satellite", StandardFee = 3500, ExpressFee = 5500, SameDayFee = 7000,
             Areas = new() { "Lugbe", "Kubwa", "Nyanya", "Karu", "Mararaba", "Gwagwalada", "Kuje", "Bwari", "Dei-Dei", "Zuba", "Airport Road", "Lokogoma", "Apo", "Gudu", "Durumi", "Idu", "Karmo", "Jahi" } },
 
-        // Oyo/Ibadan: these zones are INERT while OyoLocalDeliveryEnabled is false (see above) — Oyo is
-        // charged the nationwide interstate rate, Standard only, like every other state, because the
-        // Ibadan branch isn't open to fulfil local metro delivery. Kept here (areas + placeholder ₦7,500)
-        // so reopening is just: flip OyoLocalDeliveryEnabled, restore the local rates (≈2,500 std /
-        // 4,000 express), and reactivate the Ibadan branch.
-        new() { State = "Oyo", Name = "Ibadan metro", StandardFee = 7500, ExpressFee = 7500,
+        // Oyo/Ibadan local zones — live now that OyoLocalDeliveryEnabled is true and the Ibadan branch is
+        // open. These are the built-in FALLBACK rates; prod uses whatever is saved in Admin → Delivery Zones,
+        // which overrides them. Ibadan metro offers same-day too (like Lagos/Abuja); Greater Oyo does not
+        // (too far from the branch), so its SameDayFee stays 0.
+        new() { State = "Oyo", Name = "Ibadan metro", StandardFee = 2500, ExpressFee = 4000, SameDayFee = 5000,
             Areas = new() { "Bodija", "Dugbe", "Mokola", "Ring Road", "Challenge", "Iwo Road", "Agodi", "Jericho", "Jericho GRA", "University of Ibadan", "UI", "Samonda", "Sango", "Bashorun", "Akobo", "Ojoo", "Apata", "Eleyele", "Oluyole", "Molete", "Gate", "Orita Challenge", "Monatan", "Ojurin", "Agbowo", "Poly Ibadan", "Yemetu", "Beere", "Oke-Ado", "Felele", "New Garage", "Idi-Ape", "Basorun", "Adamasingba" } },
-        new() { State = "Oyo", Name = "Greater Oyo", StandardFee = 7500, ExpressFee = 7500,
+        new() { State = "Oyo", Name = "Greater Oyo", StandardFee = 3500, ExpressFee = 5500,
             Areas = new() { "Oyo Town", "Ogbomoso", "Iseyin", "Saki", "Eruwa", "Igboora", "Lalupon", "Moniya", "Akinyele", "Egbeda", "Lanlate" } },
     };
 

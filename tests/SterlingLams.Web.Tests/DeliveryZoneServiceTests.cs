@@ -21,35 +21,35 @@ public class DeliveryZoneServiceTests
         public void ClearCache() { }
     }
 
-    // While the Ibadan storefront is closed, an Oyo/Ibadan order is a plain interstate order: the
-    // nationwide Standard rate (₦7,500) and NO local Express or Same-Day option — exactly like any other
-    // state. (Lagos/Abuja keep their local zones + Express.)
+    // The Ibadan branch has reopened (OyoLocalDeliveryEnabled = true), so an Oyo/Ibadan order now uses the
+    // LOCAL Ibadan zones: the configured metro Standard + Express (not the flat ₦7,500 national rate), and a
+    // listed area resolves the local zone. (Here the config = built-in DefaultZones; prod uses the rates saved
+    // in Admin → Delivery Zones, which override these.) Same-day is still not offered for Oyo.
     [Theory]
-    [InlineData("Oyo", "Bodija")]     // a listed Ibadan-metro area must NOT unlock local Oyo rates
-    [InlineData("Oyo", null)]
+    [InlineData("Oyo", "Bodija")]     // a listed Ibadan-metro area resolves the local metro zone
+    [InlineData("Oyo", null)]         // no area → the state's first (metro) zone
     [InlineData("Ibadan", null)]
-    public async Task Oyo_is_charged_the_nationwide_interstate_rate_with_no_express(string state, string? area)
+    public async Task Oyo_uses_local_Ibadan_rates_with_express(string state, string? area)
     {
         var svc = new DeliveryZoneService(new DefaultsSettings());
 
         var options = await svc.GetOptionsAsync(state, area);
-        Assert.Single(options);                                  // Standard only
-        Assert.Equal("Standard", options[0].Type);
-        Assert.Equal(7500m, options[0].Fee);                     // nationwide fee, not a local metro rate
-        Assert.DoesNotContain(options, o => o.Type == "Express");
+        Assert.Contains(options, o => o.Type == "Express");      // local Express (Priority) is now offered
+        Assert.Contains(options, o => o.Type == "Standard");
 
-        Assert.Equal(7500m, await svc.CalculateFeeAsync(state, area, "Standard"));
-        Assert.Equal(0m, await svc.SameDayFeeAsync(state, area)); // no local same-day for Oyo
+        // Local metro Standard rate, NOT the ₦7,500 national flat.
+        Assert.Equal(2500m, await svc.CalculateFeeAsync(state, area, "Standard"));
+        Assert.True(await svc.SameDayFeeAsync(state, area) > 0m); // Ibadan metro now offers same-day too
     }
 
-    // The checkout UI (PRICING.zones) + the area dropdown are built from the CUSTOMER zones, so Oyo must be
-    // absent there too — otherwise the client still shows the local Oyo Express/Standard options and an area
-    // picker. Lagos/Abuja stay. (The admin editor uses the raw GetZonesAsync, so Oyo stays editable there.)
+    // The checkout UI (PRICING.zones) + the area dropdown are built from the CUSTOMER zones, so now that
+    // Ibadan is open, Oyo must be PRESENT there — the client shows the local Oyo Standard/Express options and
+    // the Ibadan area picker, alongside Lagos/Abuja.
     [Fact]
-    public async Task Customer_zones_exclude_Oyo_but_keep_Lagos_and_Abuja()
+    public async Task Customer_zones_include_Oyo_now_that_Ibadan_is_open()
     {
         var zones = await new DeliveryZoneService(new DefaultsSettings()).GetCustomerZonesAsync();
-        Assert.DoesNotContain(zones, z => string.Equals(z.State, "Oyo", System.StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(zones, z => string.Equals(z.State, "Oyo", System.StringComparison.OrdinalIgnoreCase));
         Assert.Contains(zones, z => z.State == "Lagos");
         Assert.Contains(zones, z => z.State == "Abuja");
     }
