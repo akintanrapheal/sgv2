@@ -17,7 +17,7 @@ namespace SterlingLams.Web.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -1950,6 +1950,51 @@ namespace SterlingLams.Web.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("PosDiscountReasons");
+                });
+
+            modelBuilder.Entity("SterlingLams.Web.Models.Domain.PriceCapBackup", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<Guid>("BatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Field")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("NewValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal?>("OldValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ProductVariantId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("Reverted")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("RevertedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId", "Reverted");
+
+                    b.ToTable("PriceCapBackups");
                 });
 
             modelBuilder.Entity("SterlingLams.Web.Models.Domain.Product", b =>
