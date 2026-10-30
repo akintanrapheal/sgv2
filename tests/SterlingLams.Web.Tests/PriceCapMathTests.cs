@@ -14,6 +14,7 @@ public class PriceCapMathTests
     [InlineData(10000, 8500, false)]  // exactly 15% off → leave
     [InlineData(10000, 9000, false)]  // 10% off → leave
     [InlineData(10000, 10000, false)] // no discount → leave
+    [InlineData(10000, 0, false)]     // ₦0 sale price = NOT on sale → leave (don't create a new discount)
     [InlineData(0, 0, false)]         // no regular price → leave
     public void ShouldCap_only_when_discount_exceeds_15_percent(decimal regular, decimal value, bool expected)
         => Assert.Equal(expected, PriceCapMath.ShouldCap(regular, value));

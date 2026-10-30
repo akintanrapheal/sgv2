@@ -14,7 +14,10 @@ public static class PriceCapMath
     /// is at most 15% (never over). e.g. ₦10,000 → ₦8,500; ₦4,999 → ₦4,250 (14.98% off).</summary>
     public static decimal NewPrice(decimal regular) => System.Math.Ceiling(regular * CapFactor);
 
-    /// <summary>True when <paramref name="value"/> is more than 15% below <paramref name="regular"/> — i.e.
-    /// it should be raised. Exactly 15% off, a smaller discount, or a non-positive regular price → false.</summary>
-    public static bool ShouldCap(decimal regular, decimal value) => regular > 0m && value < regular * CapFactor;
+    /// <summary>True when <paramref name="value"/> is a REAL discount of more than 15% below
+    /// <paramref name="regular"/> — i.e. it should be raised. Exactly 15% off, a smaller discount, a
+    /// non-positive regular price, or a non-positive value (₦0 = "not on sale", so not a live discount) →
+    /// false. Requiring value &gt; 0 stops the cap turning a ₦0/unset sale price into a new 15% discount.</summary>
+    public static bool ShouldCap(decimal regular, decimal value) =>
+        regular > 0m && value > 0m && value < regular * CapFactor;
 }

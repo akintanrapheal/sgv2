@@ -35,11 +35,15 @@ public class PriceCapController : AdminBaseController
     // New price at ≤15% off (rounded up to the whole naira). Math lives in PriceCapMath (unit-tested).
     private static decimal NewPrice(decimal regular) => PriceCapMath.NewPrice(regular);
 
-    // Products that MIGHT have something to cap (any sale/pos price set). The exact >15% test is applied in
-    // memory by Build() — kept out of SQL so there's no risk of an untranslatable arithmetic/?? expression.
+    // Products that MIGHT have something to cap (any sale/pos price set) AND are in stock — out-of-stock
+    // items are skipped (can't be sold at the opening anyway). "In stock" = any branch has on-hand stock;
+    // a non-stock-tracked item (service/made-to-order) is never "out of stock" so it's included. The exact
+    // >15% test is applied in memory by Build() — kept out of SQL so there's no untranslatable ?? expression.
     private IQueryable<Product> Candidates() =>
         _db.Products.Include(p => p.Variants)
-            .Where(p => !p.IsCustomItem && p.Price > 0 && (
+            .Where(p => !p.IsCustomItem && p.Price > 0
+                && (!p.TrackStock || p.StoreInventories.Any(si => si.QuantityOnHand > 0))
+                && (
                 p.SalePrice != null || p.PosPrice != null ||
                 p.Variants.Any(v => v.SalePrice != null || v.PosPrice != null)));
 
