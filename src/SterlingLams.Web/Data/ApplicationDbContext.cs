@@ -75,6 +75,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<TrafficHit> TrafficHits => Set<TrafficHit>();
     public DbSet<ApiCallDaily> ApiCallDaily => Set<ApiCallDaily>();
     public DbSet<StorefrontIssue> StorefrontIssues => Set<StorefrontIssue>();
+    public DbSet<PriceCapBackup> PriceCapBackups => Set<PriceCapBackup>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -613,6 +614,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
 
         // ─── Order ───────────────────────────────────────────────────────────
         builder.Entity<Order>().Property(o => o.DiscountAmount).HasPrecision(18, 2);
+
+        // ─── PriceCapBackup (revert snapshot for the 15% discount-cap tool) ────
+        builder.Entity<PriceCapBackup>(e =>
+        {
+            e.Property(b => b.OldValue).HasPrecision(18, 2);
+            e.Property(b => b.NewValue).HasPrecision(18, 2);
+            e.HasIndex(b => new { b.BatchId, b.Reverted });
+        });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -625,9 +634,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     // ─────────────────────────────────────────────────────────────────────────
     private bool _flaggingReprints;
 
+    /// <summary>When true, price changes saved through this context do NOT flag label reprints. Set by
+    /// deliberate BULK price operations (e.g. the "Cap discounts at 15%" tool) that change hundreds of
+    /// sale prices at once and must not spam the reprint queue. Scope it tightly in a try/finally.</summary>
+    public bool SuppressReprintFlagging { get; set; }
+
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
-        var reasons = _flaggingReprints ? null : DetectTagPriceChanges();
+        var reasons = (_flaggingReprints || SuppressReprintFlagging) ? null : DetectTagPriceChanges();
         var result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
 
         if (reasons is { Count: > 0 })
