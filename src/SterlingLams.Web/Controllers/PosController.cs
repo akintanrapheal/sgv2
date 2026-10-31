@@ -3242,6 +3242,15 @@ public class PosController : Controller
         var session = await OpenSessionAsync(register.Id);
         var customerId = await ResolveCustomerIdAsync(sale.CustomerUserId);
 
+        // One-off "quick item" lines arrive with ProductId 0 and their own Name + UnitPrice. Remap them
+        // onto the hidden custom product (as the online checkout does) so they're saved as real order lines
+        // instead of being skipped as "#0 (removed)".
+        if (sale.Items.Any(i => i.Custom))
+        {
+            var customProduct = await GetCustomItemProductAsync();
+            foreach (var i in sale.Items.Where(i => i.Custom)) { i.ProductId = customProduct.Id; i.VariantId = null; }
+        }
+
         var productIds = sale.Items.Select(i => i.ProductId).Distinct().ToList();
         var products = await _db.Products.Include(p => p.Variants)
             .Where(p => productIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id);
@@ -3279,8 +3288,11 @@ public class PosController : Controller
         {
             if (!products.TryGetValue(line.ProductId, out var prod)) { shortfalls.Add($"#{line.ProductId} (removed)"); continue; }
             var qty = Math.Max(1, line.Quantity);
-            var variant = line.VariantId.HasValue ? prod.Variants.FirstOrDefault(v => v.Id == line.VariantId) : null;
-            var unitPrice = PosCharge(prod, variant);
+            var isCustom = prod.IsCustomItem;
+            var variant = (!isCustom && line.VariantId.HasValue) ? prod.Variants.FirstOrDefault(v => v.Id == line.VariantId) : null;
+            // Custom (one-off) lines carry their own name + price and skip stock; everything else uses the catalogue.
+            var unitPrice = isCustom ? Math.Max(0, line.UnitPrice ?? 0) : PosCharge(prod, variant);
+            var lineName = isCustom ? (string.IsNullOrWhiteSpace(line.Name) ? "Custom item" : line.Name.Trim()) : prod.Name;
             var lineDiscount = Math.Max(0, Math.Min(line.DiscountAmount, unitPrice * qty));
             subtotal += unitPrice * qty;
             totalDiscount += lineDiscount;
@@ -3288,12 +3300,14 @@ public class PosController : Controller
             order.Items.Add(new OrderItem
             {
                 ProductId = prod.Id, ProductVariantId = variant?.Id,
-                ProductName = prod.Name, VariantName = variant?.Name, ProductSku = prod.Sku,
+                ProductName = lineName, VariantName = variant?.Name, ProductSku = isCustom ? null : prod.Sku,
                 Quantity = qty, UnitPrice = unitPrice, DiscountAmount = lineDiscount,
                 DiscountReason = string.IsNullOrWhiteSpace(line.DiscountReason) ? null : line.DiscountReason.Trim(),
                 DiscountType = string.IsNullOrWhiteSpace(line.DiscountType) ? null : line.DiscountType.Trim(),
                 ItemNote = string.IsNullOrWhiteSpace(line.Note) ? null : line.Note.Trim()
             });
+
+            if (isCustom) continue; // one-off line — no stock to deduct
 
             // Best-effort stock: deduct what's available; clamp the rest and flag (don't go negative).
             var available = await _stock.GetAvailableAsync(prod.Id, variant?.Id, storeId);

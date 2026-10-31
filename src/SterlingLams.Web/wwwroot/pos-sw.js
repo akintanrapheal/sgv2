@@ -8,7 +8,7 @@
  *
  * Bump CACHE when shell assets change; IMG_CACHE persists across shell updates.
  */
-const CACHE = 'sgpos-shell-v10';
+const CACHE = 'sgpos-shell-v11';
 const IMG_CACHE = 'sgpos-img-v1';
 
 // The POS shell lives at the registration scope (default "/Pos", or a secret prefix). Derive it so
