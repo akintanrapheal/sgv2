@@ -93,10 +93,13 @@
 
     var subtotal = 0, discount = 0, lines = [];
     items.forEach(function (it) {
-      var prod = findProduct(it.productId);
-      var unit = prod ? prod.price : 0;
+      // Quick (one-off) items aren't in the catalogue (productId 0) — they carry their OWN name + price.
+      // Without this they'd fall through to "#0" at ₦0 and be missing from the receipt AND the total.
+      var isCustom = it.custom === true;
+      var prod = isCustom ? null : findProduct(it.productId);
+      var unit = isCustom ? (it.unitPrice || 0) : (prod ? prod.price : 0);
       var variantName = null;
-      if (prod && it.variantId && prod.variants) {
+      if (!isCustom && prod && it.variantId && prod.variants) {
         var v = prod.variants.find(function (x) { return x.id === it.variantId; });
         if (v) { if (v.price != null) unit = v.price; variantName = v.name; }
       }
@@ -104,7 +107,8 @@
       var lineDisc = Math.max(0, Math.min(it.discountAmount || 0, unit * qty));
       subtotal += unit * qty;
       discount += lineDisc;
-      lines.push({ name: prod ? prod.name : ('#' + it.productId), variant: variantName, qty: qty, lineTotal: unit * qty - lineDisc });
+      var lineName = isCustom ? (it.name || 'Custom item') : (prod ? prod.name : ('#' + it.productId));
+      lines.push({ name: lineName, variant: variantName, qty: qty, lineTotal: unit * qty - lineDisc });
     });
     // Order-level discount (on top of per-line discounts), clamped to what's left.
     var orderDisc = Math.max(0, Math.min(sale.orderDiscount || 0, subtotal - discount));
