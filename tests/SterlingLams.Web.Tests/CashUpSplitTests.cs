@@ -311,4 +311,46 @@ public class CashUpSplitTests
         // Takings unchanged by the cosmetic split: card 10,000 − 5,000 refund = 5,000.
         Assert.Equal(5000m, vm.Takings);
     }
+
+    [Fact]
+    public async Task Split_order_credits_each_branch_on_the_day_it_handed_its_items_over()
+    {
+        using var t = new TestDb();
+        var (_, allen, ikota) = t.SeedBranches();
+        var buyer = t.SeedUser();
+        var pA = t.SeedProduct(1000m);   // merge branch (Allen) supplies + packs today
+        var pB = t.SeedProduct(2000m);   // supplier branch (Ikota) dispatched a day earlier
+
+        var now = DateTime.UtcNow;
+        var day1 = now.AddDays(-1);      // Ikota packed & SENT its item on day 1
+
+        // A split delivery order Allen merges + packs TODAY (day 2); Ikota handed its line over on day 1.
+        // Each line now carries OrderItem.FulfilledAt = the day its branch handed it over.
+        var order = new Order
+        {
+            OrderNumber = "T-SPLIT-DAYS", UserId = buyer.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = allen.Id,
+            Status = OrderStatus.Processing, IsPaid = true, PaidAt = now.AddDays(-2),
+            PackedAt = now.AddMinutes(-20), Currency = "NGN",
+            Subtotal = 1000m + 2000m, DeliveryFee = 500m, Total = 1000m + 2000m + 500m,
+            Items = new List<OrderItem>
+            {
+                new() { ProductId = pA.Id, ProductName = pA.Name, Quantity = 1, UnitPrice = 1000m,
+                        FulfilledFromStoreId = allen.Id, FulfilledAt = now.AddMinutes(-20) },   // packed today
+                new() { ProductId = pB.Id, ProductName = pB.Name, Quantity = 1, UnitPrice = 2000m,
+                        FulfilledFromStoreId = ikota.Id, FulfilledAt = day1 },                   // dispatched yesterday
+            }
+        };
+        t.Db.Add(order);
+        t.Db.SaveChanges();
+
+        var cash = new CashUpService(t.Db);
+        decimal Web(CloseSummaryVm vm) => vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected;
+
+        // Ikota's item counts on the day it DISPATCHED (day 1) — not the day Allen packs the parcel (today).
+        Assert.Equal(2000m, Web(await cash.BuildAsync(OpenSession(t, ikota, day1.AddHours(-2)), interim: true, currentUserId: "")));
+        Assert.Equal(0m,    Web(await cash.BuildAsync(OpenSession(t, ikota, now.AddHours(-2)),  interim: true, currentUserId: "")));
+        // Allen's own item counts today, its pack day.
+        Assert.Equal(1000m, Web(await cash.BuildAsync(OpenSession(t, allen, now.AddHours(-2)),  interim: true, currentUserId: "")));
+    }
 }

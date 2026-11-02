@@ -30,5 +30,13 @@ public class OrderItem
     /// back to the order's PickupStoreId/FulfillingStoreId.</summary>
     public int? FulfilledFromStoreId { get; set; }
 
+    /// <summary>When this line's supplying branch actually HANDED IT OVER — the per-item "work" moment the
+    /// EOD / cash-up / Finance date it by, so a split order's two branches each balance on the day they
+    /// did the work (not the single day the merge branch packs). A SUPPLIER branch stamps this when it
+    /// DISPATCHES its transfer to the merge branch; the MERGE/pickup branch (and every non-split order)
+    /// stamps it when the order is PACKED / marked ready. Null = not handed over yet (left out of EOD until
+    /// it is) OR a legacy line: readers fall back to the order's PackedAt/PickupReadyEmailedAt.</summary>
+    public DateTime? FulfilledAt { get; set; }
+
     public decimal LineTotal => (Quantity * UnitPrice) - DiscountAmount;
 }

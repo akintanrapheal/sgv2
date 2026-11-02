@@ -319,6 +319,15 @@ public class TransferWorkflowService : ITransferWorkflowService
             var carrierText = carrier.Any() ? $" ({string.Join(", ", carrier)})" : "";
             OrderNotes.AddSystem(_db, transfer.OrderId.Value,
                 $"Inter-branch transfer {transfer.TransferNumber} dispatched — {Summarize(transfer.Items, i => i.DispatchedQty ?? 0)} from {transfer.FromStore.Name} → {transfer.ToStore.Name}{carrierText}. In transit.");
+
+            // Per-item EOD date: the SENDING branch hands its share of this online order over NOW, so its
+            // lines count on its own cash-up/EOD on the day it dispatched — not the later day the merge
+            // branch packs the parcel. Stamp only the lines this branch supplied and hasn't stamped yet.
+            var supplied = await _db.OrderItems
+                .Where(i => i.OrderId == transfer.OrderId.Value
+                    && i.FulfilledFromStoreId == transfer.FromStoreId && i.FulfilledAt == null)
+                .ToListAsync();
+            foreach (var li in supplied) li.FulfilledAt = now;
         }
 
         try
