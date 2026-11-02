@@ -1,0 +1,229 @@
+@using SterlingLams.Web.Services.Marketing
+@{
+    ViewData["Title"] = "Analytics";
+    int days = ViewBag.Days ?? 30;
+    var attr = ViewBag.Attribution as AttributionResult ?? new AttributionResult();
+    var recipients = ViewBag.Recipients as Dictionary<int, int> ?? new Dictionary<int, int>();
+
+    string PresetCls(int d) => d == days
+        ? "bg-neutral-900 text-white border-neutral-900"
+        : "bg-white text-neutral-600 border-neutral-200 hover:border-neutral-400";
+
+    // Chart series — revenue per local day across the selected range.
+    var labels = attr.Daily.Select(d => d.Day.ToString("dd MMM")).ToList();
+    var dailyTotal = attr.Daily.Select(d => d.Total).ToList();
+    var hasRevenue = attr.TotalRevenue > 0;
+    string J(object o) => System.Text.Json.JsonSerializer.Serialize(o);
+
+    int campSent = ViewBag.CampSent ?? 0, campOpens = ViewBag.CampOpens ?? 0, campClicks = ViewBag.CampClicks ?? 0;
+    int autoSent = ViewBag.AutoSent ?? 0;
+    string Rate(int part, int whole) => whole > 0 ? Math.Round(part * 100.0 / whole, 1).ToString("0.0") + "%" : "—";
+}
+
+<div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+    <div>
+        <h1 class="text-2xl font-light text-neutral-900">Analytics</h1>
+        <p class="text-sm text-neutral-500 mt-1">Revenue your email marketing brought in — last-touch, within a ≤@(attr.WindowDays)-day window of each order.</p>
+    </div>
+    <div class="flex gap-2">
+        @foreach (var (d, label) in new[] { (7, "7 days"), (30, "30 days"), (90, "90 days"), (365, "1 year") })
+        {
+            <a asp-area="Marketing" asp-controller="Analytics" asp-action="Index" asp-route-days="@d"
+               class="px-3 py-1.5 text-xs rounded-sm border @PresetCls(d)">@label</a>
+        }
+    </div>
+</div>
+
+<!-- Headline tiles -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white border border-neutral-200 rounded-sm p-5">
+        <div class="text-xs text-neutral-400">Attributed revenue</div>
+        <div class="text-2xl font-light text-emerald-600 mt-1">₦@attr.TotalRevenue.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-sm p-5">
+        <div class="text-xs text-neutral-400">Orders</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">@attr.TotalOrders.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-sm p-5">
+        <div class="text-xs text-neutral-400">Average order value</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">₦@attr.Aov.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-sm p-5">
+        <div class="text-xs text-neutral-400">Cart recovery</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">₦@attr.CartRevenue.ToString("N0")</div>
+    </div>
+</div>
+
+<!-- Email engagement (all-time) -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+    <div class="bg-white border border-neutral-200 rounded-sm p-6">
+        <div class="flex items-baseline justify-between mb-4">
+            <h2 class="text-sm font-medium text-neutral-700">Campaigns</h2>
+            <span class="text-[11px] text-neutral-400">all time</span>
+        </div>
+        <div class="grid grid-cols-3 gap-4">
+            <div>
+                <div class="text-xs text-neutral-400">Emails sent</div>
+                <div class="text-xl font-light text-neutral-900 mt-1">@campSent.ToString("N0")</div>
+            </div>
+            <div>
+                <div class="text-xs text-neutral-400">Opens</div>
+                <div class="text-xl font-light text-neutral-900 mt-1">@campOpens.ToString("N0")</div>
+                <div class="text-[11px] text-neutral-400 mt-0.5">@Rate(campOpens, campSent) open rate</div>
+            </div>
+            <div>
+                <div class="text-xs text-neutral-400">Clicks</div>
+                <div class="text-xl font-light text-neutral-900 mt-1">@campClicks.ToString("N0")</div>
+                <div class="text-[11px] text-neutral-400 mt-0.5">@Rate(campClicks, campSent) click rate</div>
+            </div>
+        </div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-sm p-6">
+        <div class="flex items-baseline justify-between mb-4">
+            <h2 class="text-sm font-medium text-neutral-700">Automations</h2>
+            <span class="text-[11px] text-neutral-400">all time</span>
+        </div>
+        <div class="grid grid-cols-3 gap-4">
+            <div>
+                <div class="text-xs text-neutral-400">Emails sent</div>
+                <div class="text-xl font-light text-neutral-900 mt-1">@autoSent.ToString("N0")</div>
+            </div>
+            <div class="col-span-2 flex items-end">
+                <div class="text-[11px] text-neutral-400">Open &amp; click tracking runs on campaigns; automation sends are counted here.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Revenue over time + source split -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    <div class="lg:col-span-2 bg-white border border-neutral-100 rounded-sm">
+        <div class="px-5 py-3 border-b border-neutral-100 flex items-baseline justify-between">
+            <h2 class="text-sm font-medium text-neutral-800">Revenue over time</h2>
+            <span class="text-[11px] text-neutral-400">last @days days · drag to zoom</span>
+        </div>
+        <div class="p-4">
+            @if (hasRevenue)
+            {
+                <canvas id="revChart" height="110"></canvas>
+            }
+            else
+            {
+                <p class="py-10 text-center text-sm text-neutral-400">No attributed revenue in this period yet.</p>
+            }
+        </div>
+    </div>
+    <div class="bg-white border border-neutral-100 rounded-sm">
+        <div class="px-5 py-3 border-b border-neutral-100">
+            <h2 class="text-sm font-medium text-neutral-800">Where it came from</h2>
+        </div>
+        <div class="p-4">
+            @if (hasRevenue)
+            {
+                <canvas id="srcChart" height="150"></canvas>
+            }
+            else
+            {
+                <p class="py-10 text-center text-sm text-neutral-400">—</p>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Campaign performance -->
+<div class="bg-white border border-neutral-200 rounded-sm overflow-x-auto mb-6">
+    <div class="px-5 py-3 border-b border-neutral-100">
+        <h2 class="text-sm font-medium text-neutral-800">Top campaigns</h2>
+    </div>
+    @if (!attr.Campaigns.Any())
+    {
+        <p class="px-5 py-10 text-center text-sm text-neutral-400">No campaign revenue in this period.</p>
+    }
+    else
+    {
+        <table class="w-full text-sm min-w-[640px]">
+            <thead class="bg-neutral-50 text-neutral-500 text-xs">
+                <tr>
+                    <th class="text-left font-semibold px-5 py-3">Campaign</th>
+                    <th class="text-right font-semibold px-4 py-3">Revenue</th>
+                    <th class="text-center font-semibold px-4 py-3">Orders</th>
+                    <th class="text-right font-semibold px-4 py-3">AOV</th>
+                    <th class="text-right font-semibold px-5 py-3">Conv. rate</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-100">
+                @foreach (var c in attr.Campaigns)
+                {
+                    var recip = c.Id != null && recipients.TryGetValue(c.Id.Value, out var n) ? n : 0;
+                    var conv = recip > 0 ? (c.Orders * 100.0 / recip) : (double?)null;
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-5 py-2.5">
+                            <a asp-area="Marketing" asp-controller="Campaigns" asp-action="Detail" asp-route-id="@c.Id"
+                               class="text-neutral-800 hover:text-neutral-950 font-medium">@c.Name</a>
+                        </td>
+                        <td class="px-4 py-2.5 text-right text-emerald-600 font-medium">₦@c.Revenue.ToString("N0")</td>
+                        <td class="px-4 py-2.5 text-center text-neutral-600">@c.Orders</td>
+                        <td class="px-4 py-2.5 text-right text-neutral-600">₦@c.Aov.ToString("N0")</td>
+                        <td class="px-5 py-2.5 text-right text-neutral-600">@(conv != null ? conv.Value.ToString("0.0") + "%" : "—")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<!-- Automation performance -->
+<div class="bg-white border border-neutral-200 rounded-sm overflow-x-auto">
+    <div class="px-5 py-3 border-b border-neutral-100">
+        <h2 class="text-sm font-medium text-neutral-800">Top automations</h2>
+    </div>
+    @if (!attr.Automations.Any())
+    {
+        <p class="px-5 py-10 text-center text-sm text-neutral-400">No automation revenue in this period.</p>
+    }
+    else
+    {
+        <table class="w-full text-sm min-w-[520px]">
+            <thead class="bg-neutral-50 text-neutral-500 text-xs">
+                <tr>
+                    <th class="text-left font-semibold px-5 py-3">Automation</th>
+                    <th class="text-right font-semibold px-4 py-3">Revenue</th>
+                    <th class="text-center font-semibold px-4 py-3">Orders</th>
+                    <th class="text-right font-semibold px-5 py-3">AOV</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-100">
+                @foreach (var a in attr.Automations)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-5 py-2.5">
+                            <a asp-area="Marketing" asp-controller="Automations" asp-action="Detail" asp-route-id="@a.Id"
+                               class="text-neutral-800 hover:text-neutral-950 font-medium">@a.Name</a>
+                        </td>
+                        <td class="px-4 py-2.5 text-right text-emerald-600 font-medium">₦@a.Revenue.ToString("N0")</td>
+                        <td class="px-4 py-2.5 text-center text-neutral-600">@a.Orders</td>
+                        <td class="px-5 py-2.5 text-right text-neutral-600">₦@a.Aov.ToString("N0")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@section Scripts {
+    @if (hasRevenue)
+    {
+        <partial name="_ChartScripts" />
+        <script>
+            (function () {
+                if (document.getElementById('revChart'))
+                    SLCharts.area('revChart', @Html.Raw(J(labels)), [{ label: 'Revenue', data: @Html.Raw(J(dailyTotal)), money: true }]);
+                if (document.getElementById('srcChart'))
+                    SLCharts.doughnut('srcChart',
+                        ['Campaigns', 'Automations', 'Cart recovery'],
+                        @Html.Raw(J(new[] { attr.CampaignRevenue, attr.AutomationRevenue, attr.CartRevenue })),
+                        { money: true });
+            })();
+        </script>
+    }
+}

@@ -33,6 +33,19 @@ public class CampaignsController : MarketingAreaController
         var campaigns = await _db.Campaigns.AsNoTracking()
             .OrderByDescending(c => c.CreatedAt)
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+
+        // Attributed revenue/orders for the campaigns on this page (last-touch, from the earliest
+        // send shown to now — so a campaign's lifetime conversions line up with its Detail page).
+        var revenue = new Dictionary<int, (decimal Revenue, int Orders)>();
+        var earliest = campaigns.Where(c => c.SentAt != null).Select(c => c.SentAt!.Value)
+            .DefaultIfEmpty().Min();
+        if (earliest != default)
+        {
+            var attr = await _attribution.ComputeAsync(earliest, DateTime.UtcNow);
+            foreach (var c in campaigns.Where(c => c.SentAt != null))
+                revenue[c.Id] = attr.ForCampaign(c.Id);
+        }
+        ViewBag.Revenue = revenue;
         return View(campaigns);
     }
 
@@ -78,7 +91,19 @@ public class CampaignsController : MarketingAreaController
 
         c.Name = vm.Name.Trim();
         c.Subject = vm.Subject.Trim();
-        c.BodyHtml = ProductHtml.SanitizeRich(vm.BodyHtml ?? "");
+        // Block composer: render the JSON layout to trusted email HTML (the renderer encodes/sanitises
+        // each field itself, so it bypasses the blanket SanitizeRich that would strip images/buttons).
+        // Plain editor: sanitise the raw HTML as before.
+        if (!string.IsNullOrWhiteSpace(vm.LayoutJson))
+        {
+            c.LayoutJson = vm.LayoutJson;
+            c.BodyHtml = CampaignLayoutRenderer.Render(vm.LayoutJson);
+        }
+        else
+        {
+            c.LayoutJson = null;
+            c.BodyHtml = ProductHtml.SanitizeRich(vm.BodyHtml ?? "");
+        }
         c.SegmentId = vm.SegmentId;
         c.Audience = vm.Audience;
         c.AudienceDays = vm.AudienceDays;

@@ -5,6 +5,9 @@
     int enrolled = ViewBag.Enrolled ?? 0;
     int sent = ViewBag.Sent ?? 0;
     int pending = ViewBag.Pending ?? 0;
+    decimal? attrRevenue = ViewBag.AttributedRevenue as decimal?;
+    int attrOrders = ViewBag.AttributedOrders ?? 0;
+    int attrWindow = ViewBag.AttributionWindow ?? 7;
     string TriggerLabel(AutomationTrigger t) => t switch
     {
         AutomationTrigger.WelcomeNewCustomer => "When a new customer registers",
@@ -30,10 +33,23 @@
             <div class="text-xs text-neutral-400 mb-2">Email preview</div>
             <div class="border border-neutral-100 rounded-sm p-4 text-sm text-neutral-700 prod-rich-desc">@Html.Raw(Model.BodyHtml)</div>
         </div>
-        <div class="grid grid-cols-3 gap-4">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div class="bg-white border border-neutral-200 rounded-sm p-4"><div class="text-xs text-neutral-400">Enrolled</div><div class="text-xl font-light mt-1">@enrolled.ToString("N0")</div></div>
             <div class="bg-white border border-neutral-200 rounded-sm p-4"><div class="text-xs text-neutral-400">Sent</div><div class="text-xl font-light text-emerald-600 mt-1">@sent.ToString("N0")</div></div>
             <div class="bg-white border border-neutral-200 rounded-sm p-4"><div class="text-xs text-neutral-400">Pending</div><div class="text-xl font-light text-amber-600 mt-1">@pending.ToString("N0")</div></div>
+            <div class="bg-white border border-neutral-200 rounded-sm p-4">
+                <div class="text-xs text-neutral-400">Revenue</div>
+                @if (attrRevenue != null)
+                {
+                    <div class="text-xl font-light text-emerald-600 mt-1">₦@attrRevenue.Value.ToString("N0")</div>
+                    <div class="text-[11px] text-neutral-400 mt-0.5">@attrOrders.ToString("N0") order@(attrOrders == 1 ? "" : "s") · ≤@(attrWindow)-day</div>
+                }
+                else
+                {
+                    <div class="text-xl font-light text-neutral-300 mt-1">—</div>
+                    <div class="text-[11px] text-neutral-400 mt-0.5">activate to track</div>
+                }
+            </div>
         </div>
     </div>
 

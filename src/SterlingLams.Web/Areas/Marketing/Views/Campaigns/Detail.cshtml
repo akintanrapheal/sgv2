@@ -27,10 +27,19 @@
 
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <div class="lg:col-span-2 space-y-4">
-        <div class="bg-white border border-neutral-200 rounded-sm p-5">
-            <div class="text-xs text-neutral-400 mb-2">Preview</div>
-            <div class="border border-neutral-100 rounded-sm p-4 text-sm text-neutral-700 prod-rich-desc">@Html.Raw(Model.BodyHtml)</div>
+        <div class="bg-white border border-neutral-200 rounded-sm p-4">
+            <div class="flex items-center justify-between mb-3">
+                <div class="text-xs text-neutral-400">Preview</div>
+                <div class="inline-flex rounded-sm border border-neutral-200 overflow-hidden text-xs">
+                    <button type="button" id="pv-desktop" class="px-3 py-1.5">Desktop</button>
+                    <button type="button" id="pv-mobile" class="px-3 py-1.5 border-l border-neutral-200">Mobile</button>
+                </div>
+            </div>
+            <div class="bg-neutral-100 rounded-sm p-3 overflow-x-auto">
+                <iframe id="preview" title="Email preview" class="bg-white mx-auto block border-0 shadow-sm" style="width:600px;height:640px"></iframe>
+            </div>
         </div>
+        <script id="body-html" type="application/json">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.BodyHtml))</script>
 
         @if (!draft)
         {
@@ -119,3 +128,32 @@
         }
     </div>
 </div>
+
+@section Scripts {
+<script>
+(function () {
+    var iframe = document.getElementById('preview');
+    if (!iframe) return;
+    var body = '';
+    try { body = JSON.parse(document.getElementById('body-html').textContent || '""'); } catch (e) {}
+    var doc = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>' +
+        '<body style="margin:0;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#333">' +
+        '<div style="max-width:600px;margin:0 auto;padding:24px 20px">' +
+        (body && body.trim() ? body : '<div style="color:#bbb;text-align:center;padding:40px 0;font-size:14px">No content yet</div>') +
+        '</div></body></html>';
+    var d = iframe.contentDocument || iframe.contentWindow.document;
+    d.open(); d.write(doc); d.close();
+
+    var active = 'px-3 py-1.5 bg-neutral-900 text-white', idle = 'px-3 py-1.5';
+    var bd = document.getElementById('pv-desktop'), bm = document.getElementById('pv-mobile');
+    function setDevice(mobile) {
+        iframe.style.width = mobile ? '360px' : '600px';
+        bd.className = mobile ? idle : active;
+        bm.className = (mobile ? active : idle) + ' border-l border-neutral-200';
+    }
+    bd.addEventListener('click', function () { setDevice(false); });
+    bm.addEventListener('click', function () { setDevice(true); });
+    setDevice(false);
+})();
+</script>
+}

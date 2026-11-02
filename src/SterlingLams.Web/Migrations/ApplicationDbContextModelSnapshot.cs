@@ -765,6 +765,9 @@ namespace SterlingLams.Web.Migrations
                     b.Property<int>("FailedCount")
                         .HasColumnType("integer");
 
+                    b.Property<string>("LayoutJson")
+                        .HasColumnType("text");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(150)

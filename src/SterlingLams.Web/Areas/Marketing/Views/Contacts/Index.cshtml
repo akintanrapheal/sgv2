@@ -1,0 +1,104 @@
+@model List<SterlingLams.Web.Areas.Marketing.Controllers.ContactsController.ContactRow>
+@{
+    ViewData["Title"] = "Contacts";
+    int total = ViewBag.TotalContacts ?? 0;
+    int emailSubs = ViewBag.EmailSubs ?? 0;
+    int phoneSubs = ViewBag.PhoneSubs ?? 0;
+    int newsletterOnly = ViewBag.NewsletterOnly ?? 0;
+    string? q = ViewBag.Query as string;
+    int shown = ViewBag.Total ?? 0;
+}
+
+<div class="mb-6">
+    <h1 class="text-2xl font-light text-neutral-900">Contacts</h1>
+    <p class="text-sm text-neutral-500 mt-1">Every customer from the website — registered accounts, guest checkouts and old-POS imports.</p>
+</div>
+
+<!-- Overview -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white border border-neutral-200 rounded-sm p-5">
+        <div class="text-xs text-neutral-400">Total contacts</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">@total.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-sm p-5">
+        <div class="text-xs text-neutral-400">Email subscribers</div>
+        <div class="text-2xl font-light text-emerald-600 mt-1">@emailSubs.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-sm p-5">
+        <div class="text-xs text-neutral-400">With phone number</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">@phoneSubs.ToString("N0")</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-sm p-5">
+        <div class="text-xs text-neutral-400">Newsletter-only</div>
+        <div class="text-2xl font-light text-blue-600 mt-1">@newsletterOnly.ToString("N0")</div>
+        <div class="text-[11px] text-neutral-400 mt-0.5">no account yet</div>
+    </div>
+</div>
+
+<!-- Search -->
+<form asp-area="Marketing" asp-controller="Contacts" asp-action="Index" method="get" class="mb-4">
+    <div class="flex gap-2 max-w-xl">
+        <input name="q" value="@q" placeholder="Search by name, email, or phone number"
+               class="flex-1 border border-neutral-200 rounded-sm px-3 py-2 text-sm" />
+        <button type="submit" class="px-4 py-2 text-sm bg-neutral-900 text-white rounded-sm hover:bg-neutral-700">Search</button>
+        @if (!string.IsNullOrWhiteSpace(q))
+        {
+            <a asp-area="Marketing" asp-controller="Contacts" asp-action="Index" class="px-4 py-2 text-sm border border-neutral-200 rounded-sm hover:border-neutral-400">Clear</a>
+        }
+    </div>
+</form>
+
+@if (!Model.Any())
+{
+    <div class="bg-white border border-neutral-200 rounded-sm p-12 text-center text-sm text-neutral-400">
+        @(string.IsNullOrWhiteSpace(q) ? "No contacts yet." : $"No contacts match “{q}”.")
+    </div>
+}
+else
+{
+    <div class="text-xs text-neutral-400 mb-2">@shown.ToString("N0") contact@(shown == 1 ? "" : "s")@(string.IsNullOrWhiteSpace(q) ? "" : " matching")</div>
+    <div class="bg-white border border-neutral-200 rounded-sm overflow-x-auto">
+        <table class="w-full text-sm min-w-[720px]">
+            <thead class="bg-neutral-50 text-neutral-500 text-xs">
+                <tr>
+                    <th class="text-left font-semibold px-4 py-3">Name</th>
+                    <th class="text-left font-semibold px-4 py-3">Email</th>
+                    <th class="text-left font-semibold px-4 py-3">Phone</th>
+                    <th class="text-center font-semibold px-4 py-3">Email</th>
+                    <th class="text-left font-semibold px-4 py-3">Added</th>
+                    <th class="px-4 py-3"></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-100">
+                @foreach (var c in Model)
+                {
+                    <tr class="hover:bg-neutral-50">
+                        <td class="px-4 py-2.5">
+                            <a asp-area="Marketing" asp-controller="Contacts" asp-action="Detail" asp-route-id="@c.Id"
+                               class="text-neutral-800 font-medium hover:text-neutral-950">@(string.IsNullOrWhiteSpace(c.Name) ? "—" : c.Name)</a>
+                            @if (c.IsGuest)
+                            {
+                                <span class="ml-2 text-[10px] bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded-full">Guest</span>
+                            }
+                        </td>
+                        <td class="px-4 py-2.5 text-neutral-600">@c.Email</td>
+                        <td class="px-4 py-2.5 text-neutral-600">@(string.IsNullOrWhiteSpace(c.Phone) ? "—" : c.Phone)</td>
+                        <td class="px-4 py-2.5 text-center">
+                            @if (c.EmailSubscribed)
+                            {
+                                <span class="text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Subscribed</span>
+                            }
+                            else
+                            {
+                                <span class="text-[10px] bg-neutral-100 text-neutral-500 px-2 py-0.5 rounded-full">Unsubscribed</span>
+                            }
+                        </td>
+                        <td class="px-4 py-2.5 text-neutral-400 text-xs">@c.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                        <td class="px-4 py-2.5 text-right"><a asp-area="Marketing" asp-controller="Contacts" asp-action="Detail" asp-route-id="@c.Id" class="text-xs text-neutral-500 hover:text-neutral-900">Open →</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <partial name="_Pager" model="((int)ViewBag.Page, (int)ViewBag.TotalPages)" />
+}

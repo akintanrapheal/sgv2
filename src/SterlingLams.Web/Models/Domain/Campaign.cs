@@ -27,8 +27,15 @@ public class Campaign
     public string Name { get; set; } = string.Empty;
     [MaxLength(200)]
     public string Subject { get; set; } = string.Empty;
-    /// <summary>Sanitised HTML body (inner content; wrapped in the branded email shell on send).</summary>
+    /// <summary>Sanitised HTML body (inner content; wrapped in the branded email shell on send).
+    /// Rendered from <see cref="LayoutJson"/> when the block composer is used, so the send pipeline
+    /// only ever reads this field.</summary>
     public string BodyHtml { get; set; } = string.Empty;
+
+    /// <summary>JSON block model from the drag-and-drop composer (array of typed blocks). Null when
+    /// the campaign was authored with the plain HTML editor. Kept so the composer can round-trip an
+    /// edit; <see cref="BodyHtml"/> is always re-rendered from it on save.</summary>
+    public string? LayoutJson { get; set; }
 
     /// <summary>Optional saved segment. When set, its definition overrides the inline audience fields.</summary>
     public int? SegmentId { get; set; }

@@ -4,18 +4,35 @@ using Microsoft.EntityFrameworkCore;
 using SterlingLams.Web.Data;
 using SterlingLams.Web.Models.Domain;
 using SterlingLams.Web.Services;
+using SterlingLams.Web.Services.Marketing;
 
 namespace SterlingLams.Web.Areas.Marketing.Controllers;
 
 public class AutomationsController : MarketingAreaController
 {
     private readonly ApplicationDbContext _db;
-    public AutomationsController(ApplicationDbContext db) => _db = db;
+    private readonly IMarketingAttributionService _attribution;
+    public AutomationsController(ApplicationDbContext db, IMarketingAttributionService attribution)
+    {
+        _db = db;
+        _attribution = attribution;
+    }
 
     public async Task<IActionResult> Index()
     {
         ViewData["Title"] = "Automations";
         var rows = await _db.Automations.AsNoTracking().OrderByDescending(a => a.CreatedAt).ToListAsync();
+
+        // Attributed revenue/orders per automation (last-touch, from the earliest activation to now).
+        var revenue = new Dictionary<int, (decimal Revenue, int Orders)>();
+        var earliest = rows.Where(a => a.ActivatedAt != null).Select(a => a.ActivatedAt!.Value)
+            .DefaultIfEmpty().Min();
+        if (earliest != default)
+        {
+            var attr = await _attribution.ComputeAsync(earliest, DateTime.UtcNow);
+            foreach (var a in rows) revenue[a.Id] = attr.ForAutomation(a.Id);
+        }
+        ViewBag.Revenue = revenue;
         return View(rows);
     }
 
@@ -100,6 +117,16 @@ public class AutomationsController : MarketingAreaController
         ViewBag.Enrolled = await _db.AutomationRuns.CountAsync(r => r.AutomationId == id);
         ViewBag.Sent = await _db.AutomationRuns.CountAsync(r => r.AutomationId == id && r.Status == AutomationRunStatus.Sent);
         ViewBag.Pending = await _db.AutomationRuns.CountAsync(r => r.AutomationId == id && r.Status == AutomationRunStatus.Pending);
+
+        // Revenue attributed to this automation since it was first switched on (last-touch).
+        if (a.ActivatedAt is DateTime activatedAt)
+        {
+            var attr = await _attribution.ComputeAsync(activatedAt, DateTime.UtcNow);
+            var (rev, orders) = attr.ForAutomation(id);
+            ViewBag.AttributedRevenue = rev;
+            ViewBag.AttributedOrders = orders;
+            ViewBag.AttributionWindow = attr.WindowDays;
+        }
         return View(a);
     }
 
