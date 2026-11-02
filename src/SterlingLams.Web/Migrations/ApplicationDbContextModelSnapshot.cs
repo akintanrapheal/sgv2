@@ -1599,6 +1599,9 @@ namespace SterlingLams.Web.Migrations
                     b.Property<string>("DiscountType")
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("FulfilledAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int?>("FulfilledFromStoreId")
                         .HasColumnType("integer");
 

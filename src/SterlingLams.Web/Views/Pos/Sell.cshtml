@@ -3337,7 +3337,7 @@
                 <div class="flex items-center gap-3 py-2 border-b border-neutral-100">
                     ${i.image ? `<img src="${esc(i.image)}" alt="" class="w-12 h-12 rounded object-cover bg-neutral-100 flex-shrink-0">` : '<span class="w-12 h-12 rounded bg-neutral-100 flex-shrink-0"></span>'}
                     <div class="flex-1 min-w-0">
-                        <div class="text-sm text-neutral-800">${esc(i.name)}${i.variant ? ' <span class="text-neutral-400">· ' + esc(i.variant) + '</span>' : ''}</div>
+                        <div class="text-sm text-neutral-800">${esc(i.name)}${i.variant ? ' <span class="text-neutral-400">· ' + esc(i.variant) + '</span>' : ''}${d.merging && !i.mine ? ' <span class="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 align-middle">arriving</span>' : (d.merging && i.mine && i.packed ? ' <span class="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1 py-0.5 align-middle">✓ packed</span>' : '')}</div>
                         <div class="text-[11px] text-neutral-400">Qty ${i.qty} × ${money(i.unitPrice)}</div>
                         ${(i.sku || i.barcode) ? `<div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-mono">
                             ${i.sku ? `<span class="text-neutral-600">SKU <span class="font-semibold text-neutral-900">${esc(i.sku)}</span></span>` : ''}
@@ -3356,9 +3356,15 @@
             let act = null, actLabel = '';
             // While items are still arriving to merge, the store packs only its OWN items.
             if (d.canPack) { act = 'pack'; actLabel = d.merging ? 'Mark my items packed' : 'Mark as packed'; }
+            // Split delivery: the merge branch packs the items it already holds while the rest is in transit —
+            // they count on its takings today; the whole parcel is handed off after the merge is received.
+            else if (d.canPackOwnItems) { act = 'packown'; actLabel = 'Pack my items'; }
             else if (d.canNotifyPickup) { act = 'pickup'; actLabel = d.pickupNotified ? 'Resend pickup notification' : 'Send pickup-ready notification'; }
             const mergingNote = (d.merging && d.packed)
                 ? `<p class="text-center text-[12px] text-amber-600">Your items packed — waiting on items arriving to merge before it's ready.</p>` : '';
+            // Split delivery: this branch has packed its own items and is waiting on the merge to arrive.
+            const ownPackedNote = (!isPickup && d.merging && d.ownItemsPacked && !d.packed)
+                ? `<p class="text-center text-[12px] text-amber-600">Your items are packed (counted on today's takings) — Receive the arriving items, then hand off to logistics.</p>` : '';
             const packBtn = act
                 ? `<button type="button" id="fulfil-action-btn" data-id="${d.id}" data-act="${act}" class="w-full bg-brand-500 text-white rounded-lg py-3 text-sm font-semibold hover:bg-brand-600 transition-colors">${actLabel}</button>`
                 : '';
@@ -3414,6 +3420,7 @@
                     ${!isPickup ? `<a href="${window.__posBase}/ShippingLabel/${d.id}" target="_blank" class="block text-center border border-neutral-300 text-neutral-700 rounded-lg py-2.5 text-sm font-medium hover:border-neutral-400 transition-colors">🚚 Shipping label (4×6)</a>` : ''}
                     ${packedNote}
                     ${mergingNote}
+                    ${ownPackedNote}
                     ${handoffNote}
                 </div>`;
             const pb = document.getElementById('fulfil-action-btn');
@@ -3484,6 +3491,7 @@
     async function fulfilAction(id, act, btn) {
         const map = {
             pack:     { url: '/Pos/FulfilMarkPacked',    busy: 'Saving…',   ok: 'Packed — alert stopped.' },
+            packown:  { url: '/Pos/FulfilPackOwnItems',  busy: 'Saving…',   ok: 'Your items packed — counted on today’s takings.' },
             pickup:   { url: '/Pos/FulfilNotifyPickup',  busy: 'Sending…',  ok: 'Pickup notification sent to the customer' }
         }[act];
         if (!map) return;
@@ -3499,8 +3507,8 @@
                 toast(map.ok);
                 historyCache = null;
                 await loadList();                 // refresh counts/badge
-                // After packing, stay on the order so the next step (notify / dispatch) is right there.
-                if (act === 'pack') { openDetail(id); } else { showList(); }
+                // After packing, stay on the order so the next step (notify / dispatch / receive) is right there.
+                if (act === 'pack' || act === 'packown') { openDetail(id); } else { showList(); }
             }
             else { btn.disabled = false; btn.textContent = ot; toast(data.message || 'Could not complete that.'); }
         } catch { btn.disabled = false; btn.textContent = ot; toast('Could not complete that.'); }

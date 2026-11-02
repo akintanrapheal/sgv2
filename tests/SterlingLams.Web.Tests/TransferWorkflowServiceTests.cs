@@ -54,6 +54,50 @@ public class TransferWorkflowServiceTests
             m => m.ProductId == p.Id && m.StoreId == abuja.Id && m.Type == StockMovementType.Transfer && m.QuantityChange < 0);
     }
 
+    [Fact]
+    public async Task Dispatching_an_order_transfer_stamps_the_supplier_lines_handover_date()
+    {
+        using var t = new TestDb();
+        var (abuja, allen, _) = t.SeedBranches();
+        var buyer = t.SeedUser();
+        var p = t.SeedProduct(2000m);
+        t.SetStock(p.Id, abuja.Id, onHand: 5);
+        t.Inv(p.Id, abuja.Id).QuantityReserved = 2;   // the 2 approved units held at the source
+        t.Db.SaveChanges();
+
+        // Online order Allen will merge; Abuja supplies this line (FulfilledFromStoreId = abuja) and hasn't
+        // handed it over yet (FulfilledAt null).
+        var order = new Order
+        {
+            OrderNumber = "T-DISP", UserId = buyer.Id, Channel = OrderChannel.Online,
+            FulfillmentType = FulfillmentType.Delivery, FulfillingStoreId = allen.Id,
+            Status = OrderStatus.AwaitingTransfer, IsPaid = true, Currency = "NGN",
+            Subtotal = 2 * 2000m, Total = 2 * 2000m,
+            Items = new List<OrderItem> { new() { ProductId = p.Id, ProductName = p.Name, Quantity = 2, UnitPrice = 2000m, FulfilledFromStoreId = abuja.Id } },
+        };
+        t.Db.Add(order);
+        t.Db.SaveChanges();
+
+        var transfer = new StockTransfer
+        {
+            TransferNumber = "TRF-DISP", FromStoreId = abuja.Id, ToStoreId = allen.Id, OrderId = order.Id,
+            Status = TransferStatus.Approved,
+            Items = new List<StockTransferItem> { new() { ProductId = p.Id, ProductName = p.Name, RequestedQty = 2, ApprovedQty = 2 } },
+        };
+        t.Db.Add(transfer);
+        t.Db.SaveChanges();
+        var itemId = transfer.Items.First().Id;
+
+        var svc = new TransferWorkflowService(t.Db, new StockService(t.Db), new StubFulfilment());
+        var before = DateTime.UtcNow.AddSeconds(-1);
+        Assert.True((await svc.DispatchAsync(transfer.Id, new() { new ItemQtyDto(itemId, 2) }, null, null, null, "staff-1")).Success);
+
+        // Dispatching stamps the supplier's order line with its handover time, so it counts on Abuja's EOD today.
+        var line = await t.Db.OrderItems.AsNoTracking().FirstAsync(i => i.OrderId == order.Id);
+        Assert.NotNull(line.FulfilledAt);
+        Assert.True(line.FulfilledAt >= before);
+    }
+
     // Drives a transfer of `qty` to PartiallyReceived by receiving only `receive` of them.
     private static async Task<(int id, int itemId, Store abuja, Store allen, Product p)> PartialAsync(TestDb t, int qty, int receive)
     {

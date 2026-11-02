@@ -157,14 +157,20 @@ public class CashUpService : ICashUpService
         // timing and of which branch merges/hands over the order: Allen is credited for an item it packed
         // even when Ikota is the pickup branch that merges it. Online-till only — one till per store claims
         // the online total, so a multi-till store doesn't count the same website sale twice.
+        // A line counts on the day ITS branch handed it over — OrderItem.FulfilledAt (a supplier branch
+        // stamps its dispatch, the merge/pickup branch stamps its pack). Legacy/unstamped lines fall back to
+        // the order's packed/ready time. So a split order's two branches each land on the day they did the
+        // work, not the single day the merge branch packs — and the order is pulled in if ANY line this
+        // branch supplied falls in this window (the order-level packed date no longer gates it).
         var onlineOrders = !isOnlineTill ? new List<Order>() : await _db.Orders
             .Where(o => o.Channel == OrderChannel.Online && o.IsPaid && o.VoidedAt == null
                 && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded
-                && (o.FulfillingStoreId == storeId || o.PickupStoreId == storeId
-                    || o.Items.Any(i => i.FulfilledFromStoreId == storeId))
-                && (o.PackedAt ?? o.PickupReadyEmailedAt) != null
-                && (o.PackedAt ?? o.PickupReadyEmailedAt) >= onlineStart
-                && (o.PackedAt ?? o.PickupReadyEmailedAt) < onlineEnd)
+                && o.Items.Any(i =>
+                    (i.FulfilledFromStoreId == storeId
+                        || (i.FulfilledFromStoreId == null && (o.PickupStoreId == storeId || o.FulfillingStoreId == storeId)))
+                    && (i.FulfilledAt ?? o.PackedAt ?? o.PickupReadyEmailedAt) != null
+                    && (i.FulfilledAt ?? o.PackedAt ?? o.PickupReadyEmailedAt) >= onlineStart
+                    && (i.FulfilledAt ?? o.PackedAt ?? o.PickupReadyEmailedAt) < onlineEnd))
             .Include(o => o.Items).ThenInclude(i => i.Product).ThenInclude(p => p.Category)
             .ToListAsync();
         foreach (var o in onlineOrders)
@@ -175,6 +181,8 @@ public class CashUpService : ICashUpService
                 var supplier = oi.FulfilledFromStoreId ?? fallbackSid;   // null line → effective supplier
                 if (supplier != storeId) continue;                      // this branch didn't supply this line
                 if (oi.Quantity <= 0) continue;
+                var handover = oi.FulfilledAt ?? o.PackedAt ?? o.PickupReadyEmailedAt;   // this line's work day
+                if (handover == null || handover < onlineStart || handover >= onlineEnd) continue;   // not this window
                 onlineLines.Add(new SaleLine(null, oi.ProductName,
                     oi.Product?.Category?.Name ?? "Uncategorised", oi.Quantity, oi.Quantity * oi.UnitPrice, oi.DiscountAmount));
                 onlineOrderIds.Add(o.Id);

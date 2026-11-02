@@ -1292,33 +1292,42 @@ public class FinanceController : AdminBaseController
         }).ToListAsync();
 
         // Per-branch WEBSITE SALES: each online order's merchandise (delivery excluded) split across the
-        // branches that supplied its lines (OrderItem.FulfilledFromStoreId), matching Completed Transactions
-        // and the EPOS cash-up. This is a SEPARATE figure from the money columns above — payment stays with
-        // the branch that collected it (the online till), while the goods are credited to who packed them.
-        var webItemRows = await _db.OrderItems
-            .Where(i => oids.Contains(i.OrderId) && i.Order.Channel == OrderChannel.Online)
-            .Select(i => new
+        // branches that supplied its lines (OrderItem.FulfilledFromStoreId) and dated by the day that branch
+        // HANDED THE LINE OVER (OrderItem.FulfilledAt — a supplier branch stamps its dispatch, the merge/
+        // pickup branch its pack; legacy falls back to the order's packed/ready time). Decoupled from the
+        // money 'oids' above, so a supplier branch's share lands on its OWN dispatch day even when the merge
+        // branch packs the parcel on a later day. Matches the EPOS cash-up + Completed Transactions. This is
+        // a SEPARATE figure from the money columns above — payment stays with the branch that collected it
+        // (the online till), while the goods are credited to who packed them, on the day they packed them.
+        var webCandidates = await _db.Orders
+            .Where(o => o.Channel == OrderChannel.Online && o.IsPaid && o.VoidedAt == null
+                && o.Status != OrderStatus.Cancelled && o.Status != OrderStatus.Refunded
+                && o.Items.Any(i => (i.FulfilledAt ?? o.PackedAt ?? o.PickupReadyEmailedAt) >= f
+                                 && (i.FulfilledAt ?? o.PackedAt ?? o.PickupReadyEmailedAt) < t))
+            .Select(o => new
             {
-                i.OrderId, i.Quantity, i.UnitPrice, i.FulfilledFromStoreId,
-                Fallback = i.Order.PickupStoreId ?? i.Order.FulfillingStoreId,
-                Packed = i.Order.PackedAt != null || i.Order.PickupReadyEmailedAt != null,
-                i.Order.Total, i.Order.DeliveryFee
+                o.Total, o.DeliveryFee, o.PackedAt, o.PickupReadyEmailedAt,
+                Fallback = o.PickupStoreId ?? o.FulfillingStoreId,
+                Items = o.Items.Select(i => new { i.Quantity, i.UnitPrice, i.FulfilledFromStoreId, i.FulfilledAt }).ToList()
             }).ToListAsync();
         // A Dictionary can't key on null; an online / unassigned supplier is null, so use a sentinel key.
         const int NoStore = int.MinValue;
         var webByStore = new Dictionary<int, (int Orders, decimal Amt, int Packed, decimal PackedAmt, int Await, decimal AwaitAmt)>();
-        foreach (var og in webItemRows.GroupBy(x => x.OrderId))
+        foreach (var o in webCandidates)
         {
-            var head = og.First();
-            var merch = head.Total - head.DeliveryFee;   // website merchandise only
-            var items = og.Select(i => new ItemSplit("", null, null, i.Quantity, i.UnitPrice, i.FulfilledFromStoreId)).ToList();
-            foreach (var p in SplitByStore(items, head.Fallback, merch))
+            var merch = o.Total - o.DeliveryFee;   // website merchandise only (already nets order-level discount)
+            var items = o.Items.Select(i => new ItemSplit("", null, null, i.Quantity, i.UnitPrice, i.FulfilledFromStoreId)).ToList();
+            foreach (var p in SplitByStore(items, o.Fallback, merch))
             {
+                // Date this branch's share by its own handover — the first stamped line it supplied, else the
+                // order's packed/ready time. A branch whose share handed over on another day is skipped here.
+                var fa = o.Items.Where(i => (i.FulfilledFromStoreId ?? o.Fallback) == p.StoreId && i.FulfilledAt != null)
+                    .Select(i => i.FulfilledAt).FirstOrDefault();
+                var handover = fa ?? o.PackedAt ?? o.PickupReadyEmailedAt;
+                if (handover == null || handover < f || handover >= t) continue;
                 var key = p.StoreId ?? NoStore;
                 var c = webByStore.GetValueOrDefault(key);
-                c.Orders++; c.Amt += p.Net;
-                if (head.Packed) { c.Packed++; c.PackedAmt += p.Net; }
-                else { c.Await++; c.AwaitAmt += p.Net; }
+                c.Orders++; c.Amt += p.Net; c.Packed++; c.PackedAmt += p.Net;   // in-window = handed over = packed
                 webByStore[key] = c;
             }
         }
@@ -1413,8 +1422,10 @@ public class FinanceController : AdminBaseController
         string Customer, decimal Discount, string DiscountReason, decimal Total, string Tender, decimal Change,
         List<CtItem> Items, bool IsRefund = false, bool IsVoid = false);
 
-    // One order line for the per-branch split (carries which branch supplied it).
-    private record ItemSplit(string Name, string? Variant, string? Sku, int Qty, decimal UnitPrice, int? Store);
+    // One order line for the per-branch split (carries which branch supplied it, and when that branch
+    // handed it over — used to date each branch's share on the day it did the work).
+    private record ItemSplit(string Name, string? Variant, string? Sku, int Qty, decimal UnitPrice, int? Store,
+        DateTime? FulfilledAt = null);
 
     // Splits an order's net product amount across the branches that supplied its items, proportionally by
     // each branch's item gross (Qty*UnitPrice). Each supplying branch gets its OWN completed-transaction row
@@ -1444,6 +1455,17 @@ public class FinanceController : AdminBaseController
             result.Add((g.Key, net, ctItems));
         }
         return result;
+    }
+
+    // The day a branch's share of a website order counts: the first line that branch supplied which carries a
+    // handover stamp (OrderItem.FulfilledAt — a supplier's dispatch, the merge/pickup branch's pack), else the
+    // order's packed/ready time, else a final fallback. Lets a split order's branches reconcile on their own days.
+    private static DateTime PartWhen(IReadOnlyList<ItemSplit> items, int? fallbackStoreId, int? branchStoreId,
+        DateTime? packedAt, DateTime? pickupReadyAt, DateTime orderWhen)
+    {
+        var fa = items.Where(i => (i.Store ?? fallbackStoreId) == branchStoreId && i.FulfilledAt != null)
+            .Select(i => i.FulfilledAt).FirstOrDefault();
+        return fa ?? packedAt ?? pickupReadyAt ?? orderWhen;
     }
 
     public class CompletedTxnVm
@@ -1477,13 +1499,19 @@ public class FinanceController : AdminBaseController
         var (f, t, fLocal, tLocal) = Range(from ?? today, to ?? today);
         channel = channel is "Online" or "Pos" ? channel : "";
 
-        // Which day a sale belongs to: a POS sale on its PAID date (reconciles to tonight's drawer), a
-        // WEBSITE order on the day it was PACKED / marked ready for pickup — and left out entirely until
-        // that happens — so finance reconciles a website order as a completed transaction when the branch
-        // actually fulfils it, matching the End of Day + cash-up reports (EodDayRule). Voided sales STAY in
-        // the positive rows (dated at the sale) and are offset by a negative void row dated at the void time
-        // below, so the ledger shows both and the Net nets them to zero — hence the void-INCLUSIVE variant.
-        var qry = _db.Orders.Where(Services.EodDayRule.InWindowIncludingVoids(f, t));
+        // Which day a sale belongs to: a POS sale on its PAID date (reconciles to tonight's drawer); a WEBSITE
+        // order's lines EACH on the day their branch HANDED THEM OVER — OrderItem.FulfilledAt (a supplier
+        // branch stamps its dispatch, the merge/pickup branch its pack; legacy lines fall back to the order's
+        // packed/ready time) — and left out entirely until that happens. So a split order's two branches each
+        // reconcile on the day they did the work, matching the End of Day + cash-up reports. Each branch's
+        // share is re-dated per part below; the candidate net here is any order with a line in the window.
+        // Voided sales STAY in the positive rows and are offset by a negative void row dated at the void time
+        // below, so the ledger shows both and the Net nets them to zero — hence this is void-INCLUSIVE.
+        var qry = _db.Orders.Where(o => o.IsPaid && (
+            o.Channel == OrderChannel.Pos
+                ? (o.PaidAt ?? o.CreatedAt) >= f && (o.PaidAt ?? o.CreatedAt) < t
+                : o.Items.Any(i => (i.FulfilledAt ?? o.PackedAt ?? o.PickupReadyEmailedAt) >= f
+                                && (i.FulfilledAt ?? o.PackedAt ?? o.PickupReadyEmailedAt) < t)));
         // Per-item store: a split order that THIS branch supplied part of must appear under this branch
         // too — so match the pickup/fulfilling branch OR any line this branch supplied.
         if (storeId.HasValue) qry = qry.Where(o => o.PickupStoreId == storeId || o.FulfillingStoreId == storeId
@@ -1510,9 +1538,9 @@ public class FinanceController : AdminBaseController
             OnlineCustName = o.User != null ? (o.User.FirstName + " " + o.User.LastName) : null,
             AddrName = o.DeliveryAddress != null ? o.DeliveryAddress.FullName : null,
             AddrPhone = o.DeliveryAddress != null ? o.DeliveryAddress.Phone : null,
-            o.PickupStoreId, o.FulfillingStoreId,
+            o.PickupStoreId, o.FulfillingStoreId, o.PackedAt, o.PickupReadyEmailedAt,
             o.DiscountAmount, o.DiscountCode, o.Total, o.DeliveryFee, o.PaymentProvider, o.ChangeGiven,
-            Items = o.Items.Select(i => new ItemSplit(i.ProductName, i.VariantName, i.ProductSku, i.Quantity, i.UnitPrice, i.FulfilledFromStoreId)).ToList()
+            Items = o.Items.Select(i => new ItemSplit(i.ProductName, i.VariantName, i.ProductSku, i.Quantity, i.UnitPrice, i.FulfilledFromStoreId, i.FulfilledAt)).ToList()
         }).ToListAsync();
 
         var oids = raw.Select(r => r.Id).ToList();
@@ -1545,12 +1573,13 @@ public class FinanceController : AdminBaseController
         // Voided sales (POS same-session voids AND website voids) — shown as NEGATIVE rows dated at the
         // VOID time (not the sale time), so an end-of-day check sees the reversal when it happened, just
         // like a refund. The original sale still appears as its positive row, so sale + void net to zero.
-        // A WEBSITE order only earns a positive row once it's PACKED (above), so only show a void row for a
-        // website order that WAS packed — otherwise a never-packed-then-voided order would leave an orphan
-        // negative with nothing to offset. POS sales always have a positive row. Honour the channel filter.
+        // A WEBSITE order only earns a positive row once at least one of its lines was HANDED OVER (above),
+        // so only show a void row once that's happened — otherwise a never-fulfilled-then-voided order would
+        // leave an orphan negative with nothing to offset. POS sales always have a positive row. Honour filter.
         var voidQ = _db.Orders.Where(o => o.VoidedAt != null
             && o.VoidedAt >= f && o.VoidedAt < t
-            && (o.Channel == OrderChannel.Pos || (o.PackedAt ?? o.PickupReadyEmailedAt) != null)
+            && (o.Channel == OrderChannel.Pos
+                || o.Items.Any(i => (i.FulfilledAt ?? o.PackedAt ?? o.PickupReadyEmailedAt) != null))
             && (!storeId.HasValue || o.PickupStoreId == storeId || o.FulfillingStoreId == storeId
                 || o.Items.Any(i => i.FulfilledFromStoreId == storeId))
             && (!registerId.HasValue || o.RegisterId == registerId));
@@ -1601,13 +1630,25 @@ public class FinanceController : AdminBaseController
             var fallbackSid = r.PickupStoreId ?? r.FulfillingStoreId;
             var parts = SplitByStore(r.Items, fallbackSid, rowTotal);
             if (storeId.HasValue) parts = parts.Where(p => p.StoreId == storeId).ToList();
+            // Date each branch's share by the day THAT branch handed its lines over (first stamped line it
+            // supplied, else the order's packed/ready time); POS rows keep their paid-date When. A website
+            // share that handed over on another day is dropped from this window (it shows on its own day).
+            if (r.Channel == OrderChannel.Online)
+                parts = parts.Where(p =>
+                {
+                    var w = PartWhen(r.Items, fallbackSid, p.StoreId, r.PackedAt, r.PickupReadyEmailedAt, r.When);
+                    return w >= f && w < t;
+                }).ToList();
             var first = true;
             return parts.Select(p =>
             {
                 var disc = first ? r.DiscountAmount : 0m;
                 var discReason = first && !string.IsNullOrWhiteSpace(r.DiscountCode) ? r.DiscountCode! : "—";
                 first = false;
-                return new CtRow(r.Id, r.OrderNumber, r.When, staff, StoreLabel(p.StoreId),
+                var when = r.Channel == OrderChannel.Online
+                    ? PartWhen(r.Items, fallbackSid, p.StoreId, r.PackedAt, r.PickupReadyEmailedAt, r.When)
+                    : r.When;
+                return new CtRow(r.Id, r.OrderNumber, when, staff, StoreLabel(p.StoreId),
                     device, customer, disc, discReason, p.Net, tender, r.ChangeGiven ?? 0, p.Items);
             });
         }).ToList();

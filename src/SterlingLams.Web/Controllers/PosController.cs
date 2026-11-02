@@ -1813,7 +1813,11 @@ public class PosController : Controller
                 lineTotal = i.LineTotal,
                 image = imgs.GetValueOrDefault(i.ProductId),
                 sku = !string.IsNullOrWhiteSpace(vc?.Sku) ? vc!.Sku : pc?.Sku,
-                barcode = !string.IsNullOrWhiteSpace(vc?.Barcode) ? vc!.Barcode : pc?.Barcode
+                barcode = !string.IsNullOrWhiteSpace(vc?.Barcode) ? vc!.Barcode : pc?.Barcode,
+                // Whether THIS branch supplies this line (its own stock) vs an item arriving to merge, and
+                // whether this branch has already packed it (its handover stamp is set).
+                mine = (i.FulfilledFromStoreId ?? o.FulfillingStoreId ?? o.PickupStoreId) == storeId,
+                packed = i.FulfilledAt != null
             };
         }).ToList();
         // Incoming stock for an order this branch is fulfilling but still awaiting from another branch:
@@ -1849,6 +1853,17 @@ public class PosController : Controller
         var mergePending = await _db.StockTransfers.CountAsync(t => t.OrderId == o.Id && t.ToStoreId == storeId
             && (t.Status == TransferStatus.Approved || t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived));
 
+        // This branch's OWN lines (the goods it already holds) vs items arriving to merge. For a split
+        // DELIVERY order the merge branch can pack its own items while the rest is still in transit — those
+        // lines count on its EOD today — then Receive the merge and hand the whole parcel to Logistics.
+        var ownLines = o.Items.Where(i => (i.FulfilledFromStoreId ?? o.FulfillingStoreId ?? o.PickupStoreId) == storeId).ToList();
+        var canPackOwnItems = o.FulfillmentType == FulfillmentType.Delivery
+            && o.FulfillingStoreId == storeId
+            && o.Status == OrderStatus.AwaitingTransfer
+            && o.PackedAt == null
+            && ownLines.Any(i => i.FulfilledAt == null);
+        var ownItemsPacked = ownLines.Count > 0 && ownLines.All(i => i.FulfilledAt != null);
+
         var a = o.DeliveryAddress;
         return Json(new
         {
@@ -1858,6 +1873,9 @@ public class PosController : Controller
             status = o.Status.ToString(),
             merging = mergePending > 0,
             mergePending,
+            // Split-delivery merge branch: pack the items it already has before the merge arrives.
+            canPackOwnItems,
+            ownItemsPacked,
             fulfillmentType = o.FulfillmentType.ToString(),
             incoming,
             placedAt = o.CreatedAt,           // shown in West Africa Time on the client
@@ -1971,10 +1989,51 @@ public class PosController : Controller
         o.PackedByUserId = me?.Id;
         o.PackedByName = staff;
         o.UpdatedAt = DateTime.UtcNow;
+        // Per-item EOD date: packing is THIS branch's handover moment. Stamp every line not already stamped
+        // by a supplier branch's dispatch — i.e. the merge/pickup branch's own lines, and every line of a
+        // non-split order — so each line counts on its own cash-up/EOD on the day its branch did the work.
+        foreach (var li in o.Items.Where(i => i.FulfilledAt == null)) li.FulfilledAt = o.PackedAt;
         OrderNotes.AddSystem(_db, o.Id, $"Packed by {staff} at {register.Store?.Name}.");
         await _db.SaveChangesAsync();
 
         try { await _audit.LogAsync("Pack", "Order", o.Id.ToString(), $"POS packed {o.OrderNumber} at {register.Store?.Name}"); } catch { }
+        return Json(new { success = true });
+    }
+
+    // Split-delivery merge branch only: pack the items THIS branch already holds while the rest is still
+    // arriving to merge. Stamps those lines' handover (so they count on this branch's EOD today) WITHOUT
+    // marking the whole order packed — it still needs the merge received + the final hand-off to Logistics.
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> FulfilPackOwnItems([FromBody] FulfilPackDto req)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { success = false, message = "This POS isn't set up." });
+        if (!await _access.CanWriteAsync(User, register.StoreId))
+            return Json(new { success = false, message = "You're not assigned to this branch's POS." });
+
+        var o = await _db.Orders.Include(x => x.Items)
+            .FirstOrDefaultAsync(x => x.Id == req.OrderId && x.Channel == OrderChannel.Online
+                && x.FulfillmentType == FulfillmentType.Delivery && x.FulfillingStoreId == register.StoreId);
+        if (o == null) return Json(new { success = false, message = "Order not found for this branch." });
+        if (o.Status != OrderStatus.AwaitingTransfer)
+            return Json(new { success = false, message = "This order isn't awaiting a merge — use \"Pack & hand to logistics\" instead." });
+
+        // Only the lines this branch supplies (its own stock), not the ones arriving from another branch.
+        var mine = o.Items.Where(i => (i.FulfilledFromStoreId ?? o.FulfillingStoreId) == register.StoreId && i.FulfilledAt == null).ToList();
+        if (mine.Count == 0) return Json(new { success = false, message = "Your items are already packed." });
+
+        var me = await _userManager.GetUserAsync(User);
+        var staff = me?.FullName ?? User.Identity?.Name ?? "staff";
+        var now = DateTime.UtcNow;
+        foreach (var li in mine) li.FulfilledAt = now;
+        // Leave Status = AwaitingTransfer: FinalizeAwaitingOrderAsync only commits the merge while it's in
+        // that state, and an awaiting order isn't in the "to pack" alarm queue anyway, so there's nothing to
+        // silence here. The order-level PackedAt stays null until the final pack after the merge is received.
+        o.UpdatedAt = now;
+        OrderNotes.AddSystem(_db, o.Id, $"{staff} packed this branch's own items at {register.Store?.Name} (still awaiting merge).");
+        await _db.SaveChangesAsync();
+
+        try { await _audit.LogAsync("PackOwnItems", "Order", o.Id.ToString(), $"{register.Store?.Name} packed own items for {o.OrderNumber} (awaiting merge)"); } catch { }
         return Json(new { success = true });
     }
 
