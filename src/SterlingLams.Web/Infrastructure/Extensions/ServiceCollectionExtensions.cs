@@ -68,6 +68,7 @@ public static class ServiceCollectionExtensions
         services.AddHttpClient<ICloudflareAnalytics, CloudflareAnalyticsService>(c => c.Timeout = TimeSpan.FromSeconds(15));
         services.AddHttpClient<IGoogleAnalytics, GoogleAnalyticsService>(c => c.Timeout = TimeSpan.FromSeconds(20));
         services.AddHttpClient<IRetainfulClient, RetainfulClient>(c => c.Timeout = TimeSpan.FromSeconds(15));
+        services.AddScoped<IRetainfulOrderNotifier, RetainfulOrderNotifier>();
         services.AddHttpClient<IImageKitUploader, ImageKitUploader>(c => c.Timeout = TimeSpan.FromSeconds(60));
 
         // Meta Conversions API (server-side Purchase, deduplicated against the browser pixel). Short

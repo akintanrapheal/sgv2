@@ -24,7 +24,13 @@ public class OrderCancelReleasesHoldsTests
         var transfers = new TransferWorkflowService(t.Db, new StockService(t.Db), fulfilment);
         return new OrderStatusService(t.Db, fulfilment, transfers, new StockService(t.Db), new FakeLogistics(),
             new FakeEmail(), new FakeSettings(), new FakeWhatsApp(), new FakeAudit(),
-            new HttpContextAccessor(), links: null!, zones: new DeliveryZoneService(new FakeSettings()));
+            new HttpContextAccessor(), links: null!, zones: new DeliveryZoneService(new FakeSettings()),
+            retainful: new NoopRetainfulNotifier());
+    }
+
+    private sealed class NoopRetainfulNotifier : IRetainfulOrderNotifier
+    {
+        public Task NotifyAsync(int orderId, params string[] eventNames) => Task.CompletedTask;
     }
 
     [Fact]
