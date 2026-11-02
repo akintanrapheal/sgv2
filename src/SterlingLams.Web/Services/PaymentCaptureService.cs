@@ -41,6 +41,7 @@ public class PaymentCaptureService : IPaymentCaptureService
     private readonly IWhatsAppService _whatsapp;
     private readonly IPostHogClient _posthog;
     private readonly IOrderNotificationService _notifications;
+    private readonly IRetainfulOrderNotifier _retainful;
     private readonly ILogger<PaymentCaptureService> _logger;
 
     public PaymentCaptureService(
@@ -53,6 +54,7 @@ public class PaymentCaptureService : IPaymentCaptureService
         IWhatsAppService whatsapp,
         IPostHogClient posthog,
         IOrderNotificationService notifications,
+        IRetainfulOrderNotifier retainful,
         ILogger<PaymentCaptureService> logger)
     {
         _db = db;
@@ -64,6 +66,7 @@ public class PaymentCaptureService : IPaymentCaptureService
         _whatsapp = whatsapp;
         _posthog = posthog;
         _notifications = notifications;
+        _retainful = retainful;
         _logger = logger;
     }
 
@@ -124,6 +127,10 @@ public class PaymentCaptureService : IPaymentCaptureService
         // Customer confirmation + admin new-order alert. Important for the webhook / reconciliation
         // paths: when the shopper never made it back to the site, this is the only place these go out.
         await _notifications.SendNewOrderEmailsAsync(order.Id, ct);
+
+        // Retainful ORDER_PAID — the conversion event (online only). Idempotent on Retainful's side,
+        // and this capture only runs once per order, so it fires exactly once. Best-effort.
+        await _retainful.NotifyAsync(order.Id, "ORDER_PAID");
 
         _logger.LogInformation("Order {OrderNumber} captured as paid ({Provider}).", order.OrderNumber, provider);
         return PaymentCaptureResult.Captured;

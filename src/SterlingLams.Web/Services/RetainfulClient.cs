@@ -5,26 +5,31 @@ using System.Text.Json;
 namespace SterlingLams.Web.Services;
 
 /// <summary>
-/// Server-side client for Retainful's REST API (https://api.retainful.net/api/v1). Used to sync
-/// customers/subscribers and send order/win-back events so Retainful's own automations can email them.
-/// Everything is fire-and-forget and swallows errors — a Retainful hiccup must never affect checkout,
-/// sign-up or any customer-facing flow. Config lives in Admin → Integrations (encrypted API key).
+/// Server-side client for Retainful's REST API (https://api.retainful.net/api/v1). Syncs
+/// subscribers and sends the commerce lifecycle events (CHECKOUT_CREATED, ORDER_PLACED, ORDER_PAID,
+/// ORDER_FULFILLED, ORDER_CANCELLED, ORDER_REFUNDED) so Retainful's own automations (abandoned cart,
+/// post-purchase, win-back) can run. Errors are swallowed — a Retainful hiccup must never affect
+/// checkout, sign-up or any customer-facing flow. Config lives in Admin → Integrations (encrypted key).
 ///
-/// Abandoned-cart reminders are intentionally NOT wired here: the site already has its own
-/// (see AbandonedCartService). Wiring Retainful's too would double-email customers.
+/// Retainful detects an abandoned cart itself from a CHECKOUT_CREATED with no following ORDER_PAID, so
+/// while Retainful is enabled the built-in abandoned-cart reminders are held (see AbandonedCartService)
+/// to avoid double-emailing. Most call sites go through <see cref="IRetainfulOrderNotifier"/>, which
+/// resolves the order's contact/total in one query.
 /// </summary>
 public interface IRetainfulClient
 {
     /// <summary>Add/refresh a newsletter subscriber (opted-in) in Retainful + the configured list.</summary>
     Task SubscribeNewsletterAsync(string email, string? firstName = null, string? lastName = null);
 
-    /// <summary>Fire a "Placed Order" event (drives win-back / post-purchase automations).</summary>
-    Task SendOrderPlacedAsync(string? email, string? phone, string? firstName, string? lastName,
-        string orderNumber, decimal total, int itemCount);
-
-    /// <summary>Fire an "Abandoned Cart" event so Retainful's automation can email the shopper. Only used
-    /// when the owner has handed abandoned-cart over to Retainful (the built-in sequence is then off).</summary>
-    Task SendAbandonedCartAsync(string email, string uniqueId, int itemCount, decimal subtotal, string? recoveryUrl);
+    /// <summary>Fire one commerce lifecycle event to Retainful's /events API. <paramref name="eventName"/>
+    /// is the event type Retainful keys automations on (e.g. "CHECKOUT_CREATED", "ORDER_PAID"); Retainful
+    /// derives its internal type by uppercasing it. <paramref name="uniqueIdentifier"/> ties a purchase's
+    /// whole journey together (same value across checkout → paid → fulfilled), so use the order number —
+    /// a checkout that never gets ORDER_PAID is then correctly treated as abandoned.</summary>
+    Task SendOrderEventAsync(string eventName, string uniqueIdentifier,
+        string? email, string? phone, string? firstName, string? lastName,
+        decimal total, int itemCount, string? status = null, string? channel = null,
+        IDictionary<string, string>? extra = null);
 
     /// <summary>Live connection test for the Integrations status panel. Returns (ok, human-readable detail).</summary>
     Task<(bool ok, string detail)> TestAsync();
@@ -105,17 +110,20 @@ public class RetainfulClient : IRetainfulClient
         catch (Exception ex) { _log.LogWarning(ex, "Retainful newsletter sync failed."); }
     }
 
-    public async Task SendOrderPlacedAsync(string? email, string? phone, string? firstName, string? lastName,
-        string orderNumber, decimal total, int itemCount)
+    public async Task SendOrderEventAsync(string eventName, string uniqueIdentifier,
+        string? email, string? phone, string? firstName, string? lastName,
+        decimal total, int itemCount, string? status = null, string? channel = null,
+        IDictionary<string, string>? extra = null)
     {
+        if (string.IsNullOrWhiteSpace(eventName) || string.IsNullOrWhiteSpace(uniqueIdentifier)) return;
         if (string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(phone)) return;  // need an identity
         try
         {
             var (on, key, baseUrl, _) = await ConfigAsync();
             if (!on) return;
 
-            // Contact: keep purchasers subscribed so post-purchase/win-back flows can reach them (the site
-            // already emails customers transactionally; this mirrors that relationship).
+            // Contact: keep purchasers subscribed so Retainful's flows can reach them (the site already
+            // emails customers transactionally; this mirrors that relationship).
             var contact = new Dictionary<string, object>();
             if (!string.IsNullOrWhiteSpace(email)) contact["email"] = email!;
             if (!string.IsNullOrWhiteSpace(phone)) contact["phone"] = phone!;
@@ -123,49 +131,27 @@ public class RetainfulClient : IRetainfulClient
             if (!string.IsNullOrWhiteSpace(lastName)) contact["last_name"] = lastName!;
             contact["email_opt_in"] = "SUBSCRIBED";
 
-            await PostAsync(key, $"{baseUrl}/events", new
-            {
-                eventName = "Placed Order",
-                uniqueIdentifier = orderNumber,   // idempotency key — safe across the return + webhook paths
-                contact,
-                eventData = new Dictionary<string, string>
-                {
-                    ["order_number"] = orderNumber,
-                    ["order_total"] = total.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
-                    ["currency"] = "NGN",
-                    ["item_count"] = itemCount.ToString(),
-                    ["channel"] = "online",
-                },
-            });
-        }
-        catch (Exception ex) { _log.LogWarning(ex, "Retainful order event failed."); }
-    }
-
-    public async Task SendAbandonedCartAsync(string email, string uniqueId, int itemCount, decimal subtotal, string? recoveryUrl)
-    {
-        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@')) return;
-        try
-        {
-            var (on, key, baseUrl, _) = await ConfigAsync();
-            if (!on) return;
-
+            // eventData must be a flat, non-empty map of strings (Retainful rejects nested objects).
             var eventData = new Dictionary<string, string>
             {
-                ["item_count"] = itemCount.ToString(),
-                ["cart_total"] = subtotal.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
+                ["order_number"] = uniqueIdentifier,
+                ["order_total"] = total.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
                 ["currency"] = "NGN",
+                ["item_count"] = itemCount.ToString(),
+                ["channel"] = string.IsNullOrWhiteSpace(channel) ? "online" : channel!,
             };
-            if (!string.IsNullOrWhiteSpace(recoveryUrl)) eventData["recovery_url"] = recoveryUrl!;
+            if (!string.IsNullOrWhiteSpace(status)) eventData["status"] = status!;
+            if (extra != null) foreach (var kv in extra) eventData[kv.Key] = kv.Value;
 
             await PostAsync(key, $"{baseUrl}/events", new
             {
-                eventName = "Abandoned Cart",
-                uniqueIdentifier = string.IsNullOrWhiteSpace(uniqueId) ? email : uniqueId,  // per-cart idempotency
-                contact = new Dictionary<string, object> { ["email"] = email, ["email_opt_in"] = "SUBSCRIBED" },
+                eventName,
+                uniqueIdentifier,   // same across a purchase's journey → Retainful treats it as one order
+                contact,
                 eventData,
             });
         }
-        catch (Exception ex) { _log.LogWarning(ex, "Retainful abandoned-cart event failed."); }
+        catch (Exception ex) { _log.LogWarning(ex, "Retainful event {Event} failed.", eventName); }
     }
 
     public async Task<(bool ok, string detail)> TestAsync()

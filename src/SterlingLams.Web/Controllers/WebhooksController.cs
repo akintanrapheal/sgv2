@@ -20,6 +20,7 @@ public class WebhooksController : ControllerBase
     private readonly ILogger<WebhooksController> _logger;
 
     private readonly SterlingLams.Web.Services.IAuditService _audit;
+    private readonly SterlingLams.Web.Services.IRetainfulOrderNotifier _retainful;
 
     public WebhooksController(
         ApplicationDbContext db,
@@ -28,6 +29,7 @@ public class WebhooksController : ControllerBase
         SterlingLams.Web.Services.Logistics.ILogisticsDispatchService logistics,
         ISubscriptionPaymentService subPay,
         SterlingLams.Web.Services.IAuditService audit,
+        SterlingLams.Web.Services.IRetainfulOrderNotifier retainful,
         ILogger<WebhooksController> logger)
     {
         _db = db;
@@ -36,6 +38,7 @@ public class WebhooksController : ControllerBase
         _logistics = logistics;
         _subPay = subPay;
         _audit = audit;
+        _retainful = retainful;
         _logger = logger;
     }
 
@@ -207,6 +210,8 @@ public class WebhooksController : ControllerBase
         SterlingLams.Web.Services.OrderNotes.AddSystem(_db, order.Id, note);
         await _db.SaveChangesAsync();
         try { await _audit.LogAsync("Delivery", "Order", order.Id.ToString(), $"Order {order.OrderNumber} delivered (logistics): {old} → Delivered"); } catch { }
+        // Retainful ORDER_FULFILLED (online only; notifier gates channel). Best-effort.
+        await _retainful.NotifyAsync(order.Id, "ORDER_FULFILLED");
 
         _logger.LogInformation("Order {OrderNumber} marked Delivered via logistics callback.", order.OrderNumber);
         return Ok(new { ok = true, matched = true });

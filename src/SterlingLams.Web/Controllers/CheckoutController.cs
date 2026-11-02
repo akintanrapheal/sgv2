@@ -36,6 +36,7 @@ public class CheckoutController : Controller
     private readonly SterlingLams.Web.Services.IZephielClient _zephiel;
     private readonly SterlingLams.Web.Services.IPostHogClient _posthog;
     private readonly SterlingLams.Web.Services.IRetainfulClient _retainful;
+    private readonly SterlingLams.Web.Services.IRetainfulOrderNotifier _retainfulEvents;
     private readonly SterlingLams.Web.Services.IOrderNotificationService _orderNotifications;
     private readonly SterlingLams.Web.Services.IStorefrontIssueLogger _issues;
     private readonly IDataProtector _confirmTokenProtector;
@@ -63,6 +64,7 @@ public class CheckoutController : Controller
         SterlingLams.Web.Services.IZephielClient zephiel,
         SterlingLams.Web.Services.IPostHogClient posthog,
         SterlingLams.Web.Services.IRetainfulClient retainful,
+        SterlingLams.Web.Services.IRetainfulOrderNotifier retainfulEvents,
         SterlingLams.Web.Services.IOrderNotificationService orderNotifications,
         SterlingLams.Web.Services.IStorefrontIssueLogger issues)
     {
@@ -87,6 +89,7 @@ public class CheckoutController : Controller
         _zephiel = zephiel;
         _posthog = posthog;
         _retainful = retainful;
+        _retainfulEvents = retainfulEvents;
         _orderNotifications = orderNotifications;
         _issues = issues;
         _confirmTokenProtector = dataProtection.CreateProtector("Checkout.Confirmation.v1");
@@ -910,6 +913,11 @@ public class CheckoutController : Controller
 
         try { await _audit.LogAsync("Order", "Order", order.Id.ToString(), $"Online order placed {order.OrderNumber} — ₦{order.Total:N0}"); } catch { }
 
+        // Retainful: the checkout exists and the order is placed (awaiting payment). CHECKOUT_CREATED is
+        // what Retainful's abandoned-cart flow keys on — if no ORDER_PAID follows for this order number,
+        // it treats the checkout as abandoned. Same order number across a retry → one checkout. Best-effort.
+        await _retainfulEvents.NotifyAsync(order.Id, "CHECKOUT_CREATED", "ORDER_PLACED");
+
         // Newsletter opt-in (deduped) when the customer ticked the box.
         if (vm.SubscribeNewsletter && !string.IsNullOrWhiteSpace(user.Email))
         {
@@ -1037,10 +1045,10 @@ public class CheckoutController : Controller
             {
                 try { await _audit.LogAsync("Payment", "Order", order.Id.ToString(), $"Payment received for {order.OrderNumber} — ₦{order.Total:N0} ({_payment.ProviderName})"); } catch { }
                 _ = _whatsapp.NotifyOrderAsync(order.Id, SterlingLams.Web.Services.WhatsAppOrderEvent.PaymentReceived);
-                // Retainful "Placed Order" event (win-back / post-purchase automations). Fire-and-forget.
-                var itemQty = await _db.OrderItems.Where(i => i.OrderId == order.Id).SumAsync(i => (int?)i.Quantity) ?? 0;
-                _ = _retainful.SendOrderPlacedAsync(buyerEmail, buyer?.PhoneNumber, buyer?.FirstName, buyer?.LastName,
-                    order.OrderNumber, order.Total, itemQty);
+                // Retainful ORDER_PAID — the conversion that stops the abandoned-cart flow and drives
+                // post-purchase automations. Guarded by wasUnpaid so it fires once across the return path;
+                // the webhook/reconcile path fires it from PaymentCaptureService (idempotent either way).
+                await _retainfulEvents.NotifyAsync(order.Id, "ORDER_PAID");
                 // Authoritative funnel completion (guarded by wasUnpaid, so it fires once across the
                 // return + webhook paths — whichever flips the order to paid first).
                 await _posthog.CaptureAsync(order.UserId ?? $"order_{order.OrderNumber}", "order_paid", new

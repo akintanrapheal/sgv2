@@ -52,16 +52,18 @@ public class RefundApprovalService : IRefundApprovalService
     private readonly IPostHogClient _posthog;
     private readonly ITransferWorkflowService _transfers;
     private readonly IOrderFulfilmentService _fulfilment;
+    private readonly IRetainfulOrderNotifier _retainful;
 
     public RefundApprovalService(ApplicationDbContext db, IStockService stock, ILoyaltyService loyalty,
         IGiftCardService giftCards, IPaymentService payment, IAuditService audit,
         IEmailService email, ISettingsService settings, IPostHogClient posthog,
-        ITransferWorkflowService transfers, IOrderFulfilmentService fulfilment, ILogger<RefundApprovalService> log)
+        ITransferWorkflowService transfers, IOrderFulfilmentService fulfilment,
+        IRetainfulOrderNotifier retainful, ILogger<RefundApprovalService> log)
     {
         _email = email; _settings = settings;
         _db = db; _stock = stock; _loyalty = loyalty; _giftCards = giftCards;
         _payment = payment; _audit = audit; _posthog = posthog; _transfers = transfers;
-        _fulfilment = fulfilment; _log = log;
+        _fulfilment = fulfilment; _retainful = retainful; _log = log;
     }
 
     public Task<int> PendingCountAsync() =>
@@ -224,6 +226,10 @@ public class RefundApprovalService : IRefundApprovalService
             value = refund.Amount, currency = "NGN", refund_number = refund.RefundNumber,
             order_number = order.OrderNumber, full_refund = refund.WasFullRefund,
         });
+
+        // Retainful ORDER_REFUNDED (online orders only; notifier gates channel). Carries the refunded
+        // amount + whether it was a full refund alongside the order context.
+        await _retainful.NotifyAsync(order.Id, "ORDER_REFUNDED");
 
         // 5) Tell the branch that returned items are waiting in the restock queue (best-effort).
         if (refund.RestockRequested)

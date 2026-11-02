@@ -62,17 +62,19 @@ public sealed class OrderStatusService : IOrderStatusService
     private readonly IHttpContextAccessor _http;
     private readonly LinkGenerator _links;
     private readonly DeliveryZoneService _zones;
+    private readonly IRetainfulOrderNotifier _retainful;
 
     public OrderStatusService(ApplicationDbContext db, IOrderFulfilmentService fulfilment,
         ITransferWorkflowService transfers, IStockService stock,
         Logistics.ILogisticsDispatchService logistics, IEmailService email, ISettingsService settings,
         IWhatsAppService whatsapp, IAuditService audit, IHttpContextAccessor http, LinkGenerator links,
-        DeliveryZoneService zones)
+        DeliveryZoneService zones, IRetainfulOrderNotifier retainful)
     {
         _db = db;
         _fulfilment = fulfilment;
         _transfers = transfers;
         _stock = stock;
+        _retainful = retainful;
         _zones = zones;
         _logistics = logistics;
         _email = email;
@@ -147,6 +149,8 @@ public sealed class OrderStatusService : IOrderStatusService
         }
 
         await LogAsync("Void", "Order", order.Id.ToString(), $"Order {order.OrderNumber} voided by {staff}: {reason}");
+        // A voided website order is cancelled → tell Retainful (online only; notifier gates channel).
+        await _retainful.NotifyAsync(order.Id, "ORDER_CANCELLED");
         return (true, null);
     }
 
@@ -314,6 +318,17 @@ public sealed class OrderStatusService : IOrderStatusService
         // a website order. Best-effort.
         if (manuallyConfirmed || revivedFromCancelled)
             await SendNewOrderAdminAlertAsync(order.Id);
+
+        // Retainful lifecycle events on a real transition (online orders only; the notifier gates that).
+        // Delivered/Collected = fulfilled; a staff/admin Cancelled = ORDER_CANCELLED (auto-cancels of
+        // never-paid orders go through the sweeper, not here, so an abandoned checkout stays abandoned).
+        if (old != order.Status)
+        {
+            if (order.Status is OrderStatus.Delivered or OrderStatus.Collected)
+                await _retainful.NotifyAsync(order.Id, "ORDER_FULFILLED");
+            else if (order.Status == OrderStatus.Cancelled)
+                await _retainful.NotifyAsync(order.Id, "ORDER_CANCELLED");
+        }
 
         return OrderStatusOutcome.Applied;
     }
