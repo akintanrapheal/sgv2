@@ -10,6 +10,14 @@ public record AttributedSource(string Type, int? Id, string Name, decimal Revenu
     public decimal Aov => Orders > 0 ? Math.Round(Revenue / Orders, 0) : 0m;
 }
 
+/// <summary>One day's attributed revenue, split by source. Used to draw the revenue-over-time
+/// chart on the Analytics page; days with no attributed order are zero-filled so the series is
+/// contiguous.</summary>
+public record DailyRevenue(DateTime Day, decimal Campaign, decimal Automation, decimal Cart)
+{
+    public decimal Total => Campaign + Automation + Cart;
+}
+
 public class AttributionResult
 {
     public int WindowDays { get; set; }
@@ -20,12 +28,23 @@ public class AttributionResult
     public decimal CartRevenue { get; set; }
     public List<AttributedSource> Campaigns { get; set; } = new();
     public List<AttributedSource> Automations { get; set; } = new();
+    /// <summary>Contiguous day-by-day attributed revenue across the requested range (local days).</summary>
+    public List<DailyRevenue> Daily { get; set; } = new();
+
+    public decimal Aov => TotalOrders > 0 ? Math.Round(TotalRevenue / TotalOrders, 0) : 0m;
 
     /// <summary>Revenue + order count credited to a single campaign (last-touch, so it already
     /// excludes orders a later email won).</summary>
     public (decimal Revenue, int Orders) ForCampaign(int id)
     {
         var s = Campaigns.FirstOrDefault(x => x.Id == id);
+        return s == null ? (0m, 0) : (s.Revenue, s.Orders);
+    }
+
+    /// <summary>Revenue + order count credited to a single automation (last-touch).</summary>
+    public (decimal Revenue, int Orders) ForAutomation(int id)
+    {
+        var s = Automations.FirstOrDefault(x => x.Id == id);
         return s == null ? (0m, 0) : (s.Revenue, s.Orders);
     }
 }
@@ -91,6 +110,8 @@ public class MarketingAttributionService : IMarketingAttributionService
 
         var campAgg = new Dictionary<int, (decimal rev, int n)>();
         var autoAgg = new Dictionary<int, (decimal rev, int n)>();
+        // Daily buckets (local day → per-source revenue) for the revenue-over-time chart.
+        var dayAgg = new Dictionary<DateTime, (decimal camp, decimal auto, decimal cart)>();
 
         foreach (var o in orders)
         {
@@ -105,22 +126,36 @@ public class MarketingAttributionService : IMarketingAttributionService
 
             result.TotalRevenue += o.Total;
             result.TotalOrders++;
+            var day = o.PaidAt.ToLocalTime().Date;
+            var d = dayAgg.GetValueOrDefault(day);
             switch (best.Value.Type)
             {
                 case "Campaign":
                     result.CampaignRevenue += o.Total;
                     var ca = campAgg.GetValueOrDefault(best.Value.Id!.Value);
                     campAgg[best.Value.Id!.Value] = (ca.rev + o.Total, ca.n + 1);
+                    dayAgg[day] = (d.camp + o.Total, d.auto, d.cart);
                     break;
                 case "Automation":
                     result.AutomationRevenue += o.Total;
                     var aa = autoAgg.GetValueOrDefault(best.Value.Id!.Value);
                     autoAgg[best.Value.Id!.Value] = (aa.rev + o.Total, aa.n + 1);
+                    dayAgg[day] = (d.camp, d.auto + o.Total, d.cart);
                     break;
                 default:
                     result.CartRevenue += o.Total;
+                    dayAgg[day] = (d.camp, d.auto, d.cart + o.Total);
                     break;
             }
+        }
+
+        // Zero-fill a contiguous local-day series across [from, to) so the chart has no gaps.
+        var startDay = from.ToLocalTime().Date;
+        var endDay = to.AddTicks(-1).ToLocalTime().Date;
+        for (var day = startDay; day <= endDay; day = day.AddDays(1))
+        {
+            var d = dayAgg.GetValueOrDefault(day);
+            result.Daily.Add(new DailyRevenue(day, d.camp, d.auto, d.cart));
         }
 
         // Resolve names for the breakdown.

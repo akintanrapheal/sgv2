@@ -2,6 +2,8 @@
 @using SterlingLams.Web.Models.Domain
 @{
     ViewData["Title"] = Model.Id == 0 ? "New Campaign" : "Edit Campaign";
+    // Seed the composer: an existing block layout round-trips; a legacy HTML body becomes one HTML block.
+    var seed = System.Text.Json.JsonSerializer.Serialize(new { layout = Model.LayoutJson, body = Model.BodyHtml });
 }
 
 <div class="mb-6">
@@ -9,30 +11,62 @@
     <h1 class="text-2xl font-light text-neutral-900 mt-2">@ViewData["Title"]</h1>
 </div>
 
+<script id="seed" type="application/json">@Html.Raw(seed)</script>
+
 <form asp-area="Marketing" asp-controller="Campaigns" asp-action="Save" method="post" id="campaign-form">
     @Html.AntiForgeryToken()
     <input type="hidden" asp-for="Id" />
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div class="lg:col-span-2 space-y-4">
-            <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-4">
-                <div>
-                    <label asp-for="Name" class="block text-xs text-neutral-500 mb-1">Campaign name (internal) *</label>
-                    <input asp-for="Name" required class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
-                </div>
-                <div>
-                    <label asp-for="Subject" class="block text-xs text-neutral-500 mb-1">Email subject *</label>
-                    <input asp-for="Subject" required class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
-                </div>
-                <div>
-                    <label class="block text-xs text-neutral-500 mb-1">Email body</label>
-                    <partial name="_RichTextEditor" model='new SterlingLams.Web.Models.ViewModels.RichTextEditorVm(nameof(Model.BodyHtml), "campaign-body", Model.BodyHtml, "min-h-[18rem]")' />
-                    <p class="text-[10px] text-neutral-400 mt-1">An unsubscribe footer is added automatically.</p>
+    <input type="hidden" asp-for="LayoutJson" id="LayoutJson" />
+
+    <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label asp-for="Name" class="block text-xs text-neutral-500 mb-1">Campaign name (internal) *</label>
+                <input asp-for="Name" required class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+            </div>
+            <div>
+                <label asp-for="Subject" class="block text-xs text-neutral-500 mb-1">Email subject *</label>
+                <input asp-for="Subject" required class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <!-- Composer -->
+        <div class="lg:col-span-3 space-y-4">
+            <div class="bg-white border border-neutral-200 rounded-sm p-4">
+                <div class="text-xs text-neutral-500 mb-2">Add a block</div>
+                <div class="flex flex-wrap gap-2" id="palette">
+                    @foreach (var (t, label) in new[] { ("heading","Heading"), ("text","Text"), ("image","Image"), ("button","Button"), ("divider","Divider"), ("spacer","Spacer"), ("social","Social"), ("html","HTML") })
+                    {
+                        <button type="button" data-add="@t" class="px-3 py-1.5 text-xs border border-neutral-200 rounded-sm hover:border-neutral-400 hover:bg-neutral-50">+ @label</button>
+                    }
                 </div>
             </div>
+            <div id="blocks" class="space-y-3"></div>
+            <p id="empty-hint" class="text-sm text-neutral-400 text-center py-8 border border-dashed border-neutral-200 rounded-sm">
+                Add blocks above to build your email. Drag the ⠿ handle to reorder.
+            </p>
             <partial name="_CouponFields" model='new SterlingLams.Web.Models.ViewModels.CouponFieldsVm(Model.CouponEnabled, Model.CouponType, Model.CouponValue, Model.CouponExpiryDays, Model.CouponMinOrder)' />
         </div>
 
-        <div class="lg:col-span-1 space-y-4">
+        <!-- Preview + settings -->
+        <div class="lg:col-span-2 space-y-4">
+            <div class="bg-white border border-neutral-200 rounded-sm p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="text-sm font-medium text-neutral-700">Preview</div>
+                    <div class="inline-flex rounded-sm border border-neutral-200 overflow-hidden text-xs">
+                        <button type="button" id="pv-desktop" class="px-3 py-1.5">Desktop</button>
+                        <button type="button" id="pv-mobile" class="px-3 py-1.5 border-l border-neutral-200">Mobile</button>
+                    </div>
+                </div>
+                <div class="bg-neutral-100 rounded-sm p-3 overflow-x-auto">
+                    <iframe id="preview" title="Email preview" class="bg-white mx-auto block border-0 shadow-sm"
+                            style="width:600px;height:620px"></iframe>
+                </div>
+                <p class="text-[10px] text-neutral-400 mt-2">An unsubscribe footer is added automatically on send.</p>
+            </div>
+
             <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-4">
                 <div class="text-sm font-medium text-neutral-700">Audience</div>
                 @{ var savedSegs = ViewBag.Segments as List<SterlingLams.Web.Models.Domain.Segment> ?? new(); }
@@ -84,33 +118,235 @@
 @section Scripts {
 <script>
 (function () {
-    const sel = document.getElementById('aud-select');
+    // ───────── Block composer ─────────
+    var ALIGNS = ['left', 'center', 'right'];
+    var LABELS = { heading:'Heading', text:'Text', image:'Image', button:'Button', divider:'Divider', spacer:'Spacer', social:'Social', html:'HTML' };
+    var state = [];
+
+    // Seed from the saved layout, or wrap a legacy HTML body as one block.
+    try {
+        var seed = JSON.parse(document.getElementById('seed').textContent || '{}');
+        if (seed.layout) { try { state = JSON.parse(seed.layout) || []; } catch (e) { state = []; } }
+        if ((!state || !state.length) && seed.body && seed.body.trim()) state = [{ type:'html', html: seed.body }];
+        if (!Array.isArray(state)) state = [];
+    } catch (e) { state = []; }
+
+    function def(type) {
+        switch (type) {
+            case 'heading': return { type:'heading', text:'Your headline', align:'center' };
+            case 'text': return { type:'text', text:'Write your message here…', align:'left' };
+            case 'image': return { type:'image', src:'', href:'', alt:'', align:'center' };
+            case 'button': return { type:'button', text:'Shop now', href:'', align:'center' };
+            case 'divider': return { type:'divider' };
+            case 'spacer': return { type:'spacer', size:24 };
+            case 'social': return { type:'social', instagram:'', facebook:'', tiktok:'' };
+            case 'html': return { type:'html', html:'' };
+            default: return { type:type };
+        }
+    }
+
+    // ── Preview renderer (mirrors CampaignLayoutRenderer.cs) ──
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
+    function align(a) { return a === 'left' ? 'left' : a === 'right' ? 'right' : 'center'; }
+    function safeUrl(u) {
+        if (!u) return '#'; u = String(u).trim();
+        return (/^https?:\/\//i.test(u) || /^mailto:/i.test(u)) ? u : '#';
+    }
+    function renderBlock(b) {
+        switch ((b.type || '').toLowerCase()) {
+            case 'heading':
+                return '<div style="font-size:24px;line-height:1.3;font-weight:600;color:#111;text-align:' + align(b.align) + ';margin:0 0 14px">' + esc(b.text) + '</div>';
+            case 'text':
+                return '<div style="font-size:15px;line-height:1.6;color:#333;text-align:' + align(b.align) + ';margin:0 0 14px">' + esc(b.text).replace(/\r\n/g,'\n').replace(/\n/g,'<br />') + '</div>';
+            case 'image':
+                if (!b.src) return '<div style="text-align:center;color:#bbb;font-size:13px;padding:14px;border:1px dashed #ddd;margin:0 0 16px">Image — add a URL</div>';
+                var img = '<img src="' + esc(safeUrl(b.src)) + '" alt="' + esc(b.alt) + '" style="max-width:100%;height:auto;display:block;margin:0 auto;border:0" />';
+                if (b.href) img = '<a href="' + esc(safeUrl(b.href)) + '">' + img + '</a>';
+                return '<div style="text-align:' + align(b.align) + ';margin:0 0 16px">' + img + '</div>';
+            case 'button':
+                return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px auto 18px" align="' + align(b.align) + '"><tr><td style="background:#c90278;border-radius:6px"><a href="' + esc(safeUrl(b.href)) + '" style="display:inline-block;padding:12px 26px;font-size:15px;font-weight:600;color:#fff;text-decoration:none;border-radius:6px">' + esc(b.text || 'Shop now') + '</a></td></tr></table>';
+            case 'divider':
+                return '<hr style="border:none;border-top:1px solid #e5e7eb;margin:22px 0" />';
+            case 'spacer':
+                var h = Math.min(160, Math.max(4, parseInt(b.size, 10) || 24));
+                return '<div style="height:' + h + 'px;line-height:' + h + 'px;font-size:0">&nbsp;</div>';
+            case 'social':
+                var links = [];
+                [['instagram','Instagram'],['facebook','Facebook'],['tiktok','TikTok']].forEach(function (p) {
+                    if (b[p[0]]) links.push('<a href="' + esc(safeUrl(b[p[0]])) + '" style="color:#c90278;text-decoration:none;font-weight:600;margin:0 8px">' + p[1] + '</a>');
+                });
+                return links.length ? '<div style="text-align:center;margin:8px 0 18px;font-size:14px">' + links.join('') + '</div>' : '';
+            case 'html':
+                return b.html || '';
+            default: return '';
+        }
+    }
+
+    var iframe = document.getElementById('preview');
+    function renderPreview() {
+        var inner = state.map(renderBlock).join('') || '<div style="color:#bbb;text-align:center;padding:40px 0;font-size:14px">Your email preview appears here</div>';
+        var doc = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>' +
+            '<body style="margin:0;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#333">' +
+            '<div style="max-width:600px;margin:0 auto;padding:24px 20px">' + inner + '</div></body></html>';
+        var d = iframe.contentDocument || iframe.contentWindow.document;
+        d.open(); d.write(doc); d.close();
+    }
+
     function sync() {
-        const v = sel.value;
-        document.querySelectorAll('[data-aud]').forEach(el => {
+        document.getElementById('LayoutJson').value = JSON.stringify(state);
+        document.getElementById('empty-hint').style.display = state.length ? 'none' : '';
+        renderPreview();
+    }
+
+    // Field editors per block type.
+    function fieldsHtml(b, i) {
+        var inp = 'w-full border border-neutral-200 rounded-sm px-2.5 py-1.5 text-sm';
+        function alignSel(v) {
+            return '<select data-i="' + i + '" data-f="align" class="' + inp + ' bg-white">' +
+                ALIGNS.map(function (a) { return '<option value="' + a + '"' + (v === a ? ' selected' : '') + '>' + a + '</option>'; }).join('') + '</select>';
+        }
+        switch ((b.type || '').toLowerCase()) {
+            case 'heading':
+                return '<input data-i="' + i + '" data-f="text" value="' + esc(b.text) + '" class="' + inp + '" placeholder="Headline" />' +
+                    '<div class="mt-2">' + alignSel(b.align) + '</div>';
+            case 'text':
+                return '<textarea data-i="' + i + '" data-f="text" rows="3" class="' + inp + '" placeholder="Your message">' + esc(b.text) + '</textarea>' +
+                    '<div class="mt-2">' + alignSel(b.align) + '</div>';
+            case 'image':
+                return '<input data-i="' + i + '" data-f="src" value="' + esc(b.src) + '" class="' + inp + '" placeholder="Image URL (https://…)" />' +
+                    '<input data-i="' + i + '" data-f="href" value="' + esc(b.href) + '" class="' + inp + ' mt-2" placeholder="Link URL (optional)" />' +
+                    '<input data-i="' + i + '" data-f="alt" value="' + esc(b.alt) + '" class="' + inp + ' mt-2" placeholder="Alt text" />' +
+                    '<div class="mt-2">' + alignSel(b.align) + '</div>';
+            case 'button':
+                return '<input data-i="' + i + '" data-f="text" value="' + esc(b.text) + '" class="' + inp + '" placeholder="Button text" />' +
+                    '<input data-i="' + i + '" data-f="href" value="' + esc(b.href) + '" class="' + inp + ' mt-2" placeholder="Link URL (https://…)" />' +
+                    '<div class="mt-2">' + alignSel(b.align) + '</div>';
+            case 'spacer':
+                return '<label class="text-xs text-neutral-500">Height (px)</label><input data-i="' + i + '" data-f="size" type="number" min="4" max="160" value="' + (b.size || 24) + '" class="' + inp + '" />';
+            case 'social':
+                return '<input data-i="' + i + '" data-f="instagram" value="' + esc(b.instagram) + '" class="' + inp + '" placeholder="Instagram URL" />' +
+                    '<input data-i="' + i + '" data-f="facebook" value="' + esc(b.facebook) + '" class="' + inp + ' mt-2" placeholder="Facebook URL" />' +
+                    '<input data-i="' + i + '" data-f="tiktok" value="' + esc(b.tiktok) + '" class="' + inp + ' mt-2" placeholder="TikTok URL" />';
+            case 'html':
+                return '<textarea data-i="' + i + '" data-f="html" rows="4" class="' + inp + ' font-mono text-xs" placeholder="HTML">' + esc(b.html) + '</textarea>';
+            case 'divider':
+                return '<div class="text-xs text-neutral-400">A horizontal line.</div>';
+            default: return '';
+        }
+    }
+
+    var blocksEl = document.getElementById('blocks');
+    function render() {
+        blocksEl.innerHTML = state.map(function (b, i) {
+            return '<div class="blk bg-white border border-neutral-200 rounded-sm" draggable="true" data-i="' + i + '">' +
+                '<div class="flex items-center justify-between px-3 py-2 border-b border-neutral-100 bg-neutral-50">' +
+                    '<span class="text-xs font-medium text-neutral-600 select-none cursor-move" data-drag="1">⠿ ' + (LABELS[b.type] || b.type) + '</span>' +
+                    '<span class="flex gap-1">' +
+                        '<button type="button" data-act="up" data-i="' + i + '" class="text-xs text-neutral-400 hover:text-neutral-800 px-1" title="Move up">↑</button>' +
+                        '<button type="button" data-act="down" data-i="' + i + '" class="text-xs text-neutral-400 hover:text-neutral-800 px-1" title="Move down">↓</button>' +
+                        '<button type="button" data-act="del" data-i="' + i + '" class="text-xs text-red-400 hover:text-red-600 px-1" title="Delete">✕</button>' +
+                    '</span>' +
+                '</div>' +
+                '<div class="p-3">' + fieldsHtml(b, i) + '</div>' +
+            '</div>';
+        }).join('');
+        sync();
+    }
+
+    // Add blocks.
+    document.getElementById('palette').addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-add]'); if (!btn) return;
+        state.push(def(btn.getAttribute('data-add')));
+        render();
+    });
+
+    // Field edits (delegated; no re-render so focus is kept).
+    blocksEl.addEventListener('input', function (e) {
+        var el = e.target.closest('[data-i][data-f]'); if (!el) return;
+        var i = +el.getAttribute('data-i'), f = el.getAttribute('data-f');
+        if (state[i]) { state[i][f] = el.value; sync(); }
+    });
+    blocksEl.addEventListener('change', function (e) {
+        var el = e.target.closest('[data-i][data-f]'); if (!el || el.tagName !== 'SELECT') return;
+        var i = +el.getAttribute('data-i'), f = el.getAttribute('data-f');
+        if (state[i]) { state[i][f] = el.value; sync(); }
+    });
+
+    // Row actions.
+    blocksEl.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-act]'); if (!btn) return;
+        var i = +btn.getAttribute('data-i'), act = btn.getAttribute('data-act');
+        if (act === 'del') state.splice(i, 1);
+        else if (act === 'up' && i > 0) { var t = state[i-1]; state[i-1] = state[i]; state[i] = t; }
+        else if (act === 'down' && i < state.length - 1) { var u = state[i+1]; state[i+1] = state[i]; state[i] = u; }
+        render();
+    });
+
+    // Drag to reorder.
+    var dragFrom = null;
+    blocksEl.addEventListener('dragstart', function (e) {
+        var card = e.target.closest('.blk'); if (!card) return;
+        dragFrom = +card.getAttribute('data-i');
+        e.dataTransfer.effectAllowed = 'move';
+        try { e.dataTransfer.setData('text/plain', String(dragFrom)); } catch (x) {}
+    });
+    blocksEl.addEventListener('dragover', function (e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    blocksEl.addEventListener('drop', function (e) {
+        e.preventDefault();
+        var card = e.target.closest('.blk'); if (card == null || dragFrom == null) return;
+        var to = +card.getAttribute('data-i');
+        if (to === dragFrom) return;
+        var moved = state.splice(dragFrom, 1)[0];
+        state.splice(to, 0, moved);
+        dragFrom = null;
+        render();
+    });
+
+    // Desktop / mobile preview toggle.
+    var active = 'px-3 py-1.5 bg-neutral-900 text-white', idle = 'px-3 py-1.5';
+    var bd = document.getElementById('pv-desktop'), bm = document.getElementById('pv-mobile');
+    function setDevice(mobile) {
+        iframe.style.width = mobile ? '360px' : '600px';
+        bd.className = mobile ? idle : active;
+        bm.className = (mobile ? active : idle) + ' border-l border-neutral-200';
+    }
+    bd.addEventListener('click', function () { setDevice(false); });
+    bm.addEventListener('click', function () { setDevice(true); });
+    setDevice(false);
+
+    render();
+
+    // ───────── Audience (unchanged behaviour) ─────────
+    var sel = document.getElementById('aud-select');
+    function syncAud() {
+        var v = sel.value;
+        document.querySelectorAll('[data-aud]').forEach(function (el) {
             el.style.display = el.getAttribute('data-aud').split(',').includes(v) ? '' : 'none';
         });
     }
-    sel.addEventListener('change', () => { sync(); document.getElementById('count-out').classList.add('hidden'); });
-    sync();
+    sel.addEventListener('change', function () { syncAud(); document.getElementById('count-out').classList.add('hidden'); });
+    syncAud();
 
-    // Saved-segment picker: when a segment is chosen, hide the custom-audience fields (the segment
-    // definition takes over on send).
-    const segSel = document.getElementById('seg-select');
-    const custom = document.getElementById('custom-aud');
+    var segSel = document.getElementById('seg-select');
+    var custom = document.getElementById('custom-aud');
     function syncSeg() { if (custom) custom.style.display = (segSel && segSel.value) ? 'none' : ''; }
     if (segSel) { segSel.addEventListener('change', syncSeg); syncSeg(); }
 
-    document.getElementById('count-btn').addEventListener('click', async () => {
-        const form = document.getElementById('campaign-form');
-        const fd = new FormData(form);
-        const out = document.getElementById('count-out');
+    document.getElementById('count-btn').addEventListener('click', async function () {
+        var form = document.getElementById('campaign-form');
+        var fd = new FormData(form);
+        var out = document.getElementById('count-out');
         out.classList.remove('hidden'); out.textContent = 'Counting…';
         try {
-            const res = await fetch(__mktBase + '/Campaigns/Count', { method: 'POST', body: fd });
-            const data = await res.json();
+            var res = await fetch(__mktBase + '/Campaigns/Count', { method: 'POST', body: fd });
+            var data = await res.json();
             out.textContent = (data.count ?? 0).toLocaleString() + ' recipient(s)';
-        } catch { out.textContent = 'Could not estimate.'; }
+        } catch (x) { out.textContent = 'Could not estimate.'; }
+    });
+
+    // Make sure the latest layout is posted.
+    document.getElementById('campaign-form').addEventListener('submit', function () {
+        document.getElementById('LayoutJson').value = JSON.stringify(state);
     });
 })();
 </script>

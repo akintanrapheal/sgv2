@@ -10,6 +10,8 @@
         CampaignStatus.Sent => "bg-emerald-50 text-emerald-700",
         _ => "bg-red-50 text-red-700"
     };
+    var revenue = ViewBag.Revenue as Dictionary<int, (decimal Revenue, int Orders)>
+                  ?? new Dictionary<int, (decimal Revenue, int Orders)>();
 }
 
 <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
@@ -34,6 +36,7 @@ else
                     <th class="text-left font-semibold px-4 py-3">Audience</th>
                     <th class="text-left font-semibold px-4 py-3">Status</th>
                     <th class="text-center font-semibold px-4 py-3">Sent / Total</th>
+                    <th class="text-right font-semibold px-4 py-3">Revenue</th>
                     <th class="text-left font-semibold px-4 py-3">When</th>
                     <th class="px-4 py-3"></th>
                 </tr>
@@ -49,6 +52,17 @@ else
                         <td class="px-4 py-2.5 text-neutral-600">@System.Text.RegularExpressions.Regex.Replace(c.Audience.ToString(), "([a-z])([A-Z])", "$1 $2")</td>
                         <td class="px-4 py-2.5"><span class="text-[10px] px-2 py-0.5 rounded-full @Badge(c.Status)">@c.Status</span></td>
                         <td class="px-4 py-2.5 text-center text-neutral-600">@(c.Status == CampaignStatus.Draft ? "—" : $"{c.SentCount} / {c.RecipientCount}")</td>
+                        <td class="px-4 py-2.5 text-right whitespace-nowrap">
+                            @if (c.SentAt != null && revenue.TryGetValue(c.Id, out var r) && r.Orders > 0)
+                            {
+                                <span class="text-emerald-600 font-medium">₦@r.Revenue.ToString("N0")</span>
+                                <span class="text-neutral-400 text-xs block">@r.Orders order@(r.Orders == 1 ? "" : "s")</span>
+                            }
+                            else
+                            {
+                                <span class="text-neutral-300">—</span>
+                            }
+                        </td>
                         <td class="px-4 py-2.5 text-neutral-400 text-xs">@((c.SentAt ?? c.ScheduledAt)?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? c.CreatedAt.ToLocalTime().ToString("dd MMM yyyy"))</td>
                         <td class="px-4 py-2.5 text-right"><a asp-area="Marketing" asp-controller="Campaigns" asp-action="Detail" asp-route-id="@c.Id" class="text-xs text-neutral-500 hover:text-neutral-900">Open →</a></td>
                     </tr>

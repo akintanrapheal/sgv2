@@ -6,6 +6,10 @@
     string TabCls(string t) => t == tab ? "border-neutral-900 text-neutral-900" : "border-transparent text-neutral-400 hover:text-neutral-700";
     var carts = ViewBag.Carts as IEnumerable<dynamic>;
     var bis = ViewBag.BackInStock as IEnumerable<dynamic>;
+    int emailed = ViewBag.Emailed ?? 0;
+    int recovered = ViewBag.Recovered ?? 0;
+    decimal recoveredValue = ViewBag.RecoveredValue ?? 0m;
+    int recoveryRate = emailed > 0 ? (int)Math.Round(recovered * 100.0 / emailed) : 0;
 }
 
 <div class="mb-5">
@@ -18,6 +22,28 @@
     <a asp-area="Marketing" asp-controller="Signals" asp-action="Index" asp-route-tab="backinstock" class="pb-2.5 border-b-2 @TabCls("backinstock")">Back in stock (@bisCount open)</a>
 </div>
 
+@if (tab == "carts")
+{
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+        <div class="bg-white border border-neutral-200 rounded-sm p-4">
+            <div class="text-xs text-neutral-400">Open carts</div>
+            <div class="text-2xl font-light text-amber-600 mt-1">@cartCount.ToString("N0")</div>
+        </div>
+        <div class="bg-white border border-neutral-200 rounded-sm p-4">
+            <div class="text-xs text-neutral-400">Recovery emails sent</div>
+            <div class="text-2xl font-light text-neutral-900 mt-1">@emailed.ToString("N0")</div>
+        </div>
+        <div class="bg-white border border-neutral-200 rounded-sm p-4">
+            <div class="text-xs text-neutral-400">Recovered</div>
+            <div class="text-2xl font-light text-emerald-600 mt-1">@recovered.ToString("N0") <span class="text-sm text-neutral-400">· @recoveryRate%</span></div>
+        </div>
+        <div class="bg-white border border-neutral-200 rounded-sm p-4">
+            <div class="text-xs text-neutral-400">Recovered cart value</div>
+            <div class="text-2xl font-light text-emerald-600 mt-1">₦@recoveredValue.ToString("N0")</div>
+        </div>
+    </div>
+}
+
 <div class="bg-white border border-neutral-200 rounded-sm overflow-x-auto">
     <table class="w-full text-sm">
         <thead class="bg-neutral-50 text-neutral-500 text-xs">
@@ -27,7 +53,7 @@
             }
             else
             {
-                <tr><th class="text-left font-semibold px-4 py-3">Email</th><th class="text-center font-semibold px-4 py-3">Items</th><th class="text-right font-semibold px-4 py-3">Subtotal</th><th class="text-left font-semibold px-4 py-3">When</th><th class="text-left font-semibold px-4 py-3">Status</th></tr>
+                <tr><th class="text-left font-semibold px-4 py-3">Name</th><th class="text-left font-semibold px-4 py-3">Email</th><th class="text-left font-semibold px-4 py-3">Phone</th><th class="text-center font-semibold px-4 py-3">Items</th><th class="text-right font-semibold px-4 py-3">Cart value</th><th class="text-left font-semibold px-4 py-3">When</th><th class="text-left font-semibold px-4 py-3">Status</th></tr>
             }
         </thead>
         <tbody class="divide-y divide-neutral-100">
@@ -46,14 +72,22 @@
             }
             else
             {
-                @if (carts == null || !carts.Any()) { <tr><td colspan="5" class="px-4 py-12 text-center text-neutral-400">No abandoned carts.</td></tr> }
+                @if (carts == null || !carts.Any()) { <tr><td colspan="7" class="px-4 py-12 text-center text-neutral-400">No abandoned carts.</td></tr> }
                 @foreach (var c in carts ?? Enumerable.Empty<dynamic>())
                 {
                     <tr class="hover:bg-neutral-50">
-                        <td class="px-4 py-2.5 text-neutral-700">@c.Email</td>
+                        <td class="px-4 py-2.5 text-neutral-700">
+                            @if (c.User != null)
+                            {
+                                <a asp-area="Marketing" asp-controller="Contacts" asp-action="Detail" asp-route-id="@c.User.Id" class="font-medium hover:text-neutral-950">@(string.IsNullOrWhiteSpace((string)c.User.Name) ? "—" : c.User.Name)</a>
+                            }
+                            else { <span class="text-neutral-400">—</span> }
+                        </td>
+                        <td class="px-4 py-2.5 text-neutral-600">@c.Email</td>
+                        <td class="px-4 py-2.5 text-neutral-600">@(c.User != null && !string.IsNullOrWhiteSpace((string)c.User.PhoneNumber) ? c.User.PhoneNumber : "—")</td>
                         <td class="px-4 py-2.5 text-center text-neutral-600">@c.ItemCount</td>
                         <td class="px-4 py-2.5 text-right text-neutral-700">₦@(((decimal)c.Subtotal).ToString("N0"))</td>
-                        <td class="px-4 py-2.5 text-neutral-400 text-xs">@(((DateTime)c.CreatedAt).ToString("dd MMM yyyy"))</td>
+                        <td class="px-4 py-2.5 text-neutral-400 text-xs">@(((DateTime)c.CreatedAt).ToLocalTime().ToString("dd MMM yyyy"))</td>
                         <td class="px-4 py-2.5">@(c.RecoveredAt != null ? Html.Raw("<span class=\"text-[10px] bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full\">Recovered</span>") : c.EmailedAt != null ? Html.Raw("<span class=\"text-[10px] bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full\">Emailed</span>") : Html.Raw("<span class=\"text-[10px] bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full\">Open</span>"))</td>
                     </tr>
                 }
