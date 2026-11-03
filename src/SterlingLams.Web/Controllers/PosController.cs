@@ -192,6 +192,12 @@ public class PosController : Controller
         return Json(manifest, new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = null });
     }
 
+    /// <summary>Marks a pre-session EPOS page (pick register / sign in / open till) no-store so neither
+    /// the browser nor the POS service worker ever serves a cached copy. Those pages carry an antiforgery
+    /// token that must match the cookie set on the SAME response — a cached page pairs a stale token with
+    /// the current cookie and the next POST is rejected with a 400 (till "Sign-in failed (400)").</summary>
+    private void NoStorePage() => Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+
     [AllowAnonymous]
     public async Task<IActionResult> Index()
     {
@@ -203,6 +209,7 @@ public class PosController : Controller
             var registers = await Infrastructure.DbRead.RetryAsync(() => _db.Registers
                 .Where(r => r.IsActive && r.Store != null && r.Store.IsActive)
                 .Include(r => r.Store).OrderBy(r => r.Name).ToListAsync());
+            NoStorePage();
             return View("PickRegister", registers);
         }
 
@@ -215,11 +222,12 @@ public class PosController : Controller
                 .Select(u => new TillCashier { Id = u.Id, Name = (u.FirstName + " " + u.LastName).Trim(),
                                                PinPending = u.PinHash == ApplicationUser.PinPendingMarker })
                 .ToListAsync());
+            NoStorePage();
             return View("Login", cashiers);
         }
 
         var session = await OpenSessionAsync(register.Id);
-        if (session == null) return View("OpenTill", register);
+        if (session == null) { NoStorePage(); return View("OpenTill", register); }
 
         // Pass display name so Sell view shows first name rather than email
         var uid = User.FindFirstValue(ClaimTypes.NameIdentifier);
