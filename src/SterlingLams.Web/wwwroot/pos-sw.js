@@ -8,7 +8,7 @@
  *
  * Bump CACHE when shell assets change; IMG_CACHE persists across shell updates.
  */
-const CACHE = 'sgpos-shell-v11';
+const CACHE = 'sgpos-shell-v12';
 const IMG_CACHE = 'sgpos-img-v1';
 
 // The POS shell lives at the registration scope (default "/Pos", or a secret prefix). Derive it so
@@ -100,5 +100,10 @@ async function handleImage(req) {
 
 function cachePut(req, res) {
   if (!res || res.status !== 200 || res.type === 'opaque') return;
+  // Never cache a page that marks itself no-store — the sign-in / pick-register / open-till pages
+  // carry an antiforgery token that must stay in lock-step with the cookie set on the SAME response.
+  // A cached copy (served after a network blip or on the next load) pairs a stale token with the
+  // current cookie → the sign-in POST is rejected with a 400. Those pages need a live server anyway.
+  if (/no-store/i.test(res.headers.get('Cache-Control') || '')) return;
   caches.open(CACHE).then((cache) => cache.put(req, res)).catch(() => {});
 }
