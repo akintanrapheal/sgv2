@@ -4,87 +4,167 @@
     ViewData["Title"] = Model.Id == 0 ? "New Campaign" : "Edit Campaign";
     // Seed the composer: an existing block layout round-trips; a legacy HTML body becomes one HTML block.
     var seed = System.Text.Json.JsonSerializer.Serialize(new { layout = Model.LayoutJson, body = Model.BodyHtml });
+    var savedSegs = ViewBag.Segments as List<SterlingLams.Web.Models.Domain.Segment> ?? new();
 }
 
-<div class="mb-6">
-    <a asp-area="Marketing" asp-controller="Campaigns" asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← All campaigns</a>
-    <h1 class="text-2xl font-light text-neutral-900 mt-2">@ViewData["Title"]</h1>
-</div>
-
 <script id="seed" type="application/json">@Html.Raw(seed)</script>
+
+<style>
+    /* ───────── Retainful-style email builder (scoped) ───────── */
+    #sl-editor { --sl-line:#e5e7eb; --sl-ink:#1f2937; --sl-mut:#6b7280; --sl-brand:#c90278; }
+    #sl-editor { border:1px solid var(--sl-line); border-radius:8px; overflow:hidden; background:#fff;
+        display:flex; flex-direction:column; min-height:720px; }
+    #sl-editor * { box-sizing:border-box; }
+    .sl-top { display:flex; align-items:center; gap:12px; padding:10px 14px; border-bottom:1px solid var(--sl-line); background:#fff; flex-wrap:wrap; }
+    .sl-top .name-in { font-size:14px; font-weight:600; color:var(--sl-ink); border:1px solid transparent; border-radius:6px; padding:6px 8px; min-width:220px; flex:1 1 240px; }
+    .sl-top .name-in:hover { border-color:var(--sl-line); }
+    .sl-top .name-in:focus { outline:none; border-color:var(--sl-brand); background:#fff; }
+    .sl-spacer { flex:1 1 auto; }
+    .sl-seg { display:inline-flex; border:1px solid var(--sl-line); border-radius:7px; overflow:hidden; }
+    .sl-seg button { border:0; background:#fff; padding:6px 12px; font-size:12px; color:var(--sl-mut); display:inline-flex; align-items:center; gap:5px; cursor:pointer; }
+    .sl-seg button + button { border-left:1px solid var(--sl-line); }
+    .sl-seg button.on { background:#111827; color:#fff; }
+    .sl-chip { font-size:12px; color:var(--sl-mut); white-space:nowrap; }
+    .sl-ico-btn { border:1px solid var(--sl-line); background:#fff; width:32px; height:32px; border-radius:7px; cursor:pointer; color:var(--sl-ink); display:inline-flex; align-items:center; justify-content:center; }
+    .sl-ico-btn:disabled { opacity:.35; cursor:default; }
+    .sl-ico-btn:not(:disabled):hover { background:#f9fafb; }
+    .sl-btn { border:1px solid var(--sl-line); background:#fff; border-radius:7px; padding:7px 14px; font-size:13px; cursor:pointer; color:var(--sl-ink); }
+    .sl-btn:hover { background:#f9fafb; }
+    .sl-btn-primary { background:#111827; color:#fff; border-color:#111827; }
+    .sl-btn-primary:hover { background:#000; }
+
+    .sl-work { display:flex; align-items:stretch; min-height:640px; }
+    .sl-rail { width:312px; flex:0 0 312px; border-right:1px solid var(--sl-line); background:#fff; display:flex; flex-direction:column; max-height:78vh; overflow-y:auto; }
+    .sl-stage { flex:1 1 auto; background:#f3f4f6; padding:26px 16px; overflow:auto; max-height:78vh; }
+    .sl-tabs { display:flex; border-bottom:1px solid var(--sl-line); position:sticky; top:0; background:#fff; z-index:2; }
+    .sl-tabs button { flex:1; border:0; background:#fff; padding:11px 0; font-size:13px; color:var(--sl-mut); cursor:pointer; border-bottom:2px solid transparent; }
+    .sl-tabs button.on { color:var(--sl-ink); border-bottom-color:var(--sl-brand); font-weight:600; }
+    .sl-rail-head { display:flex; align-items:center; gap:8px; padding:12px 14px; border-bottom:1px solid var(--sl-line); font-size:13px; font-weight:600; color:var(--sl-ink); }
+    .sl-back { border:0; background:none; cursor:pointer; color:var(--sl-mut); font-size:13px; display:inline-flex; align-items:center; gap:4px; padding:0; }
+    .sl-back:hover { color:var(--sl-ink); }
+
+    .sl-pal-sec { padding:14px; }
+    .sl-pal-sec h4 { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--sl-mut); margin:0 0 10px; font-weight:600; }
+    .sl-pal-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+    .sl-pal-item { border:1px solid var(--sl-line); border-radius:8px; background:#fff; padding:12px 6px; display:flex; flex-direction:column; align-items:center; gap:6px; font-size:11px; color:var(--sl-ink); cursor:grab; transition:.12s; }
+    .sl-pal-item:hover { border-color:var(--sl-brand); color:var(--sl-brand); box-shadow:0 1px 4px rgba(0,0,0,.05); }
+    .sl-pal-item svg { width:20px; height:20px; stroke:currentColor; fill:none; stroke-width:1.6; }
+
+    .sl-cfg { padding:14px; }
+    .sl-cfg-sec { border-top:1px solid var(--sl-line); padding:14px 0; }
+    .sl-cfg-sec:first-child { border-top:0; padding-top:4px; }
+    .sl-cfg-sec > h5 { font-size:12px; font-weight:600; color:var(--sl-ink); margin:0 0 10px; }
+    .sl-field { margin-bottom:10px; }
+    .sl-field > label { display:block; font-size:11px; color:var(--sl-mut); margin-bottom:4px; }
+    .sl-in, .sl-sel, .sl-ta { width:100%; border:1px solid var(--sl-line); border-radius:6px; padding:7px 9px; font-size:13px; color:var(--sl-ink); background:#fff; }
+    .sl-in:focus, .sl-sel:focus, .sl-ta:focus { outline:none; border-color:var(--sl-brand); }
+    .sl-ta { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; }
+    .sl-row2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .sl-row4 { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+    .sl-color { display:flex; align-items:center; gap:7px; }
+    .sl-color input[type=color] { width:34px; height:30px; border:1px solid var(--sl-line); border-radius:6px; padding:1px; background:#fff; cursor:pointer; }
+    .sl-alignseg { display:inline-flex; border:1px solid var(--sl-line); border-radius:6px; overflow:hidden; }
+    .sl-alignseg button { border:0; background:#fff; padding:7px 12px; cursor:pointer; color:var(--sl-mut); }
+    .sl-alignseg button + button { border-left:1px solid var(--sl-line); }
+    .sl-alignseg button.on { background:#111827; color:#fff; }
+    .sl-alignseg svg { width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:1.7; display:block; }
+    .sl-toggle-row { display:flex; gap:6px; }
+    .sl-tgl { flex:1; border:1px solid var(--sl-line); background:#fff; border-radius:6px; padding:7px 0; font-size:13px; cursor:pointer; color:var(--sl-mut); }
+    .sl-tgl.on { background:#111827; color:#fff; border-color:#111827; }
+    .sl-vis label { display:flex; gap:10px; align-items:flex-start; border:1px solid var(--sl-line); border-radius:8px; padding:11px 12px; margin-bottom:8px; cursor:pointer; }
+    .sl-vis label.on { border-color:var(--sl-brand); background:#fdf2f8; }
+    .sl-vis .t { font-size:13px; color:var(--sl-ink); font-weight:500; }
+    .sl-vis .d { font-size:11px; color:var(--sl-mut); }
+
+    /* Canvas */
+    .sl-canvas { background:#fff; margin:0 auto; max-width:600px; width:100%; min-height:420px; box-shadow:0 1px 8px rgba(0,0,0,.08); border-radius:4px; transition:max-width .18s; }
+    .sl-canvas.mobile { max-width:360px; }
+    .sl-canvas-pad { padding:24px 20px; }
+    .sl-wrap { position:relative; outline:1px dashed transparent; border-radius:3px; }
+    .sl-wrap:hover { outline-color:#d9b8cd; }
+    .sl-wrap.sel { outline:2px solid var(--sl-brand); outline-offset:0; }
+    .sl-wrap.drag-over { outline:2px dashed var(--sl-brand); }
+    .sl-tb { position:absolute; top:-14px; right:6px; display:none; gap:2px; background:#111827; border-radius:6px; padding:2px; z-index:5; box-shadow:0 2px 6px rgba(0,0,0,.25); }
+    .sl-wrap.sel .sl-tb { display:flex; }
+    .sl-tb button { border:0; background:none; color:#fff; width:24px; height:22px; border-radius:4px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; font-size:12px; }
+    .sl-tb button:hover { background:rgba(255,255,255,.18); }
+    .sl-tb .lbl { color:#fff; font-size:10px; padding:0 7px 0 5px; display:inline-flex; align-items:center; cursor:grab; }
+    .sl-tb svg { width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:1.8; }
+    .sl-empty { text-align:center; color:#9ca3af; font-size:14px; padding:60px 10px; border:2px dashed #e5e7eb; border-radius:8px; }
+    .sl-drawer-bk { position:fixed; inset:0; background:rgba(17,24,39,.4); z-index:60; display:none; }
+    .sl-drawer-bk.on { display:block; }
+    .sl-drawer { position:fixed; top:0; right:0; height:100%; width:380px; max-width:92vw; background:#fff; z-index:61; transform:translateX(100%); transition:transform .22s; box-shadow:-4px 0 24px rgba(0,0,0,.12); display:flex; flex-direction:column; }
+    .sl-drawer.on { transform:none; }
+    .sl-drawer-head { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--sl-line); font-weight:600; color:var(--sl-ink); }
+    .sl-drawer-body { padding:16px; overflow-y:auto; flex:1; }
+    @@media (max-width:860px){ .sl-rail{ width:260px; flex-basis:260px; } }
+</style>
 
 <form asp-area="Marketing" asp-controller="Campaigns" asp-action="Save" method="post" id="campaign-form">
     @Html.AntiForgeryToken()
     <input type="hidden" asp-for="Id" />
     <input type="hidden" asp-for="LayoutJson" id="LayoutJson" />
 
-    <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-4 mb-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <label asp-for="Name" class="block text-xs text-neutral-500 mb-1">Campaign name (internal) *</label>
-                <input asp-for="Name" required class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+    <div id="sl-editor">
+        <!-- ───── Top bar ───── -->
+        <div class="sl-top">
+            <a asp-area="Marketing" asp-controller="Campaigns" asp-action="Index" class="sl-back" title="All campaigns" style="text-decoration:none">← Back</a>
+            <input asp-for="Name" required placeholder="Untitled campaign" class="name-in" title="Campaign name (internal)" />
+            <div class="sl-spacer"></div>
+            <div class="sl-seg" role="group" aria-label="Preview device">
+                <button type="button" id="pv-desktop" class="on" title="Desktop">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2" y="4" width="20" height="13" rx="1"/><path d="M8 20h8M12 17v3"/></svg> Desktop
+                </button>
+                <button type="button" id="pv-mobile" title="Mobile">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg> Mobile
+                </button>
             </div>
-            <div>
-                <label asp-for="Subject" class="block text-xs text-neutral-500 mb-1">Email subject *</label>
-                <input asp-for="Subject" required class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
-            </div>
+            <span class="sl-chip" id="size-chip">Email size: 0 KB</span>
+            <button type="button" class="sl-ico-btn" id="undo" title="Undo" disabled>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 7 4 12l5 5"/><path d="M4 12h11a5 5 0 0 1 0 10h-1"/></svg>
+            </button>
+            <button type="button" class="sl-ico-btn" id="redo" title="Redo" disabled>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m15 7 5 5-5 5"/><path d="M20 12H9a5 5 0 0 0 0 10h1"/></svg>
+            </button>
+            <button type="button" class="sl-btn" id="open-settings">Recipients &amp; coupon</button>
+            <button type="submit" class="sl-btn sl-btn-primary">Save draft</button>
+        </div>
+
+        <!-- ───── Workspace ───── -->
+        <div class="sl-work">
+            <aside class="sl-rail" id="rail"><!-- JS renders palette / config here --></aside>
+            <main class="sl-stage">
+                <div class="sl-canvas" id="canvas"><div class="sl-canvas-pad" id="canvas-pad"></div></div>
+                <p style="text-align:center;color:#9ca3af;font-size:11px;margin:14px 0 0">An unsubscribe footer is added automatically on send.</p>
+            </main>
         </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <!-- Composer -->
-        <div class="lg:col-span-3 space-y-4">
-            <div class="bg-white border border-neutral-200 rounded-sm p-4">
-                <div class="text-xs text-neutral-500 mb-2">Add a block</div>
-                <div class="flex flex-wrap gap-2" id="palette">
-                    @foreach (var (t, label) in new[] { ("heading","Heading"), ("text","Text"), ("image","Image"), ("button","Button"), ("divider","Divider"), ("spacer","Spacer"), ("social","Social"), ("html","HTML") })
-                    {
-                        <button type="button" data-add="@t" class="px-3 py-1.5 text-xs border border-neutral-200 rounded-sm hover:border-neutral-400 hover:bg-neutral-50">+ @label</button>
-                    }
-                </div>
-            </div>
-            <div id="blocks" class="space-y-3"></div>
-            <p id="empty-hint" class="text-sm text-neutral-400 text-center py-8 border border-dashed border-neutral-200 rounded-sm">
-                Add blocks above to build your email. Drag the ⠿ handle to reorder.
-            </p>
-            <partial name="_CouponFields" model='new SterlingLams.Web.Models.ViewModels.CouponFieldsVm(Model.CouponEnabled, Model.CouponType, Model.CouponValue, Model.CouponExpiryDays, Model.CouponMinOrder)' />
-        </div>
-
-        <!-- Preview + settings -->
-        <div class="lg:col-span-2 space-y-4">
-            <div class="bg-white border border-neutral-200 rounded-sm p-4">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="text-sm font-medium text-neutral-700">Preview</div>
-                    <div class="inline-flex rounded-sm border border-neutral-200 overflow-hidden text-xs">
-                        <button type="button" id="pv-desktop" class="px-3 py-1.5">Desktop</button>
-                        <button type="button" id="pv-mobile" class="px-3 py-1.5 border-l border-neutral-200">Mobile</button>
-                    </div>
-                </div>
-                <div class="bg-neutral-100 rounded-sm p-3 overflow-x-auto">
-                    <iframe id="preview" title="Email preview" class="bg-white mx-auto block border-0 shadow-sm"
-                            style="width:600px;height:620px"></iframe>
-                </div>
-                <p class="text-[10px] text-neutral-400 mt-2">An unsubscribe footer is added automatically on send.</p>
+    <!-- ───── Settings drawer (recipients + coupon) ───── -->
+    <div class="sl-drawer-bk" id="drawer-bk"></div>
+    <aside class="sl-drawer" id="drawer" aria-label="Recipients and coupon">
+        <div class="sl-drawer-head">Recipients &amp; coupon <button type="button" class="sl-back" id="close-settings" style="font-size:18px">✕</button></div>
+        <div class="sl-drawer-body space-y-4">
+            <div>
+                <label asp-for="Subject" class="block text-xs text-neutral-500 mb-1">Email subject *</label>
+                <input asp-for="Subject" required class="sl-in" placeholder="What your recipients see in their inbox" />
             </div>
 
-            <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-4">
-                <div class="text-sm font-medium text-neutral-700">Audience</div>
-                @{ var savedSegs = ViewBag.Segments as List<SterlingLams.Web.Models.Domain.Segment> ?? new(); }
-                @if (savedSegs.Any())
-                {
-                    <div>
-                        <label asp-for="SegmentId" class="block text-xs text-neutral-500 mb-1">Saved segment</label>
-                        <select asp-for="SegmentId" id="seg-select" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white">
-                            <option value="">— Custom (choose below) —</option>
-                            @foreach (var sg in savedSegs) { <option value="@sg.Id">@sg.Name</option> }
-                        </select>
-                        <p class="text-[10px] text-neutral-400 mt-1">Pick a saved segment, or leave as Custom to define the audience below.</p>
-                    </div>
-                }
-                <div id="custom-aud" class="space-y-4">
+            @if (savedSegs.Any())
+            {
                 <div>
-                    <label asp-for="Audience" class="block text-xs text-neutral-500 mb-1">Segment</label>
-                    <select asp-for="Audience" id="aud-select" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white">
+                    <label asp-for="SegmentId" class="block text-xs text-neutral-500 mb-1">Saved segment</label>
+                    <select asp-for="SegmentId" id="seg-select" class="sl-sel">
+                        <option value="">— Custom (choose below) —</option>
+                        @foreach (var sg in savedSegs) { <option value="@sg.Id">@sg.Name</option> }
+                    </select>
+                    <p class="text-[10px] text-neutral-400 mt-1">Pick a saved segment, or leave as Custom to define the audience below.</p>
+                </div>
+            }
+            <div id="custom-aud" class="space-y-3">
+                <div>
+                    <label asp-for="Audience" class="block text-xs text-neutral-500 mb-1">Audience</label>
+                    <select asp-for="Audience" id="aud-select" class="sl-sel">
                         @foreach (var a in Enum.GetValues<CampaignAudience>())
                         {
                             <option value="@a">@System.Text.RegularExpressions.Regex.Replace(a.ToString(), "([a-z])([A-Z])", "$1 $2")</option>
@@ -93,37 +173,40 @@
                 </div>
                 <div data-aud="RecentBuyers,LapsedCustomers">
                     <label asp-for="AudienceDays" class="block text-xs text-neutral-500 mb-1">Within / since (days)</label>
-                    <input asp-for="AudienceDays" type="number" min="1" placeholder="e.g. 90" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm" />
+                    <input asp-for="AudienceDays" type="number" min="1" placeholder="e.g. 90" class="sl-in" />
                 </div>
                 <div data-aud="HighValue">
                     <label asp-for="AudienceMinSpend" class="block text-xs text-neutral-500 mb-1">Min lifetime spend (₦)</label>
-                    <input asp-for="AudienceMinSpend" type="number" step="0.01" min="0" placeholder="e.g. 50000" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm" />
+                    <input asp-for="AudienceMinSpend" type="number" step="0.01" min="0" placeholder="e.g. 50000" class="sl-in" />
                 </div>
                 <div data-aud="ByState">
                     <label asp-for="AudienceState" class="block text-xs text-neutral-500 mb-1">State</label>
-                    <input asp-for="AudienceState" placeholder="e.g. Lagos" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm" />
+                    <input asp-for="AudienceState" placeholder="e.g. Lagos" class="sl-in" />
                 </div>
-                </div>
-                <button type="button" id="count-btn" class="w-full px-3 py-2 text-xs border border-neutral-300 rounded-sm hover:bg-neutral-50">Preview audience size</button>
-                <p id="count-out" class="text-sm text-center text-neutral-600 hidden"></p>
             </div>
-            <div class="bg-white border border-neutral-200 rounded-sm p-5">
-                <button type="submit" class="w-full px-4 py-2 text-sm bg-neutral-900 text-white rounded-sm hover:bg-neutral-700">Save draft</button>
-                <p class="text-[11px] text-neutral-400 mt-2">Saving keeps it a draft. Send it from the next screen.</p>
+            <button type="button" id="count-btn" class="sl-btn" style="width:100%">Preview audience size</button>
+            <p id="count-out" class="text-sm text-center text-neutral-600 hidden"></p>
+
+            <div class="pt-2 border-t border-neutral-100">
+                <partial name="_CouponFields" model='new SterlingLams.Web.Models.ViewModels.CouponFieldsVm(Model.CouponEnabled, Model.CouponType, Model.CouponValue, Model.CouponExpiryDays, Model.CouponMinOrder)' />
             </div>
         </div>
-    </div>
+    </aside>
 </form>
 
 @section Scripts {
 <script>
 (function () {
-    // ───────── Block composer ─────────
-    var ALIGNS = ['left', 'center', 'right'];
-    var LABELS = { heading:'Heading', text:'Text', image:'Image', button:'Button', divider:'Divider', spacer:'Spacer', social:'Social', html:'HTML' };
-    var state = [];
+    "use strict";
+    // ════════════════════ Retainful-style block editor ════════════════════
+    var FONTS = [['arial','Arial'],['helvetica','Helvetica'],['georgia','Georgia'],['times','Times New Roman'],['tahoma','Tahoma'],['verdana','Verdana'],['trebuchet','Trebuchet MS'],['courier','Courier New']];
+    var FONT_STACK = { arial:"Arial, Helvetica, sans-serif", helvetica:"Helvetica, Arial, sans-serif", georgia:"Georgia, 'Times New Roman', serif", times:"'Times New Roman', Times, serif", courier:"'Courier New', Courier, monospace", tahoma:"Tahoma, Geneva, sans-serif", verdana:"Verdana, Geneva, sans-serif", trebuchet:"'Trebuchet MS', Helvetica, sans-serif" };
+    var LABELS = { heading:'Heading', text:'Text', image:'Image', button:'Button', divider:'Divider', spacer:'Spacer', social:'Social', columns:'Columns', html:'HTML' };
 
-    // Seed from the saved layout, or wrap a legacy HTML body as one block.
+    var state = [], sel = -1, device = 'desktop', railTab = 'config';
+    var hist = [], hp = -1;   // undo/redo
+
+    // ── seed ──
     try {
         var seed = JSON.parse(document.getElementById('seed').textContent || '{}');
         if (seed.layout) { try { state = JSON.parse(seed.layout) || []; } catch (e) { state = []; } }
@@ -133,221 +216,354 @@
 
     function def(type) {
         switch (type) {
-            case 'heading': return { type:'heading', text:'Your headline', align:'center' };
-            case 'text': return { type:'text', text:'Write your message here…', align:'left' };
-            case 'image': return { type:'image', src:'', href:'', alt:'', align:'center' };
-            case 'button': return { type:'button', text:'Shop now', href:'', align:'center' };
-            case 'divider': return { type:'divider' };
+            case 'heading': return { type:'heading', text:'Your headline', align:'center', fontSize:24, weight:600, color:'#111111', font:'arial' };
+            case 'text': return { type:'text', text:'Write your message here…', align:'left', fontSize:15, weight:400, color:'#333333', font:'arial' };
+            case 'image': return { type:'image', src:'', href:'', alt:'', align:'center', width:0, radius:0 };
+            case 'button': return { type:'button', text:'Shop now', href:'', align:'center', bg:'#c90278', color:'#ffffff', fontSize:15, weight:600, radius:6, full:false, font:'arial' };
+            case 'divider': return { type:'divider', color:'#e5e7eb', thickness:1 };
             case 'spacer': return { type:'spacer', size:24 };
-            case 'social': return { type:'social', instagram:'', facebook:'', tiktok:'' };
+            case 'social': return { type:'social', instagram:'', facebook:'', tiktok:'', color:'#c90278' };
+            case 'columns': return { type:'columns', color:'#c90278', cols:[ col(), col() ] };
             case 'html': return { type:'html', html:'' };
             default: return { type:type };
         }
     }
+    function col() { return { src:'', title:'Product', caption:'', price:'', href:'', btnText:'Shop Now' }; }
 
-    // ── Preview renderer (mirrors CampaignLayoutRenderer.cs) ──
+    // ════════════════════ Preview renderer (mirrors CampaignLayoutRenderer.cs) ════════════════════
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
     function align(a) { return a === 'left' ? 'left' : a === 'right' ? 'right' : 'center'; }
-    function safeUrl(u) {
-        if (!u) return '#'; u = String(u).trim();
-        return (/^https?:\/\//i.test(u) || /^mailto:/i.test(u)) ? u : '#';
+    function hex(c, fb) { return (c && /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(String(c).trim())) ? String(c).trim() : fb; }
+    function fontStack(f) { return FONT_STACK[f] || FONT_STACK.arial; }
+    function clamp(v, def, mn, mx) { v = parseInt(v, 10); if (isNaN(v)) v = def; return Math.min(mx, Math.max(mn, v)); }
+    function safeUrl(u) { if (!u) return '#'; u = String(u).trim(); return (/^https?:\/\//i.test(u) || /^mailto:/i.test(u)) ? u : '#'; }
+    function pad(b) {
+        if (b.padT == null && b.padR == null && b.padB == null && b.padL == null) return '';
+        return 'padding:' + clamp(b.padT,0,0,120) + 'px ' + clamp(b.padR,0,0,120) + 'px ' + clamp(b.padB,0,0,120) + 'px ' + clamp(b.padL,0,0,120) + 'px;';
+    }
+    function bgS(b) { return hex(b.bg,'') ? 'background:' + hex(b.bg,'') + ';' : ''; }
+    function textStyle(b, ds, dw, dc) {
+        var s = 'font-family:' + fontStack(b.font) + ';font-size:' + clamp(b.fontSize,ds,9,72) + 'px;';
+        var lh = (b.lineHeight && b.lineHeight >= .8 && b.lineHeight <= 3) ? b.lineHeight : (ds >= 20 ? 1.3 : 1.6);
+        s += 'line-height:' + lh + ';font-weight:' + clamp(b.weight,dw,300,800) + ';';
+        if (b.italic) s += 'font-style:italic;';
+        if (b.underline) s += 'text-decoration:underline;';
+        if (b.letter) s += 'letter-spacing:' + Math.min(12,Math.max(-2,b.letter)) + 'px;';
+        s += 'color:' + hex(b.color,dc) + ';';
+        return s;
     }
     function renderBlock(b) {
         switch ((b.type || '').toLowerCase()) {
             case 'heading':
-                return '<div style="font-size:24px;line-height:1.3;font-weight:600;color:#111;text-align:' + align(b.align) + ';margin:0 0 14px">' + esc(b.text) + '</div>';
+                return '<div style="' + textStyle(b,24,600,'#111111') + 'text-align:' + align(b.align) + ';' + pad(b) + bgS(b) + 'margin:0 0 14px">' + esc(b.text) + '</div>';
             case 'text':
-                return '<div style="font-size:15px;line-height:1.6;color:#333;text-align:' + align(b.align) + ';margin:0 0 14px">' + esc(b.text).replace(/\r\n/g,'\n').replace(/\n/g,'<br />') + '</div>';
+                return '<div style="' + textStyle(b,15,400,'#333333') + 'text-align:' + align(b.align) + ';' + pad(b) + bgS(b) + 'margin:0 0 14px">' + esc(b.text).replace(/\r\n/g,'\n').replace(/\n/g,'<br />') + '</div>';
             case 'image':
-                if (!b.src) return '<div style="text-align:center;color:#bbb;font-size:13px;padding:14px;border:1px dashed #ddd;margin:0 0 16px">Image — add a URL</div>';
-                var img = '<img src="' + esc(safeUrl(b.src)) + '" alt="' + esc(b.alt) + '" style="max-width:100%;height:auto;display:block;margin:0 auto;border:0" />';
+                if (!b.src) return '<div style="text-align:center;color:#bbb;font-size:13px;padding:22px;border:1px dashed #ddd;margin:0 0 16px">🖼 Image — add a URL in the panel</div>';
+                var w = (b.width && b.width >= 40 && b.width <= 600) ? 'width:' + b.width + 'px;max-width:100%;' : 'max-width:100%;';
+                var rad = (b.radius > 0) ? 'border-radius:' + Math.min(60,b.radius) + 'px;' : '';
+                var img = '<img src="' + esc(safeUrl(b.src)) + '" alt="' + esc(b.alt) + '" style="' + w + 'height:auto;display:inline-block;border:0;' + rad + '" />';
                 if (b.href) img = '<a href="' + esc(safeUrl(b.href)) + '">' + img + '</a>';
-                return '<div style="text-align:' + align(b.align) + ';margin:0 0 16px">' + img + '</div>';
+                return '<div style="text-align:' + align(b.align) + ';' + pad(b) + bgS(b) + 'margin:0 0 16px">' + img + '</div>';
             case 'button':
-                return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px auto 18px" align="' + align(b.align) + '"><tr><td style="background:#c90278;border-radius:6px"><a href="' + esc(safeUrl(b.href)) + '" style="display:inline-block;padding:12px 26px;font-size:15px;font-weight:600;color:#fff;text-decoration:none;border-radius:6px">' + esc(b.text || 'Shop now') + '</a></td></tr></table>';
+                var bg = hex(b.bg,'#c90278'), fg = hex(b.color,'#ffffff'), r = clamp(b.radius,6,0,40);
+                var fs = clamp(b.fontSize,15,10,28), wt = clamp(b.weight,600,400,800), full = !!b.full;
+                return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px auto 18px' + (full?';width:100%':'') + '" align="' + align(b.align) + '"><tr><td style="background:' + bg + ';border-radius:' + r + 'px' + (full?';width:100%':'') + '"><a href="' + esc(safeUrl(b.href)) + '" style="' + (full?'display:block;text-align:center;':'display:inline-block;') + 'padding:12px 26px;font-family:' + fontStack(b.font) + ';font-size:' + fs + 'px;font-weight:' + wt + ';color:' + fg + ';text-decoration:none;border-radius:' + r + 'px">' + esc(b.text || 'Shop now') + '</a></td></tr></table>';
             case 'divider':
-                return '<hr style="border:none;border-top:1px solid #e5e7eb;margin:22px 0" />';
+                return '<hr style="border:none;border-top:' + clamp(b.thickness,1,1,10) + 'px solid ' + hex(b.color,'#e5e7eb') + ';margin:22px 0" />';
             case 'spacer':
                 var h = Math.min(160, Math.max(4, parseInt(b.size, 10) || 24));
                 return '<div style="height:' + h + 'px;line-height:' + h + 'px;font-size:0">&nbsp;</div>';
             case 'social':
-                var links = [];
+                var col0 = hex(b.color,'#c90278'), links = [];
                 [['instagram','Instagram'],['facebook','Facebook'],['tiktok','TikTok']].forEach(function (p) {
-                    if (b[p[0]]) links.push('<a href="' + esc(safeUrl(b[p[0]])) + '" style="color:#c90278;text-decoration:none;font-weight:600;margin:0 8px">' + p[1] + '</a>');
+                    if (b[p[0]]) links.push('<a href="' + esc(safeUrl(b[p[0]])) + '" style="color:' + col0 + ';text-decoration:none;font-weight:600;margin:0 8px">' + p[1] + '</a>');
                 });
-                return links.length ? '<div style="text-align:center;margin:8px 0 18px;font-size:14px">' + links.join('') + '</div>' : '';
+                return links.length ? '<div style="text-align:center;margin:8px 0 18px;font-size:14px">' + links.join('') + '</div>' : '<div style="text-align:center;color:#bbb;font-size:13px;padding:10px;border:1px dashed #ddd;margin:0 0 16px">Social — add profile links</div>';
+            case 'columns':
+                var cols = (b.cols || []).slice(0,3); if (!cols.length) return '';
+                var cbg = hex(b.color,'#c90278'), cw = Math.floor(100/cols.length), cells = '';
+                cols.forEach(function (c) {
+                    var inner = '';
+                    if (c.src) inner += '<img src="' + esc(safeUrl(c.src)) + '" alt="' + esc(c.title) + '" style="width:100%;max-width:100%;height:auto;display:block;border:0;border-radius:4px" />';
+                    else inner += '<div style="background:#f3f4f6;color:#bbb;font-size:12px;padding:28px 6px;border-radius:4px">Image</div>';
+                    if (c.title) inner += '<div style="font-family:Arial,sans-serif;font-size:14px;font-weight:600;color:#111;margin:10px 0 2px">' + esc(c.title) + '</div>';
+                    if (c.caption) inner += '<div style="font-family:Arial,sans-serif;font-size:13px;color:#555;margin:0 0 2px">' + esc(c.caption) + '</div>';
+                    if (c.price) inner += '<div style="font-family:Arial,sans-serif;font-size:14px;font-weight:700;color:#111;margin:2px 0 8px">' + esc(c.price) + '</div>';
+                    if (c.btnText) inner += '<a href="' + esc(safeUrl(c.href)) + '" style="display:inline-block;padding:8px 18px;background:' + cbg + ';color:#fff;font-family:Arial,sans-serif;font-size:13px;font-weight:600;text-decoration:none;border-radius:6px;margin-top:4px">' + esc(c.btnText) + '</a>';
+                    cells += '<td valign="top" width="' + cw + '%" style="padding:6px;text-align:center;vertical-align:top">' + inner + '</td>';
+                });
+                return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0 0 16px;' + pad(b) + bgS(b) + '"><tr>' + cells + '</tr></table>';
             case 'html':
-                return b.html || '';
+                return b.html || '<div style="text-align:center;color:#bbb;font-size:13px;padding:14px;border:1px dashed #ddd;margin:0 0 16px">Custom HTML</div>';
             default: return '';
         }
     }
 
-    var iframe = document.getElementById('preview');
-    function renderPreview() {
-        var inner = state.map(renderBlock).join('') || '<div style="color:#bbb;text-align:center;padding:40px 0;font-size:14px">Your email preview appears here</div>';
-        var doc = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>' +
-            '<body style="margin:0;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#333">' +
-            '<div style="max-width:600px;margin:0 auto;padding:24px 20px">' + inner + '</div></body></html>';
-        var d = iframe.contentDocument || iframe.contentWindow.document;
-        d.open(); d.write(doc); d.close();
-    }
+    // Body HTML used to measure email size (as the server would store it).
+    function bodyHtml() { return state.map(renderBlock).join(''); }
 
-    function sync() {
-        document.getElementById('LayoutJson').value = JSON.stringify(state);
-        document.getElementById('empty-hint').style.display = state.length ? 'none' : '';
-        renderPreview();
-    }
+    // ════════════════════ Canvas ════════════════════
+    var canvas = document.getElementById('canvas'), pad0 = document.getElementById('canvas-pad');
+    var TB = '<div class="sl-tb">' +
+        '<span class="lbl" data-drag="1" title="Drag to reorder">⠿ </span>' +
+        '<button type="button" data-act="up" title="Move up"><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></button>' +
+        '<button type="button" data-act="down" title="Move down"><svg viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>' +
+        '<button type="button" data-act="dup" title="Duplicate"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="1"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/></svg></button>' +
+        '<button type="button" data-act="del" title="Delete"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M7 7l1 13h8l1-13"/></svg></button>' +
+        '</div>';
 
-    // Field editors per block type.
-    function fieldsHtml(b, i) {
-        var inp = 'w-full border border-neutral-200 rounded-sm px-2.5 py-1.5 text-sm';
-        function alignSel(v) {
-            return '<select data-i="' + i + '" data-f="align" class="' + inp + ' bg-white">' +
-                ALIGNS.map(function (a) { return '<option value="' + a + '"' + (v === a ? ' selected' : '') + '>' + a + '</option>'; }).join('') + '</select>';
-        }
-        switch ((b.type || '').toLowerCase()) {
-            case 'heading':
-                return '<input data-i="' + i + '" data-f="text" value="' + esc(b.text) + '" class="' + inp + '" placeholder="Headline" />' +
-                    '<div class="mt-2">' + alignSel(b.align) + '</div>';
-            case 'text':
-                return '<textarea data-i="' + i + '" data-f="text" rows="3" class="' + inp + '" placeholder="Your message">' + esc(b.text) + '</textarea>' +
-                    '<div class="mt-2">' + alignSel(b.align) + '</div>';
-            case 'image':
-                return '<input data-i="' + i + '" data-f="src" value="' + esc(b.src) + '" class="' + inp + '" placeholder="Image URL (https://…)" />' +
-                    '<input data-i="' + i + '" data-f="href" value="' + esc(b.href) + '" class="' + inp + ' mt-2" placeholder="Link URL (optional)" />' +
-                    '<input data-i="' + i + '" data-f="alt" value="' + esc(b.alt) + '" class="' + inp + ' mt-2" placeholder="Alt text" />' +
-                    '<div class="mt-2">' + alignSel(b.align) + '</div>';
-            case 'button':
-                return '<input data-i="' + i + '" data-f="text" value="' + esc(b.text) + '" class="' + inp + '" placeholder="Button text" />' +
-                    '<input data-i="' + i + '" data-f="href" value="' + esc(b.href) + '" class="' + inp + ' mt-2" placeholder="Link URL (https://…)" />' +
-                    '<div class="mt-2">' + alignSel(b.align) + '</div>';
-            case 'spacer':
-                return '<label class="text-xs text-neutral-500">Height (px)</label><input data-i="' + i + '" data-f="size" type="number" min="4" max="160" value="' + (b.size || 24) + '" class="' + inp + '" />';
-            case 'social':
-                return '<input data-i="' + i + '" data-f="instagram" value="' + esc(b.instagram) + '" class="' + inp + '" placeholder="Instagram URL" />' +
-                    '<input data-i="' + i + '" data-f="facebook" value="' + esc(b.facebook) + '" class="' + inp + ' mt-2" placeholder="Facebook URL" />' +
-                    '<input data-i="' + i + '" data-f="tiktok" value="' + esc(b.tiktok) + '" class="' + inp + ' mt-2" placeholder="TikTok URL" />';
-            case 'html':
-                return '<textarea data-i="' + i + '" data-f="html" rows="4" class="' + inp + ' font-mono text-xs" placeholder="HTML">' + esc(b.html) + '</textarea>';
-            case 'divider':
-                return '<div class="text-xs text-neutral-400">A horizontal line.</div>';
-            default: return '';
-        }
-    }
-
-    var blocksEl = document.getElementById('blocks');
-    function render() {
-        blocksEl.innerHTML = state.map(function (b, i) {
-            return '<div class="blk bg-white border border-neutral-200 rounded-sm" draggable="true" data-i="' + i + '">' +
-                '<div class="flex items-center justify-between px-3 py-2 border-b border-neutral-100 bg-neutral-50">' +
-                    '<span class="text-xs font-medium text-neutral-600 select-none cursor-move" data-drag="1">⠿ ' + (LABELS[b.type] || b.type) + '</span>' +
-                    '<span class="flex gap-1">' +
-                        '<button type="button" data-act="up" data-i="' + i + '" class="text-xs text-neutral-400 hover:text-neutral-800 px-1" title="Move up">↑</button>' +
-                        '<button type="button" data-act="down" data-i="' + i + '" class="text-xs text-neutral-400 hover:text-neutral-800 px-1" title="Move down">↓</button>' +
-                        '<button type="button" data-act="del" data-i="' + i + '" class="text-xs text-red-400 hover:text-red-600 px-1" title="Delete">✕</button>' +
-                    '</span>' +
-                '</div>' +
-                '<div class="p-3">' + fieldsHtml(b, i) + '</div>' +
-            '</div>';
+    function paintCanvas() {
+        if (!state.length) { pad0.innerHTML = '<div class="sl-empty">Drag a block from the left to start building your email.</div>'; return; }
+        pad0.innerHTML = state.map(function (b, i) {
+            return '<div class="sl-wrap' + (i === sel ? ' sel' : '') + '" data-i="' + i + '" draggable="true">' + TB + renderBlock(b) + '</div>';
         }).join('');
-        sync();
     }
 
-    // Add blocks.
-    document.getElementById('palette').addEventListener('click', function (e) {
-        var btn = e.target.closest('[data-add]'); if (!btn) return;
-        state.push(def(btn.getAttribute('data-add')));
-        render();
+    // ════════════════════ Left rail ════════════════════
+    var rail = document.getElementById('rail');
+    var PAL_ICONS = {
+        heading:'<path d="M6 4v16M18 4v16M6 12h12"/>', text:'<path d="M4 6h16M4 12h16M4 18h10"/>',
+        image:'<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 16-5-5L5 20"/>',
+        button:'<rect x="3" y="8" width="18" height="8" rx="4"/>', divider:'<path d="M3 12h18"/>',
+        spacer:'<path d="M12 4v16M8 7l4-3 4 3M8 17l4 3 4-3"/>', social:'<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/>',
+        columns:'<rect x="3" y="4" width="7" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/>',
+        html:'<path d="m8 8-4 4 4 4M16 8l4 4-4 4M13 6l-2 12"/>'
+    };
+    function palette() {
+        var items = ['heading','text','image','button','columns','divider','spacer','social','html'].map(function (t) {
+            return '<div class="sl-pal-item" draggable="true" data-add="' + t + '"><svg viewBox="0 0 24 24">' + PAL_ICONS[t] + '</svg>' + LABELS[t] + '</div>';
+        }).join('');
+        rail.innerHTML =
+            '<div class="sl-rail-head">Content blocks</div>' +
+            '<div class="sl-pal-sec"><h4>Drag or click to add</h4><div class="sl-pal-grid">' + items + '</div></div>' +
+            '<div class="sl-pal-sec" style="border-top:1px solid var(--sl-line)"><h4>Tip</h4>' +
+            '<p style="font-size:12px;color:var(--sl-mut);line-height:1.5;margin:0">Click a block on the canvas to style it. Use the ⠿ handle to drag it into a new position.</p></div>';
+    }
+
+    // ── config field helpers ──
+    function f_text(label, key, val, ph) { return '<div class="sl-field"><label>' + label + '</label><input class="sl-in" data-k="' + key + '" value="' + esc(val) + '" placeholder="' + (ph||'') + '"></div>'; }
+    function f_area(label, key, val, ph) { return '<div class="sl-field"><label>' + label + '</label><textarea class="sl-ta" rows="4" data-k="' + key + '" placeholder="' + (ph||'') + '">' + esc(val) + '</textarea></div>'; }
+    function f_num(label, key, val, mn, mx) { return '<div class="sl-field"><label>' + label + '</label><input type="number" class="sl-in" data-k="' + key + '" value="' + (val==null?'':val) + '" min="' + mn + '" max="' + mx + '"></div>'; }
+    function f_color(label, key, val) { var v = hex(val,'#000000'); return '<div class="sl-field"><label>' + label + '</label><div class="sl-color"><input type="color" data-k="' + key + '" value="' + v + '"><input class="sl-in" data-k="' + key + '" value="' + esc(val||'') + '" placeholder="#rrggbb"></div></div>'; }
+    function f_font(key, val) { return '<div class="sl-field"><label>Font</label><select class="sl-sel" data-k="' + key + '">' + FONTS.map(function (f) { return '<option value="' + f[0] + '"' + (val===f[0]?' selected':'') + '>' + f[1] + '</option>'; }).join('') + '</select></div>'; }
+    function f_align(val) {
+        function b(v, path) { return '<button type="button" data-align="' + v + '" class="' + (align(val)===v?'on':'') + '"><svg viewBox="0 0 24 24">' + path + '</svg></button>'; }
+        return '<div class="sl-field"><label>Alignment</label><div class="sl-alignseg">' +
+            b('left','<path d="M4 6h16M4 12h10M4 18h13"/>') + b('center','<path d="M4 6h16M7 12h10M5 18h14"/>') + b('right','<path d="M4 6h16M10 12h10M7 18h13"/>') + '</div></div>';
+    }
+    function f_toggle(label, key, on) { return '<div class="sl-field"><label>' + label + '</label><div class="sl-toggle-row"><button type="button" class="sl-tgl ' + (on?'on':'') + '" data-tgl="' + key + '">' + (on?'On':'Off') + '</button></div></div>'; }
+
+    function configBody(b) {
+        var t = (b.type||'').toLowerCase(), h = '';
+        if (t === 'heading' || t === 'text') {
+            h += '<div class="sl-cfg-sec"><h5>Content</h5>' + (t==='heading' ? f_text('Text','text',b.text) : f_area('Text','text',b.text)) + '</div>';
+            h += '<div class="sl-cfg-sec"><h5>Typography</h5>' + f_font('font',b.font) +
+                 '<div class="sl-row2">' + f_num('Size (px)','fontSize',b.fontSize,9,72) + f_num('Weight','weight',b.weight,300,800) + '</div>' +
+                 '<div class="sl-row2">' + f_num('Line height','lineHeight',b.lineHeight,1,3) + f_num('Letter sp.','letter',b.letter,-2,12) + '</div>' +
+                 f_toggle('Italic','italic',b.italic) + f_toggle('Underline','underline',b.underline) +
+                 f_color('Text colour','color',b.color) + f_align(b.align) + '</div>';
+        } else if (t === 'image') {
+            h += '<div class="sl-cfg-sec"><h5>Image</h5>' + f_text('Image URL','src',b.src,'https://…') + f_text('Link URL','href',b.href,'Optional') + f_text('Alt text','alt',b.alt) + '</div>';
+            h += '<div class="sl-cfg-sec"><h5>Size</h5><div class="sl-row2">' + f_num('Width (px)','width',b.width,0,600) + f_num('Radius (px)','radius',b.radius,0,60) + '</div><p style="font-size:11px;color:var(--sl-mut);margin:0">Leave width 0 for full width.</p>' + f_align(b.align) + '</div>';
+        } else if (t === 'button') {
+            h += '<div class="sl-cfg-sec"><h5>Button</h5>' + f_text('Label','text',b.text) + f_text('Link URL','href',b.href,'https://…') + '</div>';
+            h += '<div class="sl-cfg-sec"><h5>Style</h5>' + f_color('Background','bg',b.bg) + f_color('Text colour','color',b.color) + f_font('font',b.font) +
+                 '<div class="sl-row2">' + f_num('Size (px)','fontSize',b.fontSize,10,28) + f_num('Radius (px)','radius',b.radius,0,40) + '</div>' +
+                 f_toggle('Full width','full',b.full) + f_align(b.align) + '</div>';
+        } else if (t === 'divider') {
+            h += '<div class="sl-cfg-sec"><h5>Divider</h5>' + f_color('Colour','color',b.color) + f_num('Thickness (px)','thickness',b.thickness,1,10) + '</div>';
+        } else if (t === 'spacer') {
+            h += '<div class="sl-cfg-sec"><h5>Spacer</h5>' + f_num('Height (px)','size',b.size,4,160) + '</div>';
+        } else if (t === 'social') {
+            h += '<div class="sl-cfg-sec"><h5>Profiles</h5>' + f_text('Instagram','instagram',b.instagram,'https://…') + f_text('Facebook','facebook',b.facebook,'https://…') + f_text('TikTok','tiktok',b.tiktok,'https://…') + f_color('Link colour','color',b.color) + '</div>';
+        } else if (t === 'columns') {
+            h += '<div class="sl-cfg-sec"><h5>Columns (' + (b.cols||[]).length + ')</h5>';
+            h += '<div class="sl-toggle-row" style="margin-bottom:10px"><button type="button" class="sl-tgl" data-cols="2">2 columns</button><button type="button" class="sl-tgl" data-cols="3">3 columns</button></div>';
+            (b.cols||[]).forEach(function (c, ci) {
+                h += '<div style="border:1px solid var(--sl-line);border-radius:8px;padding:10px;margin-bottom:10px"><div style="font-size:11px;font-weight:600;color:var(--sl-mut);margin-bottom:6px">Column ' + (ci+1) + '</div>' +
+                    f_text('Image URL','cols.' + ci + '.src',c.src,'https://…') +
+                    f_text('Title','cols.' + ci + '.title',c.title) +
+                    '<div class="sl-row2">' + f_text('Caption','cols.' + ci + '.caption',c.caption) + f_text('Price','cols.' + ci + '.price',c.price) + '</div>' +
+                    f_text('Button text','cols.' + ci + '.btnText',c.btnText) +
+                    f_text('Button link','cols.' + ci + '.href',c.href,'https://…') + '</div>';
+            });
+            h += f_color('Button colour','color',b.color) + '</div>';
+        } else if (t === 'html') {
+            h += '<div class="sl-cfg-sec"><h5>Custom HTML</h5>' + f_area('HTML','html',b.html,'<p>…</p>') + '<p style="font-size:11px;color:var(--sl-mut);margin:0">Scripts and unsafe tags are stripped on save.</p></div>';
+        }
+        // Shared spacing section
+        h += '<div class="sl-cfg-sec"><h5>Padding</h5><div class="sl-row4">' +
+            f_num('Top','padT',b.padT,0,120) + f_num('Right','padR',b.padR,0,120) + f_num('Bottom','padB',b.padB,0,120) + f_num('Left','padL',b.padL,0,120) + '</div>';
+        if (t !== 'divider' && t !== 'spacer' && t !== 'social' && t !== 'html') h += f_color('Background','bg',b.bg);
+        h += '</div>';
+        return h;
+    }
+
+    function displayBody(b) {
+        var v = (b.vis || 'all');
+        function opt(val, title, desc) { return '<label class="' + (v===val?'on':'') + '"><input type="radio" name="vis" value="' + val + '"' + (v===val?' checked':'') + '><span><span class="t">' + title + '</span><br><span class="d">' + desc + '</span></span></label>'; }
+        return '<div class="sl-cfg"><div class="sl-cfg-sec"><h5>Visibility</h5><div class="sl-vis">' +
+            opt('all','All devices','Show on desktop and mobile') +
+            opt('desktop','Desktop only','Hide on mobile') +
+            opt('mobile','Mobile only','Hide on desktop') + '</div></div></div>';
+    }
+
+    function config() {
+        var b = state[sel];
+        if (!b) { palette(); return; }
+        rail.innerHTML =
+            '<div class="sl-rail-head"><button type="button" class="sl-back" id="to-blocks">← Blocks</button><span style="margin-left:4px">' + (LABELS[b.type]||b.type) + '</span></div>' +
+            '<div class="sl-tabs"><button type="button" data-tab="config" class="' + (railTab==='config'?'on':'') + '">Configuration</button><button type="button" data-tab="display" class="' + (railTab==='display'?'on':'') + '">Display</button></div>' +
+            (railTab === 'display' ? displayBody(b) : '<div class="sl-cfg">' + configBody(b) + '</div>');
+    }
+
+    function renderRail() { if (sel >= 0 && sel < state.length) config(); else palette(); }
+
+    // ════════════════════ state helpers ════════════════════
+    function setDeep(obj, path, val) {
+        var parts = path.split('.'); var o = obj;
+        for (var i = 0; i < parts.length - 1; i++) { var k = parts[i]; if (/^\d+$/.test(parts[i+1])) { o[k] = o[k] || []; } else { o[k] = o[k] || {}; } o = o[k]; }
+        o[parts[parts.length-1]] = val;
+    }
+    function sync(repaint) { document.getElementById('LayoutJson').value = JSON.stringify(state); if (repaint !== false) paintCanvas(); updateSize(); }
+    function updateSize() {
+        var bytes = new Blob([bodyHtml()]).size;
+        document.getElementById('size-chip').textContent = 'Email size: ' + (bytes < 1024 ? bytes + ' B' : (bytes/1024).toFixed(1) + ' KB');
+    }
+
+    // ── undo/redo ──
+    function snapshot() {
+        var s = JSON.stringify(state);
+        if (hp >= 0 && hist[hp] === s) return;
+        hist = hist.slice(0, hp + 1); hist.push(s); hp = hist.length - 1;
+        if (hist.length > 60) { hist.shift(); hp--; }
+        updateHistButtons();
+    }
+    function updateHistButtons() {
+        document.getElementById('undo').disabled = hp <= 0;
+        document.getElementById('redo').disabled = hp >= hist.length - 1;
+    }
+    function restore(s) { try { state = JSON.parse(s) || []; } catch (e) { return; } if (sel >= state.length) sel = -1; renderRail(); sync(); }
+    document.getElementById('undo').addEventListener('click', function () { if (hp > 0) { hp--; restore(hist[hp]); updateHistButtons(); } });
+    document.getElementById('redo').addEventListener('click', function () { if (hp < hist.length - 1) { hp++; restore(hist[hp]); updateHistButtons(); } });
+
+    var commitT;
+    function commitSoon() { clearTimeout(commitT); commitT = setTimeout(snapshot, 450); }
+
+    // ════════════════════ events ════════════════════
+    // Add via palette click
+    rail.addEventListener('click', function (e) {
+        var add = e.target.closest('[data-add]');
+        if (add) { state.push(def(add.getAttribute('data-add'))); sel = state.length - 1; railTab = 'config'; renderRail(); sync(); snapshot(); return; }
+        var back = e.target.closest('#to-blocks'); if (back) { sel = -1; renderRail(); paintCanvas(); return; }
+        var tab = e.target.closest('[data-tab]'); if (tab) { railTab = tab.getAttribute('data-tab'); config(); return; }
+        var al = e.target.closest('[data-align]'); if (al && state[sel]) { state[sel].align = al.getAttribute('data-align'); config(); sync(); commitSoon(); return; }
+        var tg = e.target.closest('[data-tgl]'); if (tg && state[sel]) { var k = tg.getAttribute('data-tgl'); state[sel][k] = !state[sel][k]; config(); sync(); commitSoon(); return; }
+        var cc = e.target.closest('[data-cols]'); if (cc && state[sel]) {
+            var want = +cc.getAttribute('data-cols'); var cur = state[sel].cols || [];
+            while (cur.length < want) cur.push(col()); if (cur.length > want) cur = cur.slice(0, want);
+            state[sel].cols = cur; config(); sync(); snapshot(); return;
+        }
+    });
+    // Field edits (input)
+    rail.addEventListener('input', function (e) {
+        var el = e.target.closest('[data-k]'); if (!el || sel < 0 || !state[sel]) return;
+        var k = el.getAttribute('data-k'); var v = el.value;
+        if (el.type === 'number') v = (v === '' ? null : parseFloat(v));
+        setDeep(state[sel], k, v);
+        // mirror hex text<->color picker
+        if (el.type === 'color') { var mate = rail.querySelector('input.sl-in[data-k="' + k + '"]'); if (mate) mate.value = v; }
+        sync(); commitSoon();
+    });
+    rail.addEventListener('change', function (e) {
+        var el = e.target.closest('[data-k]'); if (!el || sel < 0 || !state[sel]) return;
+        if (el.tagName === 'SELECT') { setDeep(state[sel], el.getAttribute('data-k'), el.value); sync(); commitSoon(); }
+        if (el.name === 'vis') { state[sel].vis = el.value; config(); sync(); commitSoon(); }
     });
 
-    // Field edits (delegated; no re-render so focus is kept).
-    blocksEl.addEventListener('input', function (e) {
-        var el = e.target.closest('[data-i][data-f]'); if (!el) return;
-        var i = +el.getAttribute('data-i'), f = el.getAttribute('data-f');
-        if (state[i]) { state[i][f] = el.value; sync(); }
-    });
-    blocksEl.addEventListener('change', function (e) {
-        var el = e.target.closest('[data-i][data-f]'); if (!el || el.tagName !== 'SELECT') return;
-        var i = +el.getAttribute('data-i'), f = el.getAttribute('data-f');
-        if (state[i]) { state[i][f] = el.value; sync(); }
-    });
-
-    // Row actions.
-    blocksEl.addEventListener('click', function (e) {
-        var btn = e.target.closest('[data-act]'); if (!btn) return;
-        var i = +btn.getAttribute('data-i'), act = btn.getAttribute('data-act');
-        if (act === 'del') state.splice(i, 1);
-        else if (act === 'up' && i > 0) { var t = state[i-1]; state[i-1] = state[i]; state[i] = t; }
-        else if (act === 'down' && i < state.length - 1) { var u = state[i+1]; state[i+1] = state[i]; state[i] = u; }
-        render();
-    });
-
-    // Drag to reorder.
-    var dragFrom = null;
-    blocksEl.addEventListener('dragstart', function (e) {
-        var card = e.target.closest('.blk'); if (!card) return;
-        dragFrom = +card.getAttribute('data-i');
-        e.dataTransfer.effectAllowed = 'move';
-        try { e.dataTransfer.setData('text/plain', String(dragFrom)); } catch (x) {}
-    });
-    blocksEl.addEventListener('dragover', function (e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
-    blocksEl.addEventListener('drop', function (e) {
+    // Canvas: select + toolbar
+    pad0.addEventListener('click', function (e) {
+        var btn = e.target.closest('.sl-tb button');
+        var wrap = e.target.closest('.sl-wrap'); if (!wrap) return;
+        var i = +wrap.getAttribute('data-i');
+        if (btn) {
+            e.preventDefault(); e.stopPropagation();
+            var act = btn.getAttribute('data-act');
+            if (act === 'del') { state.splice(i,1); sel = -1; }
+            else if (act === 'dup') { state.splice(i+1,0, JSON.parse(JSON.stringify(state[i]))); sel = i+1; }
+            else if (act === 'up' && i > 0) { var t=state[i-1]; state[i-1]=state[i]; state[i]=t; sel=i-1; }
+            else if (act === 'down' && i < state.length-1) { var u=state[i+1]; state[i+1]=state[i]; state[i]=u; sel=i+1; }
+            renderRail(); sync(); snapshot(); return;
+        }
+        // plain click = select; swallow link navigation inside the preview
         e.preventDefault();
-        var card = e.target.closest('.blk'); if (card == null || dragFrom == null) return;
-        var to = +card.getAttribute('data-i');
-        if (to === dragFrom) return;
-        var moved = state.splice(dragFrom, 1)[0];
-        state.splice(to, 0, moved);
-        dragFrom = null;
-        render();
+        sel = i; railTab = 'config'; renderRail(); paintCanvas();
+    });
+    // Prevent links in canvas from navigating
+    pad0.addEventListener('click', function (e) { var a = e.target.closest('a'); if (a) e.preventDefault(); }, true);
+
+    // Drag from palette → canvas, and reorder within canvas
+    var dragKind = null, dragFrom = null;
+    rail.addEventListener('dragstart', function (e) { var it = e.target.closest('[data-add]'); if (!it) return; dragKind = it.getAttribute('data-add'); dragFrom = null; e.dataTransfer.effectAllowed = 'copy'; });
+    pad0.addEventListener('dragstart', function (e) { var w = e.target.closest('.sl-wrap'); if (!w) return; dragFrom = +w.getAttribute('data-i'); dragKind = null; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(dragFrom)); } catch (x) {} });
+    pad0.addEventListener('dragover', function (e) { e.preventDefault(); var w = e.target.closest('.sl-wrap'); pad0.querySelectorAll('.drag-over').forEach(function(x){x.classList.remove('drag-over');}); if (w) w.classList.add('drag-over'); });
+    pad0.addEventListener('dragleave', function (e) { var w = e.target.closest('.sl-wrap'); if (w) w.classList.remove('drag-over'); });
+    pad0.addEventListener('drop', function (e) {
+        e.preventDefault();
+        pad0.querySelectorAll('.drag-over').forEach(function(x){x.classList.remove('drag-over');});
+        var w = e.target.closest('.sl-wrap'); var to = w ? +w.getAttribute('data-i') : state.length;
+        if (dragKind) { var nb = def(dragKind); state.splice(to, 0, nb); sel = to; railTab='config'; }
+        else if (dragFrom != null) { if (to === dragFrom) return; var moved = state.splice(dragFrom,1)[0]; if (to > dragFrom) to--; state.splice(to,0,moved); sel = to; }
+        else return;
+        dragKind = dragFrom = null; renderRail(); sync(); snapshot();
+    });
+    // allow dropping onto empty canvas area
+    canvas.addEventListener('dragover', function (e) { if (dragKind || dragFrom != null) e.preventDefault(); });
+    canvas.addEventListener('drop', function (e) {
+        if (e.target.closest('.sl-wrap')) return; // handled above
+        if (!dragKind && dragFrom == null) return;
+        e.preventDefault();
+        if (dragKind) { state.push(def(dragKind)); sel = state.length-1; railTab='config'; }
+        else { var moved = state.splice(dragFrom,1)[0]; state.push(moved); sel = state.length-1; }
+        dragKind = dragFrom = null; renderRail(); sync(); snapshot();
     });
 
-    // Desktop / mobile preview toggle.
-    var active = 'px-3 py-1.5 bg-neutral-900 text-white', idle = 'px-3 py-1.5';
+    // Device toggle
     var bd = document.getElementById('pv-desktop'), bm = document.getElementById('pv-mobile');
-    function setDevice(mobile) {
-        iframe.style.width = mobile ? '360px' : '600px';
-        bd.className = mobile ? idle : active;
-        bm.className = (mobile ? active : idle) + ' border-l border-neutral-200';
-    }
+    function setDevice(m) { device = m ? 'mobile' : 'desktop'; canvas.classList.toggle('mobile', m); bd.classList.toggle('on', !m); bm.classList.toggle('on', m); }
     bd.addEventListener('click', function () { setDevice(false); });
     bm.addEventListener('click', function () { setDevice(true); });
-    setDevice(false);
 
-    render();
+    // ════════════════════ Settings drawer ════════════════════
+    var dbk = document.getElementById('drawer-bk'), dw = document.getElementById('drawer');
+    function openDrawer(o) { dbk.classList.toggle('on', o); dw.classList.toggle('on', o); }
+    document.getElementById('open-settings').addEventListener('click', function () { openDrawer(true); });
+    document.getElementById('close-settings').addEventListener('click', function () { openDrawer(false); });
+    dbk.addEventListener('click', function () { openDrawer(false); });
 
-    // ───────── Audience (unchanged behaviour) ─────────
-    var sel = document.getElementById('aud-select');
-    function syncAud() {
-        var v = sel.value;
-        document.querySelectorAll('[data-aud]').forEach(function (el) {
-            el.style.display = el.getAttribute('data-aud').split(',').includes(v) ? '' : 'none';
-        });
-    }
-    sel.addEventListener('change', function () { syncAud(); document.getElementById('count-out').classList.add('hidden'); });
+    // Audience conditional fields
+    var aud = document.getElementById('aud-select');
+    function syncAud() { var v = aud.value; document.querySelectorAll('[data-aud]').forEach(function (el) { el.style.display = el.getAttribute('data-aud').split(',').includes(v) ? '' : 'none'; }); }
+    aud.addEventListener('change', function () { syncAud(); document.getElementById('count-out').classList.add('hidden'); });
     syncAud();
-
-    var segSel = document.getElementById('seg-select');
-    var custom = document.getElementById('custom-aud');
+    var segSel = document.getElementById('seg-select'), custom = document.getElementById('custom-aud');
     function syncSeg() { if (custom) custom.style.display = (segSel && segSel.value) ? 'none' : ''; }
     if (segSel) { segSel.addEventListener('change', syncSeg); syncSeg(); }
 
     document.getElementById('count-btn').addEventListener('click', async function () {
-        var form = document.getElementById('campaign-form');
-        var fd = new FormData(form);
+        var fd = new FormData(document.getElementById('campaign-form'));
         var out = document.getElementById('count-out');
         out.classList.remove('hidden'); out.textContent = 'Counting…';
-        try {
-            var res = await fetch(__mktBase + '/Campaigns/Count', { method: 'POST', body: fd });
-            var data = await res.json();
-            out.textContent = (data.count ?? 0).toLocaleString() + ' recipient(s)';
-        } catch (x) { out.textContent = 'Could not estimate.'; }
+        try { var res = await fetch(window.__mktBase + '/Campaigns/Count', { method:'POST', body:fd }); var data = await res.json(); out.textContent = (data.count ?? 0).toLocaleString() + ' recipient(s)'; }
+        catch (x) { out.textContent = 'Could not estimate.'; }
     });
 
-    // Make sure the latest layout is posted.
-    document.getElementById('campaign-form').addEventListener('submit', function () {
-        document.getElementById('LayoutJson').value = JSON.stringify(state);
-    });
+    // keep layout posted on submit
+    document.getElementById('campaign-form').addEventListener('submit', function () { document.getElementById('LayoutJson').value = JSON.stringify(state); });
+
+    // ── boot ──
+    renderRail(); paintCanvas(); updateSize(); setDevice(false); snapshot();
 })();
 </script>
 }

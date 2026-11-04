@@ -106,4 +106,77 @@ public class CampaignLayoutRendererTests
     [Fact]
     public void Unknown_block_type_is_skipped()
         => Assert.Equal("", CampaignLayoutRenderer.Render("[{\"type\":\"carousel\"}]"));
+
+    [Fact]
+    public void Columns_block_renders_a_cell_per_column()
+    {
+        var html = CampaignLayoutRenderer.Render(
+            "[{\"type\":\"columns\",\"cols\":[{\"title\":\"Ring\",\"src\":\"https://cdn.x/r.jpg\",\"btnText\":\"Buy\",\"href\":\"https://sterlinglams.com/r\"},{\"title\":\"Necklace\"}]}]");
+        Assert.Contains("<table", html);
+        Assert.Contains("Ring", html);
+        Assert.Contains("Necklace", html);
+        Assert.Contains("width=\"50%\"", html);          // two columns split evenly
+        Assert.Contains("href=\"https://sterlinglams.com/r\"", html);
+    }
+
+    [Fact]
+    public void Columns_with_no_columns_renders_nothing()
+        => Assert.Equal("", CampaignLayoutRenderer.Render("[{\"type\":\"columns\",\"cols\":[]}]"));
+
+    [Fact]
+    public void Default_visibility_emits_no_media_prelude()
+    {
+        var html = CampaignLayoutRenderer.Render("[{\"type\":\"text\",\"text\":\"hi\"}]");
+        Assert.DoesNotContain("<style", html);
+        Assert.DoesNotContain("sl-hide", html);
+    }
+
+    [Fact]
+    public void Desktop_only_block_is_wrapped_and_adds_media_prelude()
+    {
+        var html = CampaignLayoutRenderer.Render("[{\"type\":\"text\",\"text\":\"hi\",\"vis\":\"desktop\"}]");
+        Assert.Contains("@media only screen and (max-width:480px)", html);
+        Assert.Contains("sl-hide-mobile", html);
+    }
+
+    [Fact]
+    public void Mobile_only_block_starts_hidden_for_desktop_clients()
+    {
+        var html = CampaignLayoutRenderer.Render("[{\"type\":\"text\",\"text\":\"hi\",\"vis\":\"mobile\"}]");
+        Assert.Contains("sl-hide-desktop", html);
+        Assert.Contains("display:none", html);
+    }
+
+    [Theory]
+    [InlineData("red")]
+    [InlineData("#12")]
+    [InlineData("rgb(1,2,3)")]
+    [InlineData("#ff0000\" onmouseover=\"x")]
+    public void Invalid_colour_falls_back_to_the_default(string bad)
+    {
+        var json = $"[{{\"type\":\"heading\",\"text\":\"Hi\",\"color\":\"{bad.Replace("\"", "\\\"")}\"}}]";
+        var html = CampaignLayoutRenderer.Render(json);
+        Assert.Contains("color:#111111", html);   // default kept
+        Assert.DoesNotContain("onmouseover", html); // no style-attribute break-out
+    }
+
+    [Fact]
+    public void Valid_hex_colour_is_applied()
+        => Assert.Contains("color:#ff8800",
+            CampaignLayoutRenderer.Render("[{\"type\":\"heading\",\"text\":\"Hi\",\"color\":\"#ff8800\"}]"));
+
+    [Fact]
+    public void Unknown_font_falls_back_to_arial()
+    {
+        var html = CampaignLayoutRenderer.Render("[{\"type\":\"text\",\"text\":\"Hi\",\"font\":\"Comic Sans\\\" x\"}]");
+        Assert.Contains("font-family:Arial, Helvetica, sans-serif", html);
+    }
+
+    [Fact]
+    public void Full_width_button_stretches_the_cell()
+    {
+        var html = CampaignLayoutRenderer.Render("[{\"type\":\"button\",\"text\":\"Go\",\"href\":\"https://x.io\",\"full\":true}]");
+        Assert.Contains("width:100%", html);
+        Assert.Contains("display:block", html);
+    }
 }

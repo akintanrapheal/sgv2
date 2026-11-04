@@ -141,7 +141,21 @@ public class CampaignsController : MarketingAreaController
         ViewData["Title"] = c.Name;
         ViewBag.EstimatedCount = c.Status == CampaignStatus.Draft ? await _marketing.EstimateCountAsync(c) : c.RecipientCount;
         ViewBag.Recipients = await _db.CampaignRecipients.AsNoTracking()
-            .Where(r => r.CampaignId == id).OrderByDescending(r => r.Id).Take(50).ToListAsync();
+            .Where(r => r.CampaignId == id).OrderByDescending(r => r.Id).Take(300).ToListAsync();
+
+        // Aggregate report tiles (over ALL recipients, not just the listed 300) for sent campaigns.
+        if (c.Status != CampaignStatus.Draft)
+        {
+            var recips = _db.CampaignRecipients.AsNoTracking().Where(r => r.CampaignId == id);
+            ViewBag.Delivered = await recips.CountAsync(r => r.Status == CampaignRecipientStatus.Sent);
+            ViewBag.Opened = await recips.CountAsync(r => r.OpenedAt != null);
+            ViewBag.Clicked = await recips.CountAsync(r => r.ClickedAt != null);
+            ViewBag.FailedTile = await recips.CountAsync(r => r.Status == CampaignRecipientStatus.Failed);
+            ViewBag.SkippedTile = await recips.CountAsync(r => r.Status == CampaignRecipientStatus.Skipped);
+            // Unsubscribed = recipients whose address later landed on the suppression list.
+            ViewBag.Unsubscribed = await recips
+                .CountAsync(r => _db.MarketingSuppressions.Any(s => s.Email == r.Email.ToLower()));
+        }
 
         // Revenue attributed to this campaign (last-touch, from its send date to now).
         if (c.SentAt is DateTime sentAt)
