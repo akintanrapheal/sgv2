@@ -251,7 +251,8 @@
         </div>
 
         <!-- Actions -->
-        @if (Model.Status == TransferStatus.PendingApproval && SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User))
+        @{ var canManageInv = ViewData["CanManageInventory"] as bool? ?? false; }
+        @if (Model.Status == TransferStatus.PendingApproval && canManageInv)
         {
             <div class="bg-white border border-neutral-100 rounded-sm p-4">
                 <h2 class="text-sm font-medium text-neutral-800 mb-1">Approve request</h2>
@@ -269,7 +270,7 @@
         else if (Model.Status == TransferStatus.PendingApproval)
         {
             <div class="bg-amber-50 border border-amber-200 rounded-sm p-4 text-sm text-amber-800">
-                Awaiting administrator approval. Only an admin can approve or reject this transfer.
+                Awaiting approval. You need Inventory ‘Manage’ permission to approve or reject this transfer.
             </div>
         }
         else if (Model.Status == TransferStatus.Approved)

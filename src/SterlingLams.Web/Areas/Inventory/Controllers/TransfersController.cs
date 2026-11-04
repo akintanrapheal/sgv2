@@ -373,7 +373,10 @@ public class TransfersController : InventoryAreaController
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Approve(int id, [FromBody] ItemsRequest req)
     {
-        if (!SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User)) return Json(new { success = false, message = "Only an administrator can approve transfers." });
+        // Approving needs Inventory "Manage" — not necessarily a built-in admin. The base controller
+        // already 403s any writer without it; this message just makes a denial readable (and covers a
+        // role, e.g. "User Manager", granted full Inventory access without an Admin/Owner/Developer role).
+        if (ViewData["CanManageInventory"] as bool? != true) return Json(new { success = false, message = "You need Inventory ‘Manage’ permission to approve transfers." });
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var deny = await DenyIfNoStoreAccessAsync(id, from: true, to: false); if (deny != null) return deny;
         var result = await _workflow.ApproveAsync(id, req.Items, userId);
@@ -385,7 +388,7 @@ public class TransfersController : InventoryAreaController
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Reject(int id, [FromBody] ReasonRequest req)
     {
-        if (!SterlingLams.Web.Areas.Admin.AdminSections.IsFullAccess(User)) return Json(new { success = false, message = "Only an administrator can reject transfers." });
+        if (ViewData["CanManageInventory"] as bool? != true) return Json(new { success = false, message = "You need Inventory ‘Manage’ permission to reject transfers." });
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         var deny = await DenyIfNoStoreAccessAsync(id, from: true, to: false); if (deny != null) return deny;
         var result = await _workflow.RejectAsync(id, req.Reason, userId);
