@@ -19,7 +19,7 @@
         {
             ("payments",         "Payments",          Model.PaystackSecretSet || Model.StripeSecretSet || Model.FlutterwaveSecretSet),
             ("smtp",             "Email (SMTP)",      Model.SmtpEnabled && Model.SmtpPasswordSet),
-            ("marketing esp",    "Marketing ESP",     Model.EspProvider != "smtp" && Model.EspKeySet),
+            ("marketing esp",    "Marketing ESP",     Model.EspProvider != "smtp" && Model.EspConfigured),
             ("whatsapp",         "WhatsApp",          Model.WaEnabled && Model.WaAuthTokenSet),
             ("google analytics", "Google Analytics",  Model.GaEnabled && Model.GaServiceAccountSet),
             ("meta pixel",       "Meta Pixel",        Model.MetaEnabled && !string.IsNullOrEmpty(Model.MetaPixelId)),
@@ -223,16 +223,41 @@
                         <option value="smtp" selected="@(Model.EspProvider == "smtp")">SMTP mailbox (default — small lists)</option>
                         <option value="resend" selected="@(Model.EspProvider == "resend")">Resend (recommended)</option>
                         <option value="brevo" selected="@(Model.EspProvider == "brevo")">Brevo</option>
+                        <option value="ses" selected="@(Model.EspProvider == "ses")">Amazon SES (cheapest)</option>
                     </select>
                     <p class="text-[11px] text-neutral-400 mt-1">Until a provider's key + From are set, campaigns fall back to SMTP.</p>
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-neutral-700 mb-1">API key @(Model.EspKeySet ? "(saved)" : "")</label>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">API key — Resend / Brevo @(Model.EspKeySet ? "(saved)" : "")</label>
                     <input type="password" name="marketing.esp.api_key" autocomplete="off"
                            placeholder="@(Model.EspKeySet ? "•••••••• — leave blank to keep" : "re_… (Resend) or xkeysib-… (Brevo)")"
                            class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
-                    <p class="text-[11px] text-neutral-400 mt-1">Stored encrypted. Used server-side for campaigns only.</p>
+                    <p class="text-[11px] text-neutral-400 mt-1">Stored encrypted. Leave blank if you use Amazon SES.</p>
                 </div>
+            </div>
+
+            <div class="rounded-sm border border-neutral-100 bg-neutral-50/60 p-4 space-y-4">
+                <p class="text-xs font-medium text-neutral-600">Amazon SES credentials <span class="font-normal text-neutral-400">— only needed when the provider above is Amazon SES</span></p>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-neutral-700 mb-1">AWS Access Key ID @(Model.EspAwsAccessSet ? "(saved)" : "")</label>
+                        <input type="password" name="marketing.esp.aws_access_key" autocomplete="off"
+                               placeholder="@(Model.EspAwsAccessSet ? "•••••••• — leave blank to keep" : "AKIA…")"
+                               class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-neutral-700 mb-1">AWS Secret Access Key @(Model.EspAwsSecretSet ? "(saved)" : "")</label>
+                        <input type="password" name="marketing.esp.aws_secret_key" autocomplete="off"
+                               placeholder="@(Model.EspAwsSecretSet ? "•••••••• — leave blank to keep" : "wJalr…")"
+                               class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-neutral-700 mb-1">AWS Region</label>
+                        <input type="text" name="marketing.esp.aws_region" value="@Model.EspAwsRegion" placeholder="us-east-1" autocomplete="off"
+                               class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    </div>
+                </div>
+                <p class="text-[11px] text-neutral-400">Use an IAM user limited to <code>ses:SendEmail</code>. The region must match where your domain is verified. New SES accounts start in a sandbox (verified recipients only) until you request production access — the <strong>Test</strong> button tells you which.</p>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">

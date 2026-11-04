@@ -90,11 +90,14 @@ public class IntegrationsController : AdminBaseController
             SmtpFromName    = string.IsNullOrWhiteSpace(Plain("email.smtp.from_name", null)) ? "Sterlin Glams" : Plain("email.smtp.from_name", null),
             SmtpSsl         = await _settings.GetBoolAsync("email.smtp.ssl", true),
 
-            EspProvider     = (await _settings.GetAsync("marketing.esp.provider", "smtp")).ToLowerInvariant(),
-            EspKeySet       = Set("marketing.esp.api_key", "Marketing:Esp:ApiKey"),
-            EspFromAddress  = Plain("marketing.esp.from_address", null),
-            EspFromName     = Plain("marketing.esp.from_name", null),
-            EspBatchSize    = await _settings.GetIntAsync("marketing.esp.batch_size", 100),
+            EspProvider      = (await _settings.GetAsync("marketing.esp.provider", "smtp")).ToLowerInvariant(),
+            EspKeySet        = Set("marketing.esp.api_key", "Marketing:Esp:ApiKey"),
+            EspFromAddress   = Plain("marketing.esp.from_address", null),
+            EspFromName      = Plain("marketing.esp.from_name", null),
+            EspBatchSize     = await _settings.GetIntAsync("marketing.esp.batch_size", 100),
+            EspAwsAccessSet  = Set("marketing.esp.aws_access_key", "Marketing:Esp:AwsAccessKey"),
+            EspAwsSecretSet  = Set("marketing.esp.aws_secret_key", "Marketing:Esp:AwsSecretKey"),
+            EspAwsRegion     = string.IsNullOrWhiteSpace(Plain("marketing.esp.aws_region", null)) ? "us-east-1" : Plain("marketing.esp.aws_region", null),
 
             WaEnabled       = await _settings.GetBoolAsync("whatsapp.enabled", false),
             WaProvider      = string.IsNullOrWhiteSpace(Plain("whatsapp.provider", null)) ? "twilio" : Plain("whatsapp.provider", null),
@@ -441,6 +444,14 @@ public class IntegrationsViewModel
     public string EspFromAddress { get; set; } = "";
     public string EspFromName { get; set; } = "";
     public int EspBatchSize { get; set; } = 100;
+    public bool EspAwsAccessSet { get; set; }
+    public bool EspAwsSecretSet { get; set; }
+    public string EspAwsRegion { get; set; } = "us-east-1";
+    /// <summary>Whether the selected marketing provider is configured enough to send (for the status dot).</summary>
+    public bool EspConfigured =>
+        EspProvider == "resend" || EspProvider == "brevo" ? EspKeySet
+        : EspProvider == "ses" ? (EspAwsAccessSet && EspAwsSecretSet)
+        : false;
 
     // WhatsApp
     public bool WaEnabled { get; set; }
