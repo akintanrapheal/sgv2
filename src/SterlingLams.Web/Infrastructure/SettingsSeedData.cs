@@ -458,6 +458,15 @@ public static class SettingsSeedData
         new() { Key = "email.smtp.from_name",     Group = "SMTP", Label = "From Name",            Type = "text",    Value = "Sterlin Glams", Description = "Sender display name.",                            SortOrder = 6 },
         new() { Key = "email.smtp.ssl",           Group = "SMTP", Label = "Use SSL/TLS",         Type = "boolean", Value = "true",  Description = "Enable TLS. Leave on for ports 587 and 465.",             SortOrder = 7 },
 
+        // ── Marketing send provider (ESP) — campaigns only; transactional mail always uses SMTP above ──
+        // Flip from SMTP to a dedicated bulk provider for newsletters/blasts. Falls back to SMTP until an
+        // external provider is fully set up (key + verified From), so a half-config never drops mail.
+        new() { Key = "marketing.esp.provider",     Group = "SMTP", Label = "Marketing send provider",   Type = "select", Value = "smtp", Description = "Who delivers your marketing campaigns (newsletters/blasts). 'SMTP mailbox' reuses the server above — fine for small lists. 'Resend' or 'Brevo' are built for bulk: far better speed and inbox delivery for large lists. Order & account emails always use SMTP regardless.", SortOrder = 10 },
+        new() { Key = "marketing.esp.api_key",      Group = "SMTP", Label = "Marketing provider API key", Type = "secret", Value = "",    Description = "API key for the provider above — Resend (starts re_…) or Brevo (starts xkeysib-…). Stored encrypted; used server-side for campaigns only.", SortOrder = 11 },
+        new() { Key = "marketing.esp.from_address", Group = "SMTP", Label = "Marketing From address",     Type = "email",  Value = "",    Description = "The 'from' address for campaigns, e.g. newsletter@sterlinglams.com. Must be on a domain verified with the provider. Blank = use the SMTP From Address above.", SortOrder = 12 },
+        new() { Key = "marketing.esp.from_name",    Group = "SMTP", Label = "Marketing From name",        Type = "text",   Value = "",    Description = "Sender name recipients see for campaigns. Blank = the SMTP From Name above.", SortOrder = 13 },
+        new() { Key = "marketing.esp.batch_size",   Group = "SMTP", Label = "Marketing batch size",       Type = "number", Value = "100", Description = "How many campaign emails to send per cycle (~every 20s). Bulk providers handle 100–300 comfortably; keep around 50 on a plain SMTP mailbox.", SortOrder = 14 },
+
         // ── WhatsApp (Admin → Integrations, full-admin only) ─────────────────
         // Business API via a provider (Twilio for Phase 1; provider-agnostic). Secrets encrypted at rest.
         // Connection
