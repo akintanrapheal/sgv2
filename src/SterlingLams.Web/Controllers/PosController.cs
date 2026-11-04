@@ -689,13 +689,17 @@ public class PosController : Controller
         var reg = await BoundRegisterAsync();
         if (reg == null) return Json(Array.Empty<object>());
         var done = new[] { TransferStatus.Completed, TransferStatus.PartiallyReceived, TransferStatus.Rejected, TransferStatus.Cancelled };
+        // Cashiers get the last month of transfer history on the till (was only the latest 40, which on a
+        // busy branch could be just a few days). The cap is raised to cover a full month without truncating.
+        var cutoff = DateTime.UtcNow.AddMonths(-1);
         var rows = await _db.StockTransfers
             .Where(t => (t.FromStoreId == reg.StoreId || t.ToStoreId == reg.StoreId)
+                     && t.CreatedAt >= cutoff
                      && (done.Contains(t.Status)
                          // a transfer THIS branch dispatched is in history straight away (still in transit)
                          || (t.FromStoreId == reg.StoreId && t.Status == TransferStatus.InTransit)))
             .Include(t => t.Items).Include(t => t.FromStore).Include(t => t.ToStore)
-            .OrderByDescending(t => t.Id).Take(40).ToListAsync();
+            .OrderByDescending(t => t.Id).Take(500).ToListAsync();
 
         return Json(rows.Select(t => new {
             id = t.Id, number = t.TransferNumber, status = t.Status.ToString(),
