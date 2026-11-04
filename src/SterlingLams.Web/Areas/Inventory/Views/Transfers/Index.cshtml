@@ -8,6 +8,8 @@
     var statusCounts = ViewBag.StatusCounts as Dictionary<TransferStatus, int> ?? new();
     int totalCount = ViewBag.TotalCount ?? 0;
     string query = ViewBag.Query ?? "";
+    string type = ViewBag.Type ?? "all";
+    var orderNumbers = ViewBag.OrderNumbers as Dictionary<int, string> ?? new();
     var selectCls = "border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white focus:outline-none focus:border-emerald-400";
 }
 
@@ -54,20 +56,25 @@
                 <option value="@filter" selected="@(status == filter)">@TransferStatusDisplay.Label(st)</option>
             }
         </select>
+        <select name="type" onchange="this.form.submit()" class="@selectCls" title="Movement type">
+            <option value="all" selected="@(type == "all")">All types</option>
+            <option value="internal" selected="@(type == "internal")">Internal movement</option>
+            <option value="order" selected="@(type == "order")">Online order</option>
+        </select>
         <input type="search" name="q" value="@query" placeholder="Search transfer #, branch or product…"
                class="@selectCls w-64 max-w-full" />
         <button type="submit" class="px-4 py-2 bg-neutral-900 text-white text-sm rounded-sm hover:bg-black transition-colors">Search</button>
         @if (!string.IsNullOrWhiteSpace(query))
         {
-            <a asp-area="Inventory" asp-controller="Transfers" asp-action="Index" asp-route-storeId="@storeId" asp-route-status="@status"
+            <a asp-area="Inventory" asp-controller="Transfers" asp-action="Index" asp-route-storeId="@storeId" asp-route-status="@status" asp-route-type="@type"
                class="px-2 py-2 text-xs text-neutral-500 hover:text-neutral-800 self-center">Clear</a>
         }
     </form>
     <div class="flex gap-2 items-center">
         <span class="text-xs text-neutral-400">Export detail:</span>
-        <a asp-area="Inventory" asp-controller="Transfers" asp-action="ExportCsv" asp-route-storeId="@storeId" asp-route-status="@status" asp-route-q="@query"
+        <a asp-area="Inventory" asp-controller="Transfers" asp-action="ExportCsv" asp-route-storeId="@storeId" asp-route-status="@status" asp-route-q="@query" asp-route-type="@type"
            class="px-3 py-2 border border-neutral-200 text-neutral-600 text-xs rounded-sm hover:border-emerald-400 hover:text-emerald-700 transition-colors">CSV</a>
-        <a asp-area="Inventory" asp-controller="Transfers" asp-action="ExportExcel" asp-route-storeId="@storeId" asp-route-status="@status" asp-route-q="@query"
+        <a asp-area="Inventory" asp-controller="Transfers" asp-action="ExportExcel" asp-route-storeId="@storeId" asp-route-status="@status" asp-route-q="@query" asp-route-type="@type"
            class="px-3 py-2 border border-neutral-200 text-neutral-600 text-xs rounded-sm hover:border-emerald-400 hover:text-emerald-700 transition-colors">Excel</a>
     </div>
 </div>
@@ -81,6 +88,7 @@
                 <th class="text-left font-medium px-4 py-3">Transfer</th>
                 <th class="text-left font-medium px-4 py-3">Date</th>
                 <th class="text-left font-medium px-4 py-3">From → To</th>
+                <th class="text-left font-medium px-4 py-3">Type</th>
                 <th class="text-left font-medium px-4 py-3">Status</th>
                 <th class="text-right font-medium px-4 py-3">Items</th>
                 <th class="text-right font-medium px-4 py-3">Units</th>
@@ -88,13 +96,26 @@
             </tr>
         </thead>
         <tbody class="divide-y divide-neutral-100">
-            @if (!Model.Any()) { <tr><td colspan="7" class="px-4 py-10 text-center text-neutral-400">No transfers yet.</td></tr> }
+            @if (!Model.Any()) { <tr><td colspan="8" class="px-4 py-10 text-center text-neutral-400">No transfers yet.</td></tr> }
             @foreach (var t in Model)
             {
+                var isOrder = t.OrderId.HasValue;
+                var orderNo = isOrder && orderNumbers.TryGetValue(t.OrderId!.Value, out var on) ? on : null;
                 <tr class="hover:bg-neutral-50">
                     <td class="px-4 py-3 font-mono text-xs text-neutral-700">@t.TransferNumber</td>
                     <td class="px-4 py-3 text-neutral-600">@t.CreatedAt.ToLocalTime().ToString("dd MMM, HH:mm")</td>
                     <td class="px-4 py-3 text-neutral-700">@t.FromStore?.Name <span class="text-neutral-300">→</span> @t.ToStore?.Name</td>
+                    <td class="px-4 py-3">
+                        @if (isOrder)
+                        {
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-sky-50 text-sky-700" title="@(orderNo != null ? $"Online order {orderNo}" : "Online order")">🌐 Online order</span>
+                            @if (orderNo != null) { <div class="text-[10px] text-neutral-400 font-mono mt-0.5">@orderNo</div> }
+                        }
+                        else
+                        {
+                            <span class="text-[10px] px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600">Internal movement</span>
+                        }
+                    </td>
                     <td class="px-4 py-3"><span class="text-[10px] px-2 py-0.5 rounded-full @TransferStatusDisplay.BadgeClass(t.Status)">@TransferStatusDisplay.Label(t.Status)</span></td>
                     <td class="px-4 py-3 text-right text-neutral-600">@t.Items.Count</td>
                     <td class="px-4 py-3 text-right text-neutral-600">@t.Items.Sum(i => i.RequestedQty)</td>
