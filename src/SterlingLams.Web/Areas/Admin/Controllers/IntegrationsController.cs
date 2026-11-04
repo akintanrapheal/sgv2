@@ -27,11 +27,13 @@ public class IntegrationsController : AdminBaseController
     private readonly IHttpClientFactory _httpFactory;
     private readonly IGoogleAnalytics _ga;
     private readonly IRetainfulClient _retainful;
+    private readonly SterlingLams.Web.Services.Marketing.IMarketingEsp _esp;
     private readonly ApplicationDbContext _db;
 
     public IntegrationsController(ISettingsService settings, ISettingsSecretProtector secrets,
         IConfiguration config, IWhatsAppService whatsapp, IHttpClientFactory httpFactory,
-        IGoogleAnalytics ga, IRetainfulClient retainful, ApplicationDbContext db)
+        IGoogleAnalytics ga, IRetainfulClient retainful, SterlingLams.Web.Services.Marketing.IMarketingEsp esp,
+        ApplicationDbContext db)
     {
         _settings = settings;
         _secrets = secrets;
@@ -40,6 +42,7 @@ public class IntegrationsController : AdminBaseController
         _httpFactory = httpFactory;
         _ga = ga;
         _retainful = retainful;
+        _esp = esp;
         _db = db;
     }
 
@@ -86,6 +89,12 @@ public class IntegrationsController : AdminBaseController
             SmtpFromAddress = Plain("email.smtp.from_address", "Email:FromAddress"),
             SmtpFromName    = string.IsNullOrWhiteSpace(Plain("email.smtp.from_name", null)) ? "Sterlin Glams" : Plain("email.smtp.from_name", null),
             SmtpSsl         = await _settings.GetBoolAsync("email.smtp.ssl", true),
+
+            EspProvider     = (await _settings.GetAsync("marketing.esp.provider", "smtp")).ToLowerInvariant(),
+            EspKeySet       = Set("marketing.esp.api_key", "Marketing:Esp:ApiKey"),
+            EspFromAddress  = Plain("marketing.esp.from_address", null),
+            EspFromName     = Plain("marketing.esp.from_name", null),
+            EspBatchSize    = await _settings.GetIntAsync("marketing.esp.batch_size", 100),
 
             WaEnabled       = await _settings.GetBoolAsync("whatsapp.enabled", false),
             WaProvider      = string.IsNullOrWhiteSpace(Plain("whatsapp.provider", null)) ? "twilio" : Plain("whatsapp.provider", null),
@@ -188,6 +197,15 @@ public class IntegrationsController : AdminBaseController
                 {
                     var (ok, detail) = await _retainful.TestAsync();
                     return R(ok, detail, ok ? "ok" : (detail.Contains("Not enabled") || detail.Contains("No API key") ? "off" : "error"));
+                }
+
+                case "marketing esp":
+                {
+                    var provider = (await _settings.GetAsync("marketing.esp.provider", "smtp")).ToLowerInvariant();
+                    if (provider is not ("resend" or "brevo"))
+                        return R(true, "Campaigns send through the SMTP mailbox above — no external provider to test.", "off");
+                    var (ok, detail) = await _esp.TestKeyAsync(provider);
+                    return R(ok, detail, ok ? "ok" : (detail.Contains("No ") ? "off" : "error"));
                 }
 
                 case "google analytics":
@@ -416,6 +434,13 @@ public class IntegrationsViewModel
     public string SmtpFromAddress { get; set; } = "";
     public string SmtpFromName { get; set; } = "Sterlin Glams";
     public bool SmtpSsl { get; set; } = true;
+
+    // Marketing send provider (ESP) — campaigns only.
+    public string EspProvider { get; set; } = "smtp";
+    public bool EspKeySet { get; set; }
+    public string EspFromAddress { get; set; } = "";
+    public string EspFromName { get; set; } = "";
+    public int EspBatchSize { get; set; } = 100;
 
     // WhatsApp
     public bool WaEnabled { get; set; }

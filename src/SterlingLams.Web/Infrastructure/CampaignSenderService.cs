@@ -56,6 +56,10 @@ public class CampaignSenderService : BackgroundService
 
         var marketing = scope.ServiceProvider.GetRequiredService<IMarketingService>();
         var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
+        var esp = scope.ServiceProvider.GetRequiredService<IMarketingEsp>();
+        // Marketing blasts go through the configured ESP (Resend/Brevo) when one is set up — higher
+        // throughput + deliverability than the shared SMTP mailbox. Falls back to SMTP otherwise.
+        var espCfg = await esp.GetConfigAsync(ct);
 
         // Move Scheduled → Sending and materialise recipients exactly once.
         if (campaign.Status == CampaignStatus.Scheduled)
@@ -94,9 +98,11 @@ public class CampaignSenderService : BackgroundService
             scope.ServiceProvider.GetRequiredService<SterlingLams.Web.Services.IMerchandisingService>(),
             scope.ServiceProvider.GetRequiredService<SterlingLams.Web.Services.ISettingsService>(), baseUrl, ct);
 
+        // A real ESP can take a larger slice per tick; plain SMTP stays conservative.
+        var batchSize = espCfg.IsExternal ? espCfg.BatchSize : BatchSize;
         var pending = await db.CampaignRecipients
             .Where(r => r.CampaignId == campaign.Id && r.Status == CampaignRecipientStatus.Pending)
-            .OrderBy(r => r.Id).Take(BatchSize).ToListAsync(ct);
+            .OrderBy(r => r.Id).Take(batchSize).ToListAsync(ct);
 
         foreach (var r in pending)
         {
@@ -115,10 +121,26 @@ public class CampaignSenderService : BackgroundService
                 // Self-hosted open/click tracking: rewrite links + append a 1×1 pixel keyed to this recipient.
                 if (!string.IsNullOrEmpty(baseUrl))
                     body = Services.Marketing.MarketingService.InjectTracking(body, baseUrl, marketing.MakeTrackToken(r.Id));
-                var ok = await email.SendAsync(r.Email, campaign.Subject, body, r.Name, ct);
+
+                bool ok;
+                if (espCfg.IsExternal)
+                {
+                    // Render the branded shell ourselves (our tracking is already in `body`), then hand the
+                    // finished HTML to the ESP. Campaign opens/clicks are tracked via the pixel above, so we
+                    // don't need the SMTP path's separate EmailLog pixel.
+                    var full = await email.RenderAsync(campaign.Subject, body);
+                    var (sent, err) = await esp.SendAsync(espCfg, r.Email, r.Name, campaign.Subject, full, ct);
+                    ok = sent;
+                    if (!ok) r.Error = (err ?? "ESP send failed");
+                }
+                else
+                {
+                    ok = await email.SendAsync(r.Email, campaign.Subject, body, r.Name, ct);
+                    if (!ok) r.Error = "send returned false";
+                }
                 r.Status = ok ? CampaignRecipientStatus.Sent : CampaignRecipientStatus.Failed;
                 r.SentAt = ok ? DateTime.UtcNow : null;
-                if (ok) campaign.SentCount++; else { campaign.FailedCount++; r.Error = "send returned false"; }
+                if (ok) campaign.SentCount++; else campaign.FailedCount++;
             }
             catch (Exception ex)
             {

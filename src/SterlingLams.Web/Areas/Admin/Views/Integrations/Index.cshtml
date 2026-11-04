@@ -19,6 +19,7 @@
         {
             ("payments",         "Payments",          Model.PaystackSecretSet || Model.StripeSecretSet || Model.FlutterwaveSecretSet),
             ("smtp",             "Email (SMTP)",      Model.SmtpEnabled && Model.SmtpPasswordSet),
+            ("marketing esp",    "Marketing ESP",     Model.EspProvider != "smtp" && Model.EspKeySet),
             ("whatsapp",         "WhatsApp",          Model.WaEnabled && Model.WaAuthTokenSet),
             ("google analytics", "Google Analytics",  Model.GaEnabled && Model.GaServiceAccountSet),
             ("meta pixel",       "Meta Pixel",        Model.MetaEnabled && !string.IsNullOrEmpty(Model.MetaPixelId)),
@@ -203,6 +204,55 @@
                     <p class="text-xs text-neutral-400 mt-0.5">Keep on for ports 587 and 465.</p>
                 </div>
             </label>
+        </section>
+
+        @* ─── Marketing send provider (ESP) ───────────────────────────────── *@
+        <section class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <h2 class="text-sm font-semibold text-neutral-800">Marketing send provider</h2>
+                    <p class="text-xs text-neutral-400 mt-0.5">How <strong>campaign newsletters/blasts</strong> are delivered. Order &amp; account emails always use the SMTP mailbox above. Switch to Resend or Brevo for large lists — faster and better inbox delivery.</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Provider</label>
+                    <select name="marketing.esp.provider"
+                            class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm bg-white focus:outline-none focus:border-brand-500">
+                        <option value="smtp" selected="@(Model.EspProvider == "smtp")">SMTP mailbox (default — small lists)</option>
+                        <option value="resend" selected="@(Model.EspProvider == "resend")">Resend (recommended)</option>
+                        <option value="brevo" selected="@(Model.EspProvider == "brevo")">Brevo</option>
+                    </select>
+                    <p class="text-[11px] text-neutral-400 mt-1">Until a provider's key + From are set, campaigns fall back to SMTP.</p>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">API key @(Model.EspKeySet ? "(saved)" : "")</label>
+                    <input type="password" name="marketing.esp.api_key" autocomplete="off"
+                           placeholder="@(Model.EspKeySet ? "•••••••• — leave blank to keep" : "re_… (Resend) or xkeysib-… (Brevo)")"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                    <p class="text-[11px] text-neutral-400 mt-1">Stored encrypted. Used server-side for campaigns only.</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div class="sm:col-span-1">
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">From address</label>
+                    <input type="email" name="marketing.esp.from_address" value="@Model.EspFromAddress" placeholder="newsletter@sterlinglams.com" autocomplete="off"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">From name</label>
+                    <input type="text" name="marketing.esp.from_name" value="@Model.EspFromName" placeholder="Sterlin Glams"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-neutral-700 mb-1">Batch size / cycle</label>
+                    <input type="number" name="marketing.esp.batch_size" value="@Model.EspBatchSize" min="1" max="500"
+                           class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                </div>
+            </div>
+            <p class="text-[11px] text-neutral-400">The From domain must be verified with your provider (SPF/DKIM) or mail will bounce. Check the key with the <strong>Marketing ESP</strong> row in the status panel after saving.</p>
         </section>
 
         @* ─── WhatsApp ─────────────────────────────────────────────────────── *@
