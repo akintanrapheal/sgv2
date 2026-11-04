@@ -162,9 +162,12 @@
         (function () {
             try {
                 var key = 'fb-purchase-@Model.OrderNumber';
-                if (!window.fbq || sessionStorage.getItem(key)) return;
+                var fbValue = @Model.Total.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                // Meta rejects a Purchase with value <= 0 ("value must be greater than 0"); a ₦0 order
+                // isn't a revenue conversion, so don't fire it.
+                if (!window.fbq || sessionStorage.getItem(key) || !(fbValue > 0)) return;
                 fbq('track', 'Purchase', {
-                    value: @Model.Total.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    value: fbValue,
                     currency: 'NGN',
                     content_type: 'product',
                     content_ids: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(fbContentIds)),
