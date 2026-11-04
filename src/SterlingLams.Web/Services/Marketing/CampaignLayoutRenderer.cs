@@ -12,7 +12,11 @@ namespace SterlingLams.Web.Services.Marketing;
 /// server-trusted: every piece of user text is HTML-encoded, URLs are scheme-checked, colours and
 /// fonts are whitelisted before they reach a style attribute, and the one free-form "html" block is
 /// run through the rich sanitiser — so the result is stored directly without the blanket SanitizeRich
-/// that would otherwise strip images/tables/buttons.</summary>
+/// that would otherwise strip images/tables/buttons.
+///
+/// The stored JSON is either a bare array of blocks (legacy) or an object
+/// <c>{ "globals": {...}, "blocks": [...] }</c> carrying the Global-Styles page defaults; both are
+/// accepted so old campaigns round-trip unchanged.</summary>
 public static class CampaignLayoutRenderer
 {
     public class Col
@@ -40,26 +44,56 @@ public static class CampaignLayoutRenderer
         public string? Tiktok { get; set; }
 
         // ── Styling (all optional; defaults match the original fixed look) ──
-        public string? Font { get; set; }        // font-family (whitelisted)
-        public int? FontSize { get; set; }        // px
-        public int? Weight { get; set; }          // font-weight 300–800
+        public string? Font { get; set; }
+        public int? FontSize { get; set; }
+        public int? Weight { get; set; }
         public bool? Italic { get; set; }
         public bool? Underline { get; set; }
-        public string? Color { get; set; }        // text / link / divider colour (hex)
-        public string? Bg { get; set; }           // background (block or button) (hex)
+        public string? Color { get; set; }
+        public string? Bg { get; set; }
         public double? LineHeight { get; set; }
-        public int? Letter { get; set; }          // letter-spacing px
-        public int? Width { get; set; }           // image width px
-        public int? Radius { get; set; }          // border / button radius px
-        public int? Thickness { get; set; }       // divider thickness px
-        public bool? Full { get; set; }           // button full-width
+        public int? Letter { get; set; }
+        public int? Width { get; set; }
+        public int? Radius { get; set; }
+        public int? Thickness { get; set; }
+        public bool? Full { get; set; }
         public int? PadT { get; set; }
         public int? PadR { get; set; }
         public int? PadB { get; set; }
         public int? PadL { get; set; }
-        public string? Vis { get; set; }          // "all" | "desktop" | "mobile"
+        public string? Vis { get; set; }
 
-        public List<Col>? Cols { get; set; }      // columns block
+        public List<Col>? Cols { get; set; }
+    }
+
+    /// <summary>Page-wide defaults from the Global Styles tab. Each is a fallback: a block that sets its
+    /// own value always wins. All-null (the default) reproduces the original fixed look byte-for-byte.</summary>
+    public class Globals
+    {
+        public string? PageBg { get; set; }       // email/content background
+        public string? Font { get; set; }         // default font family
+        public int? TextSize { get; set; }        // default body text size
+        public string? TextColor { get; set; }    // default text colour
+        public double? LineHeight { get; set; }    // default line height
+        public string? LinkColor { get; set; }    // default link/social colour
+        public string? BtnBg { get; set; }        // default button background
+        public string? BtnColor { get; set; }     // default button text colour
+        public int? BtnRadius { get; set; }
+        public int? BtnSize { get; set; }
+        public int? BtnWeight { get; set; }
+        public int? Width { get; set; }           // content max-width (px)
+
+        public bool HasAny =>
+            !string.IsNullOrWhiteSpace(PageBg) || !string.IsNullOrWhiteSpace(Font) || TextSize is not null
+            || !string.IsNullOrWhiteSpace(TextColor) || LineHeight is not null || !string.IsNullOrWhiteSpace(LinkColor)
+            || !string.IsNullOrWhiteSpace(BtnBg) || !string.IsNullOrWhiteSpace(BtnColor)
+            || BtnRadius is not null || BtnSize is not null || BtnWeight is not null || Width is not null;
+    }
+
+    public class Layout
+    {
+        public Globals? Globals { get; set; }
+        public List<Block> Blocks { get; set; } = new();
     }
 
     private static readonly JsonSerializerOptions JsonOpts = new()
@@ -68,8 +102,6 @@ public static class CampaignLayoutRenderer
         NumberHandling = JsonNumberHandling.AllowReadingFromString
     };
 
-    /// <summary>Font stacks the composer offers; anything else falls back to Arial so a hostile
-    /// "font" value can never break out of the style attribute.</summary>
     private static readonly Dictionary<string, string> Fonts = new(StringComparer.OrdinalIgnoreCase)
     {
         ["arial"] = "Arial, Helvetica, sans-serif",
@@ -82,60 +114,83 @@ public static class CampaignLayoutRenderer
         ["trebuchet"] = "'Trebuchet MS', Helvetica, sans-serif",
     };
 
-    /// <summary>Parses the JSON block model. Returns an empty list for null/blank/invalid input.</summary>
-    public static List<Block> Parse(string? layoutJson)
+    /// <summary>Parses just the block list (legacy array or the blocks of the new object form).</summary>
+    public static List<Block> Parse(string? layoutJson) => ParseLayout(layoutJson).Blocks;
+
+    /// <summary>Parses the stored JSON, accepting both the bare-array (legacy) and
+    /// <c>{globals, blocks}</c> shapes. Returns an empty layout for null/blank/invalid input.</summary>
+    public static Layout ParseLayout(string? layoutJson)
     {
         if (string.IsNullOrWhiteSpace(layoutJson)) return new();
-        try { return JsonSerializer.Deserialize<List<Block>>(layoutJson, JsonOpts) ?? new(); }
+        var s = layoutJson.TrimStart();
+        try
+        {
+            if (s.StartsWith("["))
+                return new Layout { Blocks = JsonSerializer.Deserialize<List<Block>>(layoutJson, JsonOpts) ?? new() };
+            return JsonSerializer.Deserialize<Layout>(layoutJson, JsonOpts) ?? new();
+        }
         catch { return new(); }
     }
 
     /// <summary>Renders the block model to email HTML. Returns "" when there are no blocks.</summary>
     public static string Render(string? layoutJson)
     {
-        var blocks = Parse(layoutJson);
+        var layout = ParseLayout(layoutJson);
+        var blocks = layout.Blocks;
         if (blocks.Count == 0) return "";
+        var g = layout.Globals ?? new Globals();
         var sb = new StringBuilder();
 
-        // A responsive prelude is only emitted when a block actually hides on one device, so the
-        // common case stays byte-clean (and the "renders nothing" tests keep seeing "").
+        // Responsive prelude only when a block actually hides on one device, so the common case stays
+        // byte-clean (and the "renders nothing" tests keep seeing "").
         if (blocks.Any(b => Visibility(b.Vis) != "all"))
             sb.Append("<style>@media only screen and (max-width:480px){" +
                       ".sl-hide-mobile{display:none!important}" +
                       ".sl-hide-desktop{display:block!important;max-height:none!important;overflow:visible!important}}</style>");
 
-        foreach (var b in blocks) sb.Append(Wrap(b, RenderBlock(b)));
+        // Global Styles wrapper: only when something is set, so legacy output is unchanged.
+        var (open, close) = Wrapper(g);
+        sb.Append(open);
+        foreach (var b in blocks) sb.Append(Wrap(b, RenderBlock(b, g)));
+        sb.Append(close);
         return sb.ToString();
     }
 
-    private static string RenderBlock(Block b) => (b.Type ?? "").ToLowerInvariant() switch
+    private static (string open, string close) Wrapper(Globals g)
     {
-        "heading" => Heading(b),
-        "text" => Text(b),
-        "image" => Image(b),
-        "button" => Button(b),
+        if (!g.HasAny) return ("", "");
+        var style = new StringBuilder();
+        if (IsHex(g.PageBg)) style.Append($"background:{g.PageBg!.Trim()};");
+        if (!string.IsNullOrWhiteSpace(g.Font)) style.Append($"font-family:{Font(g.Font)};");
+        if (IsHex(g.TextColor)) style.Append($"color:{g.TextColor!.Trim()};");
+        if (g.Width is { } w && w is >= 320 and <= 800) style.Append($"max-width:{w}px;margin:0 auto;");
+        if (IsHex(g.PageBg)) style.Append("padding:4px 2px;");
+        return style.Length == 0 ? ("", "") : ($"<div style=\"{style}\">", "</div>");
+    }
+
+    private static string RenderBlock(Block b, Globals g) => (b.Type ?? "").ToLowerInvariant() switch
+    {
+        "heading" => Heading(b, g),
+        "text" => Text(b, g),
+        "image" => Image(b, g),
+        "button" => Button(b, g),
         "divider" => Divider(b),
         "spacer" => Spacer(b),
-        "social" => Social(b),
-        "columns" => Columns(b),
+        "social" => Social(b, g),
+        "columns" => Columns(b, g),
         "html" => Html(b),
         _ => ""
     };
 
     private static string Enc(string? s) => WebUtility.HtmlEncode(s ?? "");
 
-    private static string Align(string? a) => a switch
-    {
-        "left" => "left", "right" => "right", _ => "center"
-    };
+    private static string Align(string? a) => a switch { "left" => "left", "right" => "right", _ => "center" };
 
     private static string Visibility(string? v) => (v ?? "all").ToLowerInvariant() switch
     {
         "desktop" => "desktop", "mobile" => "mobile", _ => "all"
     };
 
-    /// <summary>Wraps a non-empty block in a device-visibility container when needed; a visible-on-all
-    /// block (the default) is returned untouched so existing output is unchanged.</summary>
     private static string Wrap(Block b, string inner)
     {
         if (string.IsNullOrEmpty(inner)) return inner;
@@ -152,6 +207,10 @@ public static class CampaignLayoutRenderer
 
     private static string Hex(string? c, string fallback) => IsHex(c) ? c!.Trim() : fallback;
 
+    /// <summary>A global hex value when valid, else the built-in fallback — used as the default a block
+    /// overrides.</summary>
+    private static string GHex(string? global, string fallback) => IsHex(global) ? global!.Trim() : fallback;
+
     private static string Font(string? f)
     {
         if (string.IsNullOrWhiteSpace(f)) return "Arial, Helvetica, sans-serif";
@@ -161,7 +220,6 @@ public static class CampaignLayoutRenderer
 
     private static int Clamp(int? v, int def, int min, int max) => Math.Clamp(v ?? def, min, max);
 
-    /// <summary>Padding override, only emitted when the author set one (keeps default margins otherwise).</summary>
     private static string Pad(Block b)
     {
         if (b.PadT is null && b.PadR is null && b.PadB is null && b.PadL is null) return "";
@@ -172,7 +230,6 @@ public static class CampaignLayoutRenderer
 
     private static string BgStyle(Block b) => IsHex(b.Bg) ? $"background:{b.Bg!.Trim()};" : "";
 
-    /// <summary>Only http(s)/mailto links are emitted; anything else becomes "#".</summary>
     private static string SafeUrl(string? url)
     {
         if (string.IsNullOrWhiteSpace(url)) return "#";
@@ -183,32 +240,34 @@ public static class CampaignLayoutRenderer
             ? url : "#";
     }
 
-    private static string TextStyle(Block b, int defSize, int defWeight, string defColor)
+    private static string TextStyle(Block b, Globals g, int defSize, int defWeight, string defColor)
     {
         var sb = new StringBuilder();
-        sb.Append($"font-family:{Font(b.Font)};");
+        sb.Append($"font-family:{Font(b.Font ?? g.Font)};");
         sb.Append($"font-size:{Clamp(b.FontSize, defSize, 9, 72)}px;");
-        sb.Append($"line-height:{(b.LineHeight is { } lh && lh is >= 0.8 and <= 3 ? lh.ToString(System.Globalization.CultureInfo.InvariantCulture) : (defSize >= 20 ? "1.3" : "1.6"))};");
+        var lh = b.LineHeight ?? g.LineHeight;
+        sb.Append($"line-height:{(lh is { } v && v is >= 0.8 and <= 3 ? v.ToString(System.Globalization.CultureInfo.InvariantCulture) : (defSize >= 20 ? "1.3" : "1.6"))};");
         sb.Append($"font-weight:{Clamp(b.Weight, defWeight, 300, 800)};");
         if (b.Italic == true) sb.Append("font-style:italic;");
         if (b.Underline == true) sb.Append("text-decoration:underline;");
         if (b.Letter is { } ls && ls != 0) sb.Append($"letter-spacing:{Math.Clamp(ls, -2, 12)}px;");
-        sb.Append($"color:{Hex(b.Color, defColor)};");
+        sb.Append($"color:{Hex(b.Color, GHex(g.TextColor, defColor))};");
         return sb.ToString();
     }
 
-    private static string Heading(Block b) =>
-        $"<div style=\"{TextStyle(b, 24, 600, "#111111")}text-align:{Align(b.Align)};{Pad(b)}{BgStyle(b)}margin:0 0 14px\">{Enc(b.Text)}</div>";
+    private static string Heading(Block b, Globals g) =>
+        $"<div style=\"{TextStyle(b, g, 24, 600, "#111111")}text-align:{Align(b.Align)};{Pad(b)}{BgStyle(b)}margin:0 0 14px\">{Enc(b.Text)}</div>";
 
-    private static string Text(Block b)
+    private static string Text(Block b, Globals g)
     {
         var inner = !string.IsNullOrWhiteSpace(b.Html)
             ? ProductHtml.SanitizeRich(b.Html)
             : Enc(b.Text).Replace("\r\n", "\n").Replace("\n", "<br />");
-        return $"<div style=\"{TextStyle(b, 15, 400, "#333333")}text-align:{Align(b.Align)};{Pad(b)}{BgStyle(b)}margin:0 0 14px\">{inner}</div>";
+        var ds = g.TextSize is { } t && t is >= 9 and <= 72 ? t : 15;
+        return $"<div style=\"{TextStyle(b, g, ds, 400, "#333333")}text-align:{Align(b.Align)};{Pad(b)}{BgStyle(b)}margin:0 0 14px\">{inner}</div>";
     }
 
-    private static string Image(Block b)
+    private static string Image(Block b, Globals g)
     {
         if (string.IsNullOrWhiteSpace(b.Src)) return "";
         var w = b.Width is { } ww && ww is >= 40 and <= 600 ? $"width:{ww}px;max-width:100%;" : "max-width:100%;";
@@ -220,14 +279,14 @@ public static class CampaignLayoutRenderer
         return $"<div style=\"text-align:{Align(b.Align)};{Pad(b)}{BgStyle(b)}margin:0 0 16px\">{img}</div>";
     }
 
-    private static string Button(Block b)
+    private static string Button(Block b, Globals g)
     {
         var label = string.IsNullOrWhiteSpace(b.Text) ? "Shop now" : b.Text;
-        var bg = Hex(b.Bg, "#c90278");
-        var fg = Hex(b.Color, "#ffffff");
-        var radius = Clamp(b.Radius, 6, 0, 40);
-        var fs = Clamp(b.FontSize, 15, 10, 28);
-        var wt = Clamp(b.Weight, 600, 400, 800);
+        var bg = Hex(b.Bg, GHex(g.BtnBg, "#c90278"));
+        var fg = Hex(b.Color, GHex(g.BtnColor, "#ffffff"));
+        var radius = Clamp(b.Radius, g.BtnRadius ?? 6, 0, 40);
+        var fs = Clamp(b.FontSize, g.BtnSize ?? 15, 10, 28);
+        var wt = Clamp(b.Weight, g.BtnWeight ?? 600, 400, 800);
         var full = b.Full == true;
         var cellStyle = $"background:{bg};border-radius:{radius}px" + (full ? ";width:100%" : "");
         var linkWidth = full ? "display:block;text-align:center;" : "display:inline-block;";
@@ -235,7 +294,7 @@ public static class CampaignLayoutRenderer
                $"style=\"margin:4px auto 18px{(full ? ";width:100%" : "")}\" align=\"{Align(b.Align)}\"><tr>" +
                $"<td style=\"{cellStyle}\">" +
                $"<a href=\"{Enc(SafeUrl(b.Href))}\" target=\"_blank\" rel=\"noopener\" " +
-               $"style=\"{linkWidth}padding:12px 26px;font-family:{Font(b.Font)};font-size:{fs}px;font-weight:{wt};" +
+               $"style=\"{linkWidth}padding:12px 26px;font-family:{Font(b.Font ?? g.Font)};font-size:{fs}px;font-weight:{wt};" +
                $"color:{fg};text-decoration:none;border-radius:{radius}px\">{Enc(label)}</a>" +
                "</td></tr></table>";
     }
@@ -253,9 +312,9 @@ public static class CampaignLayoutRenderer
         return $"<div style=\"height:{h}px;line-height:{h}px;font-size:0\">&nbsp;</div>";
     }
 
-    private static string Social(Block b)
+    private static string Social(Block b, Globals g)
     {
-        var color = Hex(b.Color, "#c90278");
+        var color = Hex(b.Color, GHex(g.LinkColor, "#c90278"));
         var links = new List<string>();
         void Add(string? url, string label)
         {
@@ -270,13 +329,11 @@ public static class CampaignLayoutRenderer
         return $"<div style=\"text-align:center;margin:8px 0 18px;font-size:14px\">{string.Join("", links)}</div>";
     }
 
-    /// <summary>A 2–3 column product/feature row: image, title, caption/price and an optional button
-    /// per column, laid out with a table so it degrades to stacked rows in narrow clients.</summary>
-    private static string Columns(Block b)
+    private static string Columns(Block b, Globals g)
     {
         var cols = (b.Cols ?? new List<Col>()).Where(c => c != null).Take(3).ToList();
         if (cols.Count == 0) return "";
-        var bg = Hex(b.Color, "#c90278");   // button colour (row background stays clear unless Bg is set)
+        var bg = Hex(b.Color, GHex(g.BtnBg, "#c90278"));   // button colour; row bg stays clear unless Bg set
         var cellW = cols.Count > 0 ? 100 / cols.Count : 100;
         var cells = new StringBuilder();
         foreach (var c in cols)
