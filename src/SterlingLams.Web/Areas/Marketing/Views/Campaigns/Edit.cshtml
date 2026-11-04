@@ -49,6 +49,11 @@
     .sl-pal-item { border:1px solid var(--sl-line); border-radius:8px; background:#fff; padding:12px 6px; display:flex; flex-direction:column; align-items:center; gap:6px; font-size:11px; color:var(--sl-ink); cursor:grab; transition:.12s; }
     .sl-pal-item:hover { border-color:var(--sl-brand); color:var(--sl-brand); box-shadow:0 1px 4px rgba(0,0,0,.05); }
     .sl-pal-item svg { width:20px; height:20px; stroke:currentColor; fill:none; stroke-width:1.6; }
+    .sl-tpl-list { display:flex; flex-direction:column; gap:8px; }
+    .sl-tpl { display:flex; align-items:center; justify-content:space-between; border:1px solid var(--sl-line); border-radius:8px; background:#fff; padding:11px 12px; font-size:13px; color:var(--sl-ink); cursor:pointer; text-align:left; }
+    .sl-tpl:hover { border-color:var(--sl-brand); background:#fdf2f8; }
+    .sl-tpl-name { font-weight:500; }
+    .sl-tpl-add { font-size:11px; color:var(--sl-brand); font-weight:600; }
 
     .sl-cfg { padding:14px; }
     .sl-cfg-sec { border-top:1px solid var(--sl-line); padding:14px 0; }
@@ -203,27 +208,37 @@
     var FONT_STACK = { arial:"Arial, Helvetica, sans-serif", helvetica:"Helvetica, Arial, sans-serif", georgia:"Georgia, 'Times New Roman', serif", times:"'Times New Roman', Times, serif", courier:"'Courier New', Courier, monospace", tahoma:"Tahoma, Geneva, sans-serif", verdana:"Verdana, Geneva, sans-serif", trebuchet:"'Trebuchet MS', Helvetica, sans-serif" };
     var LABELS = { heading:'Heading', text:'Text', image:'Image', button:'Button', divider:'Divider', spacer:'Spacer', social:'Social', columns:'Columns', html:'HTML' };
 
-    var state = [], sel = -1, device = 'desktop', railTab = 'config';
+    var state = [], globals = {}, sel = -1, device = 'desktop', railTab = 'config';
+    var railView = 'content', paletteTab = 'basic';   // content | globals ; basic | prebuilt
     var hist = [], hp = -1;   // undo/redo
 
-    // ── seed ──
+    // ── seed (accepts the legacy bare array or the new {globals, blocks} object) ──
     try {
         var seed = JSON.parse(document.getElementById('seed').textContent || '{}');
-        if (seed.layout) { try { state = JSON.parse(seed.layout) || []; } catch (e) { state = []; } }
+        if (seed.layout) {
+            try {
+                var parsed = JSON.parse(seed.layout);
+                if (Array.isArray(parsed)) { state = parsed; }
+                else if (parsed && typeof parsed === 'object') { state = parsed.blocks || []; globals = parsed.globals || {}; }
+            } catch (e) { state = []; }
+        }
         if ((!state || !state.length) && seed.body && seed.body.trim()) state = [{ type:'html', html: seed.body }];
         if (!Array.isArray(state)) state = [];
-    } catch (e) { state = []; }
+        if (!globals || typeof globals !== 'object') globals = {};
+    } catch (e) { state = []; globals = {}; }
 
+    // Blocks created now deliberately omit colour/font/button styling so they INHERIT the Global Styles
+    // (the renderer falls back global → built-in default). Structural sizes stay.
     function def(type) {
         switch (type) {
-            case 'heading': return { type:'heading', text:'Your headline', align:'center', fontSize:24, weight:600, color:'#111111', font:'arial' };
-            case 'text': return { type:'text', text:'Write your message here…', align:'left', fontSize:15, weight:400, color:'#333333', font:'arial' };
+            case 'heading': return { type:'heading', text:'Your headline', align:'center', fontSize:24, weight:600 };
+            case 'text': return { type:'text', text:'Write your message here…', align:'left' };
             case 'image': return { type:'image', src:'', href:'', alt:'', align:'center', width:0, radius:0 };
-            case 'button': return { type:'button', text:'Shop now', href:'', align:'center', bg:'#c90278', color:'#ffffff', fontSize:15, weight:600, radius:6, full:false, font:'arial' };
+            case 'button': return { type:'button', text:'Shop now', href:'', align:'center', full:false };
             case 'divider': return { type:'divider', color:'#e5e7eb', thickness:1 };
             case 'spacer': return { type:'spacer', size:24 };
-            case 'social': return { type:'social', instagram:'', facebook:'', tiktok:'', color:'#c90278' };
-            case 'columns': return { type:'columns', color:'#c90278', cols:[ col(), col() ] };
+            case 'social': return { type:'social', instagram:'', facebook:'', tiktok:'' };
+            case 'columns': return { type:'columns', cols:[ col(), col() ] };
             case 'html': return { type:'html', html:'' };
             default: return { type:type };
         }
@@ -242,14 +257,16 @@
         return 'padding:' + clamp(b.padT,0,0,120) + 'px ' + clamp(b.padR,0,0,120) + 'px ' + clamp(b.padB,0,0,120) + 'px ' + clamp(b.padL,0,0,120) + 'px;';
     }
     function bgS(b) { return hex(b.bg,'') ? 'background:' + hex(b.bg,'') + ';' : ''; }
+    function gnum(v) { return (v == null || v === '' || isNaN(+v)) ? null : +v; }
     function textStyle(b, ds, dw, dc) {
-        var s = 'font-family:' + fontStack(b.font) + ';font-size:' + clamp(b.fontSize,ds,9,72) + 'px;';
-        var lh = (b.lineHeight && b.lineHeight >= .8 && b.lineHeight <= 3) ? b.lineHeight : (ds >= 20 ? 1.3 : 1.6);
+        var s = 'font-family:' + fontStack(b.font || globals.font) + ';font-size:' + clamp(b.fontSize,ds,9,72) + 'px;';
+        var glh = (b.lineHeight || globals.lineHeight);
+        var lh = (glh && glh >= .8 && glh <= 3) ? glh : (ds >= 20 ? 1.3 : 1.6);
         s += 'line-height:' + lh + ';font-weight:' + clamp(b.weight,dw,300,800) + ';';
         if (b.italic) s += 'font-style:italic;';
         if (b.underline) s += 'text-decoration:underline;';
         if (b.letter) s += 'letter-spacing:' + Math.min(12,Math.max(-2,b.letter)) + 'px;';
-        s += 'color:' + hex(b.color,dc) + ';';
+        s += 'color:' + hex(b.color, hex(globals.textColor, dc)) + ';';
         return s;
     }
     function renderBlock(b) {
@@ -257,7 +274,8 @@
             case 'heading':
                 return '<div style="' + textStyle(b,24,600,'#111111') + 'text-align:' + align(b.align) + ';' + pad(b) + bgS(b) + 'margin:0 0 14px">' + esc(b.text) + '</div>';
             case 'text':
-                return '<div style="' + textStyle(b,15,400,'#333333') + 'text-align:' + align(b.align) + ';' + pad(b) + bgS(b) + 'margin:0 0 14px">' + esc(b.text).replace(/\r\n/g,'\n').replace(/\n/g,'<br />') + '</div>';
+                var tds = gnum(globals.textSize); if (!(tds >= 9 && tds <= 72)) tds = 15;
+                return '<div style="' + textStyle(b,tds,400,'#333333') + 'text-align:' + align(b.align) + ';' + pad(b) + bgS(b) + 'margin:0 0 14px">' + esc(b.text).replace(/\r\n/g,'\n').replace(/\n/g,'<br />') + '</div>';
             case 'image':
                 if (!b.src) return '<div style="text-align:center;color:#bbb;font-size:13px;padding:22px;border:1px dashed #ddd;margin:0 0 16px">🖼 Image — add a URL in the panel</div>';
                 var w = (b.width && b.width >= 40 && b.width <= 600) ? 'width:' + b.width + 'px;max-width:100%;' : 'max-width:100%;';
@@ -266,23 +284,25 @@
                 if (b.href) img = '<a href="' + esc(safeUrl(b.href)) + '">' + img + '</a>';
                 return '<div style="text-align:' + align(b.align) + ';' + pad(b) + bgS(b) + 'margin:0 0 16px">' + img + '</div>';
             case 'button':
-                var bg = hex(b.bg,'#c90278'), fg = hex(b.color,'#ffffff'), r = clamp(b.radius,6,0,40);
-                var fs = clamp(b.fontSize,15,10,28), wt = clamp(b.weight,600,400,800), full = !!b.full;
-                return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px auto 18px' + (full?';width:100%':'') + '" align="' + align(b.align) + '"><tr><td style="background:' + bg + ';border-radius:' + r + 'px' + (full?';width:100%':'') + '"><a href="' + esc(safeUrl(b.href)) + '" style="' + (full?'display:block;text-align:center;':'display:inline-block;') + 'padding:12px 26px;font-family:' + fontStack(b.font) + ';font-size:' + fs + 'px;font-weight:' + wt + ';color:' + fg + ';text-decoration:none;border-radius:' + r + 'px">' + esc(b.text || 'Shop now') + '</a></td></tr></table>';
+                var bg = hex(b.bg, hex(globals.btnBg,'#c90278')), fg = hex(b.color, hex(globals.btnColor,'#ffffff'));
+                var r = clamp(b.radius, gnum(globals.btnRadius) != null ? globals.btnRadius : 6, 0, 40);
+                var fs = clamp(b.fontSize, gnum(globals.btnSize) != null ? globals.btnSize : 15, 10, 28);
+                var wt = clamp(b.weight, gnum(globals.btnWeight) != null ? globals.btnWeight : 600, 400, 800), full = !!b.full;
+                return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px auto 18px' + (full?';width:100%':'') + '" align="' + align(b.align) + '"><tr><td style="background:' + bg + ';border-radius:' + r + 'px' + (full?';width:100%':'') + '"><a href="' + esc(safeUrl(b.href)) + '" style="' + (full?'display:block;text-align:center;':'display:inline-block;') + 'padding:12px 26px;font-family:' + fontStack(b.font || globals.font) + ';font-size:' + fs + 'px;font-weight:' + wt + ';color:' + fg + ';text-decoration:none;border-radius:' + r + 'px">' + esc(b.text || 'Shop now') + '</a></td></tr></table>';
             case 'divider':
                 return '<hr style="border:none;border-top:' + clamp(b.thickness,1,1,10) + 'px solid ' + hex(b.color,'#e5e7eb') + ';margin:22px 0" />';
             case 'spacer':
                 var h = Math.min(160, Math.max(4, parseInt(b.size, 10) || 24));
                 return '<div style="height:' + h + 'px;line-height:' + h + 'px;font-size:0">&nbsp;</div>';
             case 'social':
-                var col0 = hex(b.color,'#c90278'), links = [];
+                var col0 = hex(b.color, hex(globals.linkColor,'#c90278')), links = [];
                 [['instagram','Instagram'],['facebook','Facebook'],['tiktok','TikTok']].forEach(function (p) {
                     if (b[p[0]]) links.push('<a href="' + esc(safeUrl(b[p[0]])) + '" style="color:' + col0 + ';text-decoration:none;font-weight:600;margin:0 8px">' + p[1] + '</a>');
                 });
                 return links.length ? '<div style="text-align:center;margin:8px 0 18px;font-size:14px">' + links.join('') + '</div>' : '<div style="text-align:center;color:#bbb;font-size:13px;padding:10px;border:1px dashed #ddd;margin:0 0 16px">Social — add profile links</div>';
             case 'columns':
                 var cols = (b.cols || []).slice(0,3); if (!cols.length) return '';
-                var cbg = hex(b.color,'#c90278'), cw = Math.floor(100/cols.length), cells = '';
+                var cbg = hex(b.color, hex(globals.btnBg,'#c90278')), cw = Math.floor(100/cols.length), cells = '';
                 cols.forEach(function (c) {
                     var inner = '';
                     if (c.src) inner += '<img src="' + esc(safeUrl(c.src)) + '" alt="' + esc(c.title) + '" style="width:100%;max-width:100%;height:auto;display:block;border:0;border-radius:4px" />';
@@ -300,8 +320,21 @@
         }
     }
 
+    // Global Styles wrapper (page background / default font+colour / content width), mirroring the server.
+    function wrapStyle() {
+        var s = '';
+        if (hex(globals.pageBg,'')) s += 'background:' + hex(globals.pageBg,'') + ';padding:4px 2px;';
+        if (globals.font) s += 'font-family:' + fontStack(globals.font) + ';';
+        if (hex(globals.textColor,'')) s += 'color:' + hex(globals.textColor,'') + ';';
+        var w = gnum(globals.width); if (w >= 320 && w <= 800) s += 'max-width:' + w + 'px;margin:0 auto;';
+        return s;
+    }
     // Body HTML used to measure email size (as the server would store it).
-    function bodyHtml() { return state.map(renderBlock).join(''); }
+    function bodyHtml() {
+        var inner = state.map(renderBlock).join('');
+        var ws = wrapStyle();
+        return ws ? '<div style="' + ws + '">' + inner + '</div>' : inner;
+    }
 
     // ════════════════════ Canvas ════════════════════
     var canvas = document.getElementById('canvas'), pad0 = document.getElementById('canvas-pad');
@@ -314,6 +347,8 @@
         '</div>';
 
     function paintCanvas() {
+        // Reflect the page background / default font on the canvas content area (live Global Styles).
+        pad0.style.cssText = wrapStyle();
         if (!state.length) { pad0.innerHTML = '<div class="sl-empty">Drag a block from the left to start building your email.</div>'; return; }
         pad0.innerHTML = state.map(function (b, i) {
             return '<div class="sl-wrap' + (i === sel ? ' sel' : '') + '" data-i="' + i + '" draggable="true">' + TB + renderBlock(b) + '</div>';
@@ -330,15 +365,67 @@
         columns:'<rect x="3" y="4" width="7" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/>',
         html:'<path d="m8 8-4 4 4 4M16 8l4 4-4 4M13 6l-2 12"/>'
     };
-    function palette() {
+    // Pre-built block groups (click to drop a ready-made section in).
+    function TEMPLATES() { return [
+        { id:'hero', name:'Hero', make: function(){ return [
+            Object.assign(def('heading'), { text:'Big, beautiful headline', align:'center', fontSize:28, weight:700 }),
+            Object.assign(def('text'), { text:'One punchy line that sets up the offer and makes them want to read on.', align:'center' }),
+            Object.assign(def('button'), { text:'Shop the collection', align:'center' }) ]; } },
+        { id:'feature', name:'Product highlight', make: function(){ return [
+            Object.assign(def('image'), { src:'', alt:'Featured product', align:'center' }),
+            Object.assign(def('heading'), { text:'Featured product', align:'center', fontSize:20, weight:700 }),
+            Object.assign(def('text'), { text:'A short description highlighting benefits and key details. Keep it clear and tempting.', align:'center' }),
+            Object.assign(def('button'), { text:'Shop now', align:'center' }) ]; } },
+        { id:'grid2', name:'Product grid (2)', make: function(){ var b=def('columns'); b.cols=[ gcol('Product one'), gcol('Product two') ]; return [b]; } },
+        { id:'grid3', name:'Product grid (3)', make: function(){ var b=def('columns'); b.cols=[ gcol('One'), gcol('Two'), gcol('Three') ]; return [b]; } },
+        { id:'promo', name:'Promo banner', make: function(){ return [
+            Object.assign(def('heading'), { text:'Limited-time offer', align:'center', bg:'#fdf2f8', padT:20, padR:16, padB:6, padL:16 }),
+            Object.assign(def('text'), { text:'Use code GLAM10 for 10% off this week only.', align:'center', bg:'#fdf2f8', padT:0, padR:16, padB:18, padL:16 }),
+            Object.assign(def('button'), { text:'Grab the deal', align:'center' }) ]; } },
+        { id:'footer', name:'Footer', make: function(){ return [
+            def('divider'),
+            Object.assign(def('social'), { instagram:'https://instagram.com/sterlinglams', facebook:'', tiktok:'' }),
+            Object.assign(def('text'), { text:'Sterlin Glams — Where Stones Rock. You received this because you shopped with or subscribed to us.', align:'center', fontSize:12 }) ]; } }
+    ]; }
+    function gcol(title){ return { src:'', title:title, caption:'', price:'₦0', href:'', btnText:'Shop Now' }; }
+
+    function basicBody() {
         var items = ['heading','text','image','button','columns','divider','spacer','social','html'].map(function (t) {
             return '<div class="sl-pal-item" draggable="true" data-add="' + t + '"><svg viewBox="0 0 24 24">' + PAL_ICONS[t] + '</svg>' + LABELS[t] + '</div>';
         }).join('');
-        rail.innerHTML =
-            '<div class="sl-rail-head">Content blocks</div>' +
-            '<div class="sl-pal-sec"><h4>Drag or click to add</h4><div class="sl-pal-grid">' + items + '</div></div>' +
-            '<div class="sl-pal-sec" style="border-top:1px solid var(--sl-line)"><h4>Tip</h4>' +
-            '<p style="font-size:12px;color:var(--sl-mut);line-height:1.5;margin:0">Click a block on the canvas to style it. Use the ⠿ handle to drag it into a new position.</p></div>';
+        return '<div class="sl-pal-sec"><h4>Drag or click to add</h4><div class="sl-pal-grid">' + items + '</div></div>';
+    }
+    function prebuiltBody() {
+        var cards = TEMPLATES().map(function (t) {
+            return '<button type="button" class="sl-tpl" data-tpl="' + t.id + '"><span class="sl-tpl-name">' + t.name + '</span><span class="sl-tpl-add">+ Add</span></button>';
+        }).join('');
+        return '<div class="sl-pal-sec"><h4>Ready-made sections</h4><div class="sl-tpl-list">' + cards + '</div>' +
+            '<p style="font-size:11px;color:var(--sl-mut);margin:8px 0 0">Adds a group of blocks you can then edit. They pick up your Global Styles automatically.</p></div>';
+    }
+    function topTabs() {
+        return '<div class="sl-tabs"><button type="button" data-view="content" class="' + (railView==='content'?'on':'') + '">Content</button>' +
+               '<button type="button" data-view="globals" class="' + (railView==='globals'?'on':'') + '">Global Styles</button></div>';
+    }
+    function contentRail() {
+        if (railView === 'globals') { rail.innerHTML = topTabs() + globalsBody(); return; }
+        var sub = '<div class="sl-tabs" style="border-bottom:1px solid var(--sl-line)">' +
+            '<button type="button" data-ptab="basic" class="' + (paletteTab==='basic'?'on':'') + '">Basic</button>' +
+            '<button type="button" data-ptab="prebuilt" class="' + (paletteTab==='prebuilt'?'on':'') + '">Pre-built</button></div>';
+        rail.innerHTML = topTabs() + sub + (paletteTab==='prebuilt' ? prebuiltBody() : basicBody());
+    }
+
+    // ── Global Styles form ──
+    function g_color(label, key) { var val = globals[key] || ''; var v = hex(val,'#000000'); return '<div class="sl-field"><label>' + label + '</label><div class="sl-color"><input type="color" data-g="' + key + '" value="' + v + '"><input class="sl-in" data-g="' + key + '" value="' + esc(val) + '" placeholder="default"></div></div>'; }
+    function g_num(label, key, mn, mx) { return '<div class="sl-field"><label>' + label + '</label><input type="number" class="sl-in" data-g="' + key + '" value="' + (globals[key]==null?'':globals[key]) + '" min="' + mn + '" max="' + mx + '" placeholder="default"></div>'; }
+    function g_font(key) { var val = globals[key] || ''; return '<div class="sl-field"><label>Default font</label><select class="sl-sel" data-g="' + key + '"><option value="">Theme default (Arial)</option>' + FONTS.map(function (f) { return '<option value="' + f[0] + '"' + (val===f[0]?' selected':'') + '>' + f[1] + '</option>'; }).join('') + '</select></div>'; }
+    function globalsBody() {
+        return '<div class="sl-cfg">' +
+            '<div class="sl-cfg-sec"><h5>Page</h5>' + g_color('Email background','pageBg') + g_num('Content width (px)','width',320,800) + '</div>' +
+            '<div class="sl-cfg-sec"><h5>Text</h5>' + g_font('font') + '<div class="sl-row2">' + g_num('Default size (px)','textSize',9,40) + g_num('Line height','lineHeight',1,3) + '</div>' + g_color('Default text colour','textColor') + '</div>' +
+            '<div class="sl-cfg-sec"><h5>Buttons</h5>' + g_color('Background','btnBg') + g_color('Text colour','btnColor') + '<div class="sl-row2">' + g_num('Size (px)','btnSize',10,28) + g_num('Radius (px)','btnRadius',0,40) + '</div>' + g_num('Weight','btnWeight',400,800) + '</div>' +
+            '<div class="sl-cfg-sec"><h5>Links</h5>' + g_color('Link &amp; social colour','linkColor') + '</div>' +
+            '<div class="sl-cfg-sec"><button type="button" id="reset-globals" class="sl-btn" style="width:100%">Reset to defaults</button></div>' +
+            '</div>';
     }
 
     // ── config field helpers ──
@@ -411,14 +498,14 @@
 
     function config() {
         var b = state[sel];
-        if (!b) { palette(); return; }
+        if (!b) { contentRail(); return; }
         rail.innerHTML =
             '<div class="sl-rail-head"><button type="button" class="sl-back" id="to-blocks">← Blocks</button><span style="margin-left:4px">' + (LABELS[b.type]||b.type) + '</span></div>' +
             '<div class="sl-tabs"><button type="button" data-tab="config" class="' + (railTab==='config'?'on':'') + '">Configuration</button><button type="button" data-tab="display" class="' + (railTab==='display'?'on':'') + '">Display</button></div>' +
             (railTab === 'display' ? displayBody(b) : '<div class="sl-cfg">' + configBody(b) + '</div>');
     }
 
-    function renderRail() { if (sel >= 0 && sel < state.length) config(); else palette(); }
+    function renderRail() { if (sel >= 0 && sel < state.length) config(); else contentRail(); }
 
     // ════════════════════ state helpers ════════════════════
     function setDeep(obj, path, val) {
@@ -426,15 +513,16 @@
         for (var i = 0; i < parts.length - 1; i++) { var k = parts[i]; if (/^\d+$/.test(parts[i+1])) { o[k] = o[k] || []; } else { o[k] = o[k] || {}; } o = o[k]; }
         o[parts[parts.length-1]] = val;
     }
-    function sync(repaint) { document.getElementById('LayoutJson').value = JSON.stringify(state); if (repaint !== false) paintCanvas(); updateSize(); }
+    function layoutJson() { return JSON.stringify({ globals: globals, blocks: state }); }
+    function sync(repaint) { document.getElementById('LayoutJson').value = layoutJson(); if (repaint !== false) paintCanvas(); updateSize(); }
     function updateSize() {
         var bytes = new Blob([bodyHtml()]).size;
         document.getElementById('size-chip').textContent = 'Email size: ' + (bytes < 1024 ? bytes + ' B' : (bytes/1024).toFixed(1) + ' KB');
     }
 
-    // ── undo/redo ──
+    // ── undo/redo (snapshots globals + blocks) ──
     function snapshot() {
-        var s = JSON.stringify(state);
+        var s = layoutJson();
         if (hp >= 0 && hist[hp] === s) return;
         hist = hist.slice(0, hp + 1); hist.push(s); hp = hist.length - 1;
         if (hist.length > 60) { hist.shift(); hp--; }
@@ -444,7 +532,7 @@
         document.getElementById('undo').disabled = hp <= 0;
         document.getElementById('redo').disabled = hp >= hist.length - 1;
     }
-    function restore(s) { try { state = JSON.parse(s) || []; } catch (e) { return; } if (sel >= state.length) sel = -1; renderRail(); sync(); }
+    function restore(s) { try { var o = JSON.parse(s); state = o.blocks || []; globals = o.globals || {}; } catch (e) { return; } if (sel >= state.length) sel = -1; renderRail(); sync(); }
     document.getElementById('undo').addEventListener('click', function () { if (hp > 0) { hp--; restore(hist[hp]); updateHistButtons(); } });
     document.getElementById('redo').addEventListener('click', function () { if (hp < hist.length - 1) { hp++; restore(hist[hp]); updateHistButtons(); } });
 
@@ -465,18 +553,37 @@
             while (cur.length < want) cur.push(col()); if (cur.length > want) cur = cur.slice(0, want);
             state[sel].cols = cur; config(); sync(); snapshot(); return;
         }
+        // Top tabs + sub-tabs
+        var vw = e.target.closest('[data-view]'); if (vw) { railView = vw.getAttribute('data-view'); contentRail(); return; }
+        var pt = e.target.closest('[data-ptab]'); if (pt) { paletteTab = pt.getAttribute('data-ptab'); contentRail(); return; }
+        // Pre-built template → append its blocks
+        var tpl = e.target.closest('[data-tpl]'); if (tpl) {
+            var def2 = TEMPLATES().find(function (x) { return x.id === tpl.getAttribute('data-tpl'); });
+            if (def2) { def2.make().forEach(function (blk) { state.push(blk); }); sel = state.length - 1; railTab = 'config'; renderRail(); sync(); snapshot(); }
+            return;
+        }
+        var rg = e.target.closest('#reset-globals'); if (rg) { globals = {}; contentRail(); sync(); snapshot(); return; }
     });
-    // Field edits (input)
+    // Field edits (input) — block config (data-k) and Global Styles (data-g)
     rail.addEventListener('input', function (e) {
+        var gk = e.target.closest('[data-g]');
+        if (gk) {
+            var gkey = gk.getAttribute('data-g'); var gv = gk.value;
+            if (gk.type === 'number') gv = (gv === '' ? null : parseFloat(gv));
+            if (gv === '' || gv == null) delete globals[gkey]; else globals[gkey] = gv;
+            if (gk.type === 'color') { var gm = rail.querySelector('input.sl-in[data-g="' + gkey + '"]'); if (gm) gm.value = gv; }
+            sync(); commitSoon(); return;
+        }
         var el = e.target.closest('[data-k]'); if (!el || sel < 0 || !state[sel]) return;
         var k = el.getAttribute('data-k'); var v = el.value;
         if (el.type === 'number') v = (v === '' ? null : parseFloat(v));
         setDeep(state[sel], k, v);
-        // mirror hex text<->color picker
         if (el.type === 'color') { var mate = rail.querySelector('input.sl-in[data-k="' + k + '"]'); if (mate) mate.value = v; }
         sync(); commitSoon();
     });
     rail.addEventListener('change', function (e) {
+        var gk = e.target.closest('[data-g]');
+        if (gk && gk.tagName === 'SELECT') { var gkey = gk.getAttribute('data-g'); if (gk.value === '') delete globals[gkey]; else globals[gkey] = gk.value; sync(); commitSoon(); return; }
         var el = e.target.closest('[data-k]'); if (!el || sel < 0 || !state[sel]) return;
         if (el.tagName === 'SELECT') { setDeep(state[sel], el.getAttribute('data-k'), el.value); sync(); commitSoon(); }
         if (el.name === 'vis') { state[sel].vis = el.value; config(); sync(); commitSoon(); }
@@ -560,7 +667,7 @@
     });
 
     // keep layout posted on submit
-    document.getElementById('campaign-form').addEventListener('submit', function () { document.getElementById('LayoutJson').value = JSON.stringify(state); });
+    document.getElementById('campaign-form').addEventListener('submit', function () { document.getElementById('LayoutJson').value = layoutJson(); });
 
     // ── boot ──
     renderRail(); paintCanvas(); updateSize(); setDevice(false); snapshot();

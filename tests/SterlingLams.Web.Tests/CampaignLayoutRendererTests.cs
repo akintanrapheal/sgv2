@@ -179,4 +179,57 @@ public class CampaignLayoutRendererTests
         Assert.Contains("width:100%", html);
         Assert.Contains("display:block", html);
     }
+
+    // ───────── Global Styles ─────────
+    [Fact]
+    public void Object_form_without_globals_matches_bare_array()
+    {
+        var arr = CampaignLayoutRenderer.Render("[{\"type\":\"text\",\"text\":\"hi\"}]");
+        var obj = CampaignLayoutRenderer.Render("{\"blocks\":[{\"type\":\"text\",\"text\":\"hi\"}]}");
+        Assert.Equal(arr, obj);
+    }
+
+    [Fact]
+    public void Empty_globals_object_still_renders_blocks()
+        => Assert.Contains("hi", CampaignLayoutRenderer.Render("{\"globals\":{},\"blocks\":[{\"type\":\"text\",\"text\":\"hi\"}]}"));
+
+    [Fact]
+    public void Global_text_colour_cascades_to_a_block_that_has_none()
+    {
+        var html = CampaignLayoutRenderer.Render("{\"globals\":{\"textColor\":\"#223344\"},\"blocks\":[{\"type\":\"text\",\"text\":\"hi\"}]}");
+        Assert.Contains("color:#223344", html);
+    }
+
+    [Fact]
+    public void Block_colour_overrides_the_global_default()
+    {
+        // The block sets its own colour; the global is only the cascade default (it still appears on the
+        // wrapper, but the text block itself must carry the block's colour).
+        var html = CampaignLayoutRenderer.Render("{\"globals\":{\"textColor\":\"#223344\"},\"blocks\":[{\"type\":\"text\",\"text\":\"hi\",\"color\":\"#ff0000\"}]}");
+        Assert.Contains("margin:0 0 14px\">hi", html);   // the text block
+        Assert.Contains("color:#ff0000", html);          // with the block's own colour
+    }
+
+    [Fact]
+    public void Global_button_background_applies_when_button_sets_none()
+    {
+        var html = CampaignLayoutRenderer.Render("{\"globals\":{\"btnBg\":\"#00aa55\"},\"blocks\":[{\"type\":\"button\",\"text\":\"Go\",\"href\":\"https://x.io\"}]}");
+        Assert.Contains("background:#00aa55", html);
+    }
+
+    [Fact]
+    public void Global_page_background_wraps_the_email()
+    {
+        var html = CampaignLayoutRenderer.Render("{\"globals\":{\"pageBg\":\"#f0f0f0\"},\"blocks\":[{\"type\":\"text\",\"text\":\"hi\"}]}");
+        Assert.Contains("background:#f0f0f0", html);
+        Assert.StartsWith("<div style=\"background:#f0f0f0", html);
+    }
+
+    [Fact]
+    public void Invalid_global_colour_is_ignored()
+    {
+        var html = CampaignLayoutRenderer.Render("{\"globals\":{\"textColor\":\"red\\\" x\"},\"blocks\":[{\"type\":\"text\",\"text\":\"hi\"}]}");
+        Assert.Contains("color:#333333", html);  // falls back to the built-in default
+        Assert.DoesNotContain("red\"", html);
+    }
 }
