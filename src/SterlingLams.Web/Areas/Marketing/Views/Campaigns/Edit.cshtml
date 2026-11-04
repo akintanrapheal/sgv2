@@ -1,6 +1,8 @@
 @model SterlingLams.Web.Models.Domain.Campaign
 @using SterlingLams.Web.Models.Domain
 @{
+    // Full-screen chrome — the builder takes over the whole viewport like Retainful (no Marketing nav).
+    Layout = "_BuilderLayout";
     ViewData["Title"] = Model.Id == 0 ? "New Campaign" : "Edit Campaign";
     // Seed the composer: an existing block layout round-trips; a legacy HTML body becomes one HTML block.
     var seed = System.Text.Json.JsonSerializer.Serialize(new { layout = Model.LayoutJson, body = Model.BodyHtml });
@@ -12,10 +14,10 @@
 <style>
     /* ───────── Retainful-style email builder (scoped) ───────── */
     #sl-editor { --sl-line:#e5e7eb; --sl-ink:#1f2937; --sl-mut:#6b7280; --sl-brand:#c90278; }
-    #sl-editor { border:1px solid var(--sl-line); border-radius:8px; overflow:hidden; background:#fff;
-        display:flex; flex-direction:column; min-height:720px; }
+    /* Full-screen: the editor is the whole viewport; the top bar is fixed and the workspace scrolls inside. */
+    #sl-editor { overflow:hidden; background:#fff; display:flex; flex-direction:column; height:100vh; height:100dvh; }
     #sl-editor * { box-sizing:border-box; }
-    .sl-top { display:flex; align-items:center; gap:12px; padding:10px 14px; border-bottom:1px solid var(--sl-line); background:#fff; flex-wrap:wrap; }
+    .sl-top { display:flex; align-items:center; gap:12px; padding:10px 14px; border-bottom:1px solid var(--sl-line); background:#fff; flex-wrap:wrap; flex:0 0 auto; }
     .sl-top .name-in { font-size:14px; font-weight:600; color:var(--sl-ink); border:1px solid transparent; border-radius:6px; padding:6px 8px; min-width:220px; flex:1 1 240px; }
     .sl-top .name-in:hover { border-color:var(--sl-line); }
     .sl-top .name-in:focus { outline:none; border-color:var(--sl-brand); background:#fff; }
@@ -33,9 +35,9 @@
     .sl-btn-primary { background:#111827; color:#fff; border-color:#111827; }
     .sl-btn-primary:hover { background:#000; }
 
-    .sl-work { display:flex; align-items:stretch; min-height:640px; }
-    .sl-rail { width:312px; flex:0 0 312px; border-right:1px solid var(--sl-line); background:#fff; display:flex; flex-direction:column; max-height:78vh; overflow-y:auto; }
-    .sl-stage { flex:1 1 auto; background:#f3f4f6; padding:26px 16px; overflow:auto; max-height:78vh; }
+    .sl-work { display:flex; align-items:stretch; flex:1 1 auto; min-height:0; }
+    .sl-rail { width:312px; flex:0 0 312px; border-right:1px solid var(--sl-line); background:#fff; display:flex; flex-direction:column; overflow-y:auto; }
+    .sl-stage { flex:1 1 auto; background:#f3f4f6; padding:26px 16px; overflow:auto; }
     .sl-tabs { display:flex; border-bottom:1px solid var(--sl-line); position:sticky; top:0; background:#fff; z-index:2; }
     .sl-tabs button { flex:1; border:0; background:#fff; padding:11px 0; font-size:13px; color:var(--sl-mut); cursor:pointer; border-bottom:2px solid transparent; }
     .sl-tabs button.on { color:var(--sl-ink); border-bottom-color:var(--sl-brand); font-weight:600; }
@@ -102,6 +104,38 @@
     .sl-drawer.on { transform:none; }
     .sl-drawer-head { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--sl-line); font-weight:600; color:var(--sl-ink); }
     .sl-drawer-body { padding:16px; overflow-y:auto; flex:1; }
+    /* Image field: URL input with Upload / Library buttons underneath */
+    .sl-imgfield .sl-img-btns { display:flex; gap:6px; margin-top:6px; }
+    .sl-imgfield .sl-img-btns .sl-btn { flex:1; padding:6px 8px; font-size:12px; display:inline-flex; align-items:center; justify-content:center; gap:5px; }
+    .sl-imgfield .sl-img-btns svg { width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.7; }
+    .sl-imgfield .sl-img-prev { margin-top:8px; border:1px solid var(--sl-line); border-radius:6px; padding:6px; display:none; }
+    .sl-imgfield .sl-img-prev.on { display:block; }
+    .sl-imgfield .sl-img-prev img { max-width:100%; max-height:120px; display:block; margin:0 auto; border-radius:4px; }
+
+    /* ───────── Asset Manager modal ───────── */
+    .sl-am-bk { position:fixed; inset:0; background:rgba(17,24,39,.5); z-index:70; display:none; align-items:center; justify-content:center; padding:20px; }
+    .sl-am-bk.on { display:flex; }
+    .sl-am { background:#fff; border-radius:10px; width:760px; max-width:100%; max-height:88vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+    .sl-am-head { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--sl-line); }
+    .sl-am-head h3 { margin:0; font-size:15px; font-weight:600; color:var(--sl-ink); }
+    .sl-am-x { border:0; background:none; font-size:20px; line-height:1; color:var(--sl-mut); cursor:pointer; }
+    .sl-am-x:hover { color:var(--sl-ink); }
+    .sl-am-body { padding:18px; overflow-y:auto; flex:1; }
+    .sl-am-drop { border:2px dashed var(--sl-line); border-radius:10px; padding:26px; text-align:center; color:var(--sl-mut); cursor:pointer; transition:.12s; }
+    .sl-am-drop:hover, .sl-am-drop.drag { border-color:var(--sl-brand); background:#fdf2f8; color:var(--sl-brand); }
+    .sl-am-drop .plus { width:34px; height:34px; border-radius:50%; border:1px solid currentColor; display:inline-flex; align-items:center; justify-content:center; font-size:22px; margin-bottom:8px; }
+    .sl-am-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(128px,1fr)); gap:12px; margin-top:16px; }
+    .sl-am-tile { border:1px solid var(--sl-line); border-radius:8px; overflow:hidden; cursor:pointer; background:#fff; position:relative; transition:.12s; }
+    .sl-am-tile:hover { border-color:var(--sl-brand); box-shadow:0 2px 8px rgba(0,0,0,.08); }
+    .sl-am-tile.sel { border-color:var(--sl-brand); box-shadow:0 0 0 2px var(--sl-brand); }
+    .sl-am-tile .ph { aspect-ratio:1/1; background:#f3f4f6 center/cover no-repeat; }
+    .sl-am-tile .cap { font-size:10px; color:var(--sl-mut); padding:5px 6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-top:1px solid var(--sl-line); }
+    .sl-am-tile .del { position:absolute; top:4px; right:4px; width:22px; height:22px; border-radius:6px; border:0; background:rgba(17,24,39,.6); color:#fff; font-size:13px; cursor:pointer; display:none; align-items:center; justify-content:center; }
+    .sl-am-tile:hover .del { display:inline-flex; }
+    .sl-am-empty { text-align:center; color:#9ca3af; font-size:13px; padding:30px 10px; }
+    .sl-am-more { display:block; margin:16px auto 0; }
+    .sl-am-foot { display:flex; align-items:center; justify-content:flex-end; gap:8px; padding:12px 18px; border-top:1px solid var(--sl-line); }
+    .sl-am-note { margin-right:auto; font-size:11px; color:var(--sl-mut); }
     @@media (max-width:860px){ .sl-rail{ width:260px; flex-basis:260px; } }
 </style>
 
@@ -199,6 +233,31 @@
     </aside>
 </form>
 
+<!-- ───── Asset Manager (image library + upload) ───── -->
+<div class="sl-am-bk" id="am-bk" aria-hidden="true">
+    <div class="sl-am" role="dialog" aria-modal="true" aria-label="Asset Manager">
+        <div class="sl-am-head">
+            <h3>Asset Manager</h3>
+            <button type="button" class="sl-am-x" id="am-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="sl-am-body">
+            <label class="sl-am-drop" id="am-drop">
+                <span class="plus">+</span>
+                <div id="am-drop-label">Click or drag an image here to upload <span style="opacity:.7">(JPG, PNG, WEBP, GIF · max 10&nbsp;MB)</span></div>
+                <input type="file" id="am-file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+            </label>
+            <div class="sl-am-grid" id="am-grid"></div>
+            <div class="sl-am-empty" id="am-empty" style="display:none">No images yet — upload your first above.</div>
+            <button type="button" class="sl-btn sl-am-more" id="am-more" style="display:none">Load more</button>
+        </div>
+        <div class="sl-am-foot">
+            <span class="sl-am-note" id="am-note"></span>
+            <button type="button" class="sl-btn" id="am-cancel">Cancel</button>
+            <button type="button" class="sl-btn sl-btn-primary" id="am-use" disabled>Use image</button>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
 <script>
 (function () {
@@ -226,6 +285,11 @@
         if (!Array.isArray(state)) state = [];
         if (!globals || typeof globals !== 'object') globals = {};
     } catch (e) { state = []; globals = {}; }
+
+    // Retainful-style starting Global Styles for a brand-new campaign (Arial · 14px · 400 · 1.7 · black on
+    // white, 600px wide). Only seeded when nothing is set, so existing drafts keep their own styles.
+    var DEFAULT_GLOBALS = { width:600, pageBg:'#ffffff', font:'arial', textSize:14, lineHeight:1.7, textColor:'#000000' };
+    if (@(Model.Id == 0 ? "true" : "false") && !Object.keys(globals).length) globals = Object.assign({}, DEFAULT_GLOBALS);
 
     // Blocks created now deliberately omit colour/font/button styling so they INHERIT the Global Styles
     // (the renderer falls back global → built-in default). Structural sizes stay.
@@ -440,6 +504,16 @@
             b('left','<path d="M4 6h16M4 12h10M4 18h13"/>') + b('center','<path d="M4 6h16M7 12h10M5 18h14"/>') + b('right','<path d="M4 6h16M10 12h10M7 18h13"/>') + '</div></div>';
     }
     function f_toggle(label, key, on) { return '<div class="sl-field"><label>' + label + '</label><div class="sl-toggle-row"><button type="button" class="sl-tgl ' + (on?'on':'') + '" data-tgl="' + key + '">' + (on?'On':'Off') + '</button></div></div>'; }
+    // Image field: URL input + an "Asset Manager" button (upload or pick from the library) + live preview.
+    function f_image(label, key, val) {
+        return '<div class="sl-field sl-imgfield"><label>' + label + '</label>' +
+            '<input class="sl-in" data-k="' + key + '" value="' + esc(val) + '" placeholder="https://… or use the picker">' +
+            '<div class="sl-img-btns">' +
+                '<button type="button" class="sl-btn" data-img-pick="' + key + '"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 16-5-5L5 20"/></svg>' + (val ? 'Replace image' : 'Choose / upload') + '</button>' +
+            '</div>' +
+            '<div class="sl-img-prev' + (val ? ' on' : '') + '" data-img-prev="' + key + '">' + (val ? '<img src="' + esc(val) + '" alt="">' : '') + '</div>' +
+        '</div>';
+    }
 
     function configBody(b) {
         var t = (b.type||'').toLowerCase(), h = '';
@@ -451,7 +525,7 @@
                  f_toggle('Italic','italic',b.italic) + f_toggle('Underline','underline',b.underline) +
                  f_color('Text colour','color',b.color) + f_align(b.align) + '</div>';
         } else if (t === 'image') {
-            h += '<div class="sl-cfg-sec"><h5>Image</h5>' + f_text('Image URL','src',b.src,'https://…') + f_text('Link URL','href',b.href,'Optional') + f_text('Alt text','alt',b.alt) + '</div>';
+            h += '<div class="sl-cfg-sec"><h5>Image</h5>' + f_image('Image','src',b.src) + f_text('Link URL','href',b.href,'Optional') + f_text('Alt text','alt',b.alt) + '</div>';
             h += '<div class="sl-cfg-sec"><h5>Size</h5><div class="sl-row2">' + f_num('Width (px)','width',b.width,0,600) + f_num('Radius (px)','radius',b.radius,0,60) + '</div><p style="font-size:11px;color:var(--sl-mut);margin:0">Leave width 0 for full width.</p>' + f_align(b.align) + '</div>';
         } else if (t === 'button') {
             h += '<div class="sl-cfg-sec"><h5>Button</h5>' + f_text('Label','text',b.text) + f_text('Link URL','href',b.href,'https://…') + '</div>';
@@ -469,7 +543,7 @@
             h += '<div class="sl-toggle-row" style="margin-bottom:10px"><button type="button" class="sl-tgl" data-cols="2">2 columns</button><button type="button" class="sl-tgl" data-cols="3">3 columns</button></div>';
             (b.cols||[]).forEach(function (c, ci) {
                 h += '<div style="border:1px solid var(--sl-line);border-radius:8px;padding:10px;margin-bottom:10px"><div style="font-size:11px;font-weight:600;color:var(--sl-mut);margin-bottom:6px">Column ' + (ci+1) + '</div>' +
-                    f_text('Image URL','cols.' + ci + '.src',c.src,'https://…') +
+                    f_image('Image','cols.' + ci + '.src',c.src) +
                     f_text('Title','cols.' + ci + '.title',c.title) +
                     '<div class="sl-row2">' + f_text('Caption','cols.' + ci + '.caption',c.caption) + f_text('Price','cols.' + ci + '.price',c.price) + '</div>' +
                     f_text('Button text','cols.' + ci + '.btnText',c.btnText) +
@@ -562,7 +636,8 @@
             if (def2) { def2.make().forEach(function (blk) { state.push(blk); }); sel = state.length - 1; railTab = 'config'; renderRail(); sync(); snapshot(); }
             return;
         }
-        var rg = e.target.closest('#reset-globals'); if (rg) { globals = {}; contentRail(); sync(); snapshot(); return; }
+        var rg = e.target.closest('#reset-globals'); if (rg) { globals = Object.assign({}, DEFAULT_GLOBALS); contentRail(); sync(); snapshot(); return; }
+        var ip = e.target.closest('[data-img-pick]'); if (ip) { openAssets(ip.getAttribute('data-img-pick')); return; }
     });
     // Field edits (input) — block config (data-k) and Global Styles (data-g)
     rail.addEventListener('input', function (e) {
@@ -668,6 +743,101 @@
 
     // keep layout posted on submit
     document.getElementById('campaign-form').addEventListener('submit', function () { document.getElementById('LayoutJson').value = layoutJson(); });
+
+    // ════════════════════ Asset Manager (image library + upload) ════════════════════
+    var amBk = document.getElementById('am-bk'), amGrid = document.getElementById('am-grid'),
+        amEmpty = document.getElementById('am-empty'), amMore = document.getElementById('am-more'),
+        amUse = document.getElementById('am-use'), amNote = document.getElementById('am-note'),
+        amDrop = document.getElementById('am-drop'), amFile = document.getElementById('am-file');
+    var amTarget = null, amSkip = 0, amTotal = 0, amLoaded = false, amSelUrl = null, amSelTile = null;
+    var MAX_BYTES = 10 * 1024 * 1024;
+    function amToken() { var t = document.querySelector('#campaign-form input[name="__RequestVerificationToken"]'); return t ? t.value : ''; }
+
+    function openAssets(targetKey) {
+        amTarget = targetKey; amSelUrl = null; amSelTile = null; amUse.disabled = true;
+        amBk.classList.add('on'); amBk.setAttribute('aria-hidden', 'false');
+        amGrid.innerHTML = ''; amSkip = 0; amLoaded = false; amNote.textContent = '';
+        loadAssets();
+    }
+    function closeAssets() { amBk.classList.remove('on'); amBk.setAttribute('aria-hidden', 'true'); amTarget = null; }
+
+    function selectTile(tile, url) {
+        if (amSelTile) amSelTile.classList.remove('sel');
+        amSelTile = tile; amSelUrl = url; tile.classList.add('sel'); amUse.disabled = false;
+    }
+    function tileEl(it) {
+        var tile = document.createElement('div');
+        tile.className = 'sl-am-tile'; tile.setAttribute('data-id', it.id);
+        tile.innerHTML = '<div class="ph" style="background-image:url(\'' + esc(it.url).replace(/'/g, "%27") + '\')"></div>' +
+            '<div class="cap">' + esc(it.fileName || 'image') + '</div>' +
+            '<button type="button" class="del" title="Remove from library" data-del="' + it.id + '">&times;</button>';
+        tile.addEventListener('click', function (e) {
+            if (e.target.closest('[data-del]')) { deleteAsset(it.id, tile); return; }
+            selectTile(tile, it.url);
+        });
+        tile.addEventListener('dblclick', function (e) { if (e.target.closest('[data-del]')) return; selectTile(tile, it.url); useSelected(); });
+        return tile;
+    }
+    async function loadAssets() {
+        try {
+            var res = await fetch(window.__mktBase + '/Campaigns/Assets?skip=' + amSkip + '&take=40');
+            var data = await res.json();
+            amTotal = data.total || 0;
+            (data.items || []).forEach(function (it) { amGrid.appendChild(tileEl(it)); });
+            amSkip += (data.items || []).length;
+            amLoaded = true;
+            amEmpty.style.display = amTotal === 0 ? 'block' : 'none';
+            amMore.style.display = amSkip < amTotal ? 'block' : 'none';
+            amNote.textContent = amTotal ? (amTotal + ' image' + (amTotal === 1 ? '' : 's') + ' in library') : '';
+        } catch (x) { amEmpty.textContent = 'Could not load the library.'; amEmpty.style.display = 'block'; }
+    }
+    amMore.addEventListener('click', loadAssets);
+
+    async function uploadFile(file) {
+        if (!file) return;
+        if (!/^image\//.test(file.type)) { amNote.textContent = 'That file is not an image.'; return; }
+        if (file.size > MAX_BYTES) { amNote.textContent = 'Image is too large (max 10 MB).'; return; }
+        var label = document.getElementById('am-drop-label'), old = label.innerHTML;
+        label.textContent = 'Uploading…'; amDrop.classList.add('drag');
+        try {
+            var fd = new FormData(); fd.append('file', file); fd.append('__RequestVerificationToken', amToken());
+            var res = await fetch(window.__mktBase + '/Campaigns/UploadAsset', { method: 'POST', body: fd });
+            var data = await res.json();
+            if (!res.ok || !data.url) { amNote.textContent = (data && data.error) || 'Upload failed.'; }
+            else {
+                var tile = tileEl({ id: data.id, url: data.url, fileName: data.fileName });
+                amGrid.insertBefore(tile, amGrid.firstChild);
+                amEmpty.style.display = 'none'; amTotal++; amSkip++;
+                selectTile(tile, data.url); amNote.textContent = 'Uploaded — click “Use image”.';
+            }
+        } catch (x) { amNote.textContent = 'Upload failed. Please try again.'; }
+        finally { label.innerHTML = old; amDrop.classList.remove('drag'); amFile.value = ''; }
+    }
+    amDrop.addEventListener('click', function () { amFile.click(); });
+    amFile.addEventListener('change', function () { if (amFile.files && amFile.files[0]) uploadFile(amFile.files[0]); });
+    ['dragover', 'dragenter'].forEach(function (ev) { amDrop.addEventListener(ev, function (e) { e.preventDefault(); amDrop.classList.add('drag'); }); });
+    ['dragleave', 'drop'].forEach(function (ev) { amDrop.addEventListener(ev, function (e) { e.preventDefault(); if (ev === 'dragleave') amDrop.classList.remove('drag'); }); });
+    amDrop.addEventListener('drop', function (e) { var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) uploadFile(f); });
+
+    async function deleteAsset(id, tile) {
+        if (!confirm('Remove this image from the library? (Emails already using it are not affected.)')) return;
+        try {
+            var fd = new FormData(); fd.append('id', id); fd.append('__RequestVerificationToken', amToken());
+            var res = await fetch(window.__mktBase + '/Campaigns/DeleteAsset', { method: 'POST', body: fd });
+            if (res.ok) { tile.remove(); amTotal = Math.max(0, amTotal - 1); amSkip = Math.max(0, amSkip - 1); amEmpty.style.display = amTotal === 0 ? 'block' : 'none'; amNote.textContent = amTotal ? (amTotal + ' image' + (amTotal === 1 ? '' : 's') + ' in library') : ''; }
+        } catch (x) { /* ignore */ }
+    }
+
+    function useSelected() {
+        if (!amSelUrl || amTarget == null || sel < 0 || !state[sel]) { closeAssets(); return; }
+        setDeep(state[sel], amTarget, amSelUrl);
+        closeAssets(); config(); sync(); snapshot();
+    }
+    amUse.addEventListener('click', useSelected);
+    document.getElementById('am-cancel').addEventListener('click', closeAssets);
+    document.getElementById('am-close').addEventListener('click', closeAssets);
+    amBk.addEventListener('click', function (e) { if (e.target === amBk) closeAssets(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && amBk.classList.contains('on')) closeAssets(); });
 
     // ── boot ──
     renderRail(); paintCanvas(); updateSize(); setDevice(false); snapshot();

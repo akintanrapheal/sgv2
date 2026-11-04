@@ -66,6 +66,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<Segment> Segments => Set<Segment>();
     public DbSet<SocialPost> SocialPosts => Set<SocialPost>();
     public DbSet<MarketingSuppression> MarketingSuppressions => Set<MarketingSuppression>();
+    public DbSet<MarketingAsset> MarketingAssets => Set<MarketingAsset>();
     public DbSet<Automation> Automations => Set<Automation>();
     public DbSet<AutomationRun> AutomationRuns => Set<AutomationRun>();
     public DbSet<Referral> Referrals => Set<Referral>();
@@ -82,6 +83,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
         base.OnModelCreating(builder);
 
         builder.Entity<ApiCallDaily>(e => e.HasIndex(x => new { x.Day, x.Label }).IsUnique());
+
+        // Marketing image library — listed most-recent first in the builder's Asset Manager.
+        builder.Entity<MarketingAsset>(e => e.HasIndex(x => x.CreatedAt));
 
         // ─── Customer issues monitor ────────────────────────────────────────
         // The dashboard filters/groups by time + type, the spike alerter counts a recent window per type,
