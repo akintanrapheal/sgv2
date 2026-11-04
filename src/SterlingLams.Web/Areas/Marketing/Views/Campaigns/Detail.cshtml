@@ -5,6 +5,19 @@
     int est = ViewBag.EstimatedCount ?? 0;
     var recipients = ViewBag.Recipients as List<CampaignRecipient> ?? new();
     bool draft = Model.Status == CampaignStatus.Draft;
+    bool sent = Model.Status is CampaignStatus.Sent or CampaignStatus.Sending;
+
+    int delivered = ViewBag.Delivered ?? 0;
+    int opened = ViewBag.Opened ?? 0;
+    int clicked = ViewBag.Clicked ?? 0;
+    int failedT = ViewBag.FailedTile ?? 0;
+    int skippedT = ViewBag.SkippedTile ?? 0;
+    int unsub = ViewBag.Unsubscribed ?? 0;
+    int total = Model.RecipientCount;
+    decimal attrRev = ViewBag.AttributedRevenue != null ? (decimal)ViewBag.AttributedRevenue : 0m;
+    int attrOrders = ViewBag.AttributedOrders != null ? (int)ViewBag.AttributedOrders : 0;
+
+    string Pct(int n, int d) => d > 0 ? (100.0 * n / d).ToString("0.#") + "%" : "0%";
     string Badge(CampaignStatus s) => s switch
     {
         CampaignStatus.Draft => "bg-neutral-100 text-neutral-600",
@@ -13,10 +26,17 @@
         CampaignStatus.Sent => "bg-emerald-50 text-emerald-700",
         _ => "bg-red-50 text-red-700"
     };
+    string RecBadge(CampaignRecipientStatus s) => s switch
+    {
+        CampaignRecipientStatus.Sent => "bg-emerald-50 text-emerald-700",
+        CampaignRecipientStatus.Failed => "bg-red-50 text-red-700",
+        CampaignRecipientStatus.Skipped => "bg-amber-50 text-amber-700",
+        _ => "bg-neutral-100 text-neutral-500"
+    };
 }
 @Html.AntiForgeryToken()
 
-<div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+<div class="mb-5 flex items-start justify-between gap-4 flex-wrap">
     <div>
         <a asp-area="Marketing" asp-controller="Campaigns" asp-action="Index" class="text-xs text-neutral-400 hover:text-neutral-700">← All campaigns</a>
         <h1 class="text-2xl font-light text-neutral-900 mt-2">@Model.Name</h1>
@@ -25,75 +45,29 @@
     <span class="text-xs px-3 py-1.5 rounded-full @Badge(Model.Status)">@Model.Status</span>
 </div>
 
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <div class="lg:col-span-2 space-y-4">
-        <div class="bg-white border border-neutral-200 rounded-sm p-4">
-            <div class="flex items-center justify-between mb-3">
-                <div class="text-xs text-neutral-400">Preview</div>
-                <div class="inline-flex rounded-sm border border-neutral-200 overflow-hidden text-xs">
-                    <button type="button" id="pv-desktop" class="px-3 py-1.5">Desktop</button>
-                    <button type="button" id="pv-mobile" class="px-3 py-1.5 border-l border-neutral-200">Mobile</button>
+@if (draft)
+{
+    <!-- ───────── Draft: preview + send actions ───────── -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 space-y-4">
+            <div class="bg-white border border-neutral-200 rounded-sm p-4">
+                <div class="flex items-center justify-between mb-3">
+                    <div class="text-xs text-neutral-400">Preview</div>
+                    <div class="inline-flex rounded-sm border border-neutral-200 overflow-hidden text-xs">
+                        <button type="button" id="pv-desktop" class="px-3 py-1.5">Desktop</button>
+                        <button type="button" id="pv-mobile" class="px-3 py-1.5 border-l border-neutral-200">Mobile</button>
+                    </div>
+                </div>
+                <div class="bg-neutral-100 rounded-sm p-3 overflow-x-auto">
+                    <iframe id="preview" title="Email preview" class="bg-white mx-auto block border-0 shadow-sm" style="width:600px;height:640px"></iframe>
                 </div>
             </div>
-            <div class="bg-neutral-100 rounded-sm p-3 overflow-x-auto">
-                <iframe id="preview" title="Email preview" class="bg-white mx-auto block border-0 shadow-sm" style="width:600px;height:640px"></iframe>
-            </div>
         </div>
-        <script id="body-html" type="application/json">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.BodyHtml))</script>
-
-        @if (!draft)
-        {
-            <div class="bg-white border border-neutral-200 rounded-sm overflow-hidden">
-                <div class="px-5 py-3 border-b border-neutral-100 text-sm font-medium text-neutral-700">Recent recipients</div>
-                <table class="w-full text-sm">
-                    <thead class="bg-neutral-50 text-neutral-500 text-xs"><tr><th class="text-left font-semibold px-5 py-2.5">Email</th><th class="text-left font-semibold px-5 py-2.5">Status</th><th class="text-left font-semibold px-5 py-2.5">Sent</th></tr></thead>
-                    <tbody class="divide-y divide-neutral-100">
-                        @foreach (var r in recipients)
-                        {
-                            <tr><td class="px-5 py-2 text-neutral-700">@r.Email</td><td class="px-5 py-2 text-neutral-500">@r.Status</td><td class="px-5 py-2 text-neutral-400 text-xs">@(r.SentAt?.ToLocalTime().ToString("dd MMM HH:mm") ?? "—")</td></tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
-    </div>
-
-    <div class="lg:col-span-1 space-y-4">
-        <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-2 text-sm">
-            <div class="flex justify-between"><span class="text-neutral-400">Audience</span><span class="text-neutral-700">@System.Text.RegularExpressions.Regex.Replace(Model.Audience.ToString(), "([a-z])([A-Z])", "$1 $2")</span></div>
-            @if (draft)
-            {
+        <div class="lg:col-span-1 space-y-4">
+            <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-2 text-sm">
+                <div class="flex justify-between"><span class="text-neutral-400">Audience</span><span class="text-neutral-700">@System.Text.RegularExpressions.Regex.Replace(Model.Audience.ToString(), "([a-z])([A-Z])", "$1 $2")</span></div>
                 <div class="flex justify-between"><span class="text-neutral-400">Estimated size</span><span class="text-neutral-900 font-medium">@est.ToString("N0")</span></div>
-            }
-            else
-            {
-                <div class="flex justify-between"><span class="text-neutral-400">Recipients</span><span class="text-neutral-900 font-medium">@Model.RecipientCount.ToString("N0")</span></div>
-                <div class="flex justify-between"><span class="text-neutral-400">Sent</span><span class="text-emerald-600 font-medium">@Model.SentCount.ToString("N0")</span></div>
-                @if (Model.FailedCount > 0) { <div class="flex justify-between"><span class="text-neutral-400">Failed</span><span class="text-red-600 font-medium">@Model.FailedCount.ToString("N0")</span></div> }
-                @if (Model.SentCount > 0)
-                {
-                    var openRate = Model.SentCount > 0 ? (double)Model.OpenCount / Model.SentCount * 100 : 0;
-                    var clickRate = Model.SentCount > 0 ? (double)Model.ClickCount / Model.SentCount * 100 : 0;
-                    <div class="flex justify-between"><span class="text-neutral-400">Opened</span><span class="text-neutral-900 font-medium">@Model.OpenCount.ToString("N0") <span class="text-neutral-400 font-normal">(@openRate.ToString("0.#")%)</span></span></div>
-                    <div class="flex justify-between"><span class="text-neutral-400">Clicked</span><span class="text-neutral-900 font-medium">@Model.ClickCount.ToString("N0") <span class="text-neutral-400 font-normal">(@clickRate.ToString("0.#")%)</span></span></div>
-                    @if (ViewBag.AttributedRevenue != null)
-                    {
-                        decimal attrRev = (decimal)ViewBag.AttributedRevenue;
-                        int attrOrders = (int)ViewBag.AttributedOrders;
-                        int attrWin = (int)ViewBag.AttributionWindow;
-                        <div class="flex justify-between pt-2 mt-1 border-t border-neutral-100">
-                            <span class="text-neutral-400">Revenue<span class="text-neutral-300 font-normal"> (≤@(attrWin)-day)</span></span>
-                            <span class="text-emerald-600 font-semibold">₦@attrRev.ToString("N0")</span>
-                        </div>
-                        <div class="flex justify-between"><span class="text-neutral-400">Orders</span><span class="text-neutral-900 font-medium">@attrOrders.ToString("N0")@(attrOrders > 0 ? $" · ₦{Math.Round(attrRev / attrOrders, 0):N0} avg" : "")</span></div>
-                    }
-                }
-                <div class="flex justify-between"><span class="text-neutral-400">@(Model.Status == CampaignStatus.Sent ? "Sent at" : "Scheduled")</span><span class="text-neutral-700">@((Model.SentAt ?? Model.ScheduledAt)?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? "—") WAT</span></div>
-            }
-        </div>
-
-        @if (draft)
-        {
+            </div>
             <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-3">
                 <a asp-area="Marketing" asp-controller="Campaigns" asp-action="Edit" asp-route-id="@Model.Id" class="block text-center px-4 py-2 text-sm border border-neutral-300 rounded-sm hover:bg-neutral-50">Edit</a>
                 <form asp-area="Marketing" asp-controller="Campaigns" asp-action="Send" method="post" onsubmit="return confirm('Send this campaign now to ~@est.ToString("N0") recipient(s)?');">
@@ -117,43 +91,191 @@
                     <button type="submit" class="w-full px-4 py-2 text-xs text-red-600 border border-red-200 rounded-sm hover:bg-red-50">Delete</button>
                 </form>
             </div>
-        }
-        else if (Model.Status == CampaignStatus.Scheduled)
-        {
-            <form asp-area="Marketing" asp-controller="Campaigns" asp-action="Cancel" method="post" class="bg-white border border-neutral-200 rounded-sm p-5">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="id" value="@Model.Id" />
-                <button type="submit" class="w-full px-4 py-2 text-sm border border-amber-300 text-amber-700 rounded-sm hover:bg-amber-50">Cancel schedule (back to draft)</button>
-            </form>
-        }
+        </div>
     </div>
-</div>
+}
+else
+{
+    <!-- ───────── Sent / Scheduled: Retainful-style reports ───────── -->
+    <div class="border-b border-neutral-200 mb-5">
+        <nav class="flex gap-6 text-sm">
+            <button type="button" class="rep-tab py-2.5 border-b-2 border-neutral-900 text-neutral-900 font-medium" data-tab="reports">Reports</button>
+            <button type="button" class="rep-tab py-2.5 border-b-2 border-transparent text-neutral-400 hover:text-neutral-700" data-tab="details">Details</button>
+        </nav>
+    </div>
+
+    <section data-pane="reports" class="space-y-5">
+        <!-- Revenue -->
+        <div class="bg-white border border-neutral-200 rounded-sm p-5">
+            <div class="text-xs text-neutral-400 mb-1">Revenue</div>
+            <div class="text-3xl font-light text-neutral-900">₦@attrRev.ToString("N2")</div>
+            <div class="text-xs text-neutral-400 mt-1">@attrOrders.ToString("N0") conversion@(attrOrders == 1 ? "" : "s")@(attrOrders > 0 ? $" · ₦{Math.Round(attrRev / attrOrders, 0):N0} avg" : "")@(ViewBag.AttributionWindow != null ? $" · ≤{ViewBag.AttributionWindow}-day attribution" : "")</div>
+        </div>
+
+        <!-- Tiles -->
+        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+            @{
+                var tiles = new (string Label, int N, int Of, string Note)[]
+                {
+                    ("Delivered", delivered, total, "of sent"),
+                    ("Opened", opened, delivered, "of delivered"),
+                    ("Clicked", clicked, opened, "of opened"),
+                    ("Failed", failedT, total, "of sent"),
+                    ("Skipped", skippedT, total, "of sent"),
+                    ("Unsubscribed", unsub, total, "of sent"),
+                };
+            }
+            @foreach (var t in tiles)
+            {
+                <div class="bg-white border border-neutral-200 rounded-sm p-4">
+                    <div class="text-2xl font-light text-neutral-900">@t.N.ToString("N0")</div>
+                    <div class="text-xs font-medium text-neutral-600 mt-0.5">@t.Label</div>
+                    <div class="text-[11px] text-neutral-400">@Pct(t.N, t.Of) @t.Note</div>
+                </div>
+            }
+        </div>
+
+        <!-- Recipients -->
+        <div class="bg-white border border-neutral-200 rounded-sm overflow-hidden">
+            <div class="px-5 py-3 border-b border-neutral-100 flex items-center justify-between gap-3 flex-wrap">
+                <div class="text-sm font-medium text-neutral-700">@total.ToString("N0") recipient@(total == 1 ? "" : "s")</div>
+                <div class="flex items-center gap-2">
+                    <input id="rec-search" type="search" placeholder="Search recipients…" class="border border-neutral-200 rounded-sm px-3 py-1.5 text-sm w-56 focus:outline-none focus:border-neutral-400" />
+                    <select id="rec-status" class="border border-neutral-200 rounded-sm px-2 py-1.5 text-sm bg-white">
+                        <option value="">All status</option>
+                        <option value="Sent">Delivered</option>
+                        <option value="Failed">Failed</option>
+                        <option value="Skipped">Skipped</option>
+                    </select>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-neutral-50 text-neutral-500 text-xs">
+                        <tr>
+                            <th class="text-left font-semibold px-5 py-2.5">Email</th>
+                            <th class="text-left font-semibold px-4 py-2.5">Status</th>
+                            <th class="text-center font-semibold px-4 py-2.5">Opened</th>
+                            <th class="text-center font-semibold px-4 py-2.5">Clicked</th>
+                            <th class="text-left font-semibold px-4 py-2.5">Sent</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rec-body" class="divide-y divide-neutral-100">
+                        @foreach (var r in recipients)
+                        {
+                            <tr class="rec-row" data-email="@r.Email.ToLowerInvariant()" data-name="@(r.Name?.ToLowerInvariant())" data-status="@r.Status">
+                                <td class="px-5 py-2 text-neutral-700">
+                                    <div>@r.Email</div>
+                                    @if (!string.IsNullOrWhiteSpace(r.Name)) { <div class="text-[11px] text-neutral-400">@r.Name</div> }
+                                </td>
+                                <td class="px-4 py-2"><span class="text-[11px] px-2 py-0.5 rounded-full @RecBadge(r.Status)">@(r.Status == CampaignRecipientStatus.Sent ? "Delivered" : r.Status.ToString())</span></td>
+                                <td class="px-4 py-2 text-center">@(r.OpenedAt != null ? "✓" : "–")</td>
+                                <td class="px-4 py-2 text-center">@(r.ClickedAt != null ? "✓" : "–")</td>
+                                <td class="px-4 py-2 text-neutral-400 text-xs">@(r.SentAt?.ToLocalTime().ToString("dd MMM HH:mm") ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <p id="rec-none" class="hidden text-center text-sm text-neutral-400 py-8">No recipients match.</p>
+                @if (total > recipients.Count)
+                {
+                    <p class="text-center text-[11px] text-neutral-400 py-3 border-t border-neutral-100">Showing the @recipients.Count.ToString("N0") most recent of @total.ToString("N0") recipients.</p>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section data-pane="details" class="hidden space-y-4">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2">
+                <div class="bg-white border border-neutral-200 rounded-sm p-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="text-xs text-neutral-400">Email preview</div>
+                        <div class="inline-flex rounded-sm border border-neutral-200 overflow-hidden text-xs">
+                            <button type="button" id="pv-desktop" class="px-3 py-1.5">Desktop</button>
+                            <button type="button" id="pv-mobile" class="px-3 py-1.5 border-l border-neutral-200">Mobile</button>
+                        </div>
+                    </div>
+                    <div class="bg-neutral-100 rounded-sm p-3 overflow-x-auto">
+                        <iframe id="preview" title="Email preview" class="bg-white mx-auto block border-0 shadow-sm" style="width:600px;height:640px"></iframe>
+                    </div>
+                </div>
+            </div>
+            <div class="lg:col-span-1 space-y-4">
+                <div class="bg-white border border-neutral-200 rounded-sm p-5 space-y-2 text-sm">
+                    <div class="flex justify-between"><span class="text-neutral-400">Audience</span><span class="text-neutral-700">@System.Text.RegularExpressions.Regex.Replace(Model.Audience.ToString(), "([a-z])([A-Z])", "$1 $2")</span></div>
+                    <div class="flex justify-between"><span class="text-neutral-400">Recipients</span><span class="text-neutral-900 font-medium">@total.ToString("N0")</span></div>
+                    <div class="flex justify-between"><span class="text-neutral-400">Subject</span><span class="text-neutral-700 text-right">@Model.Subject</span></div>
+                    <div class="flex justify-between"><span class="text-neutral-400">@(sent ? "Sent at" : "Scheduled")</span><span class="text-neutral-700">@((Model.SentAt ?? Model.ScheduledAt)?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? "—") WAT</span></div>
+                </div>
+                @if (Model.Status == CampaignStatus.Scheduled)
+                {
+                    <form asp-area="Marketing" asp-controller="Campaigns" asp-action="Cancel" method="post" class="bg-white border border-neutral-200 rounded-sm p-5">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@Model.Id" />
+                        <button type="submit" class="w-full px-4 py-2 text-sm border border-amber-300 text-amber-700 rounded-sm hover:bg-amber-50">Cancel schedule (back to draft)</button>
+                    </form>
+                }
+            </div>
+        </div>
+    </section>
+}
+
+<script id="body-html" type="application/json">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.BodyHtml))</script>
 
 @section Scripts {
 <script>
 (function () {
-    var iframe = document.getElementById('preview');
-    if (!iframe) return;
-    var body = '';
-    try { body = JSON.parse(document.getElementById('body-html').textContent || '""'); } catch (e) {}
-    var doc = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>' +
-        '<body style="margin:0;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#333">' +
-        '<div style="max-width:600px;margin:0 auto;padding:24px 20px">' +
-        (body && body.trim() ? body : '<div style="color:#bbb;text-align:center;padding:40px 0;font-size:14px">No content yet</div>') +
-        '</div></body></html>';
-    var d = iframe.contentDocument || iframe.contentWindow.document;
-    d.open(); d.write(doc); d.close();
+    // ── Email preview iframe (shared by draft + details pane) ──
+    function paintPreview() {
+        var iframe = document.getElementById('preview');
+        if (!iframe) return;
+        var body = '';
+        try { body = JSON.parse(document.getElementById('body-html').textContent || '""'); } catch (e) {}
+        var doc = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>' +
+            '<body style="margin:0;background:#fff;font-family:Arial,Helvetica,sans-serif;color:#333">' +
+            '<div style="max-width:600px;margin:0 auto;padding:24px 20px">' +
+            (body && body.trim() ? body : '<div style="color:#bbb;text-align:center;padding:40px 0;font-size:14px">No content yet</div>') +
+            '</div></body></html>';
+        var d = iframe.contentDocument || iframe.contentWindow.document;
+        d.open(); d.write(doc); d.close();
 
-    var active = 'px-3 py-1.5 bg-neutral-900 text-white', idle = 'px-3 py-1.5';
-    var bd = document.getElementById('pv-desktop'), bm = document.getElementById('pv-mobile');
-    function setDevice(mobile) {
-        iframe.style.width = mobile ? '360px' : '600px';
-        bd.className = mobile ? idle : active;
-        bm.className = (mobile ? active : idle) + ' border-l border-neutral-200';
+        var bd = document.getElementById('pv-desktop'), bm = document.getElementById('pv-mobile');
+        if (!bd || !bm) return;
+        var active = 'px-3 py-1.5 bg-neutral-900 text-white', idle = 'px-3 py-1.5';
+        function setDevice(mobile) { iframe.style.width = mobile ? '360px' : '600px'; bd.className = mobile ? idle : active; bm.className = (mobile ? active : idle) + ' border-l border-neutral-200'; }
+        bd.onclick = function () { setDevice(false); }; bm.onclick = function () { setDevice(true); };
+        setDevice(false);
     }
-    bd.addEventListener('click', function () { setDevice(false); });
-    bm.addEventListener('click', function () { setDevice(true); });
-    setDevice(false);
+    paintPreview();
+
+    // ── Report tabs ──
+    var tabs = document.querySelectorAll('.rep-tab');
+    tabs.forEach(function (t) {
+        t.addEventListener('click', function () {
+            var name = t.getAttribute('data-tab');
+            tabs.forEach(function (x) {
+                var on = x === t;
+                x.className = 'rep-tab py-2.5 border-b-2 ' + (on ? 'border-neutral-900 text-neutral-900 font-medium' : 'border-transparent text-neutral-400 hover:text-neutral-700');
+            });
+            document.querySelectorAll('[data-pane]').forEach(function (p) { p.classList.toggle('hidden', p.getAttribute('data-pane') !== name); });
+            if (name === 'details') paintPreview();
+        });
+    });
+
+    // ── Recipient search + status filter ──
+    var search = document.getElementById('rec-search'), status = document.getElementById('rec-status');
+    function filterRows() {
+        if (!search) return;
+        var q = (search.value || '').trim().toLowerCase(), st = status.value, shown = 0;
+        document.querySelectorAll('.rec-row').forEach(function (row) {
+            var okQ = !q || (row.getAttribute('data-email') || '').includes(q) || (row.getAttribute('data-name') || '').includes(q);
+            var okS = !st || row.getAttribute('data-status') === st;
+            var show = okQ && okS; row.style.display = show ? '' : 'none'; if (show) shown++;
+        });
+        var none = document.getElementById('rec-none'); if (none) none.classList.toggle('hidden', shown > 0);
+    }
+    if (search) { search.addEventListener('input', filterRows); status.addEventListener('change', filterRows); }
 })();
 </script>
 }
