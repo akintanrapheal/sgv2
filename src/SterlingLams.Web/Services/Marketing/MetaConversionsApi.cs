@@ -106,6 +106,9 @@ public sealed class MetaConversionsApi : IMetaConversionsApi
         {
             var (on, pixel, token, testCode) = await ConfigAsync();
             if (!on || !MetaCapi.LooksLikePixelId(pixel) || token.Length == 0) return;
+            // Meta rejects a Purchase with value <= 0 ("value must be greater than 0"). A ₦0 order
+            // (fully gift-card/loyalty/100%-off) isn't a revenue conversion, so don't report it.
+            if (order.Total <= 0) return;
 
             var payload = BuildPurchase(order, http, testCode);
             var json = JsonSerializer.Serialize(payload);
