@@ -40,6 +40,7 @@ public class CheckoutController : Controller
     private readonly SterlingLams.Web.Services.IOrderNotificationService _orderNotifications;
     private readonly SterlingLams.Web.Services.IStorefrontIssueLogger _issues;
     private readonly IDataProtector _confirmTokenProtector;
+    private readonly IDataProtectionProvider _dataProtection;
 
     public CheckoutController(
         ApplicationDbContext db,
@@ -93,6 +94,53 @@ public class CheckoutController : Controller
         _orderNotifications = orderNotifications;
         _issues = issues;
         _confirmTokenProtector = dataProtection.CreateProtector("Checkout.Confirmation.v1");
+        _dataProtection = dataProtection;
+    }
+
+    /// <summary>Abandoned-cart recovery: the link Retainful puts in its "Complete checkout" button. The
+    /// token (data-protected, time-limited) carries the pending order number; we rebuild the cart cookie
+    /// from that order's items + coupon and drop the shopper back on checkout with their email prefilled.</summary>
+    [HttpGet]
+    public async Task<IActionResult> Recover(string? t)
+    {
+        var orderNumber = SterlingLams.Web.Services.CheckoutRecoveryToken.Read(_dataProtection, t);
+        if (string.IsNullOrWhiteSpace(orderNumber))
+        {
+            TempData["Error"] = "That link has expired. Please add your items to the bag again.";
+            return RedirectToAction("Index", "Cart");
+        }
+
+        // Only an unpaid, still-pending online order can be recovered (a paid/cancelled one has nothing to rebuild).
+        var order = await _db.Orders.AsNoTracking()
+            .Where(o => o.OrderNumber == orderNumber && o.Channel == OrderChannel.Online && o.Status == OrderStatus.Pending)
+            .Select(o => new
+            {
+                o.DiscountCode,
+                o.DiscountAmount,
+                Email = o.User.Email,
+                Items = o.Items.Select(i => new { i.ProductId, i.ProductVariantId, i.Quantity, i.UnitPrice }).ToList(),
+            })
+            .FirstOrDefaultAsync();
+        if (order == null || order.Items.Count == 0)
+            return RedirectToAction("Index", "Cart");   // already completed/cancelled, or nothing to restore
+
+        var cart = new CartViewModel
+        {
+            Items = order.Items.Select(i => new CartItemViewModel
+            {
+                ProductId = i.ProductId,
+                VariantId = i.ProductVariantId,
+                Quantity = i.Quantity,
+                UnitPrice = i.UnitPrice,
+                MaxQuantity = Math.Max(i.Quantity, 10),
+            }).ToList(),
+            AppliedDiscountCode = order.DiscountCode,
+            DiscountAmount = order.DiscountAmount,
+        };
+        SaveCart(cart);   // the coupon is re-validated by the checkout page
+        if (!string.IsNullOrWhiteSpace(order.Email)) TempData["RecoverEmail"] = order.Email;
+        TempData["Success"] = "Welcome back — we saved your items.";
+        return RedirectToAction("Index");
     }
 
     /// <summary>Opaque, tamper-proof token tying a viewer to a specific order's confirmation page —
@@ -173,6 +221,10 @@ public class CheckoutController : Controller
                 AllItemsAvailable = true
             }).ToList()
         };
+
+        // Returning from an abandoned-cart recovery link: prefill the guest email we saved on the order.
+        if (user == null && string.IsNullOrWhiteSpace(vm.GuestEmail) && TempData["RecoverEmail"] is string recoverEmail)
+            vm.GuestEmail = recoverEmail;
 
         // Saved addresses (signed-in customers): list them and prefill the form with the default.
         if (user != null)
