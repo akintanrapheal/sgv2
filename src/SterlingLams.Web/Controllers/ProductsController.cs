@@ -130,25 +130,60 @@ public class ProductsController : Controller
                 SaleStartsAt = p.SaleStartsAt,
                 SaleEndsAt = p.SaleEndsAt,
                 Currency = p.Currency,
-                PrimaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
-                    .Select(i => i.Url).FirstOrDefault() ?? "/images/placeholder.jpg",
-                SecondaryImageUrl = p.Images.OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
-                    .Select(i => i.Url).Skip(1).FirstOrDefault(),
-                IsAvailable = p.StoreInventories.Any(si => si.QuantityOnHand > 0),
-                TotalStock = p.StoreInventories.Sum(si => (int?)si.QuantityOnHand) ?? 0,
                 IsNewArrival = p.IsNewArrival,
-                HasVariants = p.Variants.Any(v => v.IsActive),
                 CategoryName = p.Category.Name
+                // Images / stock / variants are loaded in BATCHED queries below (see cardIds block),
+                // not as per-card correlated sub-queries — that was the bulk of the /products "Slow DB
+                // Query" in Sentry (24 cards × ~5 sub-queries on the small DB).
             })
             .ToListAsync());
 
         // Variable products show a "₦min – ₦max" range on their card (one grouped query).
         await SterlingLams.Web.Infrastructure.ProductCardPricing.ApplyVariantPriceRangesAsync(products, _db);
 
-        // Card ratings — one grouped query over the page's products (not a per-card subquery).
+        // Card images/stock/variants/ratings — one grouped query each over the page's product IDs,
+        // instead of correlated sub-queries per card. This is the key /products performance fix.
         var cardIds = products.Select(c => c.Id).ToList();
         if (cardIds.Count > 0)
         {
+            // Primary + secondary image per product (ordered so the first URL per product is the primary).
+            var imgRows = await DbRead.RetryAsync(() => _db.ProductImages
+                .Where(i => cardIds.Contains(i.ProductId))
+                .OrderByDescending(i => i.IsPrimary).ThenByDescending(i => i.IsHover).ThenBy(i => i.SortOrder)
+                .Select(i => new { i.ProductId, i.Url })
+                .ToListAsync());
+            var imgByProduct = imgRows.GroupBy(i => i.ProductId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.Url).ToList());
+
+            // Total on-hand + max-per-branch (for the in-stock flag) per product, one grouped query.
+            var stockRows = await DbRead.RetryAsync(() => _db.StoreInventories
+                .Where(si => cardIds.Contains(si.ProductId))
+                .GroupBy(si => si.ProductId)
+                .Select(g => new
+                {
+                    ProductId = g.Key,
+                    Total = g.Sum(x => (int?)x.QuantityOnHand) ?? 0,
+                    Max = g.Max(x => (int?)x.QuantityOnHand) ?? 0
+                })
+                .ToListAsync());
+            var stockByProduct = stockRows.ToDictionary(x => x.ProductId);
+
+            // Products that have at least one active variant, one query.
+            var withVariants = (await DbRead.RetryAsync(() => _db.ProductVariants
+                .Where(v => cardIds.Contains(v.ProductId) && v.IsActive)
+                .Select(v => v.ProductId).Distinct().ToListAsync())).ToHashSet();
+
+            foreach (var c in products)
+            {
+                var urls = imgByProduct.GetValueOrDefault(c.Id);
+                c.PrimaryImageUrl = (urls != null && urls.Count > 0) ? urls[0] : "/images/placeholder.jpg";
+                c.SecondaryImageUrl = (urls != null && urls.Count > 1) ? urls[1] : null;
+                var st = stockByProduct.GetValueOrDefault(c.Id);
+                c.TotalStock = st?.Total ?? 0;
+                c.IsAvailable = (st?.Max ?? 0) > 0;
+                c.HasVariants = withVariants.Contains(c.Id);
+            }
+
             var ratings = await DbRead.RetryAsync(() => _db.ProductReviews
                 .Where(r => cardIds.Contains(r.ProductId) && r.IsApproved)
                 .GroupBy(r => r.ProductId)
