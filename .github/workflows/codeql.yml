@@ -1,13 +1,15 @@
 name: CodeQL
 
 # Static application security testing (SAST): scans the C# source for security
-# vulnerabilities on every push/PR to the main branches, plus a weekly sweep so newly
+# vulnerabilities on every push to the main branches, plus a weekly sweep so newly
 # published CodeQL rules re-check existing code. Findings surface under the repo's
 # Security → Code scanning tab.
+#
+# Deliberately NOT run on pull_request: it duplicated the main-branch scan on every PR and,
+# with several PRs open at once, flooded the GitHub-hosted runner queue so all checks sat
+# "Queued". CI / build-test is the required PR gate; CodeQL scans the branch it merges into.
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
     branches: [ main, master ]
   schedule:
     - cron: '27 3 * * 1'   # 03:27 UTC every Monday
