@@ -61,6 +61,14 @@ public sealed class LegacyUrlRedirectMiddleware
         ["/shop-by-jewelry-category"] = "/products", ["/compare-jewelry-products"] = "/products", ["/place-jewelry-order"] = "/products",
         ["/sg-chic-collection"] = "/products", ["/sg-chic-jewelry-shop"] = "/products", ["/sg-kingsmen"] = "/products",
         ["/sg-kingsmen-shop"] = "/products", ["/sg-packaging"] = "/products", ["/sg-packaging-store"] = "/products",
+        ["/sg-chic-shop"] = "/products", ["/new-in"] = "/products", ["/recent-products"] = "/products", ["/sale"] = "/products",
+        // Store-location landing pages → Our Stores (from GSC 404 drill-down, 2026-11-05)
+        ["/abuja"] = "/Stores", ["/ikeja-branch"] = "/Stores", ["/opebi-branch"] = "/Stores", ["/ikeja"] = "/Stores", ["/opebi"] = "/Stores",
+        // Order-tracking variants
+        ["/order-tracking"] = "/track", ["/track-order"] = "/track",
+        // Info / policy pages (old slugs still in Google's index, were 404ing)
+        ["/payments-returns"] = "/Home/Terms", ["/product-care"] = "/Journal",
+        ["/answers-to-your-questions"] = "/Home/Contact", ["/sg-courier"] = "/Home/Terms", ["/cookie-consent"] = "/",
         // Misc leftover pages → home
         ["/home-glasses"] = "/", ["/html-sitemap"] = "/", ["/page-not-found"] = "/",
         // Old sitemap locations. Yoast served /sitemap_index.xml and WordPress core /wp-sitemap.xml;
@@ -114,6 +122,10 @@ public sealed class LegacyUrlRedirectMiddleware
             return "/Stores";
         if (lower.StartsWith("/tag/") || lower.StartsWith("/category/")) return "/products";
         if (lower.StartsWith("/author/")) return "/";
+        // Old WordPress blog posts under the /blog/ prefix → the Journal (articles not individually migrated).
+        if (lower.StartsWith("/blog/")) return "/Journal";
+        // WordPress theme custom-post-types (WoodMart sliders, portfolio demo pages) → home.
+        if (lower.StartsWith("/woodmart_slider/") || lower.StartsWith("/portfolio/")) return "/";
 
         // 3) Catalogue (slug-preserving where possible).
         if (lower == "/shop") return "/products";
