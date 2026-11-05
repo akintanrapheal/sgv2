@@ -60,6 +60,27 @@
             ["ratingValue"] = Model.AverageRating,
             ["reviewCount"] = Model.ReviewCount,
         } : null,
+        // Individual reviews (only real, approved ones — never fabricated) so Google can show review
+        // rich snippets alongside the star rating. Capped to keep the markup small.
+        ["review"] = (Model.Reviews != null && Model.Reviews.Count > 0) ? Model.Reviews.Take(10).Select(r => (object)new Dictionary<string, object?>
+        {
+            ["@type"] = "Review",
+            ["reviewRating"] = new Dictionary<string, object?>
+            {
+                ["@type"] = "Rating",
+                ["ratingValue"] = r.Rating,
+                ["bestRating"] = 5,
+                ["worstRating"] = 1,
+            },
+            ["author"] = new Dictionary<string, object?>
+            {
+                ["@type"] = "Person",
+                ["name"] = string.IsNullOrWhiteSpace(r.AuthorName) ? "Customer" : r.AuthorName,
+            },
+            ["datePublished"] = r.CreatedAt.ToString("yyyy-MM-dd"),
+            ["name"] = string.IsNullOrWhiteSpace(r.Title) ? null : r.Title,
+            ["reviewBody"] = string.IsNullOrWhiteSpace(r.Body) ? null : r.Body,
+        }).ToArray() : null,
         ["offers"] = new Dictionary<string, object?>
         {
             ["@type"] = "Offer",
