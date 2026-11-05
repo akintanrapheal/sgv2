@@ -1,0 +1,27 @@
+@*
+    Full-screen chrome for the campaign email builder — no Marketing sidebar/header, so the editor
+    owns the whole viewport like Retainful's drag-and-drop editor. The builder view supplies its own
+    top bar (Back / name / device / Save draft) and all body content.
+*@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>@ViewData["Title"] · Marketing</title>
+    <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
+    <link rel="icon" type="image/png" sizes="32x32" href="~/favicon-32.png" />
+    <partial name="_AccentStyle" />
+</head>
+<body class="h-full bg-neutral-100 text-neutral-900 antialiased overflow-hidden">
+    @* Secret-URL-aware base so the builder's inline fetch()/link JS resolves to the configured prefix. *@
+    <script>window.__mktBase = '/@SterlingLams.Web.Infrastructure.StaffPaths.Marketing';</script>
+
+    @RenderBody()
+
+    <script src="~/js/app.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+    <partial name="_NumberInputGuard" />
+</body>
+</html>

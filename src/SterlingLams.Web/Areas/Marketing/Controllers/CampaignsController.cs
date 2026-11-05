@@ -13,13 +13,15 @@ public class CampaignsController : MarketingAreaController
     private readonly ApplicationDbContext _db;
     private readonly IMarketingService _marketing;
     private readonly IMarketingAttributionService _attribution;
+    private readonly IImageStorageService _imageStorage;
 
     public CampaignsController(ApplicationDbContext db, IMarketingService marketing,
-        IMarketingAttributionService attribution)
+        IMarketingAttributionService attribution, IImageStorageService imageStorage)
     {
         _db = db;
         _marketing = marketing;
         _attribution = attribution;
+        _imageStorage = imageStorage;
     }
 
     public async Task<IActionResult> Index(int page = 1)
@@ -69,6 +71,60 @@ public class CampaignsController : MarketingAreaController
 
     private async Task LoadSegmentsAsync() =>
         ViewBag.Segments = await _db.Segments.AsNoTracking().OrderBy(s => s.Name).ToListAsync();
+
+    // ─────────────────────── Image library ("Asset Manager") ───────────────────────
+    // The email builder's image blocks upload here and pick from the reusable library below,
+    // so a photo used once can be reused in any later campaign without re-uploading.
+
+    /// <summary>Uploads one image into the shared store and records it in the library.</summary>
+    [HttpPost, ValidateAntiForgeryToken]
+    [RequestSizeLimit(12 * 1024 * 1024)]
+    public async Task<IActionResult> UploadAsset(IFormFile file)
+    {
+        var invalid = ImageUploadRules.Validate(file);
+        if (invalid != null) return BadRequest(new { error = invalid });
+
+        var url = await _imageStorage.UploadAsync(file, "marketing");
+        if (url == null) return BadRequest(new { error = "Upload failed. Please try again." });
+
+        var asset = new MarketingAsset
+        {
+            Url = url,
+            FileName = Path.GetFileName(file.FileName),
+            SizeBytes = file.Length,
+            ContentType = file.ContentType,
+            CreatedByUserId = User.FindFirstValue(ClaimTypes.NameIdentifier),
+        };
+        _db.MarketingAssets.Add(asset);
+        await _db.SaveChangesAsync();
+        return Ok(new { id = asset.Id, url = asset.Url, fileName = asset.FileName });
+    }
+
+    /// <summary>Lists library images, newest first, for the Asset Manager grid ("Load more").</summary>
+    [HttpGet]
+    public async Task<IActionResult> Assets(int skip = 0, int take = 40)
+    {
+        if (skip < 0) skip = 0;
+        take = Math.Clamp(take, 1, 100);
+        var total = await _db.MarketingAssets.CountAsync();
+        var items = await _db.MarketingAssets.AsNoTracking()
+            .OrderByDescending(a => a.CreatedAt)
+            .Skip(skip).Take(take)
+            .Select(a => new { a.Id, a.Url, a.FileName })
+            .ToListAsync();
+        return Ok(new { total, items });
+    }
+
+    /// <summary>Removes an image from the library (does not delete the stored file).</summary>
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteAsset(int id)
+    {
+        var asset = await _db.MarketingAssets.FindAsync(id);
+        if (asset == null) return NotFound();
+        _db.MarketingAssets.Remove(asset);
+        await _db.SaveChangesAsync();
+        return Ok(new { ok = true });
+    }
 
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Save(Campaign vm)
