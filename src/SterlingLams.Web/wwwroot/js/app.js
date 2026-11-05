@@ -35,6 +35,68 @@
     }, true);
 })();
 
+// ─── SGBusy: shared loading/busy state for in-place AJAX actions ───────────
+// Full-page navigations already get the page-loader above. This covers buttons that fire a fetch
+// and STAY on the page (add-to-cart, subscribe, "preview" actions, uploads) with one consistent
+// inline spinner, so every async action feels responsive instead of dead-clicking.
+//   SGBusy.start(btn[, label])  → spinner + disabled, width locked (no layout shift)
+//   SGBusy.stop(btn)            → restores the original content
+//   SGBusy.run(btn, fnOrPromise[, label]) → start, await, stop (always) — returns the promise
+// A button can also declare its busy caption with data-busy-label="Saving…".
+// Self-contained: injects its own CSS (app.css is a compiled/purged Tailwind build), so it works on
+// every layout that loads app.js without a CSS rebuild.
+window.SGBusy = (function () {
+    var injected = false;
+    function injectCss() {
+        if (injected) return; injected = true;
+        var s = document.createElement('style');
+        s.textContent =
+            '.sg-spinner{display:inline-block;width:1em;height:1em;border:2px solid currentColor;' +
+            'border-right-color:transparent;border-radius:50%;animation:sg-spin .6s linear infinite;' +
+            'vertical-align:-0.15em;box-sizing:border-box}' +
+            '.sg-busy-label{margin-left:.5em}' +
+            '.sg-is-busy{opacity:.7;cursor:default}' +
+            '.sg-is-busy[aria-busy="true"]{pointer-events:none}' +
+            '@keyframes sg-spin{to{transform:rotate(360deg)}}' +
+            '@media (prefers-reduced-motion:reduce){.sg-spinner{animation-duration:1.4s}}';
+        (document.head || document.documentElement).appendChild(s);
+    }
+    function start(el, label) {
+        if (!el || el.getAttribute('data-sg-busy') === '1') return;
+        injectCss();
+        el.setAttribute('data-sg-busy', '1');
+        el.setAttribute('data-sg-html', el.innerHTML);
+        var w = el.offsetWidth; if (w) el.style.minWidth = w + 'px';
+        el.setAttribute('aria-busy', 'true');
+        el.classList.add('sg-is-busy');
+        if ('disabled' in el) el.disabled = true;
+        var lbl = (label != null) ? label : (el.getAttribute('data-busy-label') || '');
+        el.innerHTML = '<span class="sg-spinner"></span>' +
+            (lbl ? '<span class="sg-busy-label">' + lbl + '</span>' : '');
+    }
+    function stop(el) {
+        if (!el || el.getAttribute('data-sg-busy') !== '1') return;
+        el.innerHTML = el.getAttribute('data-sg-html') || '';
+        el.classList.remove('sg-is-busy');
+        el.removeAttribute('aria-busy');
+        el.style.minWidth = '';
+        if ('disabled' in el) el.disabled = false;
+        el.removeAttribute('data-sg-busy');
+        el.removeAttribute('data-sg-html');
+    }
+    function run(el, work, label) {
+        start(el, label);
+        var p;
+        try { p = (typeof work === 'function') ? work() : work; }
+        catch (e) { stop(el); return Promise.reject(e); }
+        return Promise.resolve(p).then(
+            function (v) { stop(el); return v; },
+            function (e) { stop(el); throw e; }
+        );
+    }
+    return { start: start, stop: stop, run: run };
+})();
+
 // ─── Broken-image fallback ────────────────────────────────────────────────
 // Any product image that fails to load (missing/404, e.g. a product with no image yet, or a
 // stale cart-drawer thumbnail) is swapped to a tasteful "Image coming soon" placeholder instead
@@ -324,7 +386,7 @@ document.querySelectorAll('.add-to-bag-quick').forEach(btn => {
 // Shared add-to-bag — used by the hover icon, the card "Add to Cart" button and the popup.
 async function addToBag(productId, variantId, qty, btn) {
     const token = await SiteHeader.ensureToken();
-    if (btn) btn.disabled = true;
+    if (btn) SGBusy.start(btn);
     try {
         const body = new URLSearchParams({ productId, quantity: qty || 1, __RequestVerificationToken: token });
         if (variantId) body.append('variantId', variantId);
@@ -364,7 +426,7 @@ async function addToBag(productId, variantId, qty, btn) {
         console.error('Add to bag failed', err);
         showToast('Sorry, we couldn’t add this to your bag.');
     } finally {
-        if (btn) btn.disabled = false;
+        if (btn) SGBusy.stop(btn);
     }
     return false;
 }
@@ -820,7 +882,7 @@ function bindProductCards(root) {
         e.preventDefault();
         const email = (pop.querySelector('[data-welcome-email]').value || '').trim();
         const btn = form.querySelector('button[type=submit]');
-        btn.disabled = true; if (msg) msg.textContent = '';
+        SGBusy.start(btn, 'Sending…'); if (msg) msg.textContent = '';
         try {
             const tok = pop.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
             const res = await fetch('/Home/WelcomeOffer', {
@@ -844,11 +906,11 @@ function bindProductCards(root) {
             } else if (msg) {
                 msg.textContent = data.message;
                 msg.className = 'text-xs text-center mt-3 text-red-500';
-                btn.disabled = false;
+                SGBusy.stop(btn);
             }
         } catch {
             if (msg) { msg.textContent = 'Something went wrong. Please try again.'; msg.className = 'text-xs text-center mt-3 text-red-500'; }
-            btn.disabled = false;
+            SGBusy.stop(btn);
         }
     });
 }());

@@ -737,8 +737,10 @@
         var fd = new FormData(document.getElementById('campaign-form'));
         var out = document.getElementById('count-out');
         out.classList.remove('hidden'); out.textContent = 'Counting…';
+        if (window.SGBusy) SGBusy.start(this, 'Counting…');
         try { var res = await fetch(window.__mktBase + '/Campaigns/Count', { method:'POST', body:fd }); var data = await res.json(); out.textContent = (data.count ?? 0).toLocaleString() + ' recipient(s)'; }
         catch (x) { out.textContent = 'Could not estimate.'; }
+        finally { if (window.SGBusy) SGBusy.stop(this); }
     });
 
     // keep layout posted on submit
