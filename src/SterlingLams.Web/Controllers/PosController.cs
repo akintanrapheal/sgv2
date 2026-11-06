@@ -1908,7 +1908,21 @@ public class PosController : Controller
             packedBy = o.PackedByName,
             pickupNotified = o.FulfillmentType == FulfillmentType.StorePickup && o.PickupReadyEmailedAt != null,
             pickupStore = o.PickupStore != null ? o.PickupStore.Name : null,
-            customer = new { name = (o.User.FirstName + " " + o.User.LastName).Trim(), phone = o.User.PhoneNumber, email = o.User.Email },
+            // The real buyer for THIS order, not the signed-in account. When customer care places an order
+            // under a shared shell account (e.g. websiteorders@…), o.User is that shell, so the till must
+            // prefer the per-order contact snapshot, then the delivery recipient, then the account. Mirrors
+            // Admin OrdersController and the order emails. (No per-order contact email is captured yet, so
+            // email still falls back to the account.)
+            customer = new
+            {
+                name = !string.IsNullOrWhiteSpace(o.ContactName) ? o.ContactName!.Trim()
+                       : !string.IsNullOrWhiteSpace(a?.FullName) ? a!.FullName!.Trim()
+                       : (o.User.FirstName + " " + o.User.LastName).Trim(),
+                phone = !string.IsNullOrWhiteSpace(o.ContactPhone) ? o.ContactPhone!.Trim()
+                        : !string.IsNullOrWhiteSpace(a?.Phone) ? a!.Phone
+                        : o.User.PhoneNumber,
+                email = o.User.Email
+            },
             address = a == null ? null : new { a.FullName, a.Line1, a.Line2, a.City, a.State, a.Country, a.Phone, a.PostalCode },
             note = o.Notes,
             subtotal = o.Subtotal,
