@@ -39,6 +39,20 @@
 
         @if (is404)
         {
+            <!-- Search box: rescues a shopper who landed here from a dead/retired product link (e.g. an old
+                 WooCommerce URL for an item that wasn't migrated) so they can find it under its new name.
+                 The page itself stays an honest 404 (noindex above) — we intentionally do NOT redirect dead
+                 product URLs to a 200 search page, which Google treats as a soft 404 and de-indexes. -->
+            <form asp-controller="Products" asp-action="Index" method="get" class="mt-12 max-w-md mx-auto">
+                <p class="text-[11px] tracking-[0.3em] uppercase text-neutral-400 mb-4">Search the collection</p>
+                <div class="flex items-stretch border border-neutral-300 bg-white">
+                    <label for="nf-search" class="sr-only">Search the collection</label>
+                    <input id="nf-search" type="search" name="Search" autocomplete="off" placeholder="Find a piece…"
+                           class="flex-1 px-4 py-3 text-sm text-neutral-800 bg-transparent focus:outline-none" />
+                    <button type="submit" class="px-6 text-xs tracking-widest uppercase text-white bg-neutral-900 hover:bg-black transition-colors">Search</button>
+                </div>
+            </form>
+
             <div class="mt-14 pt-8 border-t border-neutral-200/70">
                 <p class="text-[11px] tracking-[0.3em] uppercase text-neutral-400 mb-4">Popular</p>
                 <div class="flex flex-wrap gap-2 justify-center">
