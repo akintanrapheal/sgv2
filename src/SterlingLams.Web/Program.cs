@@ -67,6 +67,16 @@ if (!string.IsNullOrWhiteSpace(sentryDsn))
         // Don't capture request bodies (they can carry PII / payment data).
         o.MaxRequestBodySize = Sentry.Extensibility.RequestSize.None;
         o.SendDefaultPii = false;
+
+        // Sentry auto-captures failed outbound HTTP requests (SentryHttpFailedRequestHandler). Keep that
+        // for real dependencies (Paystack etc.), but exclude the Zephiel showcase integration: its pings
+        // are decorative telemetry — ZephielClient is best-effort and already swallows every failure — so
+        // a 5xx/429 there is a non-event, yet Sentry was logging thousands of handled 503s and drowning
+        // real errors. FailedRequestTargets is an allow-list matched against the outbound URL inside the
+        // handler (no HttpContext needed), so replace the default ".*" with "everything except zephiel".
+        o.FailedRequestTargets.Clear();
+        o.FailedRequestTargets.Add(new System.Text.RegularExpressions.Regex(
+            "^(?!.*zephiel).*$", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
     });
 }
 
