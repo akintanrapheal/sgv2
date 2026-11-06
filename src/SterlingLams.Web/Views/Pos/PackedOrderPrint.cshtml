@@ -89,9 +89,20 @@
             <div class="dash"></div>
         }
 
+        @{
+            // Real buyer for THIS order, not the signed-in account: per-order contact snapshot first (set
+            // when customer care places an order under a shared shell account), then the delivery recipient,
+            // then the account. Matches the till detail, Admin and the order emails.
+            var custName = !string.IsNullOrWhiteSpace(Model.ContactName) ? Model.ContactName!.Trim()
+                           : !string.IsNullOrWhiteSpace(a?.FullName) ? a!.FullName!.Trim()
+                           : (Model.User?.FullName ?? "Customer");
+            var custPhone = !string.IsNullOrWhiteSpace(Model.ContactPhone) ? Model.ContactPhone!.Trim()
+                            : !string.IsNullOrWhiteSpace(a?.Phone) ? a!.Phone
+                            : Model.User?.PhoneNumber;
+        }
         <div class="lbl">Customer</div>
-        <div>@(Model.User?.FullName ?? "Customer")</div>
-        @if (!string.IsNullOrWhiteSpace(Model.User?.PhoneNumber)) { <div>@Model.User!.PhoneNumber</div> }
+        <div>@custName</div>
+        @if (!string.IsNullOrWhiteSpace(custPhone)) { <div>@custPhone</div> }
 
         @if (isPickup)
         {
