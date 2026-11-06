@@ -51,7 +51,12 @@ public class PaystackPaymentService : IPaymentService
             {
                 email = request.CustomerEmail,
                 amount = (int)(request.Amount * 100), // Paystack uses kobo
-                reference = $"SL-{request.OrderNumber}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
+                // Reference must be unique per init attempt. Seconds resolution alone collided when a
+                // customer double-submitted within the same second (common on mobile / in-app browsers),
+                // making Paystack reject the retry with "Duplicate Transaction Reference" and blocking the
+                // payment. Millisecond timestamp + a short random suffix guarantees uniqueness even on a
+                // same-millisecond double-POST. Still prefixed with the order number so it's traceable.
+                reference = $"SL-{request.OrderNumber}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}-{Guid.NewGuid().ToString("N")[..8]}",
                 currency = request.Currency,
                 callback_url = request.CallbackUrl,
                 metadata = new
