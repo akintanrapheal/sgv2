@@ -3,9 +3,12 @@
 # The old WooCommerce URLs (/shop, /product/…, /product-category/…) are STILL in Google's index and
 # carry the site's ranking. They now 301-redirect to the new catalogue, so we MUST let crawlers reach
 # them — a redirect is cheap (no DB hit) and is how the old pages' ranking transfers to the new ones.
-# Blocking them here previously stopped Google from seeing those redirects, which cost rankings.
+# Blocking them here previously stopped Google from seeing those redirects, which cost rankings (#384).
 #
-# We still block non-indexable app pages (cart/checkout/account) and dead "add to cart" action links.
+# We still block non-indexable app pages (cart/checkout/account/wishlist) + JSON endpoints + dead
+# "add to cart" action links. Staff paths (/Admin, /Inventory, /Marketing, /Pos) are deliberately NOT
+# listed: "Disallow" advertises a path rather than protecting it, and those already sit behind auth + a
+# secret prefix. Never add StaffPaths.* here.
 #
 # NOTE: we deliberately do NOT block the old WooCommerce faceted params (filter_color / min_price /
 # max_price / per_page / shop_view). Those appear ONLY on old /shop + /product-category/ URLs, which now
@@ -13,9 +16,20 @@
 # as "Soft 404". The NEW storefront uses different param names (category / minPrice), which canonicalise to
 # the clean page, so leaving these unblocked opens no crawl trap.
 User-agent: *
+# robots.txt path matching is CASE-SENSITIVE. The app's links are capitalised (/Cart, /Checkout,
+# /Account, /Wishlist), so those are what crawlers actually see — list them; the lower-case variants
+# cover any old or hand-typed URLs. All of these are login-gated or app-only (never indexable content),
+# so blocking them only trims crawl budget and never risks a real page.
+Disallow: /Cart
 Disallow: /cart
+Disallow: /Checkout
 Disallow: /checkout
+Disallow: /Account
 Disallow: /account
+Disallow: /Wishlist
+Disallow: /wishlist
+# Live-search + quick-view JSON endpoints — data, not pages.
+Disallow: /api/
 # Old WooCommerce "add to cart" action links (often tagged with utm_/gclid/fbclid from past ads) —
 # not real pages, so keep them out of the index and off the crawl budget. The real content URLs
 # (/product/… and /product-category/…) carry no add-to-cart param, so they stay crawlable + redirect.
