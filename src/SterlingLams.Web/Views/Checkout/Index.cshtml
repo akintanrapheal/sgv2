@@ -475,6 +475,15 @@
         window.dataLayer.push({ ecommerce: null });
         window.dataLayer.push({ event: 'begin_checkout', ecommerce: { currency: 'NGN', value: v, items: items } });
         if (window.gtag) gtag('event', 'begin_checkout', { currency: 'NGN', value: v, items: items });
+        // Meta Pixel InitiateCheckout — cart-abandoner retargeting + "started checkout" ad optimisation.
+        // Reuses the same items/value as GA4; no-ops unless the pixel is loaded.
+        if (window.fbq) fbq('track', 'InitiateCheckout', {
+            value: Number(v), currency: 'NGN',
+            num_items: items.reduce(function (s, it) { return s + (Number(it.quantity) || 0); }, 0),
+            content_type: 'product',
+            content_ids: items.map(function (it) { return String(it.item_id); }),
+            contents: items.map(function (it) { return { id: String(it.item_id), quantity: Number(it.quantity) || 1, item_price: Number(it.price) || undefined }; })
+        });
         sessionStorage.setItem(key, '1');
     } catch (e) { /* analytics must never break checkout */ }
 })();

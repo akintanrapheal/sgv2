@@ -821,6 +821,13 @@
         window.dataLayer.push({ ecommerce: null });
         window.dataLayer.push({ event: 'view_item', ecommerce: { currency: 'NGN', value: v, items: items } });
         if (window.gtag) gtag('event', 'view_item', { currency: 'NGN', value: v, items: items });
+        // Meta Pixel ViewContent — product-level retargeting + Dynamic Product Ads. Same value as GA4.
+        // No-ops unless the pixel is loaded (window.fbq).
+        if (window.fbq) fbq('track', 'ViewContent', {
+            content_ids: ['@Model.Id'], content_type: 'product',
+            content_name: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Name)),
+            value: Number(v), currency: 'NGN'
+        });
     } catch (e) { /* analytics must never break the product page */ }
 })();
 </script>
@@ -1136,6 +1143,15 @@
             const data = res.ok ? await res.json().catch(() => null) : null;
             if (data && data.success) {
                 updateCartBadge(data.cartCount);
+                // Meta Pixel AddToCart — builds the "added but didn't buy" retargeting audience.
+                if (window.fbq) {
+                    var _fbP = Number(data.price) || 0, _fbQ = Number(qty) || 1;
+                    fbq('track', 'AddToCart', {
+                        content_ids: [String(productId)], content_type: 'product',
+                        contents: [{ id: String(productId), quantity: _fbQ, item_price: _fbP || undefined }],
+                        value: _fbP * _fbQ, currency: 'NGN'
+                    });
+                }
                 // Slide open the bag (desktop + mobile). It shows the real saved quantity — which the
                 // server caps to stock — so it never claims more than was actually added. Toast is a
                 // fallback only if the drawer module didn't load.
