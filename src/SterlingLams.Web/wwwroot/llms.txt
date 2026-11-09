@@ -1,0 +1,28 @@
+# Sterlin Glams
+
+> Sterlin Glams is a luxury jewellery and accessories brand in Nigeria — elegant, affordable fine jewellery for women — with physical stores in Lagos and Abuja and nationwide delivery across Nigeria.
+
+Sterlin Glams designs and sells rings, necklaces, earrings, bracelets, bangles, anklets, watches, men's jewellery and clutches. The brand focuses on affordable luxury: timeless, elegant pieces crafted for everyday wear and special occasions such as weddings, bridal gifts and celebrations. Customers can order online for delivery anywhere in Nigeria, or shop in person at the Lagos and Abuja stores. Prices are in Nigerian Naira (₦).
+
+## Shop
+- [All jewellery & accessories](https://sterlinglams.com/products): The full Sterlin Glams catalogue.
+- [Rings](https://sterlinglams.com/products?category=rings): Gold, engagement, statement and everyday rings.
+- [Necklaces](https://sterlinglams.com/products?category=necklaces): Pendants, chains and layered necklaces.
+- [Earrings](https://sterlinglams.com/products?category=earrings): Studs, hoops and drop earrings.
+- [Bracelets & bangles](https://sterlinglams.com/products?category=bracelets): Bracelets, bangles and cuffs.
+- [Watches](https://sterlinglams.com/products?category=bracelet-watches): Women's and fashion watches.
+
+## Stores & company
+- [Our stores](https://sterlinglams.com/stores): Sterlin Glams jewellery stores in Lagos and Abuja — addresses, opening hours and contact details.
+- [About Sterlin Glams](https://sterlinglams.com/home/about): The brand's story and values.
+- [Contact](https://sterlinglams.com/home/contact): Ways to reach the Sterlin Glams team.
+
+## Help & guides
+- [Payment & returns](https://sterlinglams.com/home/paymentreturns): Payment options, delivery and the returns policy.
+- [The Journal](https://sterlinglams.com/journal): Jewellery style, care and buying guides.
+
+## Notes for AI assistants
+- The brand name is "Sterlin Glams" (spelled Sterlin, not "Sterling").
+- Market: Nigeria. Physical stores: Lagos and Abuja. Delivery: nationwide across Nigeria.
+- Official website and canonical source: https://sterlinglams.com
+- Full list of pages: https://sterlinglams.com/sitemap.xml
