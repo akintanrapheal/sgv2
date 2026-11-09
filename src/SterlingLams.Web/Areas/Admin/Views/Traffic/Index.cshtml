@@ -64,6 +64,41 @@
     </div>
 </div>
 
+@* ─── Conversions: how many visitors turned into paid online orders ──────────── *@
+<div class="flex items-center justify-between mb-3">
+    <h2 class="text-sm font-semibold text-neutral-800">Conversions</h2>
+    <span class="text-[11px] text-neutral-400">Paid online orders · revenue in ₦ · times in WAT</span>
+</div>
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div class="bg-white border border-neutral-200 rounded-lg p-5">
+        <div class="text-xs uppercase tracking-wide text-neutral-400">Orders · @Model.Days days</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">@Model.TotalOrders.ToString("N0")</div>
+        <div class="text-[11px] text-neutral-400 mt-0.5">@Model.TodayOrders.ToString("N0") today</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-lg p-5">
+        <div class="text-xs uppercase tracking-wide text-neutral-400">Conversion rate</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">@Model.ConversionRate.ToString("0.0")%</div>
+        <div class="text-[11px] text-neutral-400 mt-0.5">orders ÷ @Model.HumanVisitors.ToString("N0") human visitors</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-lg p-5">
+        <div class="text-xs uppercase tracking-wide text-neutral-400">Revenue · @Model.Days days</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">₦@Model.TotalRevenue.ToString("N0")</div>
+        <div class="text-[11px] text-neutral-400 mt-0.5">₦@Model.TodayRevenue.ToString("N0") today</div>
+    </div>
+    <div class="bg-white border border-neutral-200 rounded-lg p-5">
+        <div class="text-xs uppercase tracking-wide text-neutral-400">Avg order value</div>
+        <div class="text-2xl font-light text-neutral-900 mt-1">₦@Model.AvgOrderValue.ToString("N0")</div>
+    </div>
+</div>
+
+@if (Model.TotalOrders > 0)
+{
+    <div class="bg-white border border-neutral-200 rounded-lg p-5 mb-6">
+        <h2 class="text-sm font-medium text-neutral-700 mb-3">Paid online orders — last @Model.Days days</h2>
+        <canvas id="conversionsChart" height="90"></canvas>
+    </div>
+}
+
 @if (Model.TotalViews == 0)
 {
     <div class="bg-white border border-neutral-200 rounded-lg p-12 text-center">
@@ -200,6 +235,14 @@ else
                     @Html.Raw(J(Model.TopReferrers.Select(r => r.Count))), { label: 'Views' });
                 </text>
             }
+        }
+        @if (Model.TotalOrders > 0)
+        {
+            <text>
+            SLCharts.area('conversionsChart', @Html.Raw(J(Model.DayLabels)), [
+                { label: 'Orders', data: @Html.Raw(J(Model.DayOrders)) }
+            ]);
+            </text>
         }
         @if (Model.Cf?.Configured == true && Model.Cf.Stats != null)
         {

@@ -41,6 +41,9 @@ public class TrafficController : AdminBaseController
         vm.BotViews      = await qAll.CountAsync(t => t.Device == "Bot");
         vm.TotalViews    = await q.CountAsync();
         vm.TotalVisitors = await q.Select(t => t.VisitorKey).Distinct().CountAsync();
+        // Human visitors (bots never buy) — the honest denominator for the conversion rate, independent
+        // of the All/Humans toggle above.
+        vm.HumanVisitors = await qAll.Where(t => t.Device != "Bot").Select(t => t.VisitorKey).Distinct().CountAsync();
 
         // "Today" in West Africa Time (UTC+1): WAT-midnight is 23:00 UTC the day before.
         var todayStartUtc = DateTime.UtcNow.AddHours(1).Date.AddHours(-1);
@@ -48,6 +51,21 @@ public class TrafficController : AdminBaseController
         if (humanOnly) today = today.Where(t => t.Device != "Bot");
         vm.TodayViews    = await today.CountAsync();
         vm.TodayVisitors = await today.Select(t => t.VisitorKey).Distinct().CountAsync();
+
+        // ── Conversions: paid online orders in the same window (a paid order = a converted visit).
+        // Dated by payment time, UTC-day so the buckets line up with the traffic chart. Fetch PaidAt+Total
+        // and aggregate in memory (the window holds at most a few thousand online orders) to avoid any
+        // provider-specific DateTime.Date translation quirk on the nullable PaidAt.
+        var paidOnline = await _db.Orders.AsNoTracking()
+            .Where(o => o.Channel == SterlingLams.Web.Models.Domain.OrderChannel.Online
+                        && o.PaidAt != null && o.PaidAt >= start)
+            .Select(o => new { o.PaidAt, o.Total })
+            .ToListAsync();
+        vm.TotalOrders  = paidOnline.Count;
+        vm.TotalRevenue = paidOnline.Sum(o => o.Total);
+        vm.TodayOrders  = paidOnline.Count(o => o.PaidAt >= todayStartUtc);
+        vm.TodayRevenue = paidOnline.Where(o => o.PaidAt >= todayStartUtc).Sum(o => o.Total);
+        var dOrders = paidOnline.GroupBy(o => o.PaidAt!.Value.Date).ToDictionary(g => g.Key, g => g.Count());
 
         // Daily views + unique visitors (grouped in SQL by calendar day).
         var dViews = (await q.GroupBy(t => t.CreatedAt.Date)
@@ -62,6 +80,7 @@ public class TrafficController : AdminBaseController
             vm.DayLabels.Add(d.ToString("dd MMM"));
             vm.DayViews.Add(dViews.GetValueOrDefault(d));
             vm.DayVisitors.Add(dVisitors.GetValueOrDefault(d));
+            vm.DayOrders.Add(dOrders.GetValueOrDefault(d));
         }
 
         vm.TopPages = (await q.GroupBy(t => t.Path).Select(g => new { g.Key, C = g.Count() })
@@ -124,11 +143,20 @@ public class TrafficController : AdminBaseController
         public int BotViews { get; set; }
         public int TotalViews { get; set; }
         public int TotalVisitors { get; set; }
+        public int HumanVisitors { get; set; }
         public int TodayViews { get; set; }
         public int TodayVisitors { get; set; }
+        // Conversions = paid online orders in the window.
+        public int TotalOrders { get; set; }
+        public decimal TotalRevenue { get; set; }
+        public int TodayOrders { get; set; }
+        public decimal TodayRevenue { get; set; }
+        public decimal ConversionRate => HumanVisitors > 0 ? (decimal)TotalOrders / HumanVisitors * 100m : 0m;
+        public decimal AvgOrderValue => TotalOrders > 0 ? TotalRevenue / TotalOrders : 0m;
         public List<string> DayLabels { get; } = new();
         public List<int> DayViews { get; } = new();
         public List<int> DayVisitors { get; } = new();
+        public List<int> DayOrders { get; } = new();
         public List<NameCount> TopPages { get; set; } = new();
         public List<NameCount> TopReferrers { get; set; } = new();
         public List<NameCount> Devices { get; set; } = new();
