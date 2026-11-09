@@ -113,11 +113,14 @@ public sealed class MetaConversionsApi : IMetaConversionsApi
             var payload = BuildPurchase(order, http, testCode);
             var json = JsonSerializer.Serialize(payload);
 
-            // The token goes in the body, not the query string, so it can't be captured by proxy or
-            // request logging that records URLs.
+            // Authenticate with the access token as a Bearer header (same as ValidateAsync) — this keeps
+            // it out of the URL/query string, so it can't be captured by proxy or request logging. It is
+            // REQUIRED: Graph rejects every event without it, so a missing token here meant no server-side
+            // Purchase ever landed, however many were sent.
             using var content = new StringContent(json, Encoding.UTF8, "application/json");
             using var req = new HttpRequestMessage(HttpMethod.Post,
                 $"{GraphVersion}/{pixel}/events") { Content = content };
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
             using var resp = await _http.SendAsync(req, ct);
             if (!resp.IsSuccessStatusCode)
