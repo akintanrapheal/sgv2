@@ -6,7 +6,9 @@ using SterlingLams.Web.Data;
 
 namespace SterlingLams.Web.Controllers;
 
-/// <summary>Serves /robots.txt and a dynamic /sitemap.xml for search engines.</summary>
+/// <summary>Serves a dynamic /sitemap.xml for search engines. robots.txt is the static
+/// wwwroot/robots.txt — static files are served before MVC, so a controller route for it would be dead
+/// (and the static file carries the WooCommerce-redirect crawl rules; keep the two from diverging).</summary>
 public class SeoController : Controller
 {
     private readonly ApplicationDbContext _db;
@@ -15,21 +17,6 @@ public class SeoController : Controller
     // The one fixed canonical origin (apex), so sitemap/robots URLs match the pages' canonical tags
     // regardless of which host served the request (see Infrastructure/SeoUrl).
     private static string BaseUrl => SterlingLams.Web.Infrastructure.SeoUrl.Base;
-
-    [HttpGet("/robots.txt")]
-    public IActionResult Robots()
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine("User-agent: *");
-        // Only list customer areas that waste crawl budget. Staff paths are deliberately NOT listed:
-        // "Disallow" publicly advertises a path rather than protecting it, and the backends already
-        // sit behind auth (and optionally a secret prefix). Never add StaffPaths.* here.
-        foreach (var path in new[] { "/Checkout", "/Cart", "/Account", "/Wishlist", "/api/" })
-            sb.AppendLine($"Disallow: {path}");
-        sb.AppendLine();
-        sb.AppendLine($"Sitemap: {BaseUrl}/sitemap.xml");
-        return Content(sb.ToString(), "text/plain", Encoding.UTF8);
-    }
 
     [HttpGet("/sitemap.xml")]
     public async Task<IActionResult> Sitemap()
