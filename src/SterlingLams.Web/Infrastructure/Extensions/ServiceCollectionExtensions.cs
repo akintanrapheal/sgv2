@@ -82,6 +82,10 @@ public static class ServiceCollectionExtensions
             c.BaseAddress = new Uri("https://graph.facebook.com/");
             c.Timeout = TimeSpan.FromSeconds(10);
         });
+        // Fire-and-forget sender for mid-funnel CAPI events (AddToCart, InitiateCheckout), so the
+        // storefront never waits on Graph. Singleton: it opens its own DI scope per event.
+        services.AddSingleton<SterlingLams.Web.Services.Marketing.IMetaCapiDispatcher,
+                              SterlingLams.Web.Services.Marketing.MetaCapiDispatcher>();
 
         // PostHog reverse proxy (/ingest → PostHog EU/US). Passes bytes straight through, so
         // decompression is OFF (we forward Content-Encoding as-is) and redirects are not auto-followed.

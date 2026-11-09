@@ -41,6 +41,7 @@ public class CheckoutController : Controller
     private readonly SterlingLams.Web.Services.IStorefrontIssueLogger _issues;
     private readonly IDataProtector _confirmTokenProtector;
     private readonly IDataProtectionProvider _dataProtection;
+    private readonly SterlingLams.Web.Services.Marketing.IMetaCapiDispatcher _capi;
 
     public CheckoutController(
         ApplicationDbContext db,
@@ -67,7 +68,8 @@ public class CheckoutController : Controller
         SterlingLams.Web.Services.IRetainfulClient retainful,
         SterlingLams.Web.Services.IRetainfulOrderNotifier retainfulEvents,
         SterlingLams.Web.Services.IOrderNotificationService orderNotifications,
-        SterlingLams.Web.Services.IStorefrontIssueLogger issues)
+        SterlingLams.Web.Services.IStorefrontIssueLogger issues,
+        SterlingLams.Web.Services.Marketing.IMetaCapiDispatcher capi)
     {
         _db = db;
         _payment = payment;
@@ -93,6 +95,7 @@ public class CheckoutController : Controller
         _retainfulEvents = retainfulEvents;
         _orderNotifications = orderNotifications;
         _issues = issues;
+        _capi = capi;
         _confirmTokenProtector = dataProtection.CreateProtector("Checkout.Confirmation.v1");
         _dataProtection = dataProtection;
     }
@@ -270,6 +273,26 @@ public class CheckoutController : Controller
             ViewBag.IsCareOperator = (await _userManager.GetRolesAsync(user)).Count > 0
                 || (careEmail.Length > 0 && string.Equals(user.Email, careEmail, StringComparison.OrdinalIgnoreCase));
         }
+
+        // Server-side InitiateCheckout (Meta CAPI) — reaches Meta even when the browser pixel is blocked.
+        // The event id is stable for this visitor + cart (fbp/user + subtotal + item count), so a
+        // validation-error reload with the same bag doesn't double-count, and the view fires the browser
+        // pixel with the SAME id (ViewData) so Meta merges the two copies. Fire-and-forget.
+        var icItemCount = cart.Items.Sum(i => i.Quantity);
+        var icVisitor = HttpContext.Request.Cookies["_fbp"] ?? user?.Id ?? "anon";
+        var metaCheckoutEventId = $"ic-{icVisitor}-{(long)cart.Subtotal}-{icItemCount}";
+        ViewData["MetaCheckoutEventId"] = metaCheckoutEventId;
+        _capi.Dispatch("InitiateCheckout", metaCheckoutEventId,
+            SterlingLams.Web.Services.Marketing.MetaConversionsApi.ContextFrom(HttpContext, user?.Email, user?.PhoneNumber),
+            new
+            {
+                currency = "NGN",
+                value = cart.Subtotal,
+                content_type = "product",
+                num_items = icItemCount,
+                content_ids = cart.Items.Select(i => i.ProductId.ToString()).Distinct().ToArray(),
+                contents = cart.Items.Select(i => new { id = i.ProductId.ToString(), quantity = i.Quantity, item_price = i.UnitPrice }).ToArray()
+            });
 
         return View(vm);
     }

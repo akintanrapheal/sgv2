@@ -419,12 +419,13 @@ async function addToBag(productId, variantId, qty, btn) {
                 window.gtag('event', 'add_to_cart', { currency: 'NGN', value: _acValue, items: _acItems });
             }
             // Meta Pixel AddToCart — builds the "added but didn't buy" retargeting audience. Same value as GA4.
+            // eventID ties it to the server-side CAPI copy (data.metaEventId) so Meta counts it once.
             if (window.fbq) {
                 window.fbq('track', 'AddToCart', {
                     content_ids: [String(productId)], content_type: 'product',
                     contents: [{ id: String(productId), quantity: Number(qty) || 1, item_price: Number(data.price) || undefined }],
                     value: _acValue, currency: 'NGN'
-                });
+                }, data.metaEventId ? { eventID: data.metaEventId } : undefined);
             }
             if (window.SGCart) { window.SGCart.open(); } else { showToast('Added to bag'); }
             return true;

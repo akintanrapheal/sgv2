@@ -1144,13 +1144,14 @@
             if (data && data.success) {
                 updateCartBadge(data.cartCount);
                 // Meta Pixel AddToCart — builds the "added but didn't buy" retargeting audience.
+                // eventID ties it to the server-side CAPI copy (data.metaEventId) so Meta counts it once.
                 if (window.fbq) {
                     var _fbP = Number(data.price) || 0, _fbQ = Number(qty) || 1;
                     fbq('track', 'AddToCart', {
                         content_ids: [String(productId)], content_type: 'product',
                         contents: [{ id: String(productId), quantity: _fbQ, item_price: _fbP || undefined }],
                         value: _fbP * _fbQ, currency: 'NGN'
-                    });
+                    }, data.metaEventId ? { eventID: data.metaEventId } : undefined);
                 }
                 // Slide open the bag (desktop + mobile). It shows the real saved quantity — which the
                 // server caps to stock — so it never claims more than was actually added. Toast is a

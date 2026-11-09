@@ -32,6 +32,24 @@ public interface IMetaConversionsApi
     /// it records no event.
     /// </summary>
     Task<(bool Ok, string Message)> ValidateAsync(CancellationToken ct = default);
+
+    /// <summary>Reports a non-purchase funnel event (AddToCart, InitiateCheckout) server-side, carrying the
+    /// same event id the browser pixel sends so Meta deduplicates. Best-effort; never throws.</summary>
+    Task SendEventAsync(string eventName, string eventId, MetaEventContext ctx, object customData, CancellationToken ct = default);
+}
+
+/// <summary>Everything a server-side funnel event needs about the visitor, captured from the request
+/// synchronously so it can be sent on a background task after the response (when HttpContext is gone).</summary>
+public sealed record MetaEventContext
+{
+    public string? ClientIp { get; init; }
+    public string? UserAgent { get; init; }
+    public string? Fbp { get; init; }
+    public string? Fbc { get; init; }
+    public string SourceUrl { get; init; } = "";
+    public string? Email { get; init; }
+    public string? Phone { get; init; }
+    public string? UserId { get; init; }
 }
 
 public sealed class MetaConversionsApi : IMetaConversionsApi
@@ -111,32 +129,90 @@ public sealed class MetaConversionsApi : IMetaConversionsApi
             if (order.Total <= 0) return;
 
             var payload = BuildPurchase(order, http, testCode);
-            var json = JsonSerializer.Serialize(payload);
-
-            // Authenticate with the access token as a Bearer header (same as ValidateAsync) — this keeps
-            // it out of the URL/query string, so it can't be captured by proxy or request logging. It is
-            // REQUIRED: Graph rejects every event without it, so a missing token here meant no server-side
-            // Purchase ever landed, however many were sent.
-            using var content = new StringContent(json, Encoding.UTF8, "application/json");
-            using var req = new HttpRequestMessage(HttpMethod.Post,
-                $"{GraphVersion}/{pixel}/events") { Content = content };
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-
-            using var resp = await _http.SendAsync(req, ct);
-            if (!resp.IsSuccessStatusCode)
-            {
-                // Meta returns a JSON error describing what it rejected. It echoes no access token and
-                // no raw PII (we only ever send hashes), so it is safe to log and is the only way to
-                // diagnose a rejected event.
-                var body = await resp.Content.ReadAsStringAsync(ct);
-                _logger.LogWarning("Meta CAPI purchase for {OrderNumber} rejected ({Status}): {Body}",
-                    order.OrderNumber, (int)resp.StatusCode, Truncate(body, 500));
-            }
+            await PostEventsAsync(pixel, token, payload, $"purchase {order.OrderNumber}", ct);
         }
         catch (Exception ex)
         {
             // Reporting a sale must never cost the customer their confirmation page.
             _logger.LogWarning(ex, "Meta CAPI purchase for {OrderNumber} could not be sent.", order.OrderNumber);
+        }
+    }
+
+    /// <summary>Builds a visitor context from the current request, synchronously, so the event can be sent
+    /// on a background task after the response completes. Pulls external_id from the signed-in user and the
+    /// Meta cookies (_fbp/_fbc) + IP + user-agent — the match signals that work for anonymous visitors.</summary>
+    public static MetaEventContext ContextFrom(HttpContext http, string? email = null, string? phone = null) => new()
+    {
+        ClientIp = http.Connection.RemoteIpAddress?.ToString(),
+        UserAgent = http.Request.Headers.UserAgent.ToString(),
+        Fbp = http.Request.Cookies["_fbp"],
+        Fbc = http.Request.Cookies["_fbc"],
+        SourceUrl = $"{http.Request.Scheme}://{http.Request.Host}{http.Request.Path}",
+        Email = email,
+        Phone = phone,
+        UserId = http.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+    };
+
+    public async Task SendEventAsync(string eventName, string eventId, MetaEventContext ctx, object customData, CancellationToken ct = default)
+    {
+        try
+        {
+            var (on, pixel, token, testCode) = await ConfigAsync();
+            if (!on || !MetaCapi.LooksLikePixelId(pixel) || token.Length == 0) return;
+
+            var user = new Dictionary<string, object?>();
+            void Hashed(string key, string? value) { var h = MetaCapi.Hash(value); if (h != null) user[key] = new[] { h }; }
+            Hashed("em", MetaCapi.NormalizeEmail(ctx.Email));
+            Hashed("ph", MetaCapi.NormalizePhone(ctx.Phone));
+            if (!string.IsNullOrWhiteSpace(ctx.UserId))
+            {
+                var h = MetaCapi.Hash(ctx.UserId.Trim().ToLowerInvariant());
+                if (h != null) user["external_id"] = new[] { h };
+            }
+            // Sent unhashed on purpose — Meta requires these in the clear, and they are the strongest
+            // signals for tying an anonymous funnel event back to the ad click that produced it.
+            if (!string.IsNullOrWhiteSpace(ctx.ClientIp)) user["client_ip_address"] = ctx.ClientIp;
+            if (!string.IsNullOrWhiteSpace(ctx.UserAgent)) user["client_user_agent"] = ctx.UserAgent;
+            if (!string.IsNullOrWhiteSpace(ctx.Fbp)) user["fbp"] = ctx.Fbp;
+            if (!string.IsNullOrWhiteSpace(ctx.Fbc)) user["fbc"] = ctx.Fbc;
+
+            var ev = new Dictionary<string, object?>
+            {
+                ["event_name"] = eventName,
+                ["event_time"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                ["event_id"] = eventId,
+                ["event_source_url"] = ctx.SourceUrl,
+                ["action_source"] = "website",
+                ["user_data"] = user,
+                ["custom_data"] = customData
+            };
+            var body = new Dictionary<string, object?> { ["data"] = new[] { ev } };
+            if (!string.IsNullOrWhiteSpace(testCode)) body["test_event_code"] = testCode;
+
+            await PostEventsAsync(pixel, token, body, eventName, ct);
+        }
+        catch (Exception ex)
+        {
+            // A mid-funnel event is decorative telemetry — a failure must never affect the shopper.
+            _logger.LogDebug(ex, "Meta CAPI {Event} could not be sent.", eventName);
+        }
+    }
+
+    /// <summary>POSTs a Conversions API payload to Graph with the access token as a Bearer header (kept out
+    /// of the URL). Logs — never throws — on a non-success so a rejected event can be diagnosed. Centralised
+    /// so every CAPI call authenticates the same way (a missing token here once broke Purchase entirely).</summary>
+    private async Task PostEventsAsync(string pixel, string token, object body, string label, CancellationToken ct)
+    {
+        var json = JsonSerializer.Serialize(body);
+        using var content = new StringContent(json, Encoding.UTF8, "application/json");
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{GraphVersion}/{pixel}/events") { Content = content };
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        using var resp = await _http.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            // Meta's JSON error echoes no token and no raw PII (we send only hashes), so it is safe to log.
+            var rb = await resp.Content.ReadAsStringAsync(ct);
+            _logger.LogWarning("Meta CAPI {Label} rejected ({Status}): {Body}", label, (int)resp.StatusCode, Truncate(rb, 500));
         }
     }
 

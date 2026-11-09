@@ -17,10 +17,11 @@ public class CartController : Controller
     private readonly IStockService _stock;
     private readonly IAbandonedCartCapture _abandoned;
     private readonly IStorefrontIssueLogger _issues;
+    private readonly SterlingLams.Web.Services.Marketing.IMetaCapiDispatcher _capi;
 
     public CartController(ApplicationDbContext db, IDiscountService discounts,
         UserManager<ApplicationUser> userManager, IStockService stock, IAbandonedCartCapture abandoned,
-        IStorefrontIssueLogger issues)
+        IStorefrontIssueLogger issues, SterlingLams.Web.Services.Marketing.IMetaCapiDispatcher capi)
     {
         _db = db;
         _discounts = discounts;
@@ -28,6 +29,7 @@ public class CartController : Controller
         _stock = stock;
         _abandoned = abandoned;
         _issues = issues;
+        _capi = capi;
     }
 
     /// <summary>Keep a signed-in shopper's abandoned-cart snapshot in step with their live bag, so an
@@ -110,13 +112,30 @@ public class CartController : Controller
         // Name + unit price for the just-added line, so the storefront can send a GA4 add_to_cart event.
         var added = cart.Items.First(i => i.ProductId == productId && i.VariantId == variantId);
 
+        // Server-side AddToCart (Meta CAPI) — survives ad blockers / iOS; deduped against the browser pixel
+        // by the shared event id returned below. Fire-and-forget, so it never delays the add.
+        var metaEventId = "atc-" + Guid.NewGuid().ToString("N");
+        var addedQty = Math.Max(1, quantity);
+        _capi.Dispatch("AddToCart", metaEventId,
+            SterlingLams.Web.Services.Marketing.MetaConversionsApi.ContextFrom(HttpContext),
+            new
+            {
+                currency = "NGN",
+                value = added.UnitPrice * addedQty,
+                content_type = "product",
+                content_ids = new[] { productId.ToString() },
+                contents = new[] { new { id = productId.ToString(), quantity = addedQty, item_price = added.UnitPrice } },
+                num_items = addedQty
+            });
+
         return Json(new
         {
             success = true,
             cartCount = cart.TotalItems,
             subtotal = cart.FormattedSubtotal,
             name = string.IsNullOrWhiteSpace(added.VariantName) ? added.ProductName : $"{added.ProductName} — {added.VariantName}",
-            price = added.UnitPrice
+            price = added.UnitPrice,
+            metaEventId
         });
     }
 
