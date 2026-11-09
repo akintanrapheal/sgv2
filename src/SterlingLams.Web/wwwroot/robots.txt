@@ -30,6 +30,13 @@ Disallow: /Wishlist
 Disallow: /wishlist
 # Live-search + quick-view JSON endpoints — data, not pages.
 Disallow: /api/
+# Facet-combination crawl guard. color + price filters multiply into thousands of thin, duplicate /products
+# URLs and were the vector for a crawl-driven outage (#551). The self-canonical already drops these for
+# INDEXING; this stops bots CRAWLING the explosion. Only the combinatorial facets are listed — ?category=
+# (sitemap URLs), ?search=, ?sortBy= and ?page= stay crawlable, and the old Woo params stay unblocked (#384).
+Disallow: /products?*color=
+Disallow: /products?*minPrice=
+Disallow: /products?*maxPrice=
 # Old WooCommerce "add to cart" action links (often tagged with utm_/gclid/fbclid from past ads) —
 # not real pages, so keep them out of the index and off the crawl budget. The real content URLs
 # (/product/… and /product-category/…) carry no add-to-cart param, so they stay crawlable + redirect.
