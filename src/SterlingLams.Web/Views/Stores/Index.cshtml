@@ -2,6 +2,16 @@
 @inject SterlingLams.Web.Services.ISettingsService SettingsService
 @{
     ViewData["Title"] = "Our Stores";
+    // Local-SEO: name the cities we actually have stores in, derived from the live store list so it never
+    // goes stale (e.g. "Lagos & Abuja"). The per-store JewelryStore structured data below does the precise
+    // local ranking; this puts the same signal in the visible H1 + <title> + meta description.
+    var storeCities = Model.Select(s => s.City).Where(c => !string.IsNullOrWhiteSpace(c))
+        .Select(c => c!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    var cityPhrase = storeCities.Count == 0 ? "Nigeria"
+        : storeCities.Count == 1 ? storeCities[0]
+        : string.Join(", ", storeCities.Take(storeCities.Count - 1)) + " & " + storeCities[^1];
+    ViewData["TitleFull"] = $"Jewellery Stores in {cityPhrase} | Sterlin Glams";
+    ViewData["Description"] = $"Visit a Sterlin Glams jewellery store in {cityPhrase}. Shop rings, necklaces, earrings & watches in person, or order online for delivery across Nigeria.";
     // Show the minimal "Shop at Sterlin Glams / Need Help?" header on the store-locator page.
     ViewData["MinimalHeader"] = true;
     var mapStores = Model.Where(s => s.Latitude.HasValue && s.Longitude.HasValue).ToList();
@@ -85,7 +95,7 @@
     <div class="relative z-10 max-w-7xl mx-auto px-6 py-10 md:py-14">
         <div class="text-center mb-8 md:mb-12">
             <p class="section-label text-brand-500">Visit us</p>
-            <h1 class="font-cormorant text-5xl font-light">Our Stores</h1>
+            <h1 class="font-cormorant text-5xl font-light">Our Jewellery Stores in @cityPhrase</h1>
             <span class="mt-4 block mx-auto w-16 h-px bg-gradient-to-r from-transparent via-brand-400 to-transparent"></span>
         </div>
 
