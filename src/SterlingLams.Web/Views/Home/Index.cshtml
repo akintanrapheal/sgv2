@@ -3,7 +3,7 @@
 @{
     ViewData["Title"] = "Luxury Jewellery";
     ViewData["TitleFull"] = "Sterlin Glams | Elegant Jewellery in Nigeria";
-    ViewData["Description"] = "Sterlin Glams is a leading luxury jewelry and accessories brand for women of elegant style. With stores in Lagos and Abuja.";
+    ViewData["Description"] = "Sterlin Glams — luxury jewellery & accessories for elegant women in Nigeria. Shop rings, necklaces, earrings, bracelets & watches. Stores in Lagos & Abuja.";
     Layout = "_Layout";
     // Home ends on the black striped newsletter section — sit the (dark) footer flush against it,
     // so there's no cream body-gap between them. Other pages keep the footer's normal top spacing.
@@ -158,9 +158,15 @@
         }
     </div>
 
+    @* The page's real H1 — keyword-rich for SEO, visually hidden so the hero design is untouched. Kept
+       OUTSIDE #hero-copy so it is always present even when the hero's visible text is hidden per slide. *@
+    <h1 class="sr-only">Sterlin Glams — Elegant Jewellery &amp; Accessories in Nigeria</h1>
+
     <div id="hero-copy" class="relative z-10 max-w-7xl mx-auto px-6 text-center @((allHideText || (heroHideText.Count > 0 && heroHideText[0])) ? "hidden" : "")">
         <p class="text-xs tracking-[0.4em] uppercase @(hasHeroImage ? "text-brand-300" : "text-brand-500") mb-6">@heroEyebrow</p>
-        <h1 class="font-cormorant text-6xl md:text-8xl font-light @(hasHeroImage ? "text-white" : "text-neutral-900") leading-none mb-6">
+        @* Decorative hero slogan (admin-editable). Demoted from <h1> to a styled <div>: the real,
+           keyword-rich H1 for SEO is the sr-only heading above. Visual appearance is unchanged. *@
+        <div class="font-cormorant text-6xl md:text-8xl font-light @(hasHeroImage ? "text-white" : "text-neutral-900") leading-none mb-6">
             @{
                 var parts = heroHeadline.Split(' ', 2);
                 var firstWord = parts[0];
@@ -168,7 +174,7 @@
             }
             @firstWord<br>
             <em class="italic @(hasHeroImage ? "text-brand-300" : "text-brand-500")">@rest</em>
-        </h1>
+        </div>
         <p class="text-base font-light @(hasHeroImage ? "text-white/80" : "text-neutral-500") tracking-wide max-w-md mx-auto mb-10">
             @heroSubtext
         </p>
