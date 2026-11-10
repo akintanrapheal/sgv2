@@ -100,8 +100,31 @@ public sealed class MetaConversionsApi : IMetaConversionsApi
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
             using var resp = await _http.SendAsync(req, ct);
             var body = await resp.Content.ReadAsStringAsync(ct);
+
+            // A Conversions API "send" token (direct / Quality-API integration) can POST events but often
+            // lacks permission to READ the pixel object — Graph then returns (#100) Missing Permission. That
+            // is NOT a bad token: send-scoped tokens deliver events fine (the dataset Overview shows Pixel
+            // AND CAPI connected). So accept #100 as a valid send token and only flag genuinely bad/expired
+            // tokens (e.g. #190). The true send-coverage check is Events Manager → Overview, not a read here.
             if (!resp.IsSuccessStatusCode)
-                return (false, $"Meta rejected the token ({(int)resp.StatusCode}): {Truncate(body, 200)}");
+            {
+                var code = 0;
+                try
+                {
+                    if (JsonDocument.Parse(body).RootElement.TryGetProperty("error", out var err)
+                        && err.TryGetProperty("code", out var c))
+                        code = c.GetInt32();
+                }
+                catch { /* unparseable error body — fall through to the generic rejection */ }
+
+                if (code != 100)
+                    return (false, $"Meta rejected the token ({(int)resp.StatusCode}): {Truncate(body, 200)}");
+
+                return (true, on
+                    ? $"Token accepted for dataset {pixel} (send-only — cannot read-verify here; confirm coverage in Events Manager → Overview). Server-side purchases are ON."
+                      + (testCode.Length > 0 ? $" ⚠ Test code {testCode} is set — real sales are going to the TEST stream, not your reports." : "")
+                    : $"Token accepted for dataset {pixel} (send-only), but server-side purchases are switched OFF.");
+            }
 
             var name = "";
             try { name = JsonDocument.Parse(body).RootElement.TryGetProperty("name", out var n) ? n.GetString() ?? "" : ""; }
