@@ -52,7 +52,35 @@ public class CartController : Controller
     {
         var cart = await GetCartAsync();
         await RefreshDiscountAsync(cart);
+        await ApplySavingsAsync(cart);
         return View(cart);
+    }
+
+    /// <summary>Sums the "You saved ₦X" figure across the bag: each on-sale line's (regular − charged) ×
+    /// quantity, using the product/variant's CURRENT regular price. Best-effort display only — it never
+    /// changes what's charged, so a lookup failure just shows no savings.</summary>
+    private async Task ApplySavingsAsync(CartViewModel cart)
+    {
+        if (cart.IsEmpty) return;
+        try
+        {
+            var ids = cart.Items.Select(i => i.ProductId).Distinct().ToList();
+            var products = await _db.Products.AsNoTracking().Include(p => p.Variants)
+                .Where(p => ids.Contains(p.Id)).ToListAsync();
+            decimal total = 0m;
+            foreach (var item in cart.Items)
+            {
+                var product = products.FirstOrDefault(p => p.Id == item.ProductId);
+                if (product == null) continue;
+                var variant = item.VariantId.HasValue
+                    ? product.Variants.FirstOrDefault(v => v.Id == item.VariantId.Value) : null;
+                var regular = SterlingLams.Web.Models.Domain.VariantPricing.RegularPrice(product, variant);
+                var saved = regular - item.UnitPrice;
+                if (saved > 0m) total += saved * item.Quantity;
+            }
+            cart.Savings = total;
+        }
+        catch { /* savings is a display convenience — never break the bag over it */ }
     }
 
     [HttpPost, ValidateAntiForgeryToken]

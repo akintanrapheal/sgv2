@@ -42,6 +42,12 @@ public class CartViewModel
     [JsonIgnore] public bool HasDiscount => DiscountAmount > 0 || FreeShipping;
     [JsonIgnore] public string FormattedDiscount => $"-₦{DiscountAmount:N0}";
 
+    /// <summary>Total saved vs regular prices across the bag's on-sale items. Set by the controller at
+    /// render time from current product prices (not persisted in the cart cookie — hence settable + ignored).</summary>
+    [JsonIgnore] public decimal Savings { get; set; }
+    [JsonIgnore] public bool HasSavings => Savings > 0m;
+    [JsonIgnore] public string FormattedSavings => $"₦{Savings:N0}";
+
     [JsonIgnore] public decimal Total => Subtotal - DiscountAmount;
     [JsonIgnore] public string FormattedTotal => $"₦{Total:N0}";
 }
