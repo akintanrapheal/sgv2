@@ -138,8 +138,11 @@
     // Add / remove
     document.querySelectorAll('.dz-add').forEach(function (btn) {
         btn.addEventListener('click', function () {
+            // collect() rebuilds ZONES from the DOM, so it MUST run before the push — otherwise the new
+            // (not-yet-rendered) zone gets wiped and "Add zone" appears to do nothing. collect → push → render.
+            collect();
             ZONES.push({ state: btn.dataset.state, name: '', standardFee: 0, expressFee: 0, sameDayFee: 0, standardDays: '2 - 4 working days', expressDays: '24 - 48 hours', areas: [] });
-            collect(); render();
+            render();
             // focus the new card's name field
             var cards = document.querySelectorAll('.dz-zones[data-state="' + btn.dataset.state + '"] .dz-zone');
             if (cards.length) cards[cards.length - 1].querySelector('[data-f="name"]').focus();
