@@ -99,6 +99,76 @@
     </div>
 }
 
+@* ─── Meta Conversions API: send-side confirmation that our server fired events ── *@
+<div class="flex items-center justify-between mb-3">
+    <h2 class="text-sm font-semibold text-neutral-800">Meta events sent (Conversions API)</h2>
+    <span class="text-[11px] text-neutral-400">Events our server sent to Meta · not Meta's attribution</span>
+</div>
+<div class="bg-white border border-neutral-200 rounded-lg p-5 mb-6">
+    @if (!Model.MetaCapiEnabled)
+    {
+        <p class="text-sm text-neutral-700">Server-side Conversions API is <strong>off</strong>.</p>
+        <p class="text-xs text-neutral-400 mt-1">Turn it on in <a asp-area="Admin" asp-controller="Integrations" asp-action="Index" class="text-pink-600 hover:underline">Settings → Integrations</a> (Meta Pixel + CAPI) to start sending AddToCart, InitiateCheckout and Purchase from the server.</p>
+    }
+    else if (Model.MetaTotalSent == 0)
+    {
+        <p class="text-sm text-neutral-700">CAPI is on, but no events have been sent in this range yet.</p>
+        <p class="text-xs text-neutral-400 mt-1">Counts appear here as shoppers add to cart, start checkout and buy. If this stays at zero while sales come in, check the token in Integrations.</p>
+    }
+    else
+    {
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="border border-neutral-200 rounded-lg p-4">
+                <div class="text-xs uppercase tracking-wide text-neutral-400">Total sent · @Model.Days days</div>
+                <div class="text-2xl font-light text-neutral-900 mt-1">@Model.MetaTotalSent.ToString("N0")</div>
+                <div class="text-[11px] text-neutral-400 mt-0.5">@Model.MetaTodaySent.ToString("N0") today</div>
+            </div>
+            @{
+                var metaAcceptPct = Model.MetaTotalSent > 0 ? (decimal)Model.MetaTotalAccepted / Model.MetaTotalSent * 100m : 0m;
+                var acceptColour = metaAcceptPct >= 95m ? "text-emerald-600" : metaAcceptPct >= 80m ? "text-amber-600" : "text-red-600";
+            }
+            <div class="border border-neutral-200 rounded-lg p-4">
+                <div class="text-xs uppercase tracking-wide text-neutral-400">Accepted by Meta</div>
+                <div class="text-2xl font-light mt-1 @acceptColour">@metaAcceptPct.ToString("0.0")%</div>
+                <div class="text-[11px] text-neutral-400 mt-0.5">@Model.MetaTotalAccepted.ToString("N0") of @Model.MetaTotalSent.ToString("N0")</div>
+            </div>
+            @foreach (var ev in Model.MetaEvents.Take(2))
+            {
+                <div class="border border-neutral-200 rounded-lg p-4">
+                    <div class="text-xs uppercase tracking-wide text-neutral-400">@ev.EventName</div>
+                    <div class="text-2xl font-light text-neutral-900 mt-1">@ev.Sent.ToString("N0")</div>
+                    <div class="text-[11px] text-neutral-400 mt-0.5">@ev.Accepted.ToString("N0") accepted</div>
+                </div>
+            }
+        </div>
+        @if (Model.MetaEvents.Count > 2)
+        {
+            <div class="mt-4 overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left text-[11px] uppercase tracking-wide text-neutral-400 border-b border-neutral-200">
+                            <th class="py-2">Event</th>
+                            <th class="py-2 text-right">Sent</th>
+                            <th class="py-2 text-right">Accepted</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var ev in Model.MetaEvents)
+                        {
+                            <tr class="border-b border-neutral-100">
+                                <td class="py-2 text-neutral-700">@ev.EventName</td>
+                                <td class="py-2 text-right tabular-nums">@ev.Sent.ToString("N0")</td>
+                                <td class="py-2 text-right tabular-nums text-neutral-500">@ev.Accepted.ToString("N0")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        <p class="text-[11px] text-neutral-400 mt-3">This is what <strong>we</strong> sent. What Meta <em>attributed</em> to your ads lives in Events Manager → dataset 818024811348612 → Overview.</p>
+    }
+</div>
+
 @if (Model.TotalViews == 0)
 {
     <div class="bg-white border border-neutral-200 rounded-lg p-12 text-center">
