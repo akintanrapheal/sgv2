@@ -702,7 +702,7 @@ public class CheckoutController : Controller
         // Validate that all product IDs exist and are active
         var productIds = cart.Items.Select(i => i.ProductId).Distinct().ToList();
         var validProducts = await _db.Products
-            .Where(p => productIds.Contains(p.Id) && p.IsActive)
+            .Where(p => productIds.Contains(p.Id) && p.IsActive && !p.HiddenFromWeb)
             .Select(p => p.Id)
             .ToListAsync();
 

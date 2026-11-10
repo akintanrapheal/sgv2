@@ -49,7 +49,7 @@ public class SeoController : Controller
         }
 
         var cats = await _db.Categories
-            .Where(c => c.IsActive && c.Products.Any(p => p.IsActive))
+            .Where(c => c.IsActive && c.Products.Any(p => p.IsActive && !p.HiddenFromWeb))
             .Select(c => c.Slug).ToListAsync();
         foreach (var slug in cats)
             entries.Add(($"{b}/products?category={slug}", null, "weekly", "0.7", null));
@@ -61,7 +61,7 @@ public class SeoController : Controller
             entries.Add(($"{b}/stores/{slug}", null, "monthly", "0.6", null));
 
         var products = await _db.Products
-            .Where(p => p.IsActive)
+            .Where(p => p.IsActive && !p.HiddenFromWeb)
             .Select(p => new
             {
                 p.Slug,

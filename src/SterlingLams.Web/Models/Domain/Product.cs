@@ -71,6 +71,11 @@ public class Product
     /// <summary>Hidden from the POS/till only (staff "Mark unavailable") — still listed on the
     /// storefront. Independent of <see cref="IsActive"/>.</summary>
     public bool HiddenFromPos { get; set; }
+    /// <summary>Hidden from the STOREFRONT (website) only — still sold at the till unless also
+    /// <see cref="HiddenFromPos"/>. Lets staff stock an item for in-store sale before its photos and
+    /// description are ready. The mirror of <see cref="HiddenFromPos"/>; <see cref="IsActive"/> remains
+    /// the master switch that gates BOTH channels. Customer-facing queries exclude this; the till ignores it.</summary>
+    public bool HiddenFromWeb { get; set; }
     /// <summary>Marks the single hidden "Custom item" product the POS uses for one-off / un-barcoded
     /// sales. Such lines carry a per-sale name and price and skip stock tracking. Lazily created.</summary>
     public bool IsCustomItem { get; set; }

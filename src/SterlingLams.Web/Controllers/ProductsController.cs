@@ -41,7 +41,7 @@ public class ProductsController : Controller
         // No Includes: the card only needs a handful of fields + three booleans, so we project
         // straight to ProductCardViewModel in SQL (below). Loading full Images/Variants/Inventory
         // graphs here caused a cartesian JOIN blow-up and over-fetch on the busiest page.
-        var query = _db.Products.Where(p => p.IsActive);
+        var query = _db.Products.Where(p => p.IsActive && !p.HiddenFromWeb);
 
         // Admin toggle: hide products that are out of stock everywhere (simple or all-variants-out).
         // Staff (any backoffice role) are exempt — they keep seeing the full catalogue, including the
@@ -214,14 +214,14 @@ public class ProductsController : Controller
         {
             entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
             return await DbRead.RetryAsync(() => _db.Categories
-                .Where(c => c.IsActive && c.Products.Any(p => p.IsActive
+                .Where(c => c.IsActive && c.Products.Any(p => p.IsActive && !p.HiddenFromWeb
                     && (!hideOos || p.StoreInventories.Any(si => si.QuantityOnHand > 0))))
                 .OrderBy(c => c.Name)
                 .Select(c => new CategoryFilterOption
                 {
                     Name = c.Name,
                     Slug = c.Slug,
-                    Count = c.Products.Count(p => p.IsActive
+                    Count = c.Products.Count(p => p.IsActive && !p.HiddenFromWeb
                         && (!hideOos || p.StoreInventories.Any(si => si.QuantityOnHand > 0)))
                 })
                 .ToListAsync());
@@ -319,7 +319,7 @@ public class ProductsController : Controller
 
         var products = list.Count == 0 ? new List<Product>() : await _db.Products
             .Include(p => p.Category).Include(p => p.Images).Include(p => p.StoreInventories)
-            .Where(p => p.IsActive && list.Contains(p.Slug))
+            .Where(p => p.IsActive && !p.HiddenFromWeb && list.Contains(p.Slug))
             .ToListAsync();
 
         // Preserve the order the customer added them.
@@ -343,7 +343,7 @@ public class ProductsController : Controller
             .Include(p => p.Variants).ThenInclude(v => v.AttributeValues).ThenInclude(av => av.Attribute)
             .Include(p => p.StoreInventories).ThenInclude(si => si.Store)
             .Include(p => p.Tags)
-            .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive));
+            .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive && !p.HiddenFromWeb));
 
         if (product == null)
         {
@@ -388,7 +388,7 @@ public class ProductsController : Controller
         // card needs. Mirrors the SearchSuggestions projection.
         var relatedProducts = await DbRead.RetryAsync(() => _db.Products
             .AsNoTracking()
-            .Where(p => p.CategoryId == product.CategoryId && p.Id != product.Id && p.IsActive)
+            .Where(p => p.CategoryId == product.CategoryId && p.Id != product.Id && p.IsActive && !p.HiddenFromWeb)
             .OrderBy(_ => EF.Functions.Random())
             .Take(4)
             .Select(p => new ProductCardViewModel
@@ -535,7 +535,7 @@ public class ProductsController : Controller
         // Rank exact SKU/barcode hits first (scanning a code should surface that product at the top),
         // then name matches. Pull the fields the preview needs: thumbnail, SKU, base + variant prices.
         var rows = await _db.Products
-            .Where(p => p.IsActive && (
+            .Where(p => p.IsActive && !p.HiddenFromWeb && (
                 EF.Functions.ILike(p.Name, $"%{term}%") ||
                 EF.Functions.ILike(p.ShortDescription ?? "", $"%{term}%") ||
                 EF.Functions.ILike(p.Sku ?? "", $"%{term}%") ||
@@ -610,7 +610,7 @@ public class ProductsController : Controller
             .Include(p => p.Images.OrderBy(i => i.SortOrder))
             .Include(p => p.Variants).ThenInclude(v => v.AttributeValues).ThenInclude(av => av.Attribute)
             .Include(p => p.StoreInventories).ThenInclude(si => si.Store)
-            .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive);
+            .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive && !p.HiddenFromWeb);
 
         if (product == null) return NotFound();
 
@@ -683,7 +683,7 @@ public class ProductsController : Controller
     {
         email = (email ?? string.Empty).Trim();
         if (!string.IsNullOrWhiteSpace(email) && new System.ComponentModel.DataAnnotations.EmailAddressAttribute().IsValid(email)
-            && await _db.Products.AnyAsync(p => p.Id == productId && p.IsActive))
+            && await _db.Products.AnyAsync(p => p.Id == productId && p.IsActive && !p.HiddenFromWeb))
         {
             // Persist the request (deduped: one pending row per product+email). The BackInStockNotifier
             // background service emails them once the product is available again.
