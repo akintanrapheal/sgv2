@@ -582,7 +582,9 @@ function onAreaChanged() {
     var en = PRICING.deliveryEnabled || { standard: true, express: true };
     var opts = [];
     var fp = PRICING.fromPrices || {};
-    if (en.express)  opts.push({ type: 'Express',  label: 'Glams Priority Delivery', fee: z.expressFee,  timeframe: 'within 48 hrs',      from: fp.express  });
+    // Priority is per-zone: a zone with a ₦0 express fee doesn't offer it (same 0 = off rule as same-day
+    // below, and matching DeliveryZoneService server-side). Lets a far interstate zone be Standard-only.
+    if (en.express && Number(z.expressFee) > 0)  opts.push({ type: 'Express',  label: 'Glams Priority Delivery', fee: z.expressFee,  timeframe: 'within 48 hrs',      from: fp.express  });
     if (en.standard) opts.push({ type: 'Standard', label: 'Glams Standard Delivery', fee: z.standardFee, timeframe: '3 - 5 working days', from: fp.standard });
     var sd = sameDayOptionFor(key, z);   // Lagos/Abuja/Oyo, when the whole order is in local stock
     if (sd) opts.unshift(sd);
