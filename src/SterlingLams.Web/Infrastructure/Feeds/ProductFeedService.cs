@@ -75,7 +75,10 @@ public sealed class ProductFeedService : IProductFeedService
 
             items.Add(new FeedItem
             {
-                Id = $"p{p.Id}",
+                // The raw product id (no prefix) — MUST equal the content_ids the Meta pixel/CAPI send
+                // (ViewContent/AddToCart/Purchase all send ProductId.ToString()), or catalogue match rate
+                // is 0% and dynamic/retargeting ads can't tie a viewed product to a catalogue item.
+                Id = p.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 Title = Clip(p.Name, 150),
                 Description = Clip(PlainText(FirstNonBlank(p.Description, p.ShortDescription, p.Name)!), 4900),
                 Link = $"{baseUrl}/products/{p.Slug}",
