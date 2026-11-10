@@ -61,7 +61,7 @@ public class CartController : Controller
         var product = await _db.Products
             .Include(p => p.Images)
             .Include(p => p.Variants)
-            .FirstOrDefaultAsync(p => p.Id == productId && p.IsActive);
+            .FirstOrDefaultAsync(p => p.Id == productId && p.IsActive && !p.HiddenFromWeb);
 
         if (product == null)
         {
@@ -155,7 +155,7 @@ public class CartController : Controller
         foreach (var it in order.Items)
         {
             var product = await _db.Products.Include(p => p.Images).Include(p => p.Variants)
-                .FirstOrDefaultAsync(p => p.Id == it.ProductId && p.IsActive);
+                .FirstOrDefaultAsync(p => p.Id == it.ProductId && p.IsActive && !p.HiddenFromWeb);
             var available = product == null ? 0 : await CombinedAvailableAsync(it.ProductId, it.ProductVariantId);
             if (product == null || available <= 0) { skipped++; continue; }
 
@@ -480,7 +480,7 @@ public class CartController : Controller
         {
             if (cart.Items.Any(i => i.ProductId == s.ProductId && i.VariantId == s.VariantId)) continue;
             var product = await _db.Products.Include(p => p.Images).Include(p => p.Variants)
-                .FirstOrDefaultAsync(p => p.Id == s.ProductId && p.IsActive);
+                .FirstOrDefaultAsync(p => p.Id == s.ProductId && p.IsActive && !p.HiddenFromWeb);
             if (product == null) continue;
             var available = await CombinedAvailableAsync(s.ProductId, s.VariantId);
             if (available <= 0) continue;

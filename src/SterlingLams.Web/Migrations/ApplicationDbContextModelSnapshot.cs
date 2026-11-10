@@ -2110,6 +2110,9 @@ namespace SterlingLams.Web.Migrations
                     b.Property<bool>("HiddenFromPos")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("HiddenFromWeb")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 

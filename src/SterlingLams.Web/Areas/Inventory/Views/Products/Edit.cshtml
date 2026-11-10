@@ -116,6 +116,12 @@
 
     <label class="flex items-center gap-2 text-sm text-neutral-700">
         <input type="checkbox" name="isActive" value="true" checked="@Model.IsActive" /> Active (visible &amp; sellable)
+        <span class="text-neutral-400 text-xs font-light">master switch — untick to hide everywhere (website + till)</span>
+    </label>
+
+    <label class="flex items-center gap-2 text-sm text-neutral-700">
+        <input type="checkbox" name="availableOnline" value="true" checked="@(!Model.HiddenFromWeb)" /> Available online (website)
+        <span class="text-neutral-400 text-xs font-light">untick to hide from the website but keep selling at the till</span>
     </label>
 
     <label class="flex items-center gap-2 text-sm text-neutral-700">

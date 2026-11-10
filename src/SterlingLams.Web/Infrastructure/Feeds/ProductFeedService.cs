@@ -33,7 +33,7 @@ public sealed class ProductFeedService : IProductFeedService
         var catById = cats.ToDictionary(c => c.Id, c => (c.Name, c.ParentName));
 
         var rows = await _db.Products.AsNoTracking()
-            .Where(p => p.IsActive && !p.IsArchived && !p.IsCustomItem)
+            .Where(p => p.IsActive && !p.HiddenFromWeb && !p.IsArchived && !p.IsCustomItem)
             .Select(p => new
             {
                 p.Id, p.Name, p.Slug, p.Description, p.ShortDescription,

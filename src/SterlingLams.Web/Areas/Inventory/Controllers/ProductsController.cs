@@ -114,6 +114,7 @@ public class ProductsController : InventoryAreaController
                 ImageUrl = p.Images.OrderBy(i => i.SortOrder).Select(i => i.Url).FirstOrDefault(),
                 IsActive = p.IsActive,
                 HiddenFromPos = p.HiddenFromPos,
+                HiddenFromWeb = p.HiddenFromWeb,
                 TrackStock = p.TrackStock,
                 ButtonColour = p.PosButtonColour,
                 Description = p.ShortDescription ?? p.Description,
@@ -317,7 +318,7 @@ public class ProductsController : InventoryAreaController
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Save(int id, string name, string? sku, string? barcode, decimal price,
         int? categoryId, int lowStockThreshold, bool isActive, string? description, string? buttonColour,
-        bool availableAtTill, decimal? posPrice = null)
+        bool availableAtTill, bool availableOnline, decimal? posPrice = null)
     {
         if (string.IsNullOrWhiteSpace(name) || categoryId == null)
         {
@@ -341,6 +342,9 @@ public class ProductsController : InventoryAreaController
         // on the EPOS, and this is the only place to turn it back on (a hidden product can't be found in the
         // EPOS search to re-enable it there).
         product.HiddenFromPos = !availableAtTill;
+        // "Available online" is the inverse of HiddenFromWeb — lets staff stock an item for the till
+        // before its photos/description are ready, without it showing to website customers.
+        product.HiddenFromWeb = !availableOnline;
         product.PosButtonColour = string.IsNullOrWhiteSpace(buttonColour) ? null : buttonColour.Trim();
         product.Description = SterlingLams.Web.Services.ProductHtml.Sanitize(description);
         product.UpdatedAt = DateTime.UtcNow;
@@ -1169,6 +1173,7 @@ public class InvProductRow
     public string? ImageUrl { get; set; }
     public bool IsActive { get; set; }
     public bool HiddenFromPos { get; set; }
+    public bool HiddenFromWeb { get; set; }
     public bool TrackStock { get; set; }
     public string? ButtonColour { get; set; }
     public string? Description { get; set; }

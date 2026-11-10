@@ -24,7 +24,7 @@ public class ReviewsController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Submit(int productId, int rating, string? title, string body, string? slug)
     {
-        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == productId && p.IsActive);
+        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == productId && p.IsActive && !p.HiddenFromWeb);
         if (product == null) return NotFound();
         var backSlug = string.IsNullOrWhiteSpace(slug) ? product.Slug : slug;
 

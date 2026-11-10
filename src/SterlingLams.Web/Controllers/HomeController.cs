@@ -36,7 +36,7 @@ public class HomeController : Controller
         // correlated subqueries in ONE query, instead of Include'ing three collections at once
         // (which the DB expands into a cartesian product of images × inventories × variants).
         var featuredCards = await Infrastructure.DbRead.RetryAsync(() => _db.Products
-            .Where(p => p.IsActive && p.IsFeatured)
+            .Where(p => p.IsActive && !p.HiddenFromWeb && p.IsFeatured)
             .OrderByDescending(p => p.CreatedAt)
             .Take(24)
             .Select(p => new ProductCardViewModel
@@ -180,13 +180,13 @@ public class HomeController : Controller
             };
 
         var products = await Infrastructure.DbRead.RetryAsync(() => _db.Products
-            .Where(p => p.IsActive && p.IsFeatured)
+            .Where(p => p.IsActive && !p.HiddenFromWeb && p.IsFeatured)
             .OrderByDescending(p => p.CreatedAt).Take(12).Select(Card()).ToListAsync());
 
         if (products.Count < 4)
         {
             products = await Infrastructure.DbRead.RetryAsync(() => _db.Products
-                .Where(p => p.IsActive)
+                .Where(p => p.IsActive && !p.HiddenFromWeb)
                 .OrderByDescending(p => p.CreatedAt).Take(12).Select(Card()).ToListAsync());
         }
 
@@ -199,7 +199,7 @@ public class HomeController : Controller
         var hotspotIds = campaigns.SelectMany(c => c.Hotspots).Select(h => h.ProductId).Distinct().ToList();
         var now = DateTime.UtcNow;
         var hotspotProducts = await Infrastructure.DbRead.RetryAsync(() => _db.Products
-            .Where(p => hotspotIds.Contains(p.Id) && p.IsActive)
+            .Where(p => hotspotIds.Contains(p.Id) && p.IsActive && !p.HiddenFromWeb)
             .Select(p => new
             {
                 p.Id, p.Name, p.Slug, p.Price, p.SalePrice, p.SaleStartsAt, p.SaleEndsAt,
