@@ -95,6 +95,23 @@ public class TrafficController : AdminBaseController
                 .OrderByDescending(x => x.C).ToListAsync())
             .Select(x => new NameCount(x.Key, x.C)).ToList();
 
+        // ── Meta events sent (server-side CAPI): a send-side confirmation that our server is firing
+        // AddToCart / InitiateCheckout / Purchase to Meta. This is OUR send log, not Meta's attribution
+        // (that lives in Events Manager → Overview). Counts are the WAT-day aggregates we batch-write.
+        var startDay = DateOnly.FromDateTime(start);
+        var watToday = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(1));
+        var metaRows = await _db.MetaEventDaily.AsNoTracking()
+            .Where(m => m.Day >= startDay)
+            .Select(m => new { m.Day, m.EventName, m.Sent, m.Accepted })
+            .ToListAsync();
+        vm.MetaEvents = metaRows.GroupBy(m => m.EventName)
+            .Select(g => new MetaEventStat(g.Key, g.Sum(x => x.Sent), g.Sum(x => x.Accepted)))
+            .OrderByDescending(s => s.Sent).ToList();
+        vm.MetaTotalSent     = metaRows.Sum(m => m.Sent);
+        vm.MetaTotalAccepted = metaRows.Sum(m => m.Accepted);
+        vm.MetaTodaySent     = metaRows.Where(m => m.Day == watToday).Sum(m => m.Sent);
+        vm.MetaCapiEnabled   = await _settings.GetBoolAsync("meta.capi_enabled", false);
+
         // Cloudflare edge/security analytics (requests, threats blocked, countries) — best effort.
         vm.Cf = await _cf.GetAsync(days);
         vm.CfZoneId  = await _settings.GetAsync("cloudflare.zone_id", "");
@@ -134,6 +151,7 @@ public class TrafficController : AdminBaseController
     }
 
     public record NameCount(string Name, int Count);
+    public record MetaEventStat(string EventName, int Sent, int Accepted);
 
     public class TrafficViewModel
     {
@@ -163,5 +181,11 @@ public class TrafficController : AdminBaseController
         public CloudflareResult? Cf { get; set; }
         public string CfZoneId { get; set; } = "";
         public bool CfTokenSet { get; set; }
+        // Meta CAPI send-side telemetry (our server → Meta), distinct from Meta's attribution.
+        public List<MetaEventStat> MetaEvents { get; set; } = new();
+        public int MetaTotalSent { get; set; }
+        public int MetaTotalAccepted { get; set; }
+        public int MetaTodaySent { get; set; }
+        public bool MetaCapiEnabled { get; set; }
     }
 }

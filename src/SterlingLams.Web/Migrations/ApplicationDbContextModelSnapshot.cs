@@ -1364,6 +1364,35 @@ namespace SterlingLams.Web.Migrations
                     b.ToTable("MarketingSuppressions");
                 });
 
+            modelBuilder.Entity("SterlingLams.Web.Models.Domain.MetaEventDaily", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Accepted")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<string>("EventName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Sent")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Day", "EventName")
+                        .IsUnique();
+
+                    b.ToTable("MetaEventDaily");
+                });
+
             modelBuilder.Entity("SterlingLams.Web.Models.Domain.NewsletterSubscriber", b =>
                 {
                     b.Property<int>("Id")

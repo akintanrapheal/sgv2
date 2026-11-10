@@ -346,6 +346,11 @@ builder.Services.AddScoped<SterlingLams.Web.Infrastructure.IFinanceReportService
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.FinanceReportScheduler>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.ApiCallPersistenceService>();
 
+// Meta CAPI send-side telemetry (Admin → Traffic "Meta events sent"). Singleton in-memory counter +
+// background batch-writer, so high-frequency AddToCart events never become a DB write each.
+builder.Services.AddSingleton<SterlingLams.Web.Infrastructure.MetaEventTracker>();
+builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.MetaEventPersistenceService>();
+
 // Storefront traffic analytics (Admin → Traffic). Singleton buffer + background batch-writer.
 builder.Services.AddSingleton<SterlingLams.Web.Infrastructure.ApiActivityTracker>();
 builder.Services.AddSingleton<SterlingLams.Web.Infrastructure.Traffic.TrafficRecorder>();

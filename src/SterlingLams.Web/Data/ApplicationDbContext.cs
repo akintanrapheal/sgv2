@@ -75,6 +75,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<LabelReprintEntry> LabelReprintQueue => Set<LabelReprintEntry>();
     public DbSet<TrafficHit> TrafficHits => Set<TrafficHit>();
     public DbSet<ApiCallDaily> ApiCallDaily => Set<ApiCallDaily>();
+    public DbSet<MetaEventDaily> MetaEventDaily => Set<MetaEventDaily>();
     public DbSet<StorefrontIssue> StorefrontIssues => Set<StorefrontIssue>();
     public DbSet<PriceCapBackup> PriceCapBackups => Set<PriceCapBackup>();
 
@@ -83,6 +84,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
         base.OnModelCreating(builder);
 
         builder.Entity<ApiCallDaily>(e => e.HasIndex(x => new { x.Day, x.Label }).IsUnique());
+
+        // Meta CAPI daily counters — one row per (day, event); the flusher upserts on this unique key.
+        builder.Entity<MetaEventDaily>(e => e.HasIndex(x => new { x.Day, x.EventName }).IsUnique());
 
         // Marketing image library — listed most-recent first in the builder's Asset Manager.
         builder.Entity<MarketingAsset>(e => e.HasIndex(x => x.CreatedAt));

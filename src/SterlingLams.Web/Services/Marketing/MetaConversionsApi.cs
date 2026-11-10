@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using SterlingLams.Web.Infrastructure;
 using SterlingLams.Web.Models.Domain;
 
 namespace SterlingLams.Web.Services.Marketing;
@@ -62,14 +63,16 @@ public sealed class MetaConversionsApi : IMetaConversionsApi
     private readonly ISettingsService _settings;
     private readonly ISettingsSecretProtector _secrets;
     private readonly ILogger<MetaConversionsApi> _logger;
+    private readonly MetaEventTracker _tracker;
 
     public MetaConversionsApi(HttpClient http, ISettingsService settings,
-        ISettingsSecretProtector secrets, ILogger<MetaConversionsApi> logger)
+        ISettingsSecretProtector secrets, ILogger<MetaConversionsApi> logger, MetaEventTracker tracker)
     {
         _http = http;
         _settings = settings;
         _secrets = secrets;
         _logger = logger;
+        _tracker = tracker;
     }
 
     private async Task<(bool On, string PixelId, string Token, string TestCode)> ConfigAsync()
@@ -152,7 +155,7 @@ public sealed class MetaConversionsApi : IMetaConversionsApi
             if (order.Total <= 0) return;
 
             var payload = BuildPurchase(order, http, testCode);
-            await PostEventsAsync(pixel, token, payload, $"purchase {order.OrderNumber}", ct);
+            await PostEventsAsync(pixel, token, payload, "Purchase", $"purchase {order.OrderNumber}", ct);
         }
         catch (Exception ex)
         {
@@ -212,7 +215,7 @@ public sealed class MetaConversionsApi : IMetaConversionsApi
             var body = new Dictionary<string, object?> { ["data"] = new[] { ev } };
             if (!string.IsNullOrWhiteSpace(testCode)) body["test_event_code"] = testCode;
 
-            await PostEventsAsync(pixel, token, body, eventName, ct);
+            await PostEventsAsync(pixel, token, body, eventName, eventName, ct);
         }
         catch (Exception ex)
         {
@@ -224,13 +227,16 @@ public sealed class MetaConversionsApi : IMetaConversionsApi
     /// <summary>POSTs a Conversions API payload to Graph with the access token as a Bearer header (kept out
     /// of the URL). Logs — never throws — on a non-success so a rejected event can be diagnosed. Centralised
     /// so every CAPI call authenticates the same way (a missing token here once broke Purchase entirely).</summary>
-    private async Task PostEventsAsync(string pixel, string token, object body, string label, CancellationToken ct)
+    private async Task PostEventsAsync(string pixel, string token, object body, string eventName, string label, CancellationToken ct)
     {
         var json = JsonSerializer.Serialize(body);
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
         using var req = new HttpRequestMessage(HttpMethod.Post, $"{GraphVersion}/{pixel}/events") { Content = content };
         req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         using var resp = await _http.SendAsync(req, ct);
+        // Count the attempt + outcome for the Admin → Traffic "Meta events sent" panel (in-memory; batched
+        // to the DB). A rejected event still counts as Sent-but-not-Accepted so the panel shows the gap.
+        _tracker.Record(eventName, resp.IsSuccessStatusCode);
         if (!resp.IsSuccessStatusCode)
         {
             // Meta's JSON error echoes no token and no raw PII (we send only hashes), so it is safe to log.
