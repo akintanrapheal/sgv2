@@ -198,7 +198,9 @@ public class DeliveryZoneService
         if (zone != null)
         {
             var list = new List<DeliveryOption>();
-            if (expOn) list.Add(new() { Type = "Express",  Label = "Glams Priority Delivery",  Fee = zone.ExpressFee,  Timeframe = "within 48 hrs"  });
+            // Priority is per-zone: a zone with a ₦0 express fee doesn't offer it (same "0 = off" rule as
+            // Same-day) — e.g. a far interstate zone that is Standard-only. The global toggle still gates it.
+            if (expOn && zone.ExpressFee > 0) list.Add(new() { Type = "Express",  Label = "Glams Priority Delivery",  Fee = zone.ExpressFee,  Timeframe = "within 48 hrs"  });
             if (stdOn) list.Add(new() { Type = "Standard", Label = "Glams Standard Delivery", Fee = zone.StandardFee, Timeframe = "3 - 5 working days" });
             return list;
         }
