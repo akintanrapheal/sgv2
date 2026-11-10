@@ -639,15 +639,16 @@ function renderDeliveryOptions(options, key, zoneName) {
         card.className = 'delivery-opt-card flex items-start gap-3 rounded-lg border border-neutral-300 p-4 cursor-pointer hover:border-neutral-900 transition-colors';
         const noteColor = (PRICING.ui && PRICING.ui.noteColor) || '#d97706';
         const noteHtml = opt.note ? `<p class="text-xs opt-note mt-1.5 leading-snug" style="color:${noteColor}">${opt.note}</p>` : '';
-        // One clean price: the "from ₦" starting price (floor). The exact zone fee is still applied to
-        // the order total when the option is picked (data-fee below).
-        const floor = (opt.from && Number(opt.from) > 0) ? Number(opt.from) : Number(opt.fee);
+        // Show the EXACT fee the customer will pay for their selected area (it matches the order summary),
+        // not a generic "from ₦" floor. The floor was misleading — the card read "from ₦2,000" while the
+        // summary charged the real zone fee (e.g. ₦7,500 for far Oyo). opt.fee is the resolved zone fee.
+        const exact = Number(opt.fee) || 0;
         // A free-delivery voucher only covers Glams Standard — show that option as FREE with a note,
         // so it's obvious which method the discount applies to.
         const freeHere = freeShipEligibleHere() && opt.type === 'Standard';
-        const priceHtml = freeHere
+        const priceHtml = (freeHere || exact === 0)
             ? `<span class="font-semibold" style="color:#059669">FREE</span>`
-            : `<span class="text-[11px] uppercase tracking-wider text-neutral-400 font-bold mr-1">from</span>&#8358;${floor.toLocaleString()}`;
+            : `&#8358;${exact.toLocaleString()}`;
         const freeNoteHtml = freeHere
             ? `<p class="text-xs font-semibold mt-1" style="color:#059669">Free with your discount code</p>`
             : '';
