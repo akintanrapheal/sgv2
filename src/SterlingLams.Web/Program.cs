@@ -351,6 +351,10 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.ApiCallPersist
 builder.Services.AddSingleton<SterlingLams.Web.Infrastructure.MetaEventTracker>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.MetaEventPersistenceService>();
 
+// Shopping-channel product feeds (Google Merchant + Meta catalogue), served from /feeds/*.xml.
+builder.Services.AddScoped<SterlingLams.Web.Infrastructure.Feeds.IProductFeedService,
+    SterlingLams.Web.Infrastructure.Feeds.ProductFeedService>();
+
 // Storefront traffic analytics (Admin → Traffic). Singleton buffer + background batch-writer.
 builder.Services.AddSingleton<SterlingLams.Web.Infrastructure.ApiActivityTracker>();
 builder.Services.AddSingleton<SterlingLams.Web.Infrastructure.Traffic.TrafficRecorder>();
