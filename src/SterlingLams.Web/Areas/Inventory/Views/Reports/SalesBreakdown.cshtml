@@ -18,7 +18,7 @@
     // (Built with Url.Action so the route values are never dropped, unlike asp-route-* + asp-all-route-data.)
     string? DrillUrl(SterlingLams.Web.Areas.Inventory.Controllers.NameValueRow r)
     {
-        if (r.ProductId.HasValue) return Url.Action("ItemSales", new { productId = r.ProductId, from = fromS, to = toS });
+        if (r.ProductId.HasValue) return Url.Action("ItemSales", new { productId = r.ProductId, name = r.CustomName, from = fromS, to = toS });
         if (!string.IsNullOrEmpty(r.CustomerId)) return Url.Action("CustomerSales", new { userId = r.CustomerId, from = fromS, to = toS });
         if (r.CategoryId.HasValue) return Url.Action("SalesByItem", new { categoryId = r.CategoryId, from = fromS, to = toS });
         if (!string.IsNullOrEmpty(r.DiscountCode)) return Url.Action("Orders", new { discount = r.DiscountCode, from = fromS, to = toS });

@@ -544,13 +544,22 @@ public class ReportsController : InventoryAreaController
         var orders = PaidOrders(f, t);
         var itemsQ = _db.OrderItems.Where(oi => orders.Any(o => o.Id == oi.OrderId));
         if (categoryId.HasValue) itemsQ = itemsQ.Where(oi => oi.Product.CategoryId == categoryId);
-        // Group by product id so each row can drill through to that product's sales; carry the name too.
+        // EPOS "Quick items" all share ONE hidden custom product, so grouping purely by product id lumps
+        // every ad-hoc line (different names + prices) into a single meaningless row labelled with just one of
+        // the names. Split the custom-item lines out by their per-line name so each quick item reports its own
+        // units/revenue (and drills through filtered by that name); real products still group by product id.
+        var customIds = await _db.Products.Where(p => p.IsCustomItem).Select(p => p.Id).ToListAsync();
         var rows = await itemsQ
-            .GroupBy(oi => oi.ProductId)
+            .GroupBy(oi => new
+            {
+                Pid = customIds.Contains(oi.ProductId) ? 0 : oi.ProductId,
+                CustomName = customIds.Contains(oi.ProductId) ? oi.ProductName : null
+            })
             .Select(g => new NameValueRow
             {
-                ProductId = g.Key,
-                Name = g.Max(x => x.ProductName) ?? "",
+                ProductId = g.Min(x => x.ProductId),            // the custom product's id for a quick-item row
+                CustomName = g.Key.CustomName,
+                Name = g.Key.CustomName ?? (g.Max(x => x.ProductName) ?? ""),
                 Units = g.Sum(x => x.Quantity),
                 Revenue = g.Sum(x => (x.Quantity * x.UnitPrice) - x.DiscountAmount)
             })
@@ -563,20 +572,25 @@ public class ReportsController : InventoryAreaController
     public record ItemSaleRow(int OrderId, string OrderNumber, DateTime When, string Channel, string Store,
         string? BuyerId, string Buyer, string? BuyerEmail, string Staff, string Packer, int Qty, decimal LineTotal);
 
-    public async Task<IActionResult> ItemSales(int productId, DateTime? from = null, DateTime? to = null)
+    // name: when set, narrows to a single EPOS Quick-item name (quick items all share one custom product,
+    // so without it the drill-through would show every ad-hoc line instead of just this one).
+    public async Task<IActionResult> ItemSales(int productId, DateTime? from = null, DateTime? to = null, string? name = null)
     {
         var (f, t, fLocal, tLocal) = SalesRange(from, to);
         var product = await _db.Products.Where(p => p.Id == productId)
             .Select(p => new { p.Id, p.Name, p.Sku }).FirstOrDefaultAsync();
         if (product == null) return NotFound();
-        ViewData["Title"] = $"Sales — {product.Name}";
+        var heading = string.IsNullOrWhiteSpace(name) ? product.Name : name!;
+        ViewData["Title"] = $"Sales — {heading}";
 
         var stores = await _db.Stores.ToDictionaryAsync(s => s.Id, s => s.Name);
         string StoreOf(int? id) => id.HasValue && stores.TryGetValue(id.Value, out var n) ? n.Replace("Sterlin Glams ", "") : "—";
 
         var orders = PaidOrders(f, t);
         var raw = await _db.OrderItems
-            .Where(oi => oi.ProductId == productId && orders.Any(o => o.Id == oi.OrderId))
+            .Where(oi => oi.ProductId == productId
+                && (name == null || oi.ProductName == name)
+                && orders.Any(o => o.Id == oi.OrderId))
             .OrderByDescending(oi => oi.Order.PaidAt ?? oi.Order.CreatedAt)
             .Select(oi => new
             {
@@ -612,7 +626,7 @@ public class ReportsController : InventoryAreaController
         }).ToList();
 
         ViewBag.From = fLocal; ViewBag.To = tLocal;
-        ViewBag.ProductName = product.Name; ViewBag.Sku = product.Sku; ViewBag.ProductId = productId;
+        ViewBag.ProductName = heading; ViewBag.Sku = product.Sku; ViewBag.ProductId = productId;
         ViewBag.TotalUnits = rows.Sum(r => r.Qty); ViewBag.TotalRevenue = rows.Sum(r => r.LineTotal);
         return View(rows);
     }
@@ -1266,7 +1280,7 @@ public class SalesSummaryVm
     public decimal Average { get; set; }
     public List<DailySalesRow> Daily { get; set; } = new();
 }
-public class NameValueRow { public string Name { get; set; } = ""; public int Units { get; set; } public decimal Revenue { get; set; } public int? ProductId { get; set; } public string? CustomerId { get; set; } public int? CategoryId { get; set; } public string? DiscountCode { get; set; } }
+public class NameValueRow { public string Name { get; set; } = ""; public int Units { get; set; } public decimal Revenue { get; set; } public int? ProductId { get; set; } public string? CustomName { get; set; } public string? CustomerId { get; set; } public int? CategoryId { get; set; } public string? DiscountCode { get; set; } }
 public class ExpiringRow
 {
     public string Product { get; set; } = "";
