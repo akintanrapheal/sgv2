@@ -32,7 +32,13 @@ public class StorefrontIssueMiddleware
         }
         catch (Exception ex)
         {
-            if (IsCustomerFacing(context))
+            // A cancelled request — the visitor navigated away / closed the tab before it finished, so the
+            // request is aborted and the in-flight DB query throws OperationCanceledException — is NOT a
+            // customer-visible error (nobody saw a broken page). These were flooding the Customer Issues
+            // monitor (thousands of "Query was cancelled" rows), drowning the real signal. Skip them; still
+            // re-throw so the framework handles the aborted request as usual.
+            var clientCancelled = ex is OperationCanceledException && context.RequestAborted.IsCancellationRequested;
+            if (!clientCancelled && IsCustomerFacing(context))
                 await _issues.LogAsync(StorefrontIssueType.ServerError, "unhandled_error",
                     ex.GetType().Name + ": " + ex.Message, context: context);
             throw;   // let the normal error handling + Sentry take over, unchanged
