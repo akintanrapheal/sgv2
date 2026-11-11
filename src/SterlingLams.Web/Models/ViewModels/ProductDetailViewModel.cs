@@ -35,6 +35,9 @@ public class ProductDetailViewModel
     public int DiscountPercent => IsOnSale && Price > 0m
         ? (int)Math.Round((Price - SalePrice!.Value) / Price * 100m)
         : 0;
+    /// <summary>Cash saved vs the regular price when on sale (0 otherwise) — the "You save ₦X" figure.</summary>
+    public decimal SavingsAmount => IsOnSale ? Price - EffectivePrice : 0m;
+    public string FormattedSavings => $"₦{SavingsAmount:N0}";
 
     public string? Material { get; set; }
     public string? Metal { get; set; }
