@@ -41,7 +41,11 @@ public class ProductsController : Controller
         // No Includes: the card only needs a handful of fields + three booleans, so we project
         // straight to ProductCardViewModel in SQL (below). Loading full Images/Variants/Inventory
         // graphs here caused a cartesian JOIN blow-up and over-fetch on the busiest page.
-        var query = _db.Products.Where(p => p.IsActive && !p.HiddenFromWeb);
+        // Staff (any backoffice role) preview the full catalogue on the live site, including items with no
+        // photo yet (HiddenFromWeb). Customers never see those — they're till-only until a picture is added.
+        // The Storefront output-cache varies by the "staff" claim (Program.cs), so this is cache-safe.
+        var staff = SterlingLams.Web.Areas.Admin.AdminSections.IsStaff(User);
+        var query = _db.Products.Where(p => p.IsActive && (!p.HiddenFromWeb || staff));
 
         // Admin toggle: hide products that are out of stock everywhere (simple or all-variants-out).
         // Staff (any backoffice role) are exempt — they keep seeing the full catalogue, including the
@@ -210,18 +214,18 @@ public class ProductsController : Controller
         // stock EXISTS — ~2s on the small Render DB, and it ran on EVERY page view (top Sentry "Slow DB
         // Query"). Cache it for a few minutes, keyed by the only input that changes it (hideOos), so it's
         // computed once per window instead of per request. Counts can lag a few minutes — fine for a nav.
-        filters.Categories = await _cache.GetOrCreateAsync($"nav:categories:v2:{hideOos}", async entry =>
+        filters.Categories = await _cache.GetOrCreateAsync($"nav:categories:v2:{hideOos}:{staff}", async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
             return await DbRead.RetryAsync(() => _db.Categories
-                .Where(c => c.IsActive && c.Products.Any(p => p.IsActive && !p.HiddenFromWeb
+                .Where(c => c.IsActive && c.Products.Any(p => p.IsActive && (!p.HiddenFromWeb || staff)
                     && (!hideOos || p.StoreInventories.Any(si => si.QuantityOnHand > 0))))
                 .OrderBy(c => c.Name)
                 .Select(c => new CategoryFilterOption
                 {
                     Name = c.Name,
                     Slug = c.Slug,
-                    Count = c.Products.Count(p => p.IsActive && !p.HiddenFromWeb
+                    Count = c.Products.Count(p => p.IsActive && (!p.HiddenFromWeb || staff)
                         && (!hideOos || p.StoreInventories.Any(si => si.QuantityOnHand > 0)))
                 })
                 .ToListAsync());
@@ -235,7 +239,7 @@ public class ProductsController : Controller
         // otherwise reran both on EVERY request (top Sentry "Slow DB Query" + the 2026-10-28 outage). Cache
         // per scope for a few minutes so each is computed once per window; the list can lag a few minutes,
         // which is fine for a filter sidebar.
-        var facetKey = $"facet:v1:{hideOos}:{filters.Search?.Trim().ToLowerInvariant()}:{filters.Category?.Trim().ToLowerInvariant()}";
+        var facetKey = $"facet:v1:{hideOos}:{staff}:{filters.Search?.Trim().ToLowerInvariant()}:{filters.Category?.Trim().ToLowerInvariant()}";
         var facetData = await _cache.GetOrCreateAsync(facetKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
@@ -317,9 +321,10 @@ public class ProductsController : Controller
         var list = (slugs ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
             .Select(s => s.Trim()).Where(s => s.Length > 0).Distinct().Take(4).ToList();
 
+        var staff = SterlingLams.Web.Areas.Admin.AdminSections.IsStaff(User);
         var products = list.Count == 0 ? new List<Product>() : await _db.Products
             .Include(p => p.Category).Include(p => p.Images).Include(p => p.StoreInventories)
-            .Where(p => p.IsActive && !p.HiddenFromWeb && list.Contains(p.Slug))
+            .Where(p => p.IsActive && (!p.HiddenFromWeb || staff) && list.Contains(p.Slug))
             .ToListAsync();
 
         // Preserve the order the customer added them.
@@ -335,6 +340,9 @@ public class ProductsController : Controller
         // root would cartesian-explode into tens of thousands of rows for a many-variant product like
         // the alphabet necklace (26 variants × 26 images × 81 stock rows). AsSplitQuery loads each
         // collection with its own query (~150 rows total), and AsNoTracking skips change tracking.
+        // Staff preview photoless (HiddenFromWeb) products on the live site — their page renders instead
+        // of 404ing, so they can see exactly what a listing/detail will look like before setting it online.
+        var staff = SterlingLams.Web.Areas.Admin.AdminSections.IsStaff(User);
         var product = await DbRead.RetryAsync(() => _db.Products
             .AsNoTracking()
             .AsSplitQuery()
@@ -343,7 +351,7 @@ public class ProductsController : Controller
             .Include(p => p.Variants).ThenInclude(v => v.AttributeValues).ThenInclude(av => av.Attribute)
             .Include(p => p.StoreInventories).ThenInclude(si => si.Store)
             .Include(p => p.Tags)
-            .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive && !p.HiddenFromWeb));
+            .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive && (!p.HiddenFromWeb || staff)));
 
         if (product == null)
         {
@@ -388,7 +396,7 @@ public class ProductsController : Controller
         // card needs. Mirrors the SearchSuggestions projection.
         var relatedProducts = await DbRead.RetryAsync(() => _db.Products
             .AsNoTracking()
-            .Where(p => p.CategoryId == product.CategoryId && p.Id != product.Id && p.IsActive && !p.HiddenFromWeb)
+            .Where(p => p.CategoryId == product.CategoryId && p.Id != product.Id && p.IsActive && (!p.HiddenFromWeb || staff))
             .OrderBy(_ => EF.Functions.Random())
             .Take(4)
             .Select(p => new ProductCardViewModel
@@ -532,10 +540,11 @@ public class ProductsController : Controller
             return Json(Array.Empty<object>());
 
         var term = q.Trim();
+        var staff = SterlingLams.Web.Areas.Admin.AdminSections.IsStaff(User);
         // Rank exact SKU/barcode hits first (scanning a code should surface that product at the top),
         // then name matches. Pull the fields the preview needs: thumbnail, SKU, base + variant prices.
         var rows = await _db.Products
-            .Where(p => p.IsActive && !p.HiddenFromWeb && (
+            .Where(p => p.IsActive && (!p.HiddenFromWeb || staff) && (
                 EF.Functions.ILike(p.Name, $"%{term}%") ||
                 EF.Functions.ILike(p.ShortDescription ?? "", $"%{term}%") ||
                 EF.Functions.ILike(p.Sku ?? "", $"%{term}%") ||
@@ -603,6 +612,7 @@ public class ProductsController : Controller
     public async Task<IActionResult> QuickView(string slug)
     {
         // Same cartesian-explosion guard as Detail (Images × Variants × StoreInventories).
+        var staff = SterlingLams.Web.Areas.Admin.AdminSections.IsStaff(User);
         var product = await _db.Products
             .AsNoTracking()
             .AsSplitQuery()
@@ -610,7 +620,7 @@ public class ProductsController : Controller
             .Include(p => p.Images.OrderBy(i => i.SortOrder))
             .Include(p => p.Variants).ThenInclude(v => v.AttributeValues).ThenInclude(av => av.Attribute)
             .Include(p => p.StoreInventories).ThenInclude(si => si.Store)
-            .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive && !p.HiddenFromWeb);
+            .FirstOrDefaultAsync(p => p.Slug == slug && p.IsActive && (!p.HiddenFromWeb || staff));
 
         if (product == null) return NotFound();
 
