@@ -501,6 +501,30 @@
             </div>
         </section>
 
+        @* ─── Pinterest (Pinterest ads + Product Pins) ──────────────────────────── *@
+        <section class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
+            <div>
+                <h2 class="text-sm font-semibold text-neutral-800">Pinterest Tag (Pinterest ads + Product Pins)</h2>
+                <p class="text-xs text-neutral-400 mt-0.5">Loads the Pinterest Tag on the storefront so your Pinterest ads and organic Product Pins can track page visits + purchases and retarget. Jewellery performs strongly on Pinterest. Pair this with the catalogue feed at <b>/feeds/pinterest.xml</b>.</p>
+            </div>
+
+            <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" name="pinterest.enabled" value="true" @(Model.PinterestEnabled ? "checked" : "")
+                       class="mt-0.5 rounded border-neutral-300 accent-neutral-900 w-4 h-4" />
+                <div>
+                    <p class="text-sm font-medium text-neutral-800">Enable Pinterest Tag</p>
+                    <p class="text-xs text-neutral-400 mt-0.5">Master switch. When off, no Pinterest tag loads on the storefront.</p>
+                </div>
+            </label>
+
+            <div class="sm:w-1/2">
+                <label class="block text-xs font-medium text-neutral-700 mb-1">Pinterest Tag ID</label>
+                <input type="text" name="pinterest.tag_id" value="@Model.PinterestTagId" placeholder="e.g. 2612345678901" autocomplete="off"
+                       class="w-full border border-neutral-200 px-3 py-2 text-sm rounded-sm focus:outline-none focus:border-brand-500" />
+                <p class="text-[11px] text-neutral-400 mt-1">Numbers only, from Pinterest → Ads → Conversions → Pinterest Tag. Public — it ships in the page.</p>
+            </div>
+        </section>
+
         @* ─── Cloudinary (image hosting / CDN) ─────────────────────────────────── *@
         <section class="bg-white rounded-sm border border-neutral-100 p-6 space-y-4">
             <div>

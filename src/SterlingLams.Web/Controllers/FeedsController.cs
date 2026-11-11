@@ -26,6 +26,11 @@ public class FeedsController : Controller
     [HttpGet("/feeds/meta.xml")]
     public Task<IActionResult> Meta(CancellationToken ct) => Render(FeedFlavor.Meta, ct);
 
+    // Pinterest Catalogues consume the same Google-RSS 2.0 spec as Meta (g: fields + "in stock"/"out of
+    // stock" availability), so the Meta flavour serves Pinterest unchanged.
+    [HttpGet("/feeds/pinterest.xml")]
+    public Task<IActionResult> Pinterest(CancellationToken ct) => Render(FeedFlavor.Meta, ct);
+
     private enum FeedFlavor { Google, Meta }
 
     private async Task<IActionResult> Render(FeedFlavor flavor, CancellationToken ct)
