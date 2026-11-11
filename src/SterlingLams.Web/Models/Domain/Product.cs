@@ -97,4 +97,13 @@ public class Product
 
     public int TotalStock => StoreInventories.Sum(si => si.QuantityOnHand);
     public bool IsAvailable => TotalStock > 0;
+
+    /// <summary>A product with no photo can't be shown on the storefront, so force it website-hidden
+    /// (still Active and sellable at the till). It only reaches the website once a picture is added AND
+    /// "Available online" is ticked again — this never reveals a product, it only hides an imageless one.
+    /// Call it from every create/import/save/image-delete path with the product's current image count.</summary>
+    public void HideFromWebIfNoImage(int imageCount)
+    {
+        if (imageCount <= 0) HiddenFromWeb = true;
+    }
 }

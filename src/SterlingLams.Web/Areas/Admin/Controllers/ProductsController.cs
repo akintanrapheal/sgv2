@@ -1185,6 +1185,17 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             {
                 _db.ProductImages.Remove(image);
                 await _db.SaveChangesAsync();
+                // Removing the last photo leaves nothing to show on the website — take it off the storefront
+                // (still Active + sellable at the till) until a new picture is added and it's set Available online.
+                if (!await _db.ProductImages.AnyAsync(i => i.ProductId == productId))
+                {
+                    var product = await _db.Products.FindAsync(productId);
+                    if (product != null && !product.HiddenFromWeb)
+                    {
+                        product.HiddenFromWeb = true;
+                        await _db.SaveChangesAsync();
+                    }
+                }
                 await LogAsync("Update", "Product", productId.ToString(), "Removed a product image");
                 TempData["Success"] = "Image removed.";
             }
