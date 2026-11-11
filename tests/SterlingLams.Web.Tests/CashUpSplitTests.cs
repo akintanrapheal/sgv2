@@ -36,7 +36,7 @@ public class CashUpSplitTests
         var pA = t.SeedProduct(1000m);   // 3 supplied by Allen
         var pB = t.SeedProduct(2000m);   // 2 supplied by Ikota (packed there, merged at Allen)
 
-        var now = DateTime.UtcNow;
+        var now = CashUpTestClock.NowUtc;
         var allenSession = OpenSession(t, allen, now.AddHours(-2));
         var ikotaSession = OpenSession(t, ikota, now.AddHours(-2));
 
@@ -83,7 +83,7 @@ public class CashUpSplitTests
         t.Db.Add(transfer);
         t.Db.SaveChanges();
 
-        var cash = new CashUpService(t.Db);
+        var cash = new CashUpService(t.Db, CashUpTestClock.Provider);
 
         var allenVm = await cash.BuildAsync(allenSession, interim: true, currentUserId: "");
         var ikotaVm = await cash.BuildAsync(ikotaSession, interim: true, currentUserId: "");
@@ -121,7 +121,7 @@ public class CashUpSplitTests
         var (_, allen, _) = t.SeedBranches();
         var buyer = t.SeedUser();
         var p = t.SeedProduct(2500m);
-        var now = DateTime.UtcNow;
+        var now = CashUpTestClock.NowUtc;
         var session = OpenSession(t, allen, now.AddHours(-2));
 
         // A website order customer care confirmed manually as a bank transfer (PaymentProvider = "Transfer"),
@@ -138,7 +138,7 @@ public class CashUpSplitTests
         t.Db.Add(order);
         t.Db.SaveChanges();
 
-        var vm = await new CashUpService(t.Db).BuildAsync(session, interim: true, currentUserId: "");
+        var vm = await new CashUpService(t.Db, CashUpTestClock.Provider).BuildAsync(session, interim: true, currentUserId: "");
 
         // ₦5,000 of items lands in "Website – bank transfer", nothing in "paid online"; delivery excluded.
         Assert.Equal(5000m, vm.Tenders.First(x => x.Key == "WebsiteTransfer").Expected);
@@ -152,7 +152,7 @@ public class CashUpSplitTests
         var (_, allen, _) = t.SeedBranches();
         var buyer = t.SeedUser();
         var p = t.SeedProduct(2500m);
-        var now = DateTime.UtcNow;
+        var now = CashUpTestClock.NowUtc;
         var session = OpenSession(t, allen, now.AddHours(-2));
 
         // A staff-confirmed bank-transfer website order carries PaymentProvider "Manual (Transfer)" — it must
@@ -169,7 +169,7 @@ public class CashUpSplitTests
         t.Db.Add(order);
         t.Db.SaveChanges();
 
-        var vm = await new CashUpService(t.Db).BuildAsync(session, interim: true, currentUserId: "");
+        var vm = await new CashUpService(t.Db, CashUpTestClock.Provider).BuildAsync(session, interim: true, currentUserId: "");
 
         Assert.Equal(5000m, vm.Tenders.First(x => x.Key == "WebsiteTransfer").Expected);
         Assert.Equal(0m, vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected);
@@ -182,7 +182,7 @@ public class CashUpSplitTests
         var (_, allen, _) = t.SeedBranches();
         var buyer = t.SeedUser();
         var p = t.SeedProduct(1000m);
-        var now = DateTime.UtcNow;
+        var now = CashUpTestClock.NowUtc;
         var session = OpenSession(t, allen, now.AddHours(-2));
 
         // Two in-store sales on this till: one paid by card, one by cash (no OrderPayments rows → the
@@ -207,7 +207,7 @@ public class CashUpSplitTests
                 RefundMethod = "Cash", Amount = 1000m, Status = RefundStatus.Approved, CreatedAt = now.AddMinutes(-5) });
         t.Db.SaveChanges();
 
-        var vm = await new CashUpService(t.Db).BuildAsync(session, interim: true, currentUserId: "");
+        var vm = await new CashUpService(t.Db, CashUpTestClock.Provider).BuildAsync(session, interim: true, currentUserId: "");
 
         // Card: 5,000 − 2,000 = 3,000. Cash: 3,000 − 1,000 = 2,000. Transfer untouched.
         Assert.Equal(3000m, vm.Tenders.First(x => x.Key == "Card").Expected);
@@ -226,7 +226,7 @@ public class CashUpSplitTests
         var (_, allen, _) = t.SeedBranches();
         var buyer = t.SeedUser();
         var p = t.SeedProduct(1000m);
-        var now = DateTime.UtcNow;
+        var now = CashUpTestClock.NowUtc;
         var session = OpenSession(t, allen, now.AddHours(-2));
 
         // Paid online order fulfilled by Allen: 2× p = ₦2,000 to Allen's website figure.
@@ -252,7 +252,7 @@ public class CashUpSplitTests
         t.Db.Add(refund);
         t.Db.SaveChanges();
 
-        var vm = await new CashUpService(t.Db).BuildAsync(session, interim: true, currentUserId: "");
+        var vm = await new CashUpService(t.Db, CashUpTestClock.Provider).BuildAsync(session, interim: true, currentUserId: "");
 
         // 2,000 earned − 1,000 refunded = 1,000 left in the website figure.
         Assert.Equal(1000m, vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected);
@@ -267,7 +267,7 @@ public class CashUpSplitTests
         var (_, allen, _) = t.SeedBranches();
         var buyer = t.SeedUser();
         var p = t.SeedProduct(5000m);
-        var now = DateTime.UtcNow;
+        var now = CashUpTestClock.NowUtc;
         var session = OpenSession(t, allen, now.AddHours(-2));
 
         // In-store card sale this session, so there are positive takings to net against.
@@ -301,7 +301,7 @@ public class CashUpSplitTests
         t.Db.Add(refund);
         t.Db.SaveChanges();
 
-        var vm = await new CashUpService(t.Db).BuildAsync(session, interim: true, currentUserId: "");
+        var vm = await new CashUpService(t.Db, CashUpTestClock.Provider).BuildAsync(session, interim: true, currentUserId: "");
 
         // The website channel is floored at 0 (not -5,000); the excess shows as an explicit refunds line.
         Assert.Equal(0m, vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected);
@@ -321,7 +321,7 @@ public class CashUpSplitTests
         var pA = t.SeedProduct(1000m);   // merge branch (Allen) supplies + packs today
         var pB = t.SeedProduct(2000m);   // supplier branch (Ikota) dispatched a day earlier
 
-        var now = DateTime.UtcNow;
+        var now = CashUpTestClock.NowUtc;
         var day1 = now.AddDays(-1);      // Ikota packed & SENT its item on day 1
 
         // A split delivery order Allen merges + packs TODAY (day 2); Ikota handed its line over on day 1.
@@ -344,7 +344,7 @@ public class CashUpSplitTests
         t.Db.Add(order);
         t.Db.SaveChanges();
 
-        var cash = new CashUpService(t.Db);
+        var cash = new CashUpService(t.Db, CashUpTestClock.Provider);
         decimal Web(CloseSummaryVm vm) => vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected;
 
         // Ikota's item counts on the day it DISPATCHED (day 1) — not the day Allen packs the parcel (today).
