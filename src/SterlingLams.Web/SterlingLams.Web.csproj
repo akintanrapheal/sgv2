@@ -23,8 +23,8 @@
 
   <ItemGroup>
     <!-- Entity Framework Core (PostgreSQL) -->
-    <PackageReference Include="AWSSDK.S3" Version="4.0.104.8" />
-    <PackageReference Include="AWSSDK.SimpleEmailV2" Version="4.0.106.7" />
+    <PackageReference Include="AWSSDK.S3" Version="4.0.104.12" />
+    <PackageReference Include="AWSSDK.SimpleEmailV2" Version="4.0.106.10" />
     <PackageReference Include="CloudinaryDotNet" Version="1.29.3" />
     <PackageReference Include="ClosedXML" Version="0.105.1" />
     <PackageReference Include="QRCoder" Version="1.8.1" />

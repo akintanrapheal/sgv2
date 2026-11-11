@@ -246,6 +246,11 @@
                 <span id="price-regular" class="text-2xl font-light text-neutral-900 line-through @(showStrike ? "" : "hidden")">@Model.FormattedRegularPrice</span>
                 <span id="price-effective" class="text-2xl font-light text-brand-600">@(Model.HasPriceRange ? Model.FormattedPriceRange : Model.FormattedPrice)</span>
             </p>
+            @{ var showSavings = Model.IsOnSale && !Model.HasPriceRange; }
+            <p id="price-savings" class="text-sm text-emerald-600 font-medium mb-2 @(showSavings ? "" : "hidden")">
+                You save <span id="savings-amount">@Model.FormattedSavings</span>
+                <span id="savings-pct" class="text-emerald-500">(@Model.DiscountPercent% off)</span>
+            </p>
             @{
                 // "Only N left" urgency: for a simple (no-variant) product we know the exact total
                 // now; for a variant product the count is filled in by JS once an option is chosen.
@@ -1028,6 +1033,23 @@
         if (priceReg) {
             if (regularText != null) { priceReg.textContent = regularText; priceReg.classList.remove('hidden'); }
             else priceReg.classList.add('hidden');
+        }
+        // "You save ₦X (Y% off)" — keep it in step with whichever price is showing.
+        const priceSave = document.getElementById('price-savings');
+        if (priceSave) {
+            let reg = null, eff = null, sale = false;
+            if (v) { sale = !!v.onSale; reg = v.regularPrice; eff = v.price; }
+            else if (!PRICE.range && PRICE.sale != null) { sale = true; reg = PRICE.regular; eff = PRICE.sale; }
+            if (sale && reg > eff) {
+                const diff = reg - eff;
+                const amtEl = document.getElementById('savings-amount');
+                const pctEl = document.getElementById('savings-pct');
+                if (amtEl) amtEl.textContent = fmtPrice(diff);
+                if (pctEl) pctEl.textContent = '(' + Math.round(diff / reg * 100) + '% off)';
+                priceSave.classList.remove('hidden');
+            } else {
+                priceSave.classList.add('hidden');
+            }
         }
     }
 

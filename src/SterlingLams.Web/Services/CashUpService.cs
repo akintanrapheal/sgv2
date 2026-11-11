@@ -75,12 +75,20 @@ public interface ICashUpService
 public class CashUpService : ICashUpService
 {
     private readonly ApplicationDbContext _db;
-    public CashUpService(ApplicationDbContext db) => _db = db;
+    private readonly TimeProvider _clock;
+    // Clock is injectable so the Lagos-day window maths is deterministic under test (the day boundary can't
+    // be exercised reliably against the wall clock). Defaults to the system clock, so production is unchanged.
+    public CashUpService(ApplicationDbContext db, TimeProvider? clock = null)
+    {
+        _db = db;
+        _clock = clock ?? TimeProvider.System;
+    }
 
     public async Task<CloseSummaryVm> BuildAsync(TillSession session, bool interim, string currentUserId)
     {
+        var now = _clock.GetUtcNow().UtcDateTime;
         var storeId = session.Register.StoreId;
-        var winEnd = session.ClosedAt ?? DateTime.UtcNow;
+        var winEnd = session.ClosedAt ?? now;
 
         // Website (online) orders are attributed to the store's designated "online till" ONLY — so they're
         // counted on exactly one session, not on every till open at the store (which double-counted them
@@ -111,7 +119,7 @@ public class CashUpService : ICashUpService
                 .Where(s => s.RegisterId == session.RegisterId && s.Id != session.Id
                     && s.OpenedAt > session.OpenedAt && s.OpenedAt < dayEnd)
                 .OrderBy(s => s.OpenedAt).Select(s => (DateTime?)s.OpenedAt).FirstOrDefaultAsync();
-            var nowCapped = DateTime.UtcNow < dayEnd ? DateTime.UtcNow : dayEnd;
+            var nowCapped = now < dayEnd ? now : dayEnd;
             onlineEnd = nextOpen ?? nowCapped;
         }
 

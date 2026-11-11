@@ -34,7 +34,7 @@ public class CashUpServiceOnlineTillTests
         t.Db.Registers.AddRange(onlineReg, inStoreReg);
         await t.Db.SaveChangesAsync();
 
-        var openedAt = DateTime.UtcNow.AddHours(-2);
+        var openedAt = CashUpTestClock.NowUtc.AddHours(-2);
         var onlineSession = await OpenSessionAsync(t, onlineReg.Id, openedAt);
         var inStoreSession = await OpenSessionAsync(t, inStoreReg.Id, openedAt);
 
@@ -47,8 +47,8 @@ public class CashUpServiceOnlineTillTests
             FulfillmentType = FulfillmentType.Delivery,
             Status = OrderStatus.Confirmed,
             IsPaid = true,
-            PaidAt = DateTime.UtcNow.AddHours(-1),
-            PackedAt = DateTime.UtcNow.AddMinutes(-30),   // packed within the open session's window
+            PaidAt = CashUpTestClock.NowUtc.AddHours(-1),
+            PackedAt = CashUpTestClock.NowUtc.AddMinutes(-30),   // packed within the open session's window
             PaymentProvider = "Paystack",
             Currency = "NGN",
             Subtotal = 5000m,
@@ -58,7 +58,7 @@ public class CashUpServiceOnlineTillTests
         });
         await t.Db.SaveChangesAsync();
 
-        var svc = new CashUpService(t.Db);
+        var svc = new CashUpService(t.Db, CashUpTestClock.Provider);
         var onlineVm = await svc.BuildAsync(onlineSession, interim: true, currentUserId: "");
         var inStoreVm = await svc.BuildAsync(inStoreSession, interim: true, currentUserId: "");
 
@@ -82,22 +82,22 @@ public class CashUpServiceOnlineTillTests
         var onlineReg = new Register { Name = "Till 1", StoreId = allen.Id, IsActive = true, HandlesOnlineOrders = true };
         t.Db.Registers.Add(onlineReg);
         await t.Db.SaveChangesAsync();
-        var session = await OpenSessionAsync(t, onlineReg.Id, DateTime.UtcNow.AddHours(-2));
+        var session = await OpenSessionAsync(t, onlineReg.Id, CashUpTestClock.NowUtc.AddHours(-2));
 
         // A paid website order that was later VOIDED (stock returned, moved to Cancelled, no refund).
         t.Db.Orders.Add(new Order
         {
             OrderNumber = "W-VOID", UserId = user.Id, Channel = OrderChannel.Online,
             FulfillmentType = FulfillmentType.Delivery, Status = OrderStatus.Cancelled,
-            IsPaid = true, PaidAt = DateTime.UtcNow.AddHours(-1), PackedAt = DateTime.UtcNow.AddMinutes(-40),
+            IsPaid = true, PaidAt = CashUpTestClock.NowUtc.AddHours(-1), PackedAt = CashUpTestClock.NowUtc.AddMinutes(-40),
             PaymentProvider = "Paystack",
             Currency = "NGN", Subtotal = 5000m, Total = 5000m, FulfillingStoreId = allen.Id,
-            VoidedAt = DateTime.UtcNow.AddMinutes(-30), VoidedByName = "Manager", VoidReason = "Test order",
+            VoidedAt = CashUpTestClock.NowUtc.AddMinutes(-30), VoidedByName = "Manager", VoidReason = "Test order",
             Items = { new OrderItem { ProductId = p.Id, ProductName = p.Name, Quantity = 1, UnitPrice = 5000m } }
         });
         await t.Db.SaveChangesAsync();
 
-        var vm = await new CashUpService(t.Db).BuildAsync(session, interim: true, currentUserId: "");
+        var vm = await new CashUpService(t.Db, CashUpTestClock.Provider).BuildAsync(session, interim: true, currentUserId: "");
 
         // The voided order contributes nothing to the website takings or the transaction count.
         Assert.Equal(0m, vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected);
@@ -117,7 +117,7 @@ public class CashUpServiceOnlineTillTests
 
         // A concrete PAST Lagos day (yesterday) so the whole window sits before "now" and the
         // result is deterministic regardless of the wall-clock time the test runs at.
-        var day = SterlingLams.Web.Services.ReportCalendar.Today.AddDays(-1);
+        var day = CashUpTestClock.TodayLocal.AddDays(-1);
         var dayStart = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(day);
         var opened = dayStart.AddHours(9).AddMinutes(24);     // till opened 09:24
         var closed = dayStart.AddHours(19);                   // closed 19:00
@@ -136,7 +136,7 @@ public class CashUpServiceOnlineTillTests
         await t.Db.SaveChangesAsync();
 
         var tracked = await t.Db.TillSessions.Include(x => x.Register).FirstAsync(x => x.Id == session.Id);
-        var vm = await new CashUpService(t.Db).BuildAsync(tracked, interim: false, currentUserId: "");
+        var vm = await new CashUpService(t.Db, CashUpTestClock.Provider).BuildAsync(tracked, interim: false, currentUserId: "");
 
         // Counted despite being packed before the till opened; merchandise only (delivery excluded).
         Assert.Equal(24450m, vm.Tenders.First(x => x.Key == "WebsiteOnline").Expected);
@@ -157,8 +157,8 @@ public class CashUpServiceOnlineTillTests
         await t.Db.SaveChangesAsync();
 
         // Two fully-past Lagos days so both windows sit before "now" (deterministic whatever time this runs).
-        var paidDay = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(SterlingLams.Web.Services.ReportCalendar.Today.AddDays(-2));
-        var packedDay = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(SterlingLams.Web.Services.ReportCalendar.Today.AddDays(-1));
+        var paidDay = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(CashUpTestClock.TodayLocal.AddDays(-2));
+        var packedDay = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(CashUpTestClock.TodayLocal.AddDays(-1));
 
         var paidDaySession   = new TillSession { RegisterId = reg.Id, OpenedByUserId = "a", OpenedAt = paidDay.AddHours(9),   ClosedAt = paidDay.AddHours(19) };
         var packedDaySession = new TillSession { RegisterId = reg.Id, OpenedByUserId = "a", OpenedAt = packedDay.AddHours(9), ClosedAt = packedDay.AddHours(19) };
@@ -174,7 +174,7 @@ public class CashUpServiceOnlineTillTests
         });
         await t.Db.SaveChangesAsync();
 
-        var svc = new CashUpService(t.Db);
+        var svc = new CashUpService(t.Db, CashUpTestClock.Provider);
         var paidVm = await svc.BuildAsync(await t.Db.TillSessions.Include(x => x.Register).FirstAsync(x => x.Id == paidDaySession.Id), interim: false, currentUserId: "");
         var packedVm = await svc.BuildAsync(await t.Db.TillSessions.Include(x => x.Register).FirstAsync(x => x.Id == packedDaySession.Id), interim: false, currentUserId: "");
 
@@ -197,7 +197,7 @@ public class CashUpServiceOnlineTillTests
 
         // Anchor to a past Lagos day (yesterday) so the "after close" timestamp still sits before
         // "now" — otherwise this fails whenever the test runs earlier in the day than 13:12.
-        var day = SterlingLams.Web.Services.ReportCalendar.Today.AddDays(-1);
+        var day = CashUpTestClock.TodayLocal.AddDays(-1);
         var dayStart = SterlingLams.Web.Services.ReportCalendar.StartOfDayUtc(day);
         var opened = dayStart.AddHours(9);                   // till opened 09:00
         var closed = dayStart.AddHours(13);                  // closed early at 13:00
@@ -216,7 +216,7 @@ public class CashUpServiceOnlineTillTests
         await t.Db.SaveChangesAsync();
 
         var tracked = await t.Db.TillSessions.Include(x => x.Register).FirstAsync(x => x.Id == session.Id);
-        var vm = await new CashUpService(t.Db).BuildAsync(tracked, interim: false, currentUserId: "");
+        var vm = await new CashUpService(t.Db, CashUpTestClock.Provider).BuildAsync(tracked, interim: false, currentUserId: "");
 
         // A website order packed after the till closed still lands in the day's cash-up.
         Assert.Equal(16950m, vm.Tenders.First(x => x.Key == "WebsiteTransfer").Expected);

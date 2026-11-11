@@ -88,6 +88,13 @@
                     <span class="text-neutral-500">Subtotal</span>
                     <span id="subtotal-display" class="font-light">@Model.FormattedSubtotal</span>
                 </div>
+                @if (Model.HasSavings)
+                {
+                    <div class="flex justify-between text-sm mb-2">
+                        <span class="text-emerald-600">You saved</span>
+                        <span class="text-emerald-600 font-medium">@Model.FormattedSavings</span>
+                    </div>
+                }
                 @if (Model.HasDiscount)
                 {
                     <div id="discount-line" class="flex justify-between text-sm mb-2">
