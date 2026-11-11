@@ -718,6 +718,9 @@ public class ProductImportController : AdminBaseController
                 }
             }
 
+            // An imported product with no photo goes to the till only — it can't show on the website
+            // until a picture is added and it's set Available online. Rows that carried an image stay web-visible.
+            product.HideFromWebIfNoImage(product.Images.Count);
             _db.Products.Add(product);
             await _db.SaveChangesAsync();   // per-product commit → resumable if the batch is cut short
             existing.Add(sku);

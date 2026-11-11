@@ -173,6 +173,7 @@ public class CatalogImportService : ICatalogImportService
                         s++;
                         existing.Images.Add(new ProductImage { Url = url, IsPrimary = s == 1, SortOrder = s });
                     }
+                    existing.HideFromWebIfNoImage(existing.Images.Count);   // no photo → till-only on the website
                     seenCodes.Add(code);
                     _db.ChangeTracker.DetectChanges();
                     await _db.SaveChangesAsync();
@@ -228,6 +229,7 @@ public class CatalogImportService : ICatalogImportService
                     result.Variants++;
                 }
 
+                product.HideFromWebIfNoImage(product.Images.Count);   // no photo → till-only until one is added
                 _db.ChangeTracker.DetectChanges(); // detect the newly-built graph only
                 _db.Products.Add(product);
                 await _db.SaveChangesAsync();

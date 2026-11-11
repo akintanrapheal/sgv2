@@ -345,6 +345,12 @@ public class ProductsController : InventoryAreaController
         // "Available online" is the inverse of HiddenFromWeb — lets staff stock an item for the till
         // before its photos/description are ready, without it showing to website customers.
         product.HiddenFromWeb = !availableOnline;
+        // ...but an item with no photo can never go on the website — force it till-only until a picture
+        // exists, whatever the tick said. A brand-new product has no images yet (they're uploaded after
+        // it's created), so this always holds it back until the owner adds a photo and ticks it online.
+        var hasImage = !isNew && await _db.ProductImages.AnyAsync(i => i.ProductId == product.Id);
+        product.HideFromWebIfNoImage(hasImage ? 1 : 0);
+        var heldOffline = availableOnline && product.HiddenFromWeb;   // wanted online but blocked (no photo)
         product.PosButtonColour = string.IsNullOrWhiteSpace(buttonColour) ? null : buttonColour.Trim();
         product.Description = SterlingLams.Web.Services.ProductHtml.Sanitize(description);
         product.UpdatedAt = DateTime.UtcNow;
@@ -364,7 +370,9 @@ public class ProductsController : InventoryAreaController
         await LogAsync(isNew ? "Create" : "Update", "Product", product.Id.ToString(),
             $"{(isNew ? "Created" : "Updated")} product '{product.Name}'" + (string.IsNullOrEmpty(product.Barcode) ? "" : $" (barcode {product.Barcode})"));
 
-        TempData["Success"] = $"'{product.Name}' saved.";
+        TempData["Success"] = heldOffline
+            ? $"'{product.Name}' saved — selling at the till only. Add a photo, then tick 'Available online' to show it on the website."
+            : $"'{product.Name}' saved.";
         return RedirectToAction(nameof(Index));
     }
 
@@ -385,6 +393,7 @@ public class ProductsController : InventoryAreaController
             CategoryId = categoryId.Value,
             IsActive = true, TrackStock = true, Currency = "NGN", ProductType = "simple",
             ExternalCode = "", LowStockThreshold = 3,
+            HiddenFromWeb = true,   // no photo yet → till-only until one is added and it's set Available online
             Slug = await UniqueSlugAsync(Slugify(name)),
             CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
         };
@@ -440,6 +449,7 @@ public class ProductsController : InventoryAreaController
             Currency = src.Currency, ExternalCode = "", LowStockThreshold = src.LowStockThreshold,
             TrackStock = src.TrackStock, PosButtonColour = src.PosButtonColour,
             IsActive = false, IsArchived = false,
+            HiddenFromWeb = true,   // the copy has no photos yet → till-only until one is added
             Slug = await UniqueSlugAsync(Slugify(src.Name) + "-copy"),
             CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
         };
