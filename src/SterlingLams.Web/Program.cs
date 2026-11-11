@@ -547,13 +547,22 @@ app.Use(async (context, next) =>
         metaHosts = " https://connect.facebook.net https://www.facebook.com";
     }
 
+    // Pinterest Tag needs s.pinimg.com (script) + ct.pinterest.com (events beacon). Only widen the
+    // storefront CSP for those hosts while the Pinterest tag is enabled.
+    var pinterestHosts = "";
+    if (!staffArea && await settingsSvc.GetBoolAsync("pinterest.enabled", false))
+    {
+        scriptSrc += " https://s.pinimg.com";
+        pinterestHosts = " https://s.pinimg.com https://ct.pinterest.com";
+    }
+
     context.Response.Headers["Content-Security-Policy"] =
         "default-src 'self'; " +
         scriptSrc + "; " +
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
         "font-src 'self' https://fonts.gstatic.com; " +
         "img-src 'self' data: https:; " +
-        "connect-src 'self'" + gaHosts + metaHosts + "; " +
+        "connect-src 'self'" + gaHosts + metaHosts + pinterestHosts + "; " +
         "frame-src 'self'" + frameHosts + "; " +
         "object-src 'none'; " +
         "base-uri 'self'; " +

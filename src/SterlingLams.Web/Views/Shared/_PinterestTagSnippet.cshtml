@@ -1,0 +1,21 @@
+@inject SterlingLams.Web.Services.ISettingsService SettingsService
+@{
+    var pinEnabled = await SettingsService.GetBoolAsync("pinterest.enabled");
+    var tagId = (await SettingsService.GetAsync("pinterest.tag_id")).Trim();   // numeric Pinterest Tag id
+    // Only a well-formed numeric id is emitted, so nothing user-entered can break out of the attribute.
+    bool TagOk(string id) => System.Text.RegularExpressions.Regex.IsMatch(id, "^[0-9]{10,20}$");
+    var pinOk = pinEnabled && TagOk(tagId);
+}
+@* Pinterest Tag (base + PageVisit) — storefront only. Off unless enabled + a valid numeric tag id is set.
+   The CSP allows s.pinimg.com / ct.pinterest.com only while the tag is enabled (see Program.cs). *@
+@if (pinOk)
+{
+    <script nonce="@Context.Items["csp-nonce"]">
+        !function(e){if(!window.pintrk){window.pintrk=function(){window.pintrk.queue.push(Array.prototype.slice.call(arguments))};var
+        n=window.pintrk;n.queue=[],n.version="3.0";var t=document.createElement("script");t.async=!0,t.src=e;var
+        r=document.getElementsByTagName("script")[0];r.parentNode.insertBefore(t,r)}}("https://s.pinimg.com/ct/core.js");
+        pintrk('load', '@tagId');
+        pintrk('page');
+    </script>
+    <noscript><img height="1" width="1" style="display:none" alt="" src="https://ct.pinterest.com/v3/?event=init&tid=@tagId&noscript=1" /></noscript>
+}

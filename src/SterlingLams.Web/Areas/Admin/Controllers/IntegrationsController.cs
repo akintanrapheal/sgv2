@@ -17,7 +17,7 @@ public class IntegrationsController : AdminBaseController
     // A previously granted "Integrations" permission can no longer open this screen either.
     protected override string? Section => null;
 
-    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog", "Google Analytics", "Meta Pixel", "Cloudinary", "Retainful", "ImageKit", "Cloudflare R2" };
+    private static readonly string[] Groups = { "Payments", "SMTP", "WhatsApp", "PostHog", "Google Analytics", "Meta Pixel", "Pinterest", "Cloudinary", "Retainful", "ImageKit", "Cloudflare R2" };
     private static readonly string[] Providers = { "paystack", "stripe", "flutterwave" };
 
     private readonly ISettingsService _settings;
@@ -131,6 +131,9 @@ public class IntegrationsController : AdminBaseController
             MetaCapiEnabled        = await _settings.GetBoolAsync("meta.capi_enabled", false),
             MetaCapiTokenSet       = Set("meta.capi_token", null),
             MetaCapiTestCode       = Plain("meta.capi_test_code", null),
+
+            PinterestEnabled       = await _settings.GetBoolAsync("pinterest.enabled", false),
+            PinterestTagId         = Plain("pinterest.tag_id", null),
 
             CloudinaryCloudName  = Plain("cloudinary.cloud_name", "Cloudinary:CloudName"),
             CloudinaryApiKeySet  = Set("cloudinary.api_key", "Cloudinary:ApiKey"),
@@ -488,6 +491,8 @@ public class IntegrationsViewModel
     public bool MetaCapiEnabled { get; set; }
     public bool MetaCapiTokenSet { get; set; }
     public string MetaCapiTestCode { get; set; } = "";
+    public bool PinterestEnabled { get; set; }
+    public string PinterestTagId { get; set; } = "";
     public bool GaServiceAccountSet { get; set; }
 
     // Cloudinary (image hosting). Cloud name is not secret; the API key + secret are.

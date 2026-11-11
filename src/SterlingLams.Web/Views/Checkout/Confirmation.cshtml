@@ -178,4 +178,26 @@
             } catch (e) { /* analytics must never break the confirmation page */ }
         })();
     </script>
+    @* Pinterest checkout (purchase) conversion event — no-ops unless the Pinterest tag is loaded
+       (window.pintrk). sessionStorage-guarded so a refresh doesn't double-count. *@
+    @{
+        var pinLineItems = Model.Items.Select(i => new { product_id = i.ProductId.ToString(), product_price = decimal.ToDouble(i.UnitPrice), product_quantity = i.Quantity });
+    }
+    <script nonce="@Context.Items["csp-nonce"]">
+        (function () {
+            try {
+                var key = 'pin-checkout-@Model.OrderNumber';
+                var val = @Model.Total.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                if (!window.pintrk || sessionStorage.getItem(key) || !(val > 0)) return;
+                pintrk('track', 'checkout', {
+                    value: val,
+                    currency: 'NGN',
+                    order_quantity: @Model.Items.Sum(i => i.Quantity),
+                    order_id: '@Model.OrderNumber',
+                    line_items: @Html.Raw(System.Text.Json.JsonSerializer.Serialize(pinLineItems))
+                });
+                sessionStorage.setItem(key, '1');
+            } catch (e) { /* analytics must never break the confirmation page */ }
+        })();
+    </script>
 }
