@@ -144,8 +144,12 @@ public class CartController : Controller
         // by the shared event id returned below. Fire-and-forget, so it never delays the add.
         var metaEventId = "atc-" + Guid.NewGuid().ToString("N");
         var addedQty = Math.Max(1, quantity);
+        // Signed-in shoppers: include hashed email + phone so Meta can match the AddToCart to a person,
+        // which lifts Event Match Quality (Meta estimates ~8% more conversions reported). Anonymous visitors
+        // keep IP / user-agent / _fbp only. One indexed lookup, gated on auth, off the add's critical path.
+        var capiUser = User.Identity?.IsAuthenticated == true ? await _userManager.GetUserAsync(User) : null;
         _capi.Dispatch("AddToCart", metaEventId,
-            SterlingLams.Web.Services.Marketing.MetaConversionsApi.ContextFrom(HttpContext),
+            SterlingLams.Web.Services.Marketing.MetaConversionsApi.ContextFrom(HttpContext, capiUser?.Email, capiUser?.PhoneNumber),
             new
             {
                 currency = "NGN",
