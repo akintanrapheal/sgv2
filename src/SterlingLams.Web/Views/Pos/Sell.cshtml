@@ -2295,19 +2295,24 @@
         document.getElementById('discount-step2-title').textContent = reason.name;
         document.getElementById('discount-step2-back').onclick = showDiscountStep1;
 
-        // Cashiers can ONLY pick a preset configured in Inventory → Discount reasons — no free entry.
+        // Presets configured in Inventory → Discount reasons, PLUS a free-entry builder so a cashier can
+        // create their own discount (any %, any ₦ off, or a new price). When manager approval is on, the
+        // PIN is still required to RELEASE whatever they build (handled in commitDiscount).
         const presetOptions = (reason.presets || []).map(p => ({ label: p.label, type: p.type, value: p.value }));
         const fmtVal = o => o.type === 'Amount' ? '₦' + Number(o.value).toLocaleString()
                           : o.type === 'NewPrice' ? '₦' + Number(o.value).toLocaleString() + ' new'
                           : Number(o.value) + '%';
         const list = document.getElementById('discount-types-list');
-        if (!presetOptions.length) {
-            list.innerHTML = '<p class="px-4 py-6 text-sm text-neutral-400 text-center">No discount presets for this reason.<br>Add them in Inventory → Discount reasons.</p>';
-            return;
-        }
-        list.innerHTML = presetOptions.map((opt, i) =>
-            `<button type="button" data-oidx="${i}" class="w-full flex items-center justify-between gap-3 text-left px-4 py-3 border-b border-neutral-100 text-sm text-blue-700 hover:bg-neutral-50 transition-colors"><span>${opt.label}</span><span class="text-neutral-400 text-xs">${fmtVal(opt)}</span></button>`
+        const cls = 'w-full flex items-center justify-between gap-3 text-left px-4 py-3 border-b border-neutral-100 text-sm text-blue-700 hover:bg-neutral-50 transition-colors';
+        const presetHtml = presetOptions.map((opt, i) =>
+            `<button type="button" data-oidx="${i}" class="${cls}"><span>${opt.label}</span><span class="text-neutral-400 text-xs">${fmtVal(opt)}</span></button>`
         ).join('');
+        const customHtml =
+            `<p class="px-4 pt-3 pb-1 text-[11px] font-semibold text-neutral-400 uppercase tracking-wide">${presetOptions.length ? 'Or enter your own' : 'Enter a discount'}</p>` +
+            `<button type="button" data-custom="Percentage" class="${cls}"><span>Enter a percentage</span><span class="text-neutral-400 text-xs">%</span></button>` +
+            `<button type="button" data-custom="Amount" class="${cls}"><span>Enter an amount off</span><span class="text-neutral-400 text-xs">₦</span></button>` +
+            `<button type="button" data-custom="NewPrice" class="${cls}"><span>Set a new price</span><span class="text-neutral-400 text-xs">₦ new</span></button>`;
+        list.innerHTML = presetHtml + customHtml;
         list.querySelectorAll('[data-oidx]').forEach(b => b.addEventListener('click', async () => {
             const opt = presetOptions[+b.dataset.oidx];
             if (await commitDiscount(reason.name, opt.type, opt.value)) {
@@ -2315,6 +2320,8 @@
                 renderCart();
             }
         }));
+        // Free entry → the numpad (step 3), which commits through the same PIN gate on UPDATE.
+        list.querySelectorAll('[data-custom]').forEach(b => b.addEventListener('click', () => showDiscountStep3(reason.name, b.dataset.custom)));
     }
 
     let numpadValue = '';
