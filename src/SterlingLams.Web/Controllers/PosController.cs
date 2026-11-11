@@ -241,6 +241,10 @@ public class PosController : Controller
         // Reprint notification for THIS branch (price changed on an in-stock item).
         ViewData["ReprintCount"] = await Infrastructure.DbRead.RetryAsync(() => _db.LabelReprintQueue
             .CountAsync(q => q.Status == ReprintStatus.Pending && q.StoreId == register.StoreId));
+        // Apply-time discount approval: when on, a manager PIN is required at the moment a cashier
+        // releases a discount onto a line/sale (the client prompts; Checkout re-checks server-side).
+        ViewData["ApprovalDiscounts"] = await _settings.GetBoolAsync("pos.approval_discounts", false);
+        ViewData["ApprovalMinPct"] = await _settings.GetDecimalAsync("pos.approval_discount_min_pct", 0);
         return View("Sell", register);
     }
 
@@ -3042,6 +3046,25 @@ public class PosController : Controller
         var rows = clean.Where(p => p.Amount > 0).Select(p => new OrderPayment { Method = p.Method, Amount = p.Amount }).ToList();
         var provider = rows.Count == 1 ? rows[0].Method : "Split";
         return (rows, provider, paid, chg);
+    }
+
+    public class DiscountPinRequest { public string? Pin { get; set; } }
+
+    /// <summary>Apply-time discount approval. The cashier builds a discount (reason + value) freely, but
+    /// releasing it onto the line/sale needs a manager PIN right then. This validates that PIN so a
+    /// discount can't be applied without one; the same PIN is then carried into Checkout, which re-checks
+    /// it server-side (defence in depth — the real money guard stays at payment).</summary>
+    [Authorize, HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> ApproveDiscount([FromBody] DiscountPinRequest req)
+    {
+        var register = await BoundRegisterAsync();
+        if (register == null) return Json(new { ok = false, message = "This POS isn't set up." });
+        if (!await _access.CanWriteAsync(User, register.StoreId))
+            return Json(new { ok = false, message = "You're not assigned to this branch's POS." });
+
+        var mgr = await ValidateManagerPinAsync(req?.Pin);
+        if (mgr == null) return Json(new { ok = false, message = "Manager PIN not recognised." });
+        return Json(new { ok = true, approver = mgr.FullName });
     }
 
     [Authorize, HttpPost, ValidateAntiForgeryToken]

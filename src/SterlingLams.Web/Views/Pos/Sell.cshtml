@@ -492,6 +492,8 @@
             <div id="discount-step1">
                 <p class="px-4 py-3 text-xs font-semibold text-neutral-500 uppercase tracking-wide border-b border-neutral-100">Select Discount Reason</p>
                 <div id="discount-reasons-list" class="max-h-64 overflow-y-auto"></div>
+                <!-- Clearing a discount only raises the price, so it never needs a manager PIN. Shown only when one is set. -->
+                <button type="button" id="discount-remove" class="hidden w-full text-left px-4 py-3 border-t border-neutral-100 text-sm font-medium text-red-500 hover:bg-red-50 transition-colors">Remove discount</button>
             </div>
             <!-- Step 2: Select type -->
             <div id="discount-step2" class="hidden">
@@ -1420,6 +1422,14 @@
     let orderDiscount = { amount: 0, reason: null, type: null };
     let loyalty = { enabled: false, balance: 0, pointValue: 0, redeem: 0 };
 
+    // ── Apply-time discount approval (pos.approval_discounts) ────────────────────
+    // When on, a cashier builds a discount freely but needs a manager PIN to RELEASE it onto the sale.
+    // The validated PIN is remembered for the rest of this sale (so the manager isn't asked per line and
+    // it's carried into Checkout, which re-checks it server-side). Removing a discount never needs a PIN.
+    const DISC_APPROVAL = @Html.Raw(Json.Serialize((bool)(ViewData["ApprovalDiscounts"] ?? false)));
+    const DISC_MIN_PCT = @Html.Raw(Json.Serialize(Convert.ToDecimal(ViewData["ApprovalMinPct"] ?? 0m)));
+    let approvedDiscountPin = null;   // a manager PIN validated this sale, reused + carried to payment
+
     // ── Cart persistence ────────────────────────────────────────────────────────
     function saveCart() {
         try { localStorage.setItem(TILL_CART_KEY, JSON.stringify({ cart, method, tendered: tenderedEl.value, customer })); } catch (e) {}
@@ -1645,7 +1655,7 @@
     }
 
     function renderCart() {
-        if (!cart.length) orderDiscount = { amount: 0, reason: null, type: null };   // clear when the bag empties
+        if (!cart.length) { orderDiscount = { amount: 0, reason: null, type: null }; approvedDiscountPin = null; }   // clear when the bag empties
         // TOTAL DISCOUNT shows per-line discounts PLUS the order-level discount.
         const totalDiscount = cart.reduce((s, c) => s + (c.discountAmount || 0), 0) + orderDiscountAmount();
         renderLoyalty();                    // clamps loyalty.redeem to the current cart, toggles the row
@@ -1972,7 +1982,7 @@
                     body: JSON.stringify({ paymentMethod: method, amountTendered: parseFloat(tenderedEl.value) || 0,
                         customerUserId: customer?.id || null,
                         loyaltyPointsToRedeem: loyalty.redeem || 0,
-                        managerPin: managerPin,
+                        managerPin: managerPin || approvedDiscountPin,
                         orderDiscount: orderDiscountAmount(),
                         orderDiscountReason: orderDiscount.reason,
                         orderDiscountType: orderDiscount.type,
@@ -2260,6 +2270,11 @@
         document.getElementById('discount-step1').classList.remove('hidden');
         document.getElementById('discount-step2').classList.add('hidden');
         document.getElementById('discount-step3').classList.add('hidden');
+        // Offer "Remove discount" only when the current target already carries one (removal is PIN-free).
+        const hasExisting = modalItemIdx === -1
+            ? (orderDiscount.amount || 0) > 0
+            : (cart[modalItemIdx]?.discountAmount || 0) > 0;
+        document.getElementById('discount-remove').classList.toggle('hidden', !hasExisting);
         const list = document.getElementById('discount-reasons-list');
         if (!discountReasons.length) {
             list.innerHTML = '<p class="px-4 py-6 text-sm text-neutral-400 text-center">No discount reasons configured.<br>Add them in Admin → EPOS → Discount Reasons.</p>';
@@ -2293,11 +2308,12 @@
         list.innerHTML = presetOptions.map((opt, i) =>
             `<button type="button" data-oidx="${i}" class="w-full flex items-center justify-between gap-3 text-left px-4 py-3 border-b border-neutral-100 text-sm text-blue-700 hover:bg-neutral-50 transition-colors"><span>${opt.label}</span><span class="text-neutral-400 text-xs">${fmtVal(opt)}</span></button>`
         ).join('');
-        list.querySelectorAll('[data-oidx]').forEach(b => b.addEventListener('click', () => {
+        list.querySelectorAll('[data-oidx]').forEach(b => b.addEventListener('click', async () => {
             const opt = presetOptions[+b.dataset.oidx];
-            applyDiscount(reason.name, opt.type, opt.value);
-            itemModal.classList.add('hidden');
-            renderCart();
+            if (await commitDiscount(reason.name, opt.type, opt.value)) {
+                itemModal.classList.add('hidden');
+                renderCart();
+            }
         }));
     }
 
@@ -2315,12 +2331,13 @@
 
         const reason = discountReasons.find(r => r.name === reasonName);
         document.getElementById('discount-step3-back').onclick = () => { if (reason) showDiscountStep2(reason.id); else showDiscountStep1(); };
-        document.getElementById('discount-update').onclick = () => {
+        document.getElementById('discount-update').onclick = async () => {
             const val = parseFloat(numpadValue) || 0;
             if (val <= 0) { showError('Enter a value.'); return; }
-            applyDiscount(numpadReasonName, numpadType, val);
-            itemModal.classList.add('hidden');
-            renderCart();
+            if (await commitDiscount(numpadReasonName, numpadType, val)) {
+                itemModal.classList.add('hidden');
+                renderCart();
+            }
         };
     }
 
@@ -2335,28 +2352,87 @@
         document.getElementById('numpad-display').textContent = numpadValue;
     });
 
+    // Sum of unit price × qty across the bag, BEFORE any discount (the base the approval % is measured on).
+    function pureSubtotal() { return cart.reduce((s, c) => s + c.unitPrice * c.qty, 0); }
+
+    // What ₦ discount a (type, value) maps to for the current modal target — computed without applying it,
+    // so the approval check and the apply step agree on the amount.
+    function discountAmountFor(type, value) {
+        if (modalItemIdx === -1) {
+            const base = grossTotal();
+            let amt = type === 'Percentage' ? base * (value / 100)
+                    : type === 'Amount' ? value
+                    : type === 'NewPrice' ? Math.max(0, base - value) : 0;
+            return Math.min(Math.max(0, amt), base);
+        }
+        const c = cart[modalItemIdx];
+        if (!c) return 0;
+        const lineTotal = c.unitPrice * c.qty;
+        let d = type === 'Percentage' ? lineTotal * (value / 100)
+              : type === 'Amount' ? value
+              : type === 'NewPrice' ? Math.max(0, lineTotal - value * c.qty) : 0;
+        return Math.min(Math.max(0, d), lineTotal);
+    }
+
+    // Apply-time approval gate. Builds the discount is free; RELEASING it onto the sale needs a manager PIN
+    // when pos.approval_discounts is on and the sale's total discount reaches the configured %. Returns
+    // true when the discount was applied, false when approval was declined/cancelled (caller keeps the
+    // modal open). The PIN, once validated, is reused for the rest of the sale and carried to Checkout.
+    async function commitDiscount(reasonName, type, value) {
+        const amount = discountAmountFor(type, value);
+        let needsPin = false;
+        if (DISC_APPROVAL && amount > 0 && !approvedDiscountPin) {
+            const sub = pureSubtotal();
+            let lineSum = cart.reduce((s, c) => s + (c.discountAmount || 0), 0);
+            let ordAmt = orderDiscountAmount();
+            if (modalItemIdx === -1) ordAmt = amount;                                   // changing the order discount
+            else lineSum = lineSum - (cart[modalItemIdx]?.discountAmount || 0) + amount; // replacing this line's discount
+            const pct = sub > 0 ? (lineSum + ordAmt) / sub * 100 : 0;
+            needsPin = pct >= DISC_MIN_PCT;
+        }
+        if (needsPin) {
+            const pin = prompt('Manager PIN to approve this discount:');
+            if (!pin) { showError('Approval cancelled — discount not applied.'); return false; }
+            try {
+                const r = await fetch('/Pos/ApproveDiscount', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'RequestVerificationToken': token },
+                    body: JSON.stringify({ pin })
+                });
+                const d = await r.json();
+                if (!d.ok) { showError(d.message || 'Manager PIN not recognised.'); return false; }
+                approvedDiscountPin = pin;   // reused for the rest of this sale + sent with Checkout
+            } catch { showError('Could not verify the PIN — check the connection and try again.'); return false; }
+        }
+        applyDiscount(reasonName, type, value);
+        return true;
+    }
+
     function applyDiscount(reasonName, type, value) {
         // Order-level discount (modalItemIdx === -1): applies to the whole sale (after per-line discounts).
         if (modalItemIdx === -1) {
-            const base = grossTotal();
-            let amt = 0;
-            if (type === 'Percentage') amt = base * (value / 100);
-            else if (type === 'Amount') amt = value;
-            else if (type === 'NewPrice') amt = Math.max(0, base - value);
-            orderDiscount = { amount: Math.min(Math.max(0, amt), base), reason: reasonName, type: type };
+            orderDiscount = { amount: discountAmountFor(type, value), reason: reasonName, type: type };
             return;
         }
         const c = cart[modalItemIdx];
         if (!c) return;
-        const lineTotal = c.unitPrice * c.qty;
-        let discountAmount = 0;
-        if (type === 'Percentage') discountAmount = lineTotal * (value / 100);
-        else if (type === 'Amount') discountAmount = value;
-        else if (type === 'NewPrice') discountAmount = Math.max(0, lineTotal - value * c.qty);
-        c.discountAmount = Math.min(Math.max(0, discountAmount), lineTotal);
+        c.discountAmount = discountAmountFor(type, value);
         c.discountReason = reasonName;
         c.discountType = type;
     }
+
+    // Remove the discount on the current target — PIN-free (clearing a discount only raises the price).
+    document.getElementById('discount-remove')?.addEventListener('click', () => {
+        if (modalItemIdx === -1) {
+            orderDiscount = { amount: 0, reason: null, type: null };
+        } else if (cart[modalItemIdx]) {
+            cart[modalItemIdx].discountAmount = 0;
+            cart[modalItemIdx].discountReason = null;
+            cart[modalItemIdx].discountType = null;
+        }
+        itemModal.classList.add('hidden');
+        renderCart();
+    });
 
     // Open the shared discount modal in ORDER mode (whole sale) rather than for a single line.
     function openOrderDiscountModal() {
