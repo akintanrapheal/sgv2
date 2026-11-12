@@ -68,6 +68,20 @@
     }
 </div>
 
+@if (!isNew && (Model.CreatedAt != null || Model.UpdatedAt != null))
+{
+    <div class="-mt-4 mb-6 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-neutral-400">
+        @if (Model.CreatedAt != null)
+        {
+            <span>Published @Model.CreatedAt.Value.ToLocalTime().ToString("d MMM yyyy")@(string.IsNullOrEmpty(Model.CreatedByName) ? "" : " · by " + Model.CreatedByName)</span>
+        }
+        @if (Model.UpdatedAt != null)
+        {
+            <span>Modified @Model.UpdatedAt.Value.ToLocalTime().ToString("d MMM yyyy · HH:mm")@(string.IsNullOrEmpty(Model.UpdatedByName) ? "" : " · by " + Model.UpdatedByName)</span>
+        }
+    </div>
+}
+
 <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 max-w-6xl">
     <div class="xl:col-span-2 min-w-0">
     <form asp-area="Admin" asp-controller="Products" asp-action="Save" method="post" class="space-y-5">

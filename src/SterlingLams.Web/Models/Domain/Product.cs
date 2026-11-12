@@ -85,6 +85,11 @@ public class Product
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    /// <summary>Who first created (published) this product, and who last edited it — for the audit line on
+    /// the product profile. ApplicationUser.Id (nullable: null for imported/legacy rows). No FK navigation;
+    /// the name is resolved separately so a deleted user never breaks the product.</summary>
+    public string? CreatedByUserId { get; set; }
+    public string? UpdatedByUserId { get; set; }
 
     public int CategoryId { get; set; }
     public Category Category { get; set; } = null!;
