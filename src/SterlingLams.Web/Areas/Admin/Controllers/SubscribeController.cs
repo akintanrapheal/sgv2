@@ -420,7 +420,7 @@ public class SubscribeController : AdminBaseController
         // leaves all storefront usage silently dropped and "never used" on Zephiel. Values must match
         // ApiCallPersistenceService's OnlineStoreId (0) + OnlineStoreName so it's the SAME Zephiel store.
         var total = stores.Count + 1;
-        if (await _zephiel.ProvisionStoreKeyAsync(0, "Online / Storefront", force: true) != null) provisioned++;
+        if (await _zephiel.ProvisionStoreKeyAsync(0, "Online", force: true) != null) provisioned++;
 
         await LogAsync("Update", "Store", "*", $"Reconnected {provisioned}/{total} store(s) to Zephiel with fresh keys (incl. Online storefront)", performedBy: "API System");
         TempData["Success"] = $"Reconnected {provisioned} of {total} store(s) to Zephiel with fresh keys (including the Online storefront) under the current subscription.";

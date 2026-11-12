@@ -69,7 +69,11 @@ public class ApiCallPersistenceService : BackgroundService
     // A sentinel store id for storefront ("Online") traffic, which has no real SG store. Provisioned on
     // Zephiel once as its own store so the account total equals this chart's total (POS tills + Online).
     private const int OnlineStoreId = 0;
-    private const string OnlineStoreName = "Online / Storefront";
+    // MUST match the store's name on Zephiel exactly — provisioning reuses a store by name, so a mismatch
+    // makes it try to CREATE a new store, which hits the plan's store limit and silently fails (then the
+    // Online key is never issued and all storefront usage is dropped). Zephiel's store is named "Online".
+    // Keep this in sync with SubscribeController.ReconnectStores.
+    private const string OnlineStoreName = "Online";
     private const int MaxPingsPerFlush = 1000;   // safety bound on outbound pings per cycle
     // Daily cap: never mirror more than this many calls to Zephiel per UTC day, so the account stays
     // comfortably under its 25,000/month quota (750 × 31 ≈ 23,250). SG really serves ~8,000 API calls a
