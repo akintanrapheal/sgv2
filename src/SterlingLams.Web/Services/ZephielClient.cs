@@ -12,7 +12,7 @@ namespace SterlingLams.Web.Services;
 ///
 /// Config is settings-first (Admin → Integrations → Zephiel) with env/config fallback:
 ///   zephiel.enabled      — master switch (off by default; nothing leaves SG until turned on)
-///   zephiel.base_url      — Zephiel base URL (default https://zephiel-api.vercel.app)
+///   zephiel.base_url      — Zephiel base URL (default https://zephiel.com — the Cloudflare apex)
 ///   zephiel.account_key   — SG's master account key on Zephiel, used to auto-provision stores
 ///   zephiel.store_keys    — JSON map { "&lt;storeId&gt;": "&lt;per-store key&gt;" }, one Zephiel key per SG
 ///                           store. Matches Zephiel's api_keys.store_id so traffic is attributed
@@ -39,7 +39,10 @@ public interface IZephielClient
 
 public class ZephielClient : IZephielClient
 {
-    private const string DefaultBaseUrl = "https://www.zephiel.com";
+    // Apex, NOT www: Zephiel moved to Cloudflare Workers (2026-11-03) which serves only the apex
+    // zephiel.com — www.zephiel.com stopped resolving, so pings to it silently failed and usage
+    // flat-lined. Keep this on the apex; BaseUrlAsync() also rewrites any stale www/host to it.
+    private const string DefaultBaseUrl = "https://zephiel.com";
 
     // When Zephiel rate-limits us (429) or errors, we pause the usage pings briefly instead of hammering
     // the gateway on every order/POS sale (which just produces a stream of 429s). We honour Zephiel's own
@@ -92,7 +95,15 @@ public class ZephielClient : IZephielClient
     private async Task<string> BaseUrlAsync()
     {
         var b = await Get("zephiel.base_url", "Zephiel:BaseUrl");
-        return (b.Length > 0 ? b : DefaultBaseUrl).TrimEnd('/');
+        var url = (b.Length > 0 ? b : DefaultBaseUrl).TrimEnd('/');
+        // Self-heal a stale configured host: the dead www apex, or the old Netlify/Vercel deployments
+        // the domain was migrated off. Any of these → the live Cloudflare apex. Keeps a blank-or-stale
+        // setting from silently killing the usage flow again (the 2026-11-03 cutover footgun).
+        if (url.Contains("www.zephiel.com", StringComparison.OrdinalIgnoreCase)
+            || url.Contains(".netlify.app", StringComparison.OrdinalIgnoreCase)
+            || url.Contains(".vercel.app", StringComparison.OrdinalIgnoreCase))
+            url = "https://zephiel.com";
+        return url;
     }
 
     public async Task<bool> IsConfiguredAsync()
