@@ -414,8 +414,16 @@ public class SubscribeController : AdminBaseController
         foreach (var s in stores)
             if (await _zephiel.ProvisionStoreKeyAsync(s.Id, s.Name, s.Slug, force: true) != null) provisioned++;
 
-        await LogAsync("Update", "Store", "*", $"Reconnected {provisioned}/{stores.Count} store(s) to Zephiel with fresh keys", performedBy: "API System");
-        TempData["Success"] = $"Reconnected {provisioned} of {stores.Count} store(s) to Zephiel with fresh keys under the current subscription.";
+        // The storefront maps to Zephiel as the synthetic "Online" store (sentinel id 0) — most of the
+        // site's traffic lands there, so its key MUST be rebuilt here too. Without this the Online key is
+        // only ever provisioned lazily (idempotent, never overwritten), so a stale/missing Online key
+        // leaves all storefront usage silently dropped and "never used" on Zephiel. Values must match
+        // ApiCallPersistenceService's OnlineStoreId (0) + OnlineStoreName so it's the SAME Zephiel store.
+        var total = stores.Count + 1;
+        if (await _zephiel.ProvisionStoreKeyAsync(0, "Online / Storefront", force: true) != null) provisioned++;
+
+        await LogAsync("Update", "Store", "*", $"Reconnected {provisioned}/{total} store(s) to Zephiel with fresh keys (incl. Online storefront)", performedBy: "API System");
+        TempData["Success"] = $"Reconnected {provisioned} of {total} store(s) to Zephiel with fresh keys (including the Online storefront) under the current subscription.";
         return RedirectToAction(nameof(Index));
     }
 }
