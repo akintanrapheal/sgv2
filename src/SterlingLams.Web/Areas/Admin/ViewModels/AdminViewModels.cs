@@ -269,6 +269,12 @@ namespace SterlingLams.Web.Areas.Admin.ViewModels
     public class AdminProductEditViewModel
     {
         public int Id { get; set; }
+        // Audit line shown on the profile: when/who published (created) and last modified. Names are
+        // resolved in the controller (null for imported/legacy rows or a since-deleted user).
+        public DateTime? CreatedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; }
+        public string? CreatedByName { get; set; }
+        public string? UpdatedByName { get; set; }
         public string Name { get; set; } = "";
         // Optional fields are nullable so ASP.NET's implicit "non-nullable = required"
         // validation doesn't block saving when they're left blank.

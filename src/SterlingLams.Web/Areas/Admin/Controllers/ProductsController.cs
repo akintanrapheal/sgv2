@@ -373,9 +373,31 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 .FirstOrDefaultAsync(p => p.Id == id);
             if (product == null) return NotFound();
 
+            // Audit line (who published / last modified). Resolve names null-safely — an imported/legacy
+            // row has no user id, and a since-deleted user simply shows no name, never an error.
+            var auditIds = new[] { product.CreatedByUserId, product.UpdatedByUserId }
+                .Where(x => !string.IsNullOrEmpty(x)).Distinct().ToList();
+            var auditUsers = auditIds.Count == 0
+                ? new List<(string Id, string? First, string? Last, string? Email)>()
+                : (await _db.Users.Where(u => auditIds.Contains(u.Id))
+                    .Select(u => new { u.Id, u.FirstName, u.LastName, u.Email }).ToListAsync())
+                    .Select(u => (Id: u.Id, First: (string?)u.FirstName, Last: (string?)u.LastName, Email: (string?)u.Email)).ToList();
+            string? NameOf(string? uid)
+            {
+                if (string.IsNullOrEmpty(uid)) return null;
+                var u = auditUsers.FirstOrDefault(x => x.Id == uid);
+                if (u.Id == null) return null;
+                var n = ((u.First ?? "") + " " + (u.Last ?? "")).Trim();
+                return n.Length > 0 ? n : u.Email;
+            }
+
             var vm = new AdminProductEditViewModel
             {
                 Id               = product.Id,
+                CreatedAt        = product.CreatedAt,
+                UpdatedAt        = product.UpdatedAt,
+                CreatedByName    = NameOf(product.CreatedByUserId),
+                UpdatedByName    = NameOf(product.UpdatedByUserId),
                 Name             = product.Name,
                 Slug             = product.Slug,
                 Sku              = product.Sku,
@@ -699,6 +721,10 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
             product.UpdatedAt = DateTime.UtcNow;
 
             var isNew = vm.Id == 0;
+            // Audit: who published (created) this product, and who last modified it — for the profile line.
+            var editorId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            product.UpdatedByUserId = editorId;
+            if (isNew) product.CreatedByUserId = editorId;
             try
             {
                 await _db.SaveChangesAsync();
@@ -770,6 +796,8 @@ namespace SterlingLams.Web.Areas.Admin.Controllers
                 IsNewArrival     = source.IsNewArrival,
                 CreatedAt        = DateTime.UtcNow,
                 UpdatedAt        = DateTime.UtcNow,
+                CreatedByUserId  = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+                UpdatedByUserId  = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
             };
 
             foreach (var img in source.Images.OrderBy(i => i.SortOrder))

@@ -354,6 +354,10 @@ public class ProductsController : InventoryAreaController
         product.PosButtonColour = string.IsNullOrWhiteSpace(buttonColour) ? null : buttonColour.Trim();
         product.Description = SterlingLams.Web.Services.ProductHtml.Sanitize(description);
         product.UpdatedAt = DateTime.UtcNow;
+        // Audit: who published (created) this product, and who last modified it — for the profile line.
+        var editorId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        product.UpdatedByUserId = editorId;
+        if (isNew) product.CreatedByUserId = editorId;
 
         if (isNew)
         {
@@ -395,7 +399,9 @@ public class ProductsController : InventoryAreaController
             ExternalCode = "", LowStockThreshold = 3,
             HiddenFromWeb = true,   // no photo yet → till-only until one is added and it's set Available online
             Slug = await UniqueSlugAsync(Slugify(name)),
-            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            CreatedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+            UpdatedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
         };
         _db.Products.Add(product);
         await _db.SaveChangesAsync();
@@ -451,7 +457,9 @@ public class ProductsController : InventoryAreaController
             IsActive = false, IsArchived = false,
             HiddenFromWeb = true,   // the copy has no photos yet → till-only until one is added
             Slug = await UniqueSlugAsync(Slugify(src.Name) + "-copy"),
-            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+            CreatedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+            UpdatedByUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
         };
         _db.Products.Add(copy);
         await _db.SaveChangesAsync();
