@@ -71,6 +71,12 @@ public class ApiCallPersistenceService : BackgroundService
     private const int OnlineStoreId = 0;
     private const string OnlineStoreName = "Online / Storefront";
     private const int MaxPingsPerFlush = 1000;   // safety bound on outbound pings per cycle
+    // Daily cap: never mirror more than this many calls to Zephiel per UTC day, so the account stays
+    // under its 25,000/month quota (800 × 31 ≈ 24,800). This THROTTLES real traffic — it never invents
+    // calls: SG's genuine recorded volume flows through up to the ceiling, then pauses until tomorrow.
+    private const int DailyMirrorCap = 800;
+    private DateOnly _capDayUtc;
+    private int _mirroredTodayUtc;
 
     private async Task MirrorToZephielAsync(IServiceScope scope, ApplicationDbContext db,
         List<(DateOnly Day, string Label, int Count)> pending, CancellationToken ct)
@@ -83,11 +89,18 @@ public class ApiCallPersistenceService : BackgroundService
             .ToDictionary(g => g.Key, g => g.Sum(x => x.Count), StringComparer.OrdinalIgnoreCase);
         if (byLabel.Count == 0) return;
 
+        // Daily cap (see DailyMirrorCap): once today's ceiling is reached, stop mirroring until tomorrow.
+        var todayUtc = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (todayUtc != _capDayUtc) { _capDayUtc = todayUtc; _mirroredTodayUtc = 0; }
+        var dailyRemaining = Math.Max(0, DailyMirrorCap - _mirroredTodayUtc);
+        if (dailyRemaining == 0) return;
+
         // Map each label to a Zephiel store: a real store by name, or the synthetic Online store.
         var stores = await db.Stores.Select(s => new { s.Id, s.Name }).ToListAsync(ct);
         var idByName = stores.ToDictionary(s => s.Name, s => s.Id, StringComparer.OrdinalIgnoreCase);
 
-        var budget = MaxPingsPerFlush;
+        var budget = Math.Min(MaxPingsPerFlush, dailyRemaining);
+        var sentThisCycle = 0;
         foreach (var (label, count) in byLabel)
         {
             if (count <= 0 || budget <= 0) continue;
@@ -102,6 +115,7 @@ public class ApiCallPersistenceService : BackgroundService
 
             var n = Math.Min(count, budget);
             budget -= n;
+            sentThisCycle += n;
             // One gateway hit per recorded call (Zephiel counts one usage event each). Fire the batch
             // and await it inside the scope so the client isn't disposed mid-request.
             var tasks = new List<Task>(n);
@@ -109,5 +123,6 @@ public class ApiCallPersistenceService : BackgroundService
                 tasks.Add(zephiel.NotifyCallAsync(storeId, "/multistore/sync", "POST", 200, ct));
             await Task.WhenAll(tasks);
         }
+        _mirroredTodayUtc += sentThisCycle;   // count only what actually went to Zephiel toward the daily cap
     }
 }
