@@ -72,9 +72,10 @@ public class ApiCallPersistenceService : BackgroundService
     private const string OnlineStoreName = "Online / Storefront";
     private const int MaxPingsPerFlush = 1000;   // safety bound on outbound pings per cycle
     // Daily cap: never mirror more than this many calls to Zephiel per UTC day, so the account stays
-    // under its 25,000/month quota (800 × 31 ≈ 24,800). This THROTTLES real traffic — it never invents
-    // calls: SG's genuine recorded volume flows through up to the ceiling, then pauses until tomorrow.
-    private const int DailyMirrorCap = 800;
+    // comfortably under its 25,000/month quota (750 × 31 ≈ 23,250). SG really serves ~8,000 API calls a
+    // day, so this cap binds every day — it THROTTLES that real traffic down to a genuine capped subset;
+    // it never invents calls. Once the ceiling is hit, mirroring pauses until the next UTC day.
+    private const int DailyMirrorCap = 750;
     private DateOnly _capDayUtc;
     private int _mirroredTodayUtc;
 
