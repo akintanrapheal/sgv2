@@ -68,20 +68,6 @@
     }
 </div>
 
-@if (!isNew && (Model.CreatedAt != null || Model.UpdatedAt != null))
-{
-    <div class="-mt-4 mb-6 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-neutral-400">
-        @if (Model.CreatedAt != null)
-        {
-            <span>Published @Model.CreatedAt.Value.ToLocalTime().ToString("d MMM yyyy")@(string.IsNullOrEmpty(Model.CreatedByName) ? "" : " · by " + Model.CreatedByName)</span>
-        }
-        @if (Model.UpdatedAt != null)
-        {
-            <span>Modified @Model.UpdatedAt.Value.ToLocalTime().ToString("d MMM yyyy · HH:mm")@(string.IsNullOrEmpty(Model.UpdatedByName) ? "" : " · by " + Model.UpdatedByName)</span>
-        }
-    </div>
-}
-
 <div class="grid grid-cols-1 xl:grid-cols-3 gap-6 max-w-6xl">
     <div class="xl:col-span-2 min-w-0">
     <form asp-area="Admin" asp-controller="Products" asp-action="Save" method="post" class="space-y-5">
@@ -874,6 +860,42 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Publish / modify history -->
+            @if (Model.CreatedAt != null || Model.UpdatedAt != null)
+            {
+                <div class="bg-white rounded-sm border border-neutral-100 p-5">
+                    <h3 class="text-sm font-medium mb-3">History</h3>
+                    <div class="space-y-3">
+                        @if (Model.CreatedAt != null)
+                        {
+                            <div>
+                                <div class="flex justify-between text-xs">
+                                    <span class="text-neutral-400">Published</span>
+                                    <span class="font-medium">@Model.CreatedAt.Value.ToLocalTime().ToString("dd MMM yyyy")</span>
+                                </div>
+                                @if (!string.IsNullOrEmpty(Model.CreatedByName))
+                                {
+                                    <div class="text-right text-[11px] text-neutral-400 mt-0.5">by @Model.CreatedByName</div>
+                                }
+                            </div>
+                        }
+                        @if (Model.UpdatedAt != null)
+                        {
+                            <div>
+                                <div class="flex justify-between text-xs">
+                                    <span class="text-neutral-400">Modified</span>
+                                    <span class="font-medium">@Model.UpdatedAt.Value.ToLocalTime().ToString("dd MMM yyyy · HH:mm")</span>
+                                </div>
+                                @if (!string.IsNullOrEmpty(Model.UpdatedByName))
+                                {
+                                    <div class="text-right text-[11px] text-neutral-400 mt-0.5">by @Model.UpdatedByName</div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
         </aside>
     }
 </div>
