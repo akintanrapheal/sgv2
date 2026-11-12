@@ -377,7 +377,13 @@ public class ProductsController : Controller
         // So the toggle only thins the variant picker, and only while something is still buyable —
         // hiding every option on a fully sold-out product would leave an empty picker instead of a
         // readable sold-out page.
-        var anyStock = product.StoreInventories.Any(si => si.QuantityOnHand > 0);
+        // Stock sitting on an INACTIVE variant (e.g. leftover size variants from an import) can never be
+        // sold — the storefront offers only the pool (simple products) or active variants. So it must NOT
+        // count as availability, or the page shows "in stock" while add-to-cart (which checks sellable
+        // stock) rejects it as out of stock. Exclude inactive-variant rows wherever availability is read.
+        var activeVariantIds = product.Variants.Where(v => v.IsActive).Select(v => v.Id).ToHashSet();
+        bool Sellable(int? variantId) => variantId == null || activeVariantIds.Contains(variantId.Value);
+        var anyStock = product.StoreInventories.Any(si => Sellable(si.ProductVariantId) && si.QuantityOnHand > 0);
         // Staff see every variant option even when hide-out-of-stock is on (see the listing above).
         var hideOos = anyStock && await _settings.GetBoolAsync("storefront.hide_out_of_stock", false)
             && !SterlingLams.Web.Areas.Admin.AdminSections.IsStaff(User);
@@ -467,7 +473,7 @@ public class ProductsController : Controller
             CategorySlug = product.Category.Slug,
             ImageUrls = product.Images.Select(i => i.Url).ToList(),
             // Total available per branch (sum of pool + any variant rows at that store).
-            StoreStock = product.StoreInventories.Where(si => si.Store.IsActive && si.Store.IsPublic)
+            StoreStock = product.StoreInventories.Where(si => si.Store.IsActive && si.Store.IsPublic && Sellable(si.ProductVariantId))
                 .GroupBy(si => new { si.StoreId, si.Store.Name, si.Store.Slug })
                 .Select(g => new StoreStockViewModel
                 {
