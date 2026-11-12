@@ -184,6 +184,10 @@ public class WooCommerceImportService : IWooCommerceImportService
                     }
                 }
 
+                // Imported product with no photo goes to the till only — it can't show on the website
+                // until a picture is added and it's set Available online. Rows that carried an image stay
+                // web-visible. (Same rule the CSV / catalogue imports apply — this path was missed.)
+                product.HideFromWebIfNoImage(product.Images.Count);
                 _db.Products.Add(product);
                 await _db.SaveChangesAsync();   // save each product individually — avoids slug/key collisions within a batch
                 existingByCode[code] = product;
