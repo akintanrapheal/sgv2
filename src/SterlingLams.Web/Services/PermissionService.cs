@@ -45,6 +45,7 @@ public class PermissionService : IPermissionService
     public async Task<bool> CanAccessAsync(ClaimsPrincipal user, string section)
     {
         if (AdminSections.IsSuperAdmin(user)) return true;   // super admin bypasses all section permissions
+        if (AdminSections.AlwaysAvailable.Contains(section)) return true;  // shared team tools (e.g. live chat)
         var raw = await GetRawGrantsAsync(user);
         // View if granted the section, its :manage, or any sub-permission (e.g. a Settings group).
         return raw.Contains(section)
@@ -55,6 +56,7 @@ public class PermissionService : IPermissionService
     public async Task<bool> CanManageAsync(ClaimsPrincipal user, string section)
     {
         if (AdminSections.IsSuperAdmin(user)) return true;
+        if (AdminSections.AlwaysAvailable.Contains(section)) return true;  // shared team tools (e.g. live chat)
         var raw = await GetRawGrantsAsync(user);
         return raw.Contains(section + ":manage");
     }
@@ -89,6 +91,7 @@ public class PermissionService : IPermissionService
             var i = g.IndexOf(':');
             result.Add(i < 0 ? g : g[..i]);
         }
+        result.UnionWith(AdminSections.AlwaysAvailable);  // shared team tools visible to every staffer (e.g. live chat)
         return result;
     }
 
