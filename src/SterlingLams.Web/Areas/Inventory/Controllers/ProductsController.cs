@@ -892,15 +892,42 @@ public class ProductsController : InventoryAreaController
         // In-transit (OUT): units this branch has already DISPATCHED on a transfer but the destination
         // hasn't received yet — they've left this branch's on-hand, so they're shown as "in transit",
         // not available. (Reserved units are still physically here — shown as "held to send".)
-        var inTransitByStore = (await _db.StockTransfers
+        // Pulled per-transfer so each one can be linked from the editor, just like the order "held by"
+        // list — staff can click straight through to the transfer that's carrying the stock.
+        var transitRows = (await _db.StockTransfers
             .Where(t => (t.Status == TransferStatus.InTransit || t.Status == TransferStatus.PartiallyReceived)
                 && t.Items.Any(i => i.ProductId == id && i.ProductVariantId == variantId))
-            .SelectMany(t => t.Items
-                .Where(i => i.ProductId == id && i.ProductVariantId == variantId)
-                .Select(i => new { t.FromStoreId, Qty = (i.DispatchedQty ?? 0) - (i.ReceivedQty ?? 0) - (i.DamagedQty ?? 0) - (i.WontFulfilQty ?? 0) }))
+            .Select(t => new
+            {
+                t.Id,
+                t.FromStoreId,
+                t.TransferNumber,
+                t.Status,
+                ToStoreName = t.ToStore.Name,
+                Qty = t.Items.Where(i => i.ProductId == id && i.ProductVariantId == variantId)
+                    .Sum(i => (i.DispatchedQty ?? 0) - (i.ReceivedQty ?? 0) - (i.DamagedQty ?? 0) - (i.WontFulfilQty ?? 0))
+            })
             .ToListAsync())
+            .Where(x => x.Qty > 0)
+            .ToList();
+
+        var inTransitByStore = transitRows
             .GroupBy(x => x.FromStoreId)
-            .ToDictionary(g => g.Key, g => g.Sum(x => Math.Max(0, x.Qty)));
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.Qty));
+
+        // The individual transfer(s) carrying this branch's in-transit units, linked to the transfer detail.
+        var transitByStore = transitRows
+            .GroupBy(x => x.FromStoreId)
+            .ToDictionary(g => g.Key, g => g
+                .OrderBy(x => x.TransferNumber)
+                .Select(x => new
+                {
+                    transferNumber = x.TransferNumber,
+                    qty = x.Qty,
+                    to = x.ToStoreName,
+                    status = TransferStatusDisplay.Label(x.Status),
+                    url = Url.Action("Detail", "Transfers", new { area = "Inventory", id = x.Id })
+                }).ToList());
 
         // Which orders are HOLDING the reserved units at each branch — so staff can jump straight to the
         // order and release them (a cancelled order that never freed its hold shows up here as the culprit).
@@ -933,6 +960,7 @@ public class ProductsController : InventoryAreaController
                 reserved,                                   // held for orders / an approved transfer (still here)
                 available = Math.Max(0, onHand - reserved), // free to sell now
                 inTransit = inTransitByStore.GetValueOrDefault(s.Id, 0), // dispatched, on the way out
+                transitBy = transitByStore.GetValueOrDefault(s.Id),      // the transfer(s) carrying the in-transit units
                 heldBy = heldByStore.GetValueOrDefault(s.Id),            // the order(s) holding `reserved` here
                 min = r?.MinStock,
                 max = r?.MaxStock,
