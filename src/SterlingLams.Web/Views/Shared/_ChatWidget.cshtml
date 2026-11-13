@@ -142,6 +142,10 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7l4-4 14 14-4 4L3 7zm4 0l2 2m2-2l2 2m2 2l2 2"/></svg>
                 Sizing help
             </button>
+            <button type="button" class="sgc-chip" data-sgc="issues">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0 3.75h.008M10.34 3.34L1.6 18a1.5 1.5 0 001.3 2.25h18.2a1.5 1.5 0 001.3-2.25L13.66 3.34a1.5 1.5 0 00-2.62 0z"/></svg>
+                Report an issue
+            </button>
             @if (!string.IsNullOrWhiteSpace(waBase))
             {
                 <button type="button" class="sgc-chip sgc-wa" data-sgc="whatsapp">
@@ -240,20 +244,74 @@
     function clearUnread(){ unread = 0; if (unreadEl){ unreadEl.style.display='none'; unreadEl.textContent=''; } }
     function bumpUnread(){ unread++; if (unreadEl){ unreadEl.textContent = unread; unreadEl.style.display='block'; } }
 
-    // ── Quick replies (self-service) ─────────────────────────────────────────
+    // ── Quick replies & issue topics ─────────────────────────────────────────
+    // Each topic shows a rich auto-reply here AND is logged server-side (so customer care sees which topic
+    // the shopper picked and the auto-reply, then their explanation). Keys match Infrastructure/ChatTopics.
     var replies = {
         track: { say:'Track my order',
             bot:'You can check your order status any time with your order number and email:' +
-                '<br><a class="sgc-cta" href="' + trackUrl + '">Track my order →</a>' },
+                '<br><a class="sgc-cta" href="' + trackUrl + '">Track my order →</a>' +
+                '<br>Or send us your order number below and our team will help you.' },
         returns: { say:'Delivery & returns',
-            bot:'We deliver nationwide, with same-day and express options at checkout. Items can be returned within our policy window if unworn.' +
-                '<br><a class="sgc-cta" href="' + returnsUrl + '">Read delivery & returns →</a>' },
+            bot:'We deliver nationwide, with same-day and express options at checkout. Unworn items can be returned within our policy window.' +
+                '<br><a class="sgc-cta" href="' + returnsUrl + '">Read delivery & returns →</a>' +
+                '<br>Tell us your order number below if it\'s about a specific order.' },
         sizing: { say:'Sizing help',
             bot: (document.getElementById('size-guide-overlay')
                     ? 'Happy to help you find the right fit. Here\'s our full size &amp; length guide:' +
                       '<br><button type="button" class="sgc-cta" data-sgc-open-size="1">Open size guide →</button>'
-                    : 'Happy to help you find the right fit — tell me the piece and I\'ll check it for you below.') }
+                    : 'Happy to help you find the right fit — tell me the piece below and I\'ll check it for you.') },
+        issue_payment:  { say:'Payment issue',               bot:'Sorry about the payment trouble. Please describe what happened (and include your order number if you have one) below and our team will sort it out.' },
+        issue_cart:     { say:'Adding to cart / checkout',   bot:'Sorry you\'re having trouble checking out. Tell us the product and what happens when you try, below, and we\'ll help.' },
+        issue_delivery: { say:'Delivery problem',            bot:'Sorry about the delivery issue. Share your order number and what\'s wrong below and we\'ll look into it.' },
+        issue_item:     { say:'Wrong or damaged item',       bot:'So sorry your item isn\'t right. Describe the problem below (you can attach a photo too) and we\'ll make it right.' },
+        issue_account:  { say:'Login / account issue',       bot:'Sorry about the account trouble. Tell us what\'s happening below and our team will help you.' },
+        issue_other:    { say:'Something else',              bot:'Tell us what\'s going on below and our team will help.' }
     };
+    var issuesMenu = [
+        { key:'issue_payment',  label:'💳 Payment issue' },
+        { key:'issue_cart',     label:'🛒 Adding to cart / checkout' },
+        { key:'issue_delivery', label:'🚚 Delivery problem' },
+        { key:'issue_item',     label:'📦 Wrong or damaged item' },
+        { key:'issue_account',  label:'🔑 Login / account issue' },
+        { key:'issue_other',    label:'💬 Something else' }
+    ];
+
+    // Record the topic selection in the admin (so care sees the journey). The widget shows the rich reply
+    // itself, so we advance lastId past the logged messages to avoid re-fetching them.
+    function logTopic(key){
+        if (!started) startChat();
+        try {
+            if (window.postWithFreshToken) {
+                var fields = { key: key };
+                var nm = (document.getElementById('sgc-name')||{}).value, em = (document.getElementById('sgc-email')||{}).value;
+                if (nm && nm.trim()) fields.name = nm.trim();
+                if (em && em.trim()) fields.email = em.trim();
+                window.postWithFreshToken('/chat/topic', fields)
+                    .then(function(r){ return r.json(); })
+                    .then(function(d){ if (d && d.lastId && d.lastId > lastId) lastId = d.lastId; })
+                    .catch(function(){});
+            }
+        } catch (e) {}
+    }
+    function selectTopic(key){
+        var r = replies[key]; if (!r) return;
+        msgRow({ body:r.say, fromStaff:false, at:nowHM() });
+        setTimeout(function(){ botRow(r.bot); }, 200);
+        logTopic(key);
+    }
+    function showIssuesMenu(){
+        botRow('Sorry you\'re having trouble — what do you need help with?');
+        setTimeout(function(){
+            var menu = document.createElement('div'); menu.className = 'sgc-quick'; menu.style.marginTop = '2px';
+            issuesMenu.forEach(function(it){
+                var b = document.createElement('button'); b.type = 'button'; b.className = 'sgc-chip'; b.textContent = it.label;
+                b.addEventListener('click', function(){ selectTopic(it.key); });
+                menu.appendChild(b);
+            });
+            thread.appendChild(menu); body.scrollTop = body.scrollHeight;
+        }, 220);
+    }
     document.getElementById('sgc-quick').addEventListener('click', function(e){
         var btn = e.target.closest('[data-sgc]'); if (!btn) return;
         var key = btn.getAttribute('data-sgc');
@@ -262,9 +320,12 @@
             if (href) window.open(href, '_blank', 'noopener');
             return;
         }
-        var r = replies[key]; if (!r) return;
-        msgRow({ body:r.say, fromStaff:false, at:nowHM() });
-        setTimeout(function(){ botRow(r.bot); }, 200);
+        if (key === 'issues'){
+            msgRow({ body:'Report an issue', fromStaff:false, at:nowHM() });
+            showIssuesMenu();
+            return;
+        }
+        selectTopic(key);
     });
     body.addEventListener('click', function(e){
         var o = e.target.closest('[data-sgc-open-size]'); if (!o) return;

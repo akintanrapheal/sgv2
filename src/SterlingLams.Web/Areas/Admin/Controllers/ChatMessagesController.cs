@@ -120,6 +120,7 @@ public class ChatMessagesController : AdminBaseController
                 body = m.Body,
                 imageUrl = m.ImageUrl,
                 fromStaff = m.FromStaff,
+                isAutomated = m.IsAutomated,
                 at = SterlingLams.Web.Services.ReportCalendar.ToLocal(m.CreatedAt).ToString("HH:mm")
             })
         });

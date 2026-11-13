@@ -97,6 +97,15 @@
         <div id="thread" class="flex-1 overflow-y-auto px-4 py-4 space-y-3" style="background:linear-gradient(#fafafa,#f4f4f5)">
             @foreach (var m in Model.Messages)
             {
+                if (m.IsAutomated)
+                {
+                    <div class="flex justify-center">
+                        <div class="max-w-[85%] text-center text-[11px] text-neutral-500 bg-neutral-100 border border-neutral-200 rounded-lg px-3 py-1.5">
+                            <span class="font-medium text-neutral-400">⚙ Auto-reply</span> · @m.Body
+                        </div>
+                    </div>
+                    continue;
+                }
                 <div class="flex @(m.FromStaff ? "justify-end" : "justify-start") items-end gap-2">
                     @if (!m.FromStaff)
                     {
@@ -152,6 +161,12 @@
 
     function append(m){
         var wrap = document.createElement('div');
+        if (m.isAutomated){
+            wrap.className = 'flex justify-center';
+            wrap.innerHTML = '<div class="max-w-[85%] text-center text-[11px] text-neutral-500 bg-neutral-100 border border-neutral-200 rounded-lg px-3 py-1.5">' +
+                '<span class="font-medium text-neutral-400">⚙ Auto-reply</span> · ' + esc(m.body) + '</div>';
+            thread.appendChild(wrap); thread.scrollTop = thread.scrollHeight; return;
+        }
         wrap.className = 'flex items-end gap-2 ' + (m.fromStaff ? 'justify-end' : 'justify-start');
         var bubbleCls = m.fromStaff ? 'bg-brand-500 text-white rounded-br-md' : 'bg-white text-neutral-800 border border-neutral-200 rounded-bl-md';
         var who = m.fromStaff ? 'You' : customerName;

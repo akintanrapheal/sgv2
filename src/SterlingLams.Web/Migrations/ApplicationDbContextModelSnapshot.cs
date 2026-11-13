@@ -1036,6 +1036,9 @@ namespace SterlingLams.Web.Migrations
                     b.Property<string>("ImageUrl")
                         .HasColumnType("text");
 
+                    b.Property<bool>("IsAutomated")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("SeenByCustomer")
                         .HasColumnType("boolean");
 
