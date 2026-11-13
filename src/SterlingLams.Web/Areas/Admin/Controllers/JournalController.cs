@@ -93,7 +93,7 @@ public class JournalController : AdminBaseController
             title = r.Title,
             excerpt = r.Excerpt,
             coverImageUrl = r.CoverImageUrl,
-            bodyHtml = ProductHtml.Sanitize(r.BodyHtml),
+            bodyHtml = ProductHtml.SanitizeArticle(r.BodyHtml),
             featured = featured.Select(f => f.Name)
         });
     }
@@ -116,7 +116,7 @@ public class JournalController : AdminBaseController
             Title = r.Title,
             Slug = await UniqueSlugAsync(r.Slug, 0),
             Excerpt = r.Excerpt,
-            Body = ProductHtml.Sanitize(r.BodyHtml),
+            Body = ProductHtml.SanitizeArticle(r.BodyHtml),
             CoverImageUrl = r.CoverImageUrl,
             AuthorName = r.AuthorName,
             MetaTitle = r.MetaTitle,
@@ -160,7 +160,7 @@ public class JournalController : AdminBaseController
         post.Title = vm.Title.Trim();
         post.Slug = await UniqueSlugAsync(string.IsNullOrWhiteSpace(vm.Slug) ? Slugify(vm.Title) : Slugify(vm.Slug), post.Id);
         post.Excerpt = string.IsNullOrWhiteSpace(vm.Excerpt) ? null : vm.Excerpt.Trim();
-        post.Body = ProductHtml.Sanitize(vm.Body ?? string.Empty);
+        post.Body = ProductHtml.SanitizeArticle(vm.Body ?? string.Empty);
         post.CoverImageUrl = string.IsNullOrWhiteSpace(vm.CoverImageUrl) ? null : vm.CoverImageUrl.Trim();
         post.AuthorName = string.IsNullOrWhiteSpace(vm.AuthorName) ? null : vm.AuthorName.Trim();
         post.MetaTitle = string.IsNullOrWhiteSpace(vm.MetaTitle) ? null : vm.MetaTitle.Trim();

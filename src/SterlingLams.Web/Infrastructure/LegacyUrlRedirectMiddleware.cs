@@ -81,7 +81,7 @@ public sealed class LegacyUrlRedirectMiddleware
         ["/quicklinks"] = "/", ["/quick-links"] = "/", ["/links"] = "/", ["/link-in-bio"] = "/", ["/linkinbio"] = "/",
         // Blog posts → the Journal (articles not individually migrated)
         ["/a-jewelry-shop-in-lagos-for-every-occasion-how-to-shop-smart-at-sterlin-glams"] = "/blog",
-        ["/helvetica-austin-bespoke"] = "/blog",
+        ["/helvetica-austin-bespoke"] = "/blog/rock-me-baby",
         ["/how-to-find-the-right-jewelry-shop-in-lagos"] = "/blog",
         ["/how-to-layer-necklaces-lagos-stylist-guide"] = "/blog",
         ["/igbo-bridal-jewelry-guide"] = "/blog",
@@ -94,7 +94,7 @@ public sealed class LegacyUrlRedirectMiddleware
         ["/jewelry-wholesalers-in-lagos-vs-retail-brands-whats-actually-better-for-you"] = "/blog",
         ["/lagos-bride-jewelry-guide"] = "/blog",
         ["/nigerian-bridal-jewelry-guide"] = "/blog",
-        ["/nothing-hunts-us-like-the-things-we-didnt-buy"] = "/blog",
+        ["/nothing-hunts-us-like-the-things-we-didnt-buy"] = "/blog/nothing-hunts-us-like-the-things-we-didnt-buy",
         ["/office-jewelry-lagos-working-woman"] = "/blog",
         ["/online-jewelry-stores-in-lagos-buyers-guide"] = "/blog",
         ["/ring-stores-in-lagos-statement-stackable-cocktail"] = "/blog",

@@ -1,0 +1,26 @@
+@model string
+@* Renders a blog/journal article body (HTML) with typographic defaults + media (images and video).
+   Like _PageProse, but uses the richer article sanitiser so links/images/<video> survive. *@
+<section class="py-16 md:py-20 bg-white">
+    <div class="article-prose max-w-3xl mx-auto px-6 text-neutral-600 font-light text-sm leading-relaxed">
+        @Html.Raw(SterlingLams.Web.Services.ProductHtml.SanitizeArticle(Model))
+    </div>
+</section>
+<style>
+    .article-prose h1, .article-prose h2 { font-family: 'Cormorant Garamond', serif; font-weight: 300; color: #171717; line-height: 1.2; }
+    .article-prose h2 { font-size: 1.875rem; margin: 2.25rem 0 1rem; }
+    .article-prose h3 { font-size: 1.125rem; font-weight: 500; color: #262626; margin: 1.5rem 0 .5rem; }
+    .article-prose p  { margin: 0 0 1.15rem; }
+    .article-prose ul, .article-prose ol { margin: 0 0 1rem 1.25rem; }
+    .article-prose ul { list-style: disc; }
+    .article-prose ol { list-style: decimal; }
+    .article-prose li { margin: .25rem 0; }
+    .article-prose a  { color: #ec1c8e; text-decoration: underline; text-underline-offset: 2px; }
+    .article-prose strong { color: #262626; font-weight: 600; }
+    .article-prose img, .article-prose video { max-width: 100%; height: auto; border-radius: .375rem; display: block; }
+    .article-prose figure { margin: 1.75rem 0; }
+    .article-prose figcaption { margin-top: .5rem; font-size: .75rem; color: #a3a3a3; text-align: center; }
+    /* Short promo clips sit nicely in a responsive grid. */
+    .article-prose .clip-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin: 1.75rem 0; }
+    @@media (max-width: 480px) { .article-prose .clip-grid { grid-template-columns: 1fr; } }
+</style>
