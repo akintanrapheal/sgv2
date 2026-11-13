@@ -19,6 +19,10 @@ public class ChatMessage
 
     public string Body { get; set; } = string.Empty;
 
+    /// <summary>Attached image URL (raw R2 object) when the message is a shared photo. Stored as the
+    /// uploaded original — never run through ImageSharp — so the decoder advisories can't be triggered.</summary>
+    public string? ImageUrl { get; set; }
+
     /// <summary>Display name for staff messages (the agent's first name). Null for shopper messages.</summary>
     public string? SenderName { get; set; }
 
