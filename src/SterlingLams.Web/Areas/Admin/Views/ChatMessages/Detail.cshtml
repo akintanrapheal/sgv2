@@ -1,0 +1,122 @@
+@model SterlingLams.Web.Areas.Admin.Controllers.ChatMessagesController.ChatThreadVm
+@{
+    ViewData["Title"] = "Chat";
+    var conv = Model.Conversation;
+    string Stamp(DateTime utc) => SterlingLams.Web.Services.ReportCalendar.ToLocal(utc).ToString("MMM d, HH:mm");
+    var name = !string.IsNullOrWhiteSpace(conv.CustomerName) ? conv.CustomerName
+               : !string.IsNullOrWhiteSpace(conv.ContactEmail) ? conv.ContactEmail
+               : !string.IsNullOrWhiteSpace(conv.ContactPhone) ? conv.ContactPhone : "Guest";
+    var waDigits = new string((conv.ContactPhone ?? "").Where(char.IsDigit).ToArray());
+    var lastId = Model.Messages.Count > 0 ? Model.Messages[^1].Id : 0;
+}
+@Html.AntiForgeryToken()
+
+<div class="mb-4 flex items-center justify-between gap-3 flex-wrap">
+    <div class="flex items-center gap-3">
+        <a asp-action="Index" class="text-sm text-neutral-500 hover:text-neutral-900">← Inbox</a>
+        <div>
+            <h1 class="text-lg font-medium text-neutral-900">@name</h1>
+            <p class="text-xs text-neutral-400">
+                @if (!string.IsNullOrWhiteSpace(conv.ContactEmail)) { <span>@conv.ContactEmail</span> }
+                @if (!string.IsNullOrWhiteSpace(conv.ContactPhone)) { <span> · @conv.ContactPhone</span> }
+                <span> · started @Stamp(conv.CreatedAt)</span>
+            </p>
+        </div>
+    </div>
+    <div class="flex items-center gap-2">
+        @if (!string.IsNullOrWhiteSpace(waDigits))
+        {
+            <a href="https://wa.me/@waDigits" target="_blank" rel="noopener" class="text-xs text-emerald-600 hover:text-emerald-800 border border-emerald-200 rounded-sm px-3 py-1.5">WhatsApp ↗</a>
+        }
+        @if (!string.IsNullOrWhiteSpace(conv.ContactEmail))
+        {
+            <a href="mailto:@conv.ContactEmail" class="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded-sm px-3 py-1.5">Email ↗</a>
+        }
+        @if (!conv.Ended)
+        {
+            <form asp-action="End" method="post" class="inline" onsubmit="return confirm('End this chat?');">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@conv.Id" />
+                <button type="submit" class="text-xs text-neutral-500 hover:text-neutral-900 border border-neutral-200 rounded-sm px-3 py-1.5">End chat</button>
+            </form>
+        }
+    </div>
+</div>
+
+@if (conv.Rating != null)
+{
+    <div class="mb-3 bg-amber-50 border border-amber-200 rounded-sm px-4 py-3 text-sm">
+        <span class="text-amber-500 text-base">@(new string('★', conv.Rating.Value))@(new string('☆', 5 - conv.Rating.Value))</span>
+        <span class="text-neutral-600 ml-2">Shopper rated this chat @conv.Rating.Value/5@(conv.ReviewedAt != null ? $" · {Stamp(conv.ReviewedAt.Value)}" : "")</span>
+        @if (!string.IsNullOrWhiteSpace(conv.ReviewComment)) { <div class="text-neutral-700 mt-1">“@conv.ReviewComment”</div> }
+    </div>
+}
+
+<div class="bg-white border border-neutral-200 rounded-sm flex flex-col" style="height:min(68vh,36rem)">
+    <div id="thread" class="flex-1 overflow-y-auto p-4 space-y-2 bg-neutral-50">
+        @foreach (var m in Model.Messages)
+        {
+            <div class="flex @(m.FromStaff ? "justify-end" : "justify-start")">
+                <div class="max-w-[75%]">
+                    <div class="@(m.FromStaff ? "bg-brand-500 text-white" : "bg-white text-neutral-800 border border-neutral-100") rounded-2xl px-3.5 py-2 text-sm shadow-sm whitespace-pre-wrap break-words">@m.Body</div>
+                    <div class="text-[10px] text-neutral-400 mt-0.5 @(m.FromStaff ? "text-right" : "")">
+                        @(m.FromStaff ? (m.SenderName ?? "You") : name) · @Stamp(m.CreatedAt)
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+    @if (conv.Ended)
+    {
+        <div class="border-t border-neutral-100 px-4 py-2.5 text-center text-xs text-neutral-400 bg-neutral-50">
+            This chat ended@(conv.EndedReason == "timeout" ? " (30 min inactivity)" : conv.EndedReason == "reviewed" ? " (shopper left a review)" : "")@(conv.EndedAt != null ? $" · {Stamp(conv.EndedAt.Value)}" : "").
+            A reply re-opens it.
+        </div>
+    }
+    <form asp-action="Reply" method="post" class="border-t border-neutral-100 p-3 flex items-center gap-2" id="reply-form">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="id" value="@conv.Id" />
+        <input type="text" name="body" id="reply-input" autocomplete="off" placeholder="Type your reply…"
+               class="flex-1 border border-neutral-200 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-brand-500" />
+        <button type="submit" class="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-full px-5 py-2.5">Send</button>
+    </form>
+</div>
+
+<p class="text-xs text-neutral-400 mt-2">Your reply appears in the shopper's chat window within a few seconds. New messages from them show here automatically.</p>
+
+@section Scripts {
+<script>
+(function () {
+    var base = window.__adminBase || '/Admin';
+    var thread = document.getElementById('thread');
+    var convId = @conv.Id;
+    var lastId = @lastId;
+    var customerName = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(name));
+
+    thread.scrollTop = thread.scrollHeight;
+    function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+    function append(m){
+        var wrap = document.createElement('div');
+        wrap.className = 'flex ' + (m.fromStaff ? 'justify-end' : 'justify-start');
+        var bubbleCls = m.fromStaff ? 'bg-brand-500 text-white' : 'bg-white text-neutral-800 border border-neutral-100';
+        var who = m.fromStaff ? 'You' : customerName;
+        wrap.innerHTML = '<div class="max-w-[75%]">' +
+            '<div class="' + bubbleCls + ' rounded-2xl px-3.5 py-2 text-sm shadow-sm" style="white-space:pre-wrap;word-break:break-word">' + esc(m.body) + '</div>' +
+            '<div class="text-[10px] text-neutral-400 mt-0.5' + (m.fromStaff ? ' text-right' : '') + '">' + esc(who) + ' · ' + esc(m.at) + '</div></div>';
+        thread.appendChild(wrap);
+        thread.scrollTop = thread.scrollHeight;
+    }
+
+    async function poll(){
+        try {
+            var r = await fetch(base + '/ChatMessages/NewSince?id=' + convId + '&after=' + lastId, { headers: { 'Accept':'application/json' } });
+            if (!r.ok) return;
+            var d = await r.json();
+            (d.messages || []).forEach(function(m){ if (m.id > lastId) { append(m); lastId = m.id; } });
+        } catch (e) {}
+    }
+    setInterval(poll, 4000);
+})();
+</script>
+}
