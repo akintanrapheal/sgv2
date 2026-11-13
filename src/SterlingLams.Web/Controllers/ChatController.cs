@@ -46,13 +46,14 @@ public class ChatController : Controller
     private static string? Trim(string? s, int max) =>
         string.IsNullOrWhiteSpace(s) ? null : (s!.Trim().Length > max ? s.Trim()[..max] : s.Trim());
 
-    // Resolve (or start) the shopper's thread, record their identity, append a message (text and/or image)
-    // and alert staff once per new wave. Shared by the text and image-upload endpoints.
-    private async Task<int?> AppendCustomerAsync(string body, string? imageUrl, string? name, string? email, string? phone)
+    // Resolve (or start) the shopper's thread and record their identity. A message after an ended chat
+    // starts a fresh one. Returns the conversation and whether staff were caught up (so an alert pings once
+    // per new wave). Shared by the text, image-upload and quick-reply-topic endpoints.
+    private async Task<(ChatConversation conv, bool alertStaff)> ResolveConvAsync(string? name, string? email, string? phone)
     {
         var now = DateTime.UtcNow;
         var conv = await FindAsync();
-        if (conv != null && conv.Ended) conv = null;   // a new message after an ended chat starts a fresh one
+        if (conv != null && conv.Ended) conv = null;
         if (conv == null)
         {
             var key = Guid.NewGuid().ToString("N");
@@ -68,7 +69,7 @@ public class ChatController : Controller
             _db.ChatConversations.Add(conv);
         }
 
-        var alertStaff = conv.StaffUnread == 0;   // staff were caught up → ping once for this new wave
+        var alertStaff = conv.StaffUnread == 0;
 
         conv.CustomerName = Trim(name, 120) ?? conv.CustomerName;
         conv.ContactEmail = Trim(email, 256) ?? conv.ContactEmail;
@@ -84,7 +85,14 @@ public class ChatController : Controller
                 conv.ContactPhone ??= u.PhoneNumber;
             }
         }
+        return (conv, alertStaff);
+    }
 
+    // Append a shopper message (text and/or image), bump unread and alert staff once per wave.
+    private async Task<int?> AppendCustomerAsync(string body, string? imageUrl, string? name, string? email, string? phone)
+    {
+        var (conv, alertStaff) = await ResolveConvAsync(name, email, phone);
+        var now = DateTime.UtcNow;
         var msg = new ChatMessage
         {
             Conversation = conv, CreatedAt = now, FromStaff = false,
@@ -106,6 +114,40 @@ public class ChatController : Controller
             catch (Exception ex) { _log.LogWarning(ex, "Chat staff alert failed."); }
         }
         return msg.Id;
+    }
+
+    // Shopper picked a quick-reply topic/issue. Log their selection + a plain-text auto-reply so customer
+    // care sees the full journey (which topic, then the shopper's own explanation). The widget shows its own
+    // rich reply, so we return the ids and it skips re-fetching these. Issue topics ping staff; info topics
+    // (order tracking / delivery / sizing) are logged for context only.
+    [HttpPost("topic"), ValidateAntiForgeryToken]
+    public async Task<IActionResult> Topic(string key, string? name = null, string? email = null, string? phone = null)
+    {
+        var t = Infrastructure.ChatTopics.Get(key);
+        if (t == null) return Json(new { ok = false });
+
+        var (conv, alertStaff) = await ResolveConvAsync(name, email, phone);
+        var now = DateTime.UtcNow;
+        var pick = new ChatMessage { Conversation = conv, CreatedAt = now, FromStaff = false, Body = t.Label, SeenByCustomer = true };
+        var reply = new ChatMessage { Conversation = conv, CreatedAt = now.AddMilliseconds(1), FromStaff = true,
+            IsAutomated = true, SenderName = "Auto-reply", Body = t.AutoReply, SeenByCustomer = true };
+        conv.Messages.Add(pick);
+        conv.Messages.Add(reply);
+        conv.LastMessageAt = now;
+        conv.LastCustomerAt = now;
+        conv.StaffUnread += 1;   // the selection shows as needing attention in the inbox
+        conv.LastBody = t.Label;
+        conv.LastFromStaff = false;
+
+        try { await _db.SaveChangesAsync(); }
+        catch (Exception ex) { _log.LogWarning(ex, "Failed to save chat topic."); return Json(new { ok = false }); }
+
+        if (alertStaff && t.Alert)
+        {
+            try { await SendStaffAlertAsync(conv, t.Label); }
+            catch (Exception ex) { _log.LogWarning(ex, "Chat topic alert failed."); }
+        }
+        return Json(new { ok = true, lastId = Math.Max(pick.Id, reply.Id) });
     }
 
     [HttpPost("message"), ValidateAntiForgeryToken]
@@ -186,6 +228,7 @@ public class ChatController : Controller
                 body = m.Body,
                 imageUrl = m.ImageUrl,
                 fromStaff = m.FromStaff,
+                isAutomated = m.IsAutomated,
                 name = m.FromStaff ? (m.SenderName ?? "Sterlin Glams") : null,
                 at = ReportCalendar.ToLocal(m.CreatedAt).ToString("HH:mm")
             })

@@ -26,6 +26,10 @@ public class ChatMessage
     /// <summary>Display name for staff messages (the agent's first name). Null for shopper messages.</summary>
     public string? SenderName { get; set; }
 
+    /// <summary>An automatic bot reply (a quick-reply topic's canned answer), not a real staff message.
+    /// Shown as an "auto-reply" in the admin thread so staff can tell it apart from their own replies.</summary>
+    public bool IsAutomated { get; set; }
+
     /// <summary>Staff messages: delivered to the shopper's widget (via poll)? Shopper messages: always true.</summary>
     public bool SeenByCustomer { get; set; }
 }
