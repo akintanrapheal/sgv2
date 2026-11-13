@@ -22,6 +22,8 @@ public static class AdminSections
     {
         // ── Overview (no heading) ─────────────────────────────────────────────
         new("Dashboard",  "Dashboard",  "Dashboard",  "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"),
+        // Live chat — a standalone top-level item next to Dashboard (not under Reports), so staff reach it fast.
+        new("ChatMessages", "Chat Messages", "ChatMessages", "M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 01-9 9c-1.6 0-3.1-.4-4.4-1.1L3 21l1.1-4.6A8.96 8.96 0 013 12a9 9 0 1118 0z"),
 
         // ── Sales ─────────────────────────────────────────────────────────────
         new("Orders",     "Orders",     "Orders",     "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2", "Sales"),
@@ -55,7 +57,6 @@ public static class AdminSections
         new("Finance",    "Finance",    "Finance",    "M11 3.055A9.001 9.001 0 1020.945 13H11V3.055zM20.488 9A9.004 9.004 0 0012 3.512V9h8.488z", "Reports"),
         new("Traffic",    "Traffic",    "Traffic",    "M3 3v18h18M7 14l3-3 3 3 5-6", "Reports"),
         new("CustomerIssues", "Customer Issues", "CustomerIssues", "M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z", "Reports"),
-        new("ChatMessages", "Chat Messages", "ChatMessages", "M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 01-9 9c-1.6 0-3.1-.4-4.4-1.1L3 21l1.1-4.6A8.96 8.96 0 013 12a9 9 0 1118 0z", "Reports"),
         new("GoogleAnalytics", "Google Analytics", "GoogleAnalytics", "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6", "Reports"),
 
         // ── Settings & administration ─────────────────────────────────────────
@@ -76,6 +77,11 @@ public static class AdminSections
         new("EmailLog",   "Email Log",  "EmailLog",   "M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z", "Settings"),
         new("Settings",   "Settings",   "Settings",   "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z", "Settings"),
     };
+
+    /// <summary>Sections every admin-area staffer can use without being granted them — shared team tools.
+    /// Live chat belongs to everyone who works in the console (so any staffer can answer a shopper), so it
+    /// is always visible and usable regardless of role permissions (see PermissionService).</summary>
+    public static readonly HashSet<string> AlwaysAvailable = new(StringComparer.Ordinal) { "ChatMessages" };
 
     /// <summary>Finance sub-tabs — every action on FinanceController, rendered as sub-links under the
     /// standalone "Finance" section in the sidebar (see _AdminLayout). (Action, Label). Section key "Finance".</summary>
