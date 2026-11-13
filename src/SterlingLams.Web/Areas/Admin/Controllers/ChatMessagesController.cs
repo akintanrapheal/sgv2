@@ -71,8 +71,28 @@ public class ChatMessagesController : AdminBaseController
 
         if (conv.StaffUnread != 0) { conv.StaffUnread = 0; await _db.SaveChangesAsync(); }  // viewing = read
 
+        // Has this shopper chatted before? Match by signed-in account, else by the contact details they gave.
+        int priorChats = 0;
+        if (!string.IsNullOrEmpty(conv.UserId))
+            priorChats = await _db.ChatConversations.CountAsync(c => c.Id != conv.Id && c.UserId == conv.UserId);
+        else if (!string.IsNullOrWhiteSpace(conv.ContactEmail))
+            priorChats = await _db.ChatConversations.CountAsync(c => c.Id != conv.Id && c.ContactEmail == conv.ContactEmail);
+        else if (!string.IsNullOrWhiteSpace(conv.ContactPhone))
+            priorChats = await _db.ChatConversations.CountAsync(c => c.Id != conv.Id && c.ContactPhone == conv.ContactPhone);
+
+        // A signed-in shopper who has placed orders is an established customer (not just a new chatter).
+        int orderCount = 0;
+        if (!string.IsNullOrEmpty(conv.UserId))
+            orderCount = await _db.Orders.CountAsync(o => o.UserId == conv.UserId);
+
         ViewData["Title"] = "Chat";
-        return View(new ChatThreadVm { Conversation = conv, Messages = msgs });
+        return View(new ChatThreadVm
+        {
+            Conversation = conv, Messages = msgs,
+            IsSignedIn = !string.IsNullOrEmpty(conv.UserId),
+            PriorChats = priorChats,
+            OrderCount = orderCount
+        });
     }
 
     // Live poll for an open thread — new messages since `after`, so the agent sees incoming lines without
@@ -161,5 +181,8 @@ public class ChatMessagesController : AdminBaseController
     {
         public ChatConversation Conversation = null!;
         public List<ChatMessage> Messages = new();
+        public bool IsSignedIn;
+        public int PriorChats;    // conversations by this shopper before this one (0 = first-time)
+        public int OrderCount;    // orders on their account (signed-in only)
     }
 }
