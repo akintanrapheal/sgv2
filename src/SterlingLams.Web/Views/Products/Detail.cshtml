@@ -1156,12 +1156,12 @@
         btn.textContent = 'Adding…';
 
         const productId = @Model.Id;
-        const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
-        const body = new URLSearchParams({ productId, quantity: qty, __RequestVerificationToken: token });
-        if (selectedVariantId) body.append('variantId', selectedVariantId);
+        const fields = { productId, quantity: qty };
+        if (selectedVariantId) fields.variantId = selectedVariantId;
 
         try {
-            const res  = await fetch('/Cart/Add', { method: 'POST', body });
+            // Self-heals a stale/cached antiforgery token (refreshes + retries once) instead of 400-ing.
+            const res  = await postWithFreshToken('/Cart/Add', fields);
             const data = res.ok ? await res.json().catch(() => null) : null;
             if (data && data.success) {
                 updateCartBadge(data.cartCount);

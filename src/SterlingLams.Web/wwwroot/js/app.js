@@ -304,6 +304,26 @@ const SiteHeader = (function () {
 })();
 window.SiteHeader = SiteHeader;
 
+// POST to an antiforgery-protected endpoint, self-healing a stale/shared token. An output-cached page
+// (or an in-app browser that dropped the cookie) can carry a request token that no longer matches the
+// visitor's antiforgery cookie, which the server rejects with 400 — the "couldn't add to bag" case.
+// On a 400 we pull a guaranteed-fresh cookie + matching token from the no-store /site/header-state
+// endpoint and replay the POST exactly once, tagged X-AF-Retry so the server records the issue ONLY if
+// even the fresh token is rejected (a genuine, unrecoverable failure — not the common stale-token blip).
+async function postWithFreshToken(url, fields) {
+    function send(tok, isRetry) {
+        const body = new URLSearchParams(Object.assign({}, fields, { __RequestVerificationToken: tok || '' }));
+        return fetch(url, { method: 'POST', body, headers: isRetry ? { 'X-AF-Retry': '1' } : undefined });
+    }
+    let res = await send(await SiteHeader.ensureToken(), false);
+    if (res.status === 400) {
+        await SiteHeader.reload();                              // force a fresh antiforgery cookie + token
+        res = await send(await SiteHeader.ensureToken(), true); // replay once with the fresh token
+    }
+    return res;
+}
+window.postWithFreshToken = postWithFreshToken;
+
 // ─── Size & length guide modal ────────────────────────────────────────────
 (function () {
     const overlay = document.getElementById('size-guide-overlay');
@@ -385,12 +405,11 @@ document.querySelectorAll('.add-to-bag-quick').forEach(btn => {
 
 // Shared add-to-bag — used by the hover icon, the card "Add to Cart" button and the popup.
 async function addToBag(productId, variantId, qty, btn) {
-    const token = await SiteHeader.ensureToken();
     if (btn) SGBusy.start(btn);
     try {
-        const body = new URLSearchParams({ productId, quantity: qty || 1, __RequestVerificationToken: token });
-        if (variantId) body.append('variantId', variantId);
-        const res = await fetch('/Cart/Add', { method: 'POST', body });
+        const fields = { productId, quantity: qty || 1 };
+        if (variantId) fields.variantId = variantId;
+        const res = await postWithFreshToken('/Cart/Add', fields);
         const data = res.ok ? await res.json().catch(() => null) : null;
         if (data && data.success) {
             updateCartBadge(data.cartCount);

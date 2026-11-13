@@ -44,13 +44,20 @@ public class StorefrontIssueMiddleware
             throw;   // let the normal error handling + Sentry take over, unchanged
         }
 
-        // Add-to-cart rejected (antiforgery/bad request) — the shopper saw "couldn't add to bag".
+        // Add-to-cart rejected (antiforgery/bad request). The storefront JS self-heals the common
+        // stale/shared-token case by refetching a fresh token and replaying the POST once, tagged
+        // "X-AF-Retry". We only record the issue when THAT retry also 400s — i.e. a fresh token was
+        // still rejected, so the shopper genuinely saw "couldn't add to bag" (an in-app browser that
+        // blocks the cookie, or a bot). First-attempt 400s that the client transparently recovers from
+        // are expected and no longer flood the monitor.
         var path = context.Request.Path.Value ?? "";
         if (context.Response.StatusCode == 400 &&
-            path.StartsWith("/Cart/Add", StringComparison.OrdinalIgnoreCase))
+            path.StartsWith("/Cart/Add", StringComparison.OrdinalIgnoreCase) &&
+            context.Request.Headers["X-AF-Retry"] == "1")
         {
             await _issues.LogAsync(StorefrontIssueType.AddToCart, "add_rejected_400",
-                "Add-to-cart was rejected (400 — usually a missing antiforgery token / in-app browser).",
+                "Add-to-cart failed even after refreshing the security token — the shopper's browser is " +
+                "likely blocking the antiforgery cookie (in-app browser), or this is an automated client.",
                 context: context);
         }
     }
