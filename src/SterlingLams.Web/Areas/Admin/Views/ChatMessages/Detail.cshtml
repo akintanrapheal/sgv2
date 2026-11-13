@@ -20,7 +20,7 @@
     </a>
 
     <!-- Customer header card -->
-    <div class="bg-white border border-neutral-200 rounded-xl p-4 mb-3 flex items-start gap-4 flex-wrap">
+    <div class="bg-white border border-neutral-200 rounded-xl p-3 md:p-4 mb-3 flex items-start gap-3 md:gap-4 flex-wrap">
         <div class="w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold flex-shrink-0 text-white"
              style="background:@(Model.IsSignedIn ? "#ed028b" : "#9ca3af")">@initial</div>
         <div class="min-w-0 flex-1">
@@ -111,7 +111,7 @@
                     {
                         <div class="w-7 h-7 rounded-full bg-neutral-300 text-white flex items-center justify-center text-[11px] font-semibold flex-shrink-0">@initial</div>
                     }
-                    <div class="max-w-[72%]">
+                    <div class="max-w-[85%] md:max-w-[72%]">
                         <div class="@(m.FromStaff ? "bg-brand-500 text-white rounded-br-md" : "bg-white text-neutral-800 border border-neutral-200 rounded-bl-md") rounded-2xl px-4 py-2.5 text-sm shadow-sm" style="white-space:pre-wrap;overflow-wrap:anywhere">@if (!string.IsNullOrEmpty(m.ImageUrl)) { <a href="@m.ImageUrl" target="_blank" rel="noopener"><img src="@m.ImageUrl" alt="shared photo" loading="lazy" style="max-width:220px;max-height:240px;border-radius:10px;display:block" /></a> }@if (!string.IsNullOrEmpty(m.Body)) { <div class="@(string.IsNullOrEmpty(m.ImageUrl) ? "" : "mt-1.5")">@m.Body</div> }</div>
                         <div class="text-[10px] text-neutral-400 mt-1 @(m.FromStaff ? "text-right" : "")">
                             @(m.FromStaff ? (m.SenderName ?? "You") : name) · @Stamp(m.CreatedAt)
@@ -175,7 +175,7 @@
         if (m.imageUrl) inner += '<a href="' + encodeURI(m.imageUrl) + '" target="_blank" rel="noopener"><img src="' + encodeURI(m.imageUrl) + '" alt="shared photo" loading="lazy" style="max-width:220px;max-height:240px;border-radius:10px;display:block"></a>';
         if (m.body) inner += (m.imageUrl ? '<div class="mt-1.5">' : '') + esc(m.body) + (m.imageUrl ? '</div>' : '');
         if (!inner) inner = esc(m.body || '');
-        wrap.innerHTML = ava + '<div class="max-w-[72%]">' +
+        wrap.innerHTML = ava + '<div class="max-w-[85%] md:max-w-[72%]">' +
             '<div class="' + bubbleCls + ' rounded-2xl px-4 py-2.5 text-sm shadow-sm" style="white-space:pre-wrap;overflow-wrap:anywhere">' + inner + '</div>' +
             '<div class="text-[10px] text-neutral-400 mt-1' + (m.fromStaff ? ' text-right' : '') + '">' + esc(who) + ' · ' + esc(m.at) + '</div></div>';
         thread.appendChild(wrap);
