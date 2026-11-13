@@ -2196,6 +2196,9 @@ namespace SterlingLams.Web.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<bool>("AllowOnlineWithoutImage")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Barcode")
                         .HasColumnType("text");
 

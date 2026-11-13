@@ -76,6 +76,10 @@ public class Product
     /// description are ready. The mirror of <see cref="HiddenFromPos"/>; <see cref="IsActive"/> remains
     /// the master switch that gates BOTH channels. Customer-facing queries exclude this; the till ignores it.</summary>
     public bool HiddenFromWeb { get; set; }
+    /// <summary>Owner override: allow this product on the website even with NO photo (it would otherwise be
+    /// forced till-only by <see cref="HideFromWebIfNoImage"/>). Shoppers see a placeholder image until a
+    /// real one is added, so this is off by default and set deliberately per product.</summary>
+    public bool AllowOnlineWithoutImage { get; set; }
     /// <summary>Marks the single hidden "Custom item" product the POS uses for one-off / un-barcoded
     /// sales. Such lines carry a per-sale name and price and skip stock tracking. Lazily created.</summary>
     public bool IsCustomItem { get; set; }
@@ -112,6 +116,6 @@ public class Product
     /// Call it from every create/import/save/image-delete path with the product's current image count.</summary>
     public void HideFromWebIfNoImage(int imageCount)
     {
-        if (imageCount <= 0) HiddenFromWeb = true;
+        if (imageCount <= 0 && !AllowOnlineWithoutImage) HiddenFromWeb = true;
     }
 }
