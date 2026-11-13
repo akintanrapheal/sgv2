@@ -47,6 +47,10 @@ public class ProductsController : Controller
         var staff = SterlingLams.Web.Areas.Admin.AdminSections.IsStaff(User);
         var query = _db.Products.Where(p => p.IsActive && (!p.HiddenFromWeb || staff));
 
+        // The /sale page restricts the same listing pipeline to the admin-curated Sale collection.
+        if (filters.OnSalePage)
+            query = query.Where(p => p.ShowOnSalePage);
+
         // Admin toggle: hide products that are out of stock everywhere (simple or all-variants-out).
         // Staff (any backoffice role) are exempt — they keep seeing the full catalogue, including the
         // sold-out items hidden from customers (rendered with the usual "Sold Out" badge), so they can
@@ -266,7 +270,13 @@ public class ProductsController : Controller
         // fell through to the generic site-wide meta description — bad for ranking + duplicate snippets.
         static string Clip(string s) => s.Length <= 160 ? s : s[..157].TrimEnd() + "…";
         string? pageTitle = null;
-        if (!string.IsNullOrWhiteSpace(filters.Category))
+        if (filters.OnSalePage)
+        {
+            pageTitle = "Sale";
+            ViewData["TitleFull"] = "Sale | Sterlin Glams";
+            ViewData["Description"] = "Our handpicked Sale — selected jewellery, watches and accessories at special prices. Nationwide delivery across Nigeria.";
+        }
+        else if (!string.IsNullOrWhiteSpace(filters.Category))
         {
             var cat = await DbRead.RetryAsync(() => _db.Categories.Where(c => c.Slug == filters.Category)
                 .Select(c => new { c.Name, c.Description }).FirstOrDefaultAsync());
@@ -309,7 +319,27 @@ public class ProductsController : Controller
         if (Request.Query["partial"] == "cards")
             return PartialView("_ProductCards", vm.Products);
 
-        return View(vm);
+        return View("Index", vm);
+    }
+
+    // GET /sale — the storefront Sale page: the admin-curated collection (Product.ShowOnSalePage),
+    // rendered through the same listing pipeline as /products (cards, facets, "view more"). Hidden from
+    // the public until the owner flips the "sale.public" switch; staff always see it (for set-up/preview).
+    [HttpGet("/sale")]
+    public async Task<IActionResult> Sale(ProductFilterViewModel filters, int page = 1, int pageSize = 24)
+    {
+        var salePublic = await _settings.GetBoolAsync("sale.public", false);
+        var staff = SterlingLams.Web.Areas.Admin.AdminSections.IsStaff(User);
+        if (!salePublic && !staff) return NotFound();   // not launched yet — invisible to customers
+
+        filters.OnSalePage = true;
+        ViewData["IsSalePage"] = true;
+        ViewData["SaleStaffPreview"] = !salePublic;     // show a "visible to staff only" note while unlaunched
+        ViewData["Title"] = "Sale";
+
+        // Reuse Index's full listing logic; it returns the "_ProductCards" partial for "view more" and
+        // otherwise the Index view (named explicitly above), so pagination/facets stay on /sale.
+        return await Index(filters, page, pageSize);
     }
 
     // GET /products/compare?slugs=a,b,c — side-by-side comparison of up to 4 products.

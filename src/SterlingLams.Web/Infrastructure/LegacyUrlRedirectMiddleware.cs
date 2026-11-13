@@ -61,7 +61,8 @@ public sealed class LegacyUrlRedirectMiddleware
         ["/shop-by-jewelry-category"] = "/products", ["/compare-jewelry-products"] = "/products", ["/place-jewelry-order"] = "/products",
         ["/sg-chic-collection"] = "/products", ["/sg-chic-jewelry-shop"] = "/products", ["/sg-kingsmen"] = "/products",
         ["/sg-kingsmen-shop"] = "/products", ["/sg-packaging"] = "/products", ["/sg-packaging-store"] = "/products",
-        ["/sg-chic-shop"] = "/products", ["/new-in"] = "/products", ["/recent-products"] = "/products", ["/sale"] = "/products",
+        ["/sg-chic-shop"] = "/products", ["/new-in"] = "/products", ["/recent-products"] = "/products",
+        // NB: "/sale" is intentionally NOT remapped — it's now the storefront Sale page (ProductsController.Sale).
         // Store-location landing pages → Our Stores (from GSC 404 drill-down, 2026-11-05)
         ["/abuja"] = "/Stores", ["/ikeja-branch"] = "/Stores", ["/opebi-branch"] = "/Stores", ["/ikeja"] = "/Stores", ["/opebi"] = "/Stores",
         // Order-tracking variants

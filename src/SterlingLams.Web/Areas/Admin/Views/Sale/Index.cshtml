@@ -1,0 +1,128 @@
+@using SterlingLams.Web.Infrastructure
+@model List<SterlingLams.Web.Areas.Admin.Controllers.SaleAdminItem>
+@{
+    ViewData["Title"] = "Sale page";
+    Layout = "_AdminLayout";
+    var q = ViewBag.Query as string ?? "";
+    var selectedOnly = ViewBag.SelectedOnly as bool? ?? false;
+    var selectedCount = ViewBag.SelectedCount as int? ?? 0;
+    var salePublic = ViewBag.SalePublic as bool? ?? false;
+}
+@Html.AntiForgeryToken()
+
+@if (TempData["Success"] != null)
+{
+    <div class="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm px-4 py-3 rounded-sm">@TempData["Success"]</div>
+}
+
+<div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+    <div>
+        <h1 class="text-2xl font-light text-neutral-900 flex items-center gap-2">
+            Sale page
+            <svg class="w-6 h-6 text-red-600" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M10.34 15.84c-.688-.06-1.386-.09-2.09-.09H7.5a4.5 4.5 0 110-9h.75c.704 0 1.402-.03 2.09-.09m0 9.18c.253.962.584 1.892.985 2.783.247.55.06 1.21-.463 1.511l-.657.38c-.551.318-1.26.117-1.527-.461a20.845 20.845 0 01-1.44-4.282m3.102.069a18.03 18.03 0 01-.59-4.59c0-1.586.205-3.124.59-4.59m0 9.18a23.848 23.848 0 018.835 2.535M10.34 6.66a23.847 23.847 0 008.835-2.535"/></svg>
+        </h1>
+        <p class="text-sm text-neutral-500 mt-1">Pick the products shown on the storefront <a href="/sale" target="_blank" class="text-brand-500 hover:underline">Sale page ↗</a>. <span id="sale-count" class="font-medium text-neutral-700">@selectedCount</span> selected.</p>
+    </div>
+
+    <div class="flex items-center gap-3">
+        <div class="text-right">
+            <div class="text-xs text-neutral-500">@(salePublic ? "Live for customers" : "Staff only (not launched)")</div>
+            <form asp-area="Admin" asp-controller="Sale" asp-action="SetPublic" method="post" class="inline">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="on" value="@((!salePublic).ToString().ToLowerInvariant())" />
+                <button type="submit" class="mt-1 px-4 py-2 text-sm rounded-sm @(salePublic ? "bg-neutral-200 text-neutral-700 hover:bg-neutral-300" : "bg-red-600 text-white hover:bg-red-700")"
+                        onclick="return confirm('@(salePublic ? "Hide the Sale page from customers (staff can still see it)?" : "Make the Sale page live for all customers now?")');">
+                    @(salePublic ? "Make staff-only" : "Launch to customers")
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Search + filter -->
+<form method="get" class="mb-5 flex flex-wrap items-center gap-2">
+    <input type="text" name="q" value="@q" placeholder="Search products by name or SKU…"
+           class="flex-1 min-w-[16rem] border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+    <label class="flex items-center gap-2 text-sm text-neutral-600">
+        <input type="checkbox" name="selectedOnly" value="true" @(selectedOnly ? "checked" : "") onchange="this.form.submit()" class="rounded-none border-neutral-300 text-neutral-900" />
+        On the Sale page only
+    </label>
+    <button type="submit" class="px-4 py-2 text-sm bg-neutral-900 text-white rounded-sm hover:bg-neutral-700">Search</button>
+</form>
+
+@if (Model.Count == 0)
+{
+    <div class="bg-white border border-neutral-200 rounded-sm p-10 text-center text-sm text-neutral-500">No products match.</div>
+}
+else
+{
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        @foreach (var p in Model)
+        {
+            <div class="bg-white border rounded-sm overflow-hidden flex flex-col sale-card @(p.OnSale ? "border-red-300 ring-1 ring-red-200" : "border-neutral-200")" data-id="@p.Id">
+                <div class="aspect-square bg-neutral-50 overflow-hidden">
+                    @if (!string.IsNullOrEmpty(p.Image))
+                    {
+                        <img src="@Img.Cld(p.Image, 300, 300)" alt="@p.Name" loading="lazy" class="w-full h-full object-cover" />
+                    }
+                </div>
+                <div class="p-3 flex flex-col gap-1 flex-1">
+                    <div class="text-sm text-neutral-800 line-clamp-2 leading-snug">@p.Name</div>
+                    <div class="text-xs text-neutral-400">@(string.IsNullOrWhiteSpace(p.Sku) ? "" : p.Sku)</div>
+                    <div class="text-sm text-neutral-700 mt-0.5">
+                        @if (p.SalePrice is decimal s && s > 0m && s < p.Price)
+                        {
+                            <span class="text-red-600 font-medium">₦@s.ToString("N0")</span>
+                            <span class="text-neutral-400 line-through ml-1">₦@p.Price.ToString("N0")</span>
+                        }
+                        else
+                        {
+                            <span>₦@p.Price.ToString("N0")</span>
+                        }
+                    </div>
+                    <button type="button" class="sale-toggle mt-2 px-3 py-1.5 text-xs rounded-sm transition-colors @(p.OnSale ? "bg-red-600 text-white hover:bg-red-700" : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200")"
+                            data-id="@p.Id" data-on="@p.OnSale.ToString().ToLowerInvariant()">
+                        @(p.OnSale ? "On Sale page ✓" : "Add to Sale")
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@section Scripts {
+<script>
+(function () {
+    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value ?? '';
+    const countEl = document.getElementById('sale-count');
+    document.querySelectorAll('.sale-toggle').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const id = btn.dataset.id;
+            const turnOn = btn.dataset.on !== 'true';
+            btn.disabled = true;
+            try {
+                const fd = new FormData();
+                fd.append('id', id);
+                fd.append('on', turnOn ? 'true' : 'false');
+                fd.append('__RequestVerificationToken', token);
+                const res = await fetch(__adminBase + '/Sale/Toggle', { method: 'POST', body: fd });
+                const data = await res.json();
+                if (res.ok && data.ok) {
+                    btn.dataset.on = data.on ? 'true' : 'false';
+                    btn.textContent = data.on ? 'On Sale page ✓' : 'Add to Sale';
+                    btn.className = 'sale-toggle mt-2 px-3 py-1.5 text-xs rounded-sm transition-colors ' +
+                        (data.on ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-neutral-100 text-neutral-700 hover:bg-neutral-200');
+                    const card = btn.closest('.sale-card');
+                    if (card) card.className = 'bg-white border rounded-sm overflow-hidden flex flex-col sale-card ' +
+                        (data.on ? 'border-red-300 ring-1 ring-red-200' : 'border-neutral-200');
+                    if (countEl) countEl.textContent = data.count;
+                } else {
+                    alert('Could not update. Please try again.');
+                }
+            } catch { alert('Could not update. Please try again.'); }
+            finally { btn.disabled = false; }
+        });
+    });
+})();
+</script>
+}

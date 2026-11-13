@@ -80,6 +80,9 @@ public class Product
     /// sales. Such lines carry a per-sale name and price and skip stock tracking. Lazily created.</summary>
     public bool IsCustomItem { get; set; }
     public bool IsFeatured { get; set; }
+    /// <summary>Hand-picked for the storefront Sale page (/sale) — an admin-curated collection, separate
+    /// from <see cref="SalePrice"/> (a product can be on the Sale page with or without a reduced price).</summary>
+    public bool ShowOnSalePage { get; set; }
     public int LowStockThreshold { get; set; } = 3;
     public bool IsNewArrival { get; set; }
 
