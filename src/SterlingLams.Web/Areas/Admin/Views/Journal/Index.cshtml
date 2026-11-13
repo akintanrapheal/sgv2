@@ -1,6 +1,6 @@
 @model List<SterlingLams.Web.Models.Domain.BlogPost>
 @{
-    ViewData["Title"] = "Journal";
+    ViewData["Title"] = "Blog";
     Layout = "_AdminLayout";
     string filter = ViewBag.Filter ?? "all";
     int published = ViewBag.PublishedCount ?? 0;
@@ -11,7 +11,7 @@
 
 <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
     <div>
-        <h1 class="text-2xl font-light text-neutral-900">Journal</h1>
+        <h1 class="text-2xl font-light text-neutral-900">Blog</h1>
         <p class="text-sm text-neutral-500 mt-1">Blog &amp; lookbook posts — @published published, @draft draft.</p>
     </div>
     <a asp-area="Admin" asp-controller="Journal" asp-action="Create" class="px-4 py-2 text-sm bg-neutral-900 text-white rounded-sm hover:bg-neutral-700">+ New post</a>
@@ -114,7 +114,7 @@ else
                                 }
                                 <div>
                                     <div class="text-neutral-800 font-medium">@p.Title</div>
-                                    <div class="text-xs text-neutral-400 font-mono">/journal/@p.Slug</div>
+                                    <div class="text-xs text-neutral-400 font-mono">/blog/@p.Slug</div>
                                 </div>
                             </div>
                         </td>

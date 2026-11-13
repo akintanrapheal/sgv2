@@ -1,7 +1,11 @@
 @model SterlingLams.Web.Models.Domain.BlogPost
 @{
-    ViewData["Title"] = Model.Id == 0 ? "New Journal Post" : "Edit Journal Post";
+    ViewData["Title"] = Model.Id == 0 ? "New Blog Post" : "Edit Blog Post";
     Layout = "_AdminLayout";
+    // Show the publish date in Lagos (WAT) wall-clock; it's stored as UTC. Save() converts it back.
+    var pubWat = Model.PublishedAt.HasValue
+        ? TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(Model.PublishedAt.Value, DateTimeKind.Utc), SterlingLams.Web.Services.ReportCalendar.Zone)
+        : (DateTime?)null;
 }
 
 <div class="mb-6">
@@ -28,11 +32,11 @@
                 <div>
                     <label asp-for="Slug" class="block text-xs text-neutral-500 mb-1">Slug</label>
                     <input asp-for="Slug" placeholder="auto-generated from the title" class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm font-mono focus:outline-none focus:border-neutral-400" />
-                    <span class="text-[10px] text-neutral-400">Leave blank to generate from the title. /journal/<slug></span>
+                    <span class="text-[10px] text-neutral-400">Leave blank to generate from the title. /blog/<slug></span>
                 </div>
                 <div>
                     <label asp-for="Excerpt" class="block text-xs text-neutral-500 mb-1">Excerpt</label>
-                    <textarea asp-for="Excerpt" rows="2" placeholder="Short teaser shown on the Journal index + used for the meta description." class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400"></textarea>
+                    <textarea asp-for="Excerpt" rows="2" placeholder="Short teaser shown on the Blog index + used for the meta description." class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400"></textarea>
                 </div>
                 <div>
                     <label class="block text-xs text-neutral-500 mb-1">Body</label>
@@ -61,6 +65,12 @@
                     <span class="text-sm text-neutral-700">Published</span>
                 </label>
                 <p class="text-[11px] text-neutral-400">Drafts are hidden from the storefront.</p>
+                <div>
+                    <label asp-for="PublishedAt" class="block text-xs text-neutral-500 mb-1">Publish date</label>
+                    <input type="date" name="PublishedAt" value="@(pubWat?.ToString("yyyy-MM-dd"))"
+                           class="w-full border border-neutral-200 rounded-sm px-3 py-2 text-sm focus:outline-none focus:border-neutral-400" />
+                    <span class="text-[10px] text-neutral-400">Shown as the article date. Set a past date to back-date an old post. Blank + Published = today.</span>
+                </div>
                 <button type="submit" class="w-full px-4 py-2 text-sm bg-neutral-900 text-white rounded-sm hover:bg-neutral-700">Save post</button>
             </div>
 
@@ -72,7 +82,7 @@
                     <span class="inline-block px-3 py-1.5 text-xs border border-neutral-300 rounded-sm cursor-pointer hover:bg-neutral-50">Upload image</span>
                     <input type="file" id="cover-file" accept="image/*" class="hidden" />
                 </label>
-                <p class="text-[11px] text-neutral-400">Used on the Journal index card + social share.</p>
+                <p class="text-[11px] text-neutral-400">Used on the Blog index card + social share.</p>
             </div>
 
             <div class="bg-white border border-neutral-200 rounded-sm p-5">

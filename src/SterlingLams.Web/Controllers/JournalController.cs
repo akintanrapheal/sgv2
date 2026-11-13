@@ -5,7 +5,10 @@ using SterlingLams.Web.Data;
 
 namespace SterlingLams.Web.Controllers;
 
-/// <summary>Public Journal (blog / lookbook): index of published posts + individual articles.</summary>
+/// <summary>Public Blog (formerly "Journal"): index of published posts + individual articles.
+/// Served at /blog; the controller/view names stay "Journal" so routing, permissions and asp-* links
+/// are untouched (the rename is user-visible only). Old /journal URLs 301 to /blog via the legacy
+/// redirect middleware.</summary>
 [AllowAnonymous]
 public class JournalController : Controller
 {
@@ -13,11 +16,11 @@ public class JournalController : Controller
     private readonly ApplicationDbContext _db;
     public JournalController(ApplicationDbContext db) => _db = db;
 
-    [HttpGet("/journal")]
+    [HttpGet("/blog")]
     public async Task<IActionResult> Index(int page = 1)
     {
         if (page < 1) page = 1;
-        ViewData["Title"] = "Journal";
+        ViewData["Title"] = "Blog";
         ViewData["Description"] = "Styling notes, lookbooks and stories from Sterlin Glams.";
 
         var published = _db.BlogPosts.AsNoTracking().Where(b => b.IsPublished);
@@ -32,7 +35,7 @@ public class JournalController : Controller
         return View(posts);
     }
 
-    [HttpGet("/journal/{slug}")]
+    [HttpGet("/blog/{slug}")]
     public async Task<IActionResult> Detail(string slug)
     {
         var post = await _db.BlogPosts.AsNoTracking()

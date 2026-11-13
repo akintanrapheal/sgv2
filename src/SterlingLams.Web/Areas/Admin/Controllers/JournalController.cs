@@ -23,7 +23,7 @@ public class JournalController : AdminBaseController
     public async Task<IActionResult> Index(string filter = "all", int page = 1)
     {
         const int pageSize = 30;
-        ViewData["Title"] = "Journal";
+        ViewData["Title"] = "Blog";
         var q = _db.BlogPosts.AsNoTracking().AsQueryable();
         if (filter == "published") q = q.Where(b => b.IsPublished);
         else if (filter == "draft") q = q.Where(b => !b.IsPublished);
@@ -45,7 +45,7 @@ public class JournalController : AdminBaseController
 
     public IActionResult Create()
     {
-        ViewData["Title"] = "New Journal Post";
+        ViewData["Title"] = "New Blog Post";
         return View("Edit", new BlogPost());
     }
 
@@ -140,7 +140,7 @@ public class JournalController : AdminBaseController
     {
         var post = await _db.BlogPosts.FindAsync(id);
         if (post == null) return NotFound();
-        ViewData["Title"] = "Edit Journal Post";
+        ViewData["Title"] = "Edit Blog Post";
         return View(post);
     }
 
@@ -167,8 +167,14 @@ public class JournalController : AdminBaseController
         post.MetaDescription = string.IsNullOrWhiteSpace(vm.MetaDescription) ? null : vm.MetaDescription.Trim();
         post.UpdatedAt = DateTime.UtcNow;
 
-        // Stamp PublishedAt the first time it goes live; keep it on later edits.
-        if (vm.IsPublished && !post.IsPublished) post.PublishedAt = DateTime.UtcNow;
+        // Publish date is editable so legacy/imported posts can be back-dated. The date picker posts a
+        // Kind=Unspecified value — treat it as Lagos wall-clock and store the UTC instant (as DiscountsController).
+        static DateTime ToUtc(DateTime v) =>
+            TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(v, DateTimeKind.Unspecified), ReportCalendar.Zone);
+        if (vm.PublishedAt.HasValue)
+            post.PublishedAt = ToUtc(vm.PublishedAt.Value);     // owner set/adjusted the date (any state)
+        else if (vm.IsPublished && !post.IsPublished)
+            post.PublishedAt = DateTime.UtcNow;                 // first publish, no date given → now
         post.IsPublished = vm.IsPublished;
 
         if (isNew) { post.CreatedAt = DateTime.UtcNow; _db.BlogPosts.Add(post); }
