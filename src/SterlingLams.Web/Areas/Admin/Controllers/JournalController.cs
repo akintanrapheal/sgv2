@@ -40,7 +40,69 @@ public class JournalController : AdminBaseController
         ViewBag.Filter = filter;
         ViewBag.PublishedCount = await _db.BlogPosts.CountAsync(b => b.IsPublished);
         ViewBag.DraftCount = await _db.BlogPosts.CountAsync(b => !b.IsPublished);
+        // Show the "Move media to R2" button only while some post still serves media from wwwroot (/media/blog/).
+        ViewBag.HasLocalBlogMedia = await _db.BlogPosts.AnyAsync(b =>
+            b.Body.Contains("/media/blog/") || (b.CoverImageUrl != null && b.CoverImageUrl.Contains("/media/blog/")));
         return View(posts);
+    }
+
+    // ─── Move post media from wwwroot (/media/blog) to Cloudflare R2 ────────────────
+    // One-click: uploads the files the posts reference into R2 using the app's own (already-configured)
+    // R2 credentials, then repoints every post Body/CoverImageUrl at the R2 public URL. Idempotent —
+    // once a post points at R2 there's nothing left matching "/media/blog/", so a re-run is a no-op.
+    [HttpPost, ValidateAntiForgeryToken]
+    public async Task<IActionResult> MoveMediaToR2(
+        [FromServices] IR2Storage r2,
+        [FromServices] IWebHostEnvironment env)
+    {
+        if (!await r2.IsConfiguredAsync())
+        {
+            TempData["Error"] = "R2 isn't configured — set it up in Admin → Integrations → R2 first.";
+            return RedirectToAction(nameof(Index));
+        }
+
+        var posts = await _db.BlogPosts.Where(b =>
+            b.Body.Contains("/media/blog/") || (b.CoverImageUrl != null && b.CoverImageUrl.Contains("/media/blog/"))).ToListAsync();
+
+        // Gather every distinct /media/blog/<file> the posts reference.
+        var rx = new Regex(@"/media/blog/([A-Za-z0-9._-]+)", RegexOptions.IgnoreCase);
+        var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in posts)
+        {
+            foreach (Match m in rx.Matches(p.Body)) files.Add(m.Groups[1].Value);
+            if (p.CoverImageUrl != null) foreach (Match m in rx.Matches(p.CoverImageUrl)) files.Add(m.Groups[1].Value);
+        }
+
+        var map = new Dictionary<string, string>();   // "/media/blog/x" -> R2 public URL
+        int moved = 0, skipped = 0;
+        foreach (var file in files)
+        {
+            var local = Path.Combine(env.WebRootPath, "media", "blog", file);
+            if (!System.IO.File.Exists(local)) { skipped++; continue; }
+            var bytes = await System.IO.File.ReadAllBytesAsync(local);
+            var ct = file.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ? "video/mp4" : R2Storage.ContentTypeFor(file);
+            var url = await r2.PutAsync($"blog/{file}", bytes, ct);
+            if (url == null) { skipped++; continue; }
+            map[$"/media/blog/{file}"] = url;
+            moved++;
+        }
+
+        foreach (var p in posts)
+        {
+            foreach (var (from, to) in map)
+            {
+                p.Body = p.Body.Replace(from, to);
+                if (p.CoverImageUrl != null) p.CoverImageUrl = p.CoverImageUrl.Replace(from, to);
+            }
+            p.UpdatedAt = DateTime.UtcNow;
+        }
+        await _db.SaveChangesAsync();
+        await LogAsync("Update", "BlogPost", null, $"Moved {moved} blog media file(s) to R2; repointed {posts.Count} post(s).");
+
+        TempData["Success"] = moved == 0 && skipped == 0
+            ? "Nothing to move — blog media is already on R2."
+            : $"Moved {moved} file(s) to R2 and repointed {posts.Count} post(s)." + (skipped > 0 ? $" {skipped} skipped (file missing or upload failed)." : "");
+        return RedirectToAction(nameof(Index));
     }
 
     public IActionResult Create()
