@@ -196,11 +196,30 @@
     var siteName = (panel.querySelector('h3') && panel.querySelector('h3').textContent.trim()) || 'us';
 
     var lastId = 0, sending = false, polling = null, unread = 0, started = false,
-        ended = false, reviewShown = false, reviewed = false, endedShown = false, paused = false;
+        ended = false, reviewShown = false, reviewed = false, endedShown = false, paused = false, polled = false;
 
     function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
     function wa(text){ return waBase ? (waBase + '?text=' + encodeURIComponent(text)) : ''; }
     function nowHM(){ var d=new Date(); return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }
+
+    // Soft chime when a reply arrives (audio unlocks when the shopper first opens/taps the chat).
+    var audioCtx = null;
+    function unlockAudio(){ try { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch (e) {} }
+    function chime(){
+        try {
+            unlockAudio(); if (!audioCtx) return;
+            var t = audioCtx.currentTime;
+            [784, 1046.5].forEach(function (f, i) {
+                var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+                o.type = 'sine'; o.frequency.value = f;
+                g.gain.setValueAtTime(0.0001, t + i * 0.13);
+                g.gain.exponentialRampToValueAtTime(0.16, t + i * 0.13 + 0.02);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + i * 0.13 + 0.2);
+                o.connect(g); g.connect(audioCtx.destination);
+                o.start(t + i * 0.13); o.stop(t + i * 0.13 + 0.22);
+            });
+        } catch (e) {}
+    }
 
     // A canned / informational bot bubble (self-service answers, not stored)
     function botRow(html){
@@ -237,7 +256,7 @@
         launch.setAttribute('aria-expanded','false');
         setTimeout(function(){ panel.classList.remove('sgc-open'); }, 200);
     }
-    launch.addEventListener('click', function(){ panel.classList.contains('sgc-open') ? close() : open(); });
+    launch.addEventListener('click', function(){ unlockAudio(); panel.classList.contains('sgc-open') ? close() : open(); });
     document.getElementById('sgc-min').addEventListener('click', close);
     document.addEventListener('keydown', function(e){ if (e.key==='Escape' && panel.classList.contains('sgc-open')) close(); });
 
@@ -346,11 +365,14 @@
             var r = await fetch('/chat/thread?after=' + lastId, { headers:{ 'Accept':'application/json' } });
             if (!r.ok) return;
             var d = await r.json();
+            var gotStaff = false;
             (d.messages || []).forEach(function(m){
                 if (m.id <= lastId) return;
                 msgRow(m); lastId = m.id;
-                if (m.fromStaff && !panel.classList.contains('sgc-open')) bumpUnread();
+                if (m.fromStaff){ gotStaff = true; if (!panel.classList.contains('sgc-open')) bumpUnread(); }
             });
+            if (polled && gotStaff) chime();   // a reply arrived during this session (not the initial load)
+            polled = true;
             if (d.reviewed) reviewed = true;
             ended = !!d.ended;
             if (ended) enterEndedState();
