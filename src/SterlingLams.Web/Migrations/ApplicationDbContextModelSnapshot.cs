@@ -1667,6 +1667,9 @@ namespace SterlingLams.Web.Migrations
                     b.Property<string>("PaymentReference")
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("PaymentReminderAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("PickupReadyEmailedAt")
                         .HasColumnType("timestamp with time zone");
 

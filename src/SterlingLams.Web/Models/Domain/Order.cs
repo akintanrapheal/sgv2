@@ -124,6 +124,9 @@ public class Order
     public string? PaymentProvider { get; set; }
     public bool IsPaid { get; set; }
     public DateTime? PaidAt { get; set; }
+    /// <summary>When we proactively reached out about an unpaid online order (chat + email "need help
+    /// paying?") so it's sent at most once per order, before the unpaid auto-cancel. Null = not yet sent.</summary>
+    public DateTime? PaymentReminderAt { get; set; }
 
     /// <summary>Client-generated id for a POS sale rung up OFFLINE, used to make the sync upload
     /// idempotent (re-sending the same offline sale never creates a duplicate order). Null for

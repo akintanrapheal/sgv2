@@ -39,8 +39,27 @@ public class ChatController : Controller
     private async Task<ChatConversation?> FindAsync()
     {
         var key = Request.Cookies[CookieName];
-        if (string.IsNullOrWhiteSpace(key) || key.Length > 40) return null;
-        return await _db.ChatConversations.FirstOrDefaultAsync(c => c.Key == key);
+        if (!string.IsNullOrWhiteSpace(key) && key!.Length <= 40)
+        {
+            var byKey = await _db.ChatConversations.FirstOrDefaultAsync(c => c.Key == key);
+            if (byKey != null) return byKey;
+        }
+
+        // No cookie thread yet, but a signed-in shopper may have a conversation we started for them (e.g. a
+        // proactive "need help paying?" outreach keyed to their account). Adopt it so the widget shows it.
+        if (User?.Identity?.IsAuthenticated == true)
+        {
+            var uid = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!string.IsNullOrEmpty(uid))
+            {
+                var byUser = await _db.ChatConversations
+                    .Where(c => c.UserId == uid && !c.Ended)
+                    .OrderByDescending(c => c.LastMessageAt)
+                    .FirstOrDefaultAsync();
+                if (byUser != null) { SetCookie(byUser.Key); return byUser; }
+            }
+        }
+        return null;
     }
 
     private static string? Trim(string? s, int max) =>
