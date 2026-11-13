@@ -16,11 +16,13 @@ public class ChatMessagesController : AdminBaseController
 
     private readonly ApplicationDbContext _db;
     private readonly UserManager<ApplicationUser> _users;
+    private readonly SterlingLams.Web.Services.IR2Storage _r2;
     private const int PageSize = 30;
 
-    public ChatMessagesController(ApplicationDbContext db, UserManager<ApplicationUser> users)
+    public ChatMessagesController(ApplicationDbContext db, UserManager<ApplicationUser> users,
+        SterlingLams.Web.Services.IR2Storage r2)
     {
-        _db = db; _users = users;
+        _db = db; _users = users; _r2 = r2;
     }
 
     public async Task<IActionResult> Index(string status = "", string q = "", int page = 1)
@@ -116,6 +118,7 @@ public class ChatMessagesController : AdminBaseController
             {
                 id = m.Id,
                 body = m.Body,
+                imageUrl = m.ImageUrl,
                 fromStaff = m.FromStaff,
                 at = SterlingLams.Web.Services.ReportCalendar.ToLocal(m.CreatedAt).ToString("HH:mm")
             })
@@ -144,6 +147,42 @@ public class ChatMessagesController : AdminBaseController
         conv.LastFromStaff = true;
         conv.StaffUnread = 0;
         // A staff reply re-opens a chat the shopper may have let lapse, so they can see the answer + reply.
+        if (conv.Ended && conv.EndedReason == "timeout") { conv.Ended = false; conv.EndedAt = null; conv.EndedReason = null; }
+        await _db.SaveChangesAsync();
+        return RedirectToAction(nameof(Detail), new { id });
+    }
+
+    // Staff shares a photo. Validated by magic bytes, size-capped, stored RAW in R2 (never decoded with
+    // ImageSharp). Appended as a staff message; delivered to the shopper's widget on its next poll.
+    [HttpPost, ValidateAntiForgeryToken, RequestSizeLimit(8 * 1024 * 1024)]
+    public async Task<IActionResult> Upload(int id, IFormFile file)
+    {
+        var conv = await _db.ChatConversations.FirstOrDefaultAsync(c => c.Id == id);
+        if (conv == null) return RedirectToAction(nameof(Index));
+
+        if (file == null || file.Length == 0 || file.Length > Infrastructure.ChatImageValidator.MaxBytes
+            || !await _r2.IsConfiguredAsync())
+        { TempData["Error"] = "Couldn't attach that image."; return RedirectToAction(nameof(Detail), new { id }); }
+
+        byte[] bytes;
+        using (var ms = new MemoryStream()) { await file.CopyToAsync(ms); bytes = ms.ToArray(); }
+        var sniff = Infrastructure.ChatImageValidator.Sniff(bytes);
+        if (sniff == null) { TempData["Error"] = "Please attach a JPG, PNG, GIF or WebP image under 5 MB."; return RedirectToAction(nameof(Detail), new { id }); }
+
+        var url = await _r2.PutAsync($"chat/{Guid.NewGuid():N}.{sniff.Value.ext}", bytes, sniff.Value.contentType);
+        if (url == null) { TempData["Error"] = "Image upload failed."; return RedirectToAction(nameof(Detail), new { id }); }
+
+        var me = await _users.GetUserAsync(User);
+        var senderName = !string.IsNullOrWhiteSpace(me?.FirstName) ? me!.FirstName : "Sterlin Glams";
+        _db.ChatMessages.Add(new ChatMessage
+        {
+            ConversationId = id, CreatedAt = DateTime.UtcNow, FromStaff = true,
+            Body = "", ImageUrl = url, SenderName = senderName, SeenByCustomer = false
+        });
+        conv.LastMessageAt = DateTime.UtcNow;
+        conv.LastBody = "📷 Photo";
+        conv.LastFromStaff = true;
+        conv.StaffUnread = 0;
         if (conv.Ended && conv.EndedReason == "timeout") { conv.Ended = false; conv.EndedAt = null; conv.EndedReason = null; }
         await _db.SaveChangesAsync();
         return RedirectToAction(nameof(Detail), new { id });

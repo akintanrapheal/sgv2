@@ -1033,6 +1033,9 @@ namespace SterlingLams.Web.Migrations
                     b.Property<bool>("FromStaff")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("text");
+
                     b.Property<bool>("SeenByCustomer")
                         .HasColumnType("boolean");
 

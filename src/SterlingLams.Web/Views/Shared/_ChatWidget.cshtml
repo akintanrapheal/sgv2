@@ -81,6 +81,11 @@
         cursor:pointer; display:flex; align-items:center; justify-content:center; }
     .sgc-send:hover { background:#c70175; }
     .sgc-send svg { width:18px; height:18px; }
+    .sgc-attach { flex-shrink:0; width:36px; height:36px; border-radius:9999px; border:0; background:#f1f1f4; color:#6b6b73;
+        cursor:pointer; display:flex; align-items:center; justify-content:center; }
+    .sgc-attach:hover { background:#e7e7ec; }
+    .sgc-attach svg { width:18px; height:18px; }
+    .sgc-bubble img { max-width:200px; max-height:220px; border-radius:10px; display:block; cursor:pointer; }
     @@media (max-width:420px){ .sgc-panel{ right:3vw; bottom:86px; width:94vw; height:72vh; } .sgc-launch{ right:16px; } }
     @@media (prefers-reduced-motion: reduce){ .sgc-panel{ transition:none; } }
 </style>
@@ -146,6 +151,10 @@
         </div>
     </details>
     <div class="sgc-foot">
+        <input type="file" id="sgc-file" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none" />
+        <button type="button" class="sgc-attach" id="sgc-attach" aria-label="Attach a photo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+        </button>
         <input type="text" id="sgc-input" placeholder="Type your message here" aria-label="Type your message" autocomplete="off" />
         <button type="button" class="sgc-send" id="sgc-send" aria-label="Send">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg>
@@ -180,12 +189,16 @@
         r.innerHTML = '<div><div class="sgc-bubble">' + html + '</div><div class="sgc-meta">' + siteName + ' · ' + nowHM() + '</div></div>';
         thread.appendChild(r); body.scrollTop = body.scrollHeight;
     }
-    // A real chat message bubble (mine = right, staff = left)
+    // A real chat message bubble (mine = right, staff = left). May carry an image, text, or both.
     function msgRow(m){
         var r = document.createElement('div');
         r.className = 'sgc-row' + (m.fromStaff ? '' : ' sgc-me');
         var meta = m.fromStaff ? ((m.name || siteName) + (m.at ? ' · ' + m.at : '')) : (m.at || '');
-        r.innerHTML = '<div><div class="sgc-bubble">' + esc(m.body) + '</div>'
+        var inner = '';
+        if (m.imageUrl) inner += '<a href="' + encodeURI(m.imageUrl) + '" target="_blank" rel="noopener"><img src="' + encodeURI(m.imageUrl) + '" alt="shared photo" loading="lazy"></a>';
+        if (m.body) inner += (m.imageUrl ? '<div style="margin-top:6px">' : '') + esc(m.body) + (m.imageUrl ? '</div>' : '');
+        if (!inner) inner = esc(m.body || '');
+        r.innerHTML = '<div><div class="sgc-bubble">' + inner + '</div>'
             + (meta ? '<div class="sgc-meta' + (m.fromStaff ? '' : '" style="text-align:right') + '">' + esc(meta) + '</div>' : '')
             + '</div>';
         thread.appendChild(r); body.scrollTop = body.scrollHeight;
@@ -318,6 +331,33 @@
     }
     document.getElementById('sgc-send').addEventListener('click', send);
     input.addEventListener('keydown', function(e){ if (e.key==='Enter'){ e.preventDefault(); send(); } });
+
+    // ── Share a photo ────────────────────────────────────────────────────────
+    var fileInput = document.getElementById('sgc-file');
+    async function uploadFile(file){
+        if (!file) return;
+        if (file.size > 5 * 1024 * 1024){ botRow('That image is too large — please send one under 5 MB.'); return; }
+        sending = true; reviewShown = false; reviewed = false;
+        try {
+            var fd = new FormData();
+            fd.append('file', file);
+            var nm = (document.getElementById('sgc-name')||{}).value, em = (document.getElementById('sgc-email')||{}).value;
+            if (nm && nm.trim()) fd.append('name', nm.trim());
+            if (em && em.trim()) fd.append('email', em.trim());
+            fd.append('__RequestVerificationToken', window.SiteHeader ? await SiteHeader.ensureToken() : '');
+            var res = await fetch('/chat/upload', { method:'POST', body: fd });
+            if (res.status === 400 && window.SiteHeader){
+                await SiteHeader.reload();
+                fd.set('__RequestVerificationToken', await SiteHeader.ensureToken());
+                res = await fetch('/chat/upload', { method:'POST', body: fd, headers:{ 'X-AF-Retry':'1' } });
+            }
+            var d = await res.json().catch(function(){ return null; });
+            if (d && d.ok){ msgRow({ imageUrl:d.url, fromStaff:false, at:nowHM() }); if (d.id && d.id > lastId) lastId = d.id; }
+            else { botRow((d && d.error) || 'Sorry, that image couldn’t be sent.'); }
+        } catch (e) {} finally { sending = false; }
+    }
+    document.getElementById('sgc-attach').addEventListener('click', function(){ if (!started) startChat(); fileInput.click(); });
+    fileInput.addEventListener('change', function(){ if (fileInput.files && fileInput.files[0]){ uploadFile(fileInput.files[0]); fileInput.value=''; } });
 })();
 </script>
 }

@@ -21,12 +21,13 @@ public class ChatController : Controller
     private readonly UserManager<ApplicationUser> _users;
     private readonly IEmailService _email;
     private readonly ISettingsService _settings;
+    private readonly IR2Storage _r2;
     private readonly ILogger<ChatController> _log;
 
     public ChatController(ApplicationDbContext db, UserManager<ApplicationUser> users,
-        IEmailService email, ISettingsService settings, ILogger<ChatController> log)
+        IEmailService email, ISettingsService settings, IR2Storage r2, ILogger<ChatController> log)
     {
-        _db = db; _users = users; _email = email; _settings = settings; _log = log;
+        _db = db; _users = users; _email = email; _settings = settings; _r2 = r2; _log = log;
     }
 
     private void SetCookie(string key) => Response.Cookies.Append(CookieName, key, new CookieOptions
@@ -42,22 +43,16 @@ public class ChatController : Controller
         return await _db.ChatConversations.FirstOrDefaultAsync(c => c.Key == key);
     }
 
-    [HttpPost("message"), ValidateAntiForgeryToken]
-    public async Task<IActionResult> Message(string body, string? channel = null,
-        string? name = null, string? email = null, string? phone = null)
+    private static string? Trim(string? s, int max) =>
+        string.IsNullOrWhiteSpace(s) ? null : (s!.Trim().Length > max ? s.Trim()[..max] : s.Trim());
+
+    // Resolve (or start) the shopper's thread, record their identity, append a message (text and/or image)
+    // and alert staff once per new wave. Shared by the text and image-upload endpoints.
+    private async Task<int?> AppendCustomerAsync(string body, string? imageUrl, string? name, string? email, string? phone)
     {
-        body = (body ?? "").Trim();
-        if (body.Length == 0) return Json(new { ok = false });
-        if (body.Length > 2000) body = body[..2000];
-
-        string? Trim(string? s, int max) =>
-            string.IsNullOrWhiteSpace(s) ? null : (s!.Trim().Length > max ? s.Trim()[..max] : s.Trim());
-
         var now = DateTime.UtcNow;
-        // Resolve the thread — a fresh one if there's no cookie or the previous chat already ended.
         var conv = await FindAsync();
-        if (conv != null && conv.Ended) conv = null;
-        var isNew = conv == null;
+        if (conv != null && conv.Ended) conv = null;   // a new message after an ended chat starts a fresh one
         if (conv == null)
         {
             var key = Guid.NewGuid().ToString("N");
@@ -75,7 +70,6 @@ public class ChatController : Controller
 
         var alertStaff = conv.StaffUnread == 0;   // staff were caught up → ping once for this new wave
 
-        // Identity: prefer what the shopper typed, fall back to their signed-in account.
         conv.CustomerName = Trim(name, 120) ?? conv.CustomerName;
         conv.ContactEmail = Trim(email, 256) ?? conv.ContactEmail;
         conv.ContactPhone = Trim(phone, 40) ?? conv.ContactPhone;
@@ -93,25 +87,68 @@ public class ChatController : Controller
 
         var msg = new ChatMessage
         {
-            Conversation = conv, CreatedAt = now, FromStaff = false, Body = body, SeenByCustomer = true
+            Conversation = conv, CreatedAt = now, FromStaff = false,
+            Body = body, ImageUrl = imageUrl, SeenByCustomer = true
         };
         conv.Messages.Add(msg);
         conv.LastMessageAt = now;
         conv.LastCustomerAt = now;
         conv.StaffUnread += 1;
-        conv.LastBody = body;
+        conv.LastBody = imageUrl != null && body.Length == 0 ? "📷 Photo" : body;
         conv.LastFromStaff = false;
 
         try { await _db.SaveChangesAsync(); }
-        catch (Exception ex) { _log.LogWarning(ex, "Failed to save chat message."); return Json(new { ok = false }); }
+        catch (Exception ex) { _log.LogWarning(ex, "Failed to save chat message."); return null; }
 
         if (alertStaff)
         {
-            try { await SendStaffAlertAsync(conv, body); }
+            try { await SendStaffAlertAsync(conv, imageUrl != null && body.Length == 0 ? "📷 Sent a photo" : body); }
             catch (Exception ex) { _log.LogWarning(ex, "Chat staff alert failed."); }
         }
+        return msg.Id;
+    }
 
-        return Json(new { ok = true, id = msg.Id });
+    [HttpPost("message"), ValidateAntiForgeryToken]
+    public async Task<IActionResult> Message(string body, string? channel = null,
+        string? name = null, string? email = null, string? phone = null)
+    {
+        body = (body ?? "").Trim();
+        if (body.Length == 0) return Json(new { ok = false });
+        if (body.Length > 2000) body = body[..2000];
+
+        var id = await AppendCustomerAsync(body, null, name, email, phone);
+        return id == null ? Json(new { ok = false }) : Json(new { ok = true, id });
+    }
+
+    // Shopper shares a photo. The file is validated by its real signature (magic bytes), size-capped and
+    // stored RAW in R2 — never decoded with ImageSharp — so the decoder advisories can't be reached here.
+    [HttpPost("upload"), ValidateAntiForgeryToken, RequestSizeLimit(8 * 1024 * 1024)]
+    public async Task<IActionResult> Upload(IFormFile file, string? name = null, string? email = null, string? phone = null)
+    {
+        var url = await StoreImageAsync(file);
+        if (url == null) return Json(new { ok = false, error = "Please attach a JPG, PNG, GIF or WebP image under 5 MB." });
+
+        var id = await AppendCustomerAsync("", url, name, email, phone);
+        return id == null ? Json(new { ok = false }) : Json(new { ok = true, id, url });
+    }
+
+    // Validate + store a chat image. Returns the raw R2 URL, or null if it isn't a valid image / R2 is off.
+    private async Task<string?> StoreImageAsync(IFormFile? file)
+    {
+        if (file == null || file.Length == 0 || file.Length > Infrastructure.ChatImageValidator.MaxBytes) return null;
+        if (!await _r2.IsConfiguredAsync()) return null;
+
+        byte[] bytes;
+        using (var ms = new MemoryStream())
+        {
+            await file.CopyToAsync(ms);
+            bytes = ms.ToArray();
+        }
+        var sniff = Infrastructure.ChatImageValidator.Sniff(bytes);
+        if (sniff == null) return null;   // not a real JPEG/PNG/GIF/WebP
+
+        var key = $"chat/{Guid.NewGuid():N}.{sniff.Value.ext}";
+        return await _r2.PutAsync(key, bytes, sniff.Value.contentType);
     }
 
     // New messages since `after` (both sides) so the transcript rebuilds; also reports whether the chat
@@ -147,6 +184,7 @@ public class ChatController : Controller
             {
                 id = m.Id,
                 body = m.Body,
+                imageUrl = m.ImageUrl,
                 fromStaff = m.FromStaff,
                 name = m.FromStaff ? (m.SenderName ?? "Sterlin Glams") : null,
                 at = ReportCalendar.ToLocal(m.CreatedAt).ToString("HH:mm")
