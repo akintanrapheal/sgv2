@@ -20,8 +20,7 @@ public class JournalController : AdminBaseController
         _gen = gen;
     }
 
-    public async Task<IActionResult> Index(string filter = "all", int page = 1,
-        [FromServices] IWebHostEnvironment? env = null)
+    public async Task<IActionResult> Index(string filter = "all", int page = 1)
     {
         const int pageSize = 30;
         ViewData["Title"] = "Blog";
@@ -41,80 +40,7 @@ public class JournalController : AdminBaseController
         ViewBag.Filter = filter;
         ViewBag.PublishedCount = await _db.BlogPosts.CountAsync(b => b.IsPublished);
         ViewBag.DraftCount = await _db.BlogPosts.CountAsync(b => !b.IsPublished);
-        // Show the "Move media to R2" button while the wwwroot originals still exist, so it can be re-run
-        // (it also generates the pre-sized WebP variants the R2 delivery needs). The follow-up that deletes
-        // wwwroot/media/blog makes the button disappear.
-        var blogDir = env == null ? null : Path.Combine(env.WebRootPath, "media", "blog");
-        ViewBag.HasLocalBlogMedia = blogDir != null && Directory.Exists(blogDir) && Directory.EnumerateFiles(blogDir).Any();
         return View(posts);
-    }
-
-    // ─── Move post media from wwwroot (/media/blog) to Cloudflare R2 ────────────────
-    // One-click: uploads the files the posts reference into R2 using the app's own (already-configured)
-    // R2 credentials, then repoints every post Body/CoverImageUrl at the R2 public URL. Idempotent —
-    // once a post points at R2 there's nothing left matching "/media/blog/", so a re-run is a no-op.
-    [HttpPost, ValidateAntiForgeryToken]
-    public async Task<IActionResult> MoveMediaToR2(
-        [FromServices] IR2Storage r2,
-        [FromServices] IImageStorageService imageStorage,
-        [FromServices] IWebHostEnvironment env)
-    {
-        if (!await r2.IsConfiguredAsync())
-        {
-            TempData["Error"] = "R2 isn't configured — set it up in Admin → Integrations → R2 first.";
-            return RedirectToAction(nameof(Index));
-        }
-
-        var blogDir = Path.Combine(env.WebRootPath, "media", "blog");
-        if (!Directory.Exists(blogDir))
-        {
-            TempData["Error"] = "No local blog media to move.";
-            return RedirectToAction(nameof(Index));
-        }
-
-        // Upload every original in wwwroot/media/blog to R2 (idempotent). For images, also generate the
-        // pre-sized WebP renditions (…_160/400/800/1280.webp) the storefront actually requests — WITHOUT
-        // these the R2 image URL 404s. Videos are served as the raw object. Re-runnable: re-uploading and
-        // re-generating is harmless, which is how it self-heals an earlier move that skipped the variants.
-        var map = new Dictionary<string, string>();   // "/media/blog/<file>" -> R2 public URL
-        int moved = 0, withVariants = 0, skipped = 0;
-        foreach (var path in Directory.EnumerateFiles(blogDir))
-        {
-            var file = Path.GetFileName(path);
-            var bytes = await System.IO.File.ReadAllBytesAsync(path);
-            var key = $"blog/{file}";
-            var isVideo = file.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
-            var ct = isVideo ? "video/mp4" : R2Storage.ContentTypeFor(file);
-            var url = await r2.PutAsync(key, bytes, ct);
-            if (url == null) { skipped++; continue; }
-            if (!isVideo) { await imageStorage.GenerateVariantsAsync(key, bytes); withVariants++; }
-            map[$"/media/blog/{file}"] = url;
-            moved++;
-        }
-
-        // Repoint any posts still serving media from wwwroot. (Posts already pointing at R2 are left as-is;
-        // the variant generation above makes those existing R2 URLs resolve.)
-        var posts = await _db.BlogPosts.Where(b =>
-            b.Body.Contains("/media/blog/") || (b.CoverImageUrl != null && b.CoverImageUrl.Contains("/media/blog/"))).ToListAsync();
-        foreach (var p in posts)
-        {
-            foreach (var (from, to) in map)
-            {
-                p.Body = p.Body.Replace(from, to);
-                if (p.CoverImageUrl != null) p.CoverImageUrl = p.CoverImageUrl.Replace(from, to);
-            }
-            p.UpdatedAt = DateTime.UtcNow;
-        }
-        if (posts.Count > 0) await _db.SaveChangesAsync();
-        await LogAsync("Update", "BlogPost", null,
-            $"Moved {moved} blog media file(s) to R2 ({withVariants} images with WebP variants); repointed {posts.Count} post(s).");
-
-        TempData["Success"] = moved == 0
-            ? "No local blog media found to move."
-            : $"Uploaded {moved} file(s) to R2 ({withVariants} images got WebP variants)" +
-              (posts.Count > 0 ? $" and repointed {posts.Count} post(s)." : " — images should now load.") +
-              (skipped > 0 ? $" {skipped} skipped (upload failed)." : "");
-        return RedirectToAction(nameof(Index));
     }
 
     public IActionResult Create()
