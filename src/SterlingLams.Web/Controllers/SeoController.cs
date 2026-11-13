@@ -34,7 +34,7 @@ public class SeoController : Controller
             ($"{b}/stores",         null, "monthly", "0.5", null),
             ($"{b}/home/about",     null, "monthly", "0.4", null),
             ($"{b}/home/contact",   null, "monthly", "0.4", null),
-            ($"{b}/journal",        null, "weekly",  "0.6", null),
+            ($"{b}/blog",        null, "weekly",  "0.6", null),
         };
 
         // Published Journal posts.
@@ -45,7 +45,7 @@ public class SeoController : Controller
         foreach (var p in posts)
         {
             string? pimg = string.IsNullOrEmpty(p.CoverImageUrl) ? null : (p.CoverImageUrl.StartsWith("http") ? p.CoverImageUrl : b + p.CoverImageUrl);
-            entries.Add(($"{b}/journal/{p.Slug}", p.UpdatedAt, "monthly", "0.5", pimg));
+            entries.Add(($"{b}/blog/{p.Slug}", p.UpdatedAt, "monthly", "0.5", pimg));
         }
 
         var cats = await _db.Categories

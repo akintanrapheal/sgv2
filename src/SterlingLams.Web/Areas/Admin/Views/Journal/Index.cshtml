@@ -1,6 +1,6 @@
 @model List<SterlingLams.Web.Models.Domain.BlogPost>
 @{
-    ViewData["Title"] = "Journal";
+    ViewData["Title"] = "Blog";
     Layout = "_AdminLayout";
     string filter = ViewBag.Filter ?? "all";
     int published = ViewBag.PublishedCount ?? 0;
@@ -9,13 +9,36 @@
 }
 @Html.AntiForgeryToken()
 
+@if (TempData["Success"] != null)
+{
+    <div class="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm px-4 py-3 rounded-sm">@TempData["Success"]</div>
+}
+@if (TempData["Error"] != null)
+{
+    <div class="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-sm">@TempData["Error"]</div>
+}
+
 <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
     <div>
-        <h1 class="text-2xl font-light text-neutral-900">Journal</h1>
+        <h1 class="text-2xl font-light text-neutral-900">Blog</h1>
         <p class="text-sm text-neutral-500 mt-1">Blog &amp; lookbook posts — @published published, @draft draft.</p>
     </div>
     <a asp-area="Admin" asp-controller="Journal" asp-action="Create" class="px-4 py-2 text-sm bg-neutral-900 text-white rounded-sm hover:bg-neutral-700">+ New post</a>
 </div>
+
+@if (ViewBag.HasLocalBlogMedia == true)
+{
+    <div class="mb-6 bg-amber-50 border border-amber-200 rounded-sm px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+        <p class="text-sm text-amber-800">Some posts serve images/video from this site. Move them to Cloudflare R2 (uses your existing R2 settings — nothing to paste).</p>
+        <form asp-area="Admin" asp-controller="Journal" asp-action="MoveMediaToR2" method="post" class="flex-shrink-0">
+            @Html.AntiForgeryToken()
+            <button type="submit" class="px-4 py-2 text-sm bg-amber-600 text-white rounded-sm hover:bg-amber-700"
+                    onclick="return confirm('Upload blog images/video to R2 and repoint the posts at the R2 URLs?');">
+                Move media to R2
+            </button>
+        </form>
+    </div>
+}
 
 @* ─── Auto-generate a post from live products (preview → save) ───────────────── *@
 <div class="mb-6 bg-white border border-neutral-200 rounded-sm p-5">
@@ -114,7 +137,7 @@ else
                                 }
                                 <div>
                                     <div class="text-neutral-800 font-medium">@p.Title</div>
-                                    <div class="text-xs text-neutral-400 font-mono">/journal/@p.Slug</div>
+                                    <div class="text-xs text-neutral-400 font-mono">/blog/@p.Slug</div>
                                 </div>
                             </div>
                         </td>

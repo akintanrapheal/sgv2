@@ -53,8 +53,8 @@ public sealed class LegacyUrlRedirectMiddleware
         ["/jewelry-faqs"] = "/Home/Contact",
         // Order tracking
         ["/track-jewelry-order"] = "/track", ["/track-your-order"] = "/track",
-        // Blog
-        ["/blog"] = "/Journal", ["/jewelry-care-guide"] = "/Journal",
+        // Blog (storefront now serves /blog directly; /jewelry-care-guide has no new page → blog index)
+        ["/jewelry-care-guide"] = "/blog",
         // Shop landing pages → the product list
         ["/jewelry-categories"] = "/products", ["/jewelry-sale"] = "/products", ["/latest-jewelry-products"] = "/products",
         ["/featured-jewelry-collection"] = "/products", ["/top-rated-jewelry"] = "/products", ["/product-directory"] = "/products",
@@ -67,7 +67,7 @@ public sealed class LegacyUrlRedirectMiddleware
         // Order-tracking variants
         ["/order-tracking"] = "/track", ["/track-order"] = "/track",
         // Info / policy pages (old slugs still in Google's index, were 404ing)
-        ["/payments-returns"] = "/Home/Terms", ["/product-care"] = "/Journal",
+        ["/payments-returns"] = "/Home/Terms", ["/product-care"] = "/blog",
         ["/answers-to-your-questions"] = "/Home/Contact", ["/sg-courier"] = "/Home/Terms", ["/cookie-consent"] = "/",
         // Misc leftover pages → home
         ["/home-glasses"] = "/", ["/html-sitemap"] = "/", ["/page-not-found"] = "/",
@@ -80,28 +80,28 @@ public sealed class LegacyUrlRedirectMiddleware
         // Instagram "link in bio" / quick-links landing → home (brand landing). Can become its own page later.
         ["/quicklinks"] = "/", ["/quick-links"] = "/", ["/links"] = "/", ["/link-in-bio"] = "/", ["/linkinbio"] = "/",
         // Blog posts → the Journal (articles not individually migrated)
-        ["/a-jewelry-shop-in-lagos-for-every-occasion-how-to-shop-smart-at-sterlin-glams"] = "/Journal",
-        ["/helvetica-austin-bespoke"] = "/Journal",
-        ["/how-to-find-the-right-jewelry-shop-in-lagos"] = "/Journal",
-        ["/how-to-layer-necklaces-lagos-stylist-guide"] = "/Journal",
-        ["/igbo-bridal-jewelry-guide"] = "/Journal",
-        ["/ikota-lekki-phase-2-jewelry-guide"] = "/Journal",
-        ["/inside-lagos-most-loved-jewelry-store-in-ikeja-ikota"] = "/Journal",
-        ["/jewelry-lagos-women-trending-pieces"] = "/Journal",
-        ["/jewelry-store-ikeja-shopping-guide"] = "/Journal",
-        ["/jewelry-stores-in-abuja-2026-guide"] = "/Journal",
-        ["/jewelry-stores-in-lagos-nigeria-insiders-guide"] = "/Journal",
-        ["/jewelry-wholesalers-in-lagos-vs-retail-brands-whats-actually-better-for-you"] = "/Journal",
-        ["/lagos-bride-jewelry-guide"] = "/Journal",
-        ["/nigerian-bridal-jewelry-guide"] = "/Journal",
-        ["/nothing-hunts-us-like-the-things-we-didnt-buy"] = "/Journal",
-        ["/office-jewelry-lagos-working-woman"] = "/Journal",
-        ["/online-jewelry-stores-in-lagos-buyers-guide"] = "/Journal",
-        ["/ring-stores-in-lagos-statement-stackable-cocktail"] = "/Journal",
-        ["/the-best-jewelry-stores-in-lagos-nigeria-and-what-makes-sterlin-glams-different"] = "/Journal",
-        ["/where-to-buy-jewelry-in-nigeria"] = "/Journal",
-        ["/why-lagos-women-notice-your-jewelry-first"] = "/Journal",
-        ["/yoruba-bridal-jewelry-guide"] = "/Journal",
+        ["/a-jewelry-shop-in-lagos-for-every-occasion-how-to-shop-smart-at-sterlin-glams"] = "/blog",
+        ["/helvetica-austin-bespoke"] = "/blog/rock-me-baby",
+        ["/how-to-find-the-right-jewelry-shop-in-lagos"] = "/blog",
+        ["/how-to-layer-necklaces-lagos-stylist-guide"] = "/blog",
+        ["/igbo-bridal-jewelry-guide"] = "/blog",
+        ["/ikota-lekki-phase-2-jewelry-guide"] = "/blog",
+        ["/inside-lagos-most-loved-jewelry-store-in-ikeja-ikota"] = "/blog",
+        ["/jewelry-lagos-women-trending-pieces"] = "/blog",
+        ["/jewelry-store-ikeja-shopping-guide"] = "/blog",
+        ["/jewelry-stores-in-abuja-2026-guide"] = "/blog",
+        ["/jewelry-stores-in-lagos-nigeria-insiders-guide"] = "/blog",
+        ["/jewelry-wholesalers-in-lagos-vs-retail-brands-whats-actually-better-for-you"] = "/blog",
+        ["/lagos-bride-jewelry-guide"] = "/blog",
+        ["/nigerian-bridal-jewelry-guide"] = "/blog",
+        ["/nothing-hunts-us-like-the-things-we-didnt-buy"] = "/blog/nothing-hunts-us-like-the-things-we-didnt-buy",
+        ["/office-jewelry-lagos-working-woman"] = "/blog",
+        ["/online-jewelry-stores-in-lagos-buyers-guide"] = "/blog",
+        ["/ring-stores-in-lagos-statement-stackable-cocktail"] = "/blog",
+        ["/the-best-jewelry-stores-in-lagos-nigeria-and-what-makes-sterlin-glams-different"] = "/blog",
+        ["/where-to-buy-jewelry-in-nigeria"] = "/blog",
+        ["/why-lagos-women-notice-your-jewelry-first"] = "/blog",
+        ["/yoruba-bridal-jewelry-guide"] = "/blog",
     };
 
     /// <summary>New path for a known old URL, or null if it isn't one we remap. (/cart, /checkout,
@@ -122,8 +122,10 @@ public sealed class LegacyUrlRedirectMiddleware
             return "/Stores";
         if (lower.StartsWith("/tag/") || lower.StartsWith("/category/")) return "/products";
         if (lower.StartsWith("/author/")) return "/";
-        // Old WordPress blog posts under the /blog/ prefix → the Journal (articles not individually migrated).
-        if (lower.StartsWith("/blog/")) return "/Journal";
+        // The storefront now serves /blog and /blog/{slug} itself, so those must NOT be redirected here
+        // (the controller 404s an unknown slug). Only the retired new-site /journal path is redirected:
+        if (lower == "/journal") return "/blog";
+        if (lower.StartsWith("/journal/")) return "/blog/" + p["/journal/".Length..];
         // WordPress theme custom-post-types (WoodMart sliders, portfolio demo pages) → home.
         if (lower.StartsWith("/woodmart_slider/") || lower.StartsWith("/portfolio/")) return "/";
 

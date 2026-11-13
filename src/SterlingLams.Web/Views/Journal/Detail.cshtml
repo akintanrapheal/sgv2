@@ -20,7 +20,7 @@
         ["dateModified"] = Model.UpdatedAt.ToString("yyyy-MM-dd"),
         ["author"] = new Dictionary<string, object?> { ["@type"] = "Organization", ["name"] = string.IsNullOrWhiteSpace(Model.AuthorName) ? "Sterlin Glams" : Model.AuthorName },
         ["publisher"] = new Dictionary<string, object?> { ["@type"] = "Organization", ["name"] = "Sterlin Glams" },
-        ["mainEntityOfPage"] = $"{baseUrl}/journal/{Model.Slug}",
+        ["mainEntityOfPage"] = $"{baseUrl}/blog/{Model.Slug}",
     }, new System.Text.Json.JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
 }
 
@@ -29,7 +29,7 @@
 }
 
 <article class="max-w-3xl mx-auto px-6 pt-14">
-    <a asp-controller="Journal" asp-action="Index" class="text-xs tracking-[0.2em] uppercase text-neutral-400 hover:text-brand-500 transition-colors">← The Journal</a>
+    <a asp-controller="Journal" asp-action="Index" class="text-xs tracking-[0.2em] uppercase text-neutral-400 hover:text-brand-500 transition-colors">← The Blog</a>
 
     <header class="text-center mt-6 mb-8">
         <p class="text-[11px] tracking-[0.25em] uppercase text-neutral-400 mb-3">
@@ -50,12 +50,12 @@
     </div>
 }
 
-<partial name="_PageProse" model="Model.Body" />
+<partial name="_ArticleProse" model="Model.Body" />
 
 @if (more.Any())
 {
     <div class="max-w-6xl mx-auto px-6 pb-20">
-        <h2 class="font-cormorant text-3xl font-light text-center mb-10">More from the Journal</h2>
+        <h2 class="font-cormorant text-3xl font-light text-center mb-10">More from the Blog</h2>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-8">
             @foreach (var p in more)
             {

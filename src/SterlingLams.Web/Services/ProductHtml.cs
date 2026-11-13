@@ -13,6 +13,7 @@ public static class ProductHtml
 {
     private static readonly HtmlSanitizer _sanitizer = CreateSanitizer(allowLinks: false);
     private static readonly HtmlSanitizer _richSanitizer = CreateSanitizer(allowLinks: true);
+    private static readonly HtmlSanitizer _articleSanitizer = CreateArticleSanitizer();
 
     private static HtmlSanitizer CreateSanitizer(bool allowLinks)
     {
@@ -60,9 +61,34 @@ public static class ProductHtml
         return s;
     }
 
+    // Blog articles are long-form, admin-authored content that legitimately needs links, images and
+    // video (e.g. re-published legacy posts with embedded clips). Built on the rich (links) set, plus a
+    // tight media allow-list. Scripts, event handlers, iframes and javascript:/data: URLs are still
+    // stripped, so the storefront XSS surface doesn't widen.
+    private static HtmlSanitizer CreateArticleSanitizer()
+    {
+        var s = CreateSanitizer(allowLinks: true);
+        foreach (var t in new[] { "a", "img", "figure", "figcaption", "video", "source" })
+            s.AllowedTags.Add(t);
+        foreach (var a in new[]
+        {
+            "href", "target", "rel",                                   // links (also added by allowLinks)
+            "src", "alt", "title", "width", "height", "loading",       // images
+            "controls", "muted", "loop", "autoplay", "playsinline", "poster", "preload", "type", // video/source
+            "class",                                                   // layout helpers (e.g. clip grids) — classes can't execute
+        })
+            s.AllowedAttributes.Add(a);
+        return s;
+    }
+
     /// <summary>Strip everything outside the formatting allow-list (NO links). Returns "" for null/blank.</summary>
     public static string Sanitize(string? html)
         => string.IsNullOrWhiteSpace(html) ? "" : _sanitizer.Sanitize(html);
+
+    /// <summary>Sanitise a blog article body — allows safe links, images and &lt;video&gt;, nothing
+    /// executable. Use for Journal/Blog post bodies (authoring + render).</summary>
+    public static string SanitizeArticle(string? html)
+        => string.IsNullOrWhiteSpace(html) ? "" : _articleSanitizer.Sanitize(html);
 
     /// <summary>Like <see cref="Sanitize"/> but also permits safe &lt;a href&gt; links — for
     /// marketing email bodies (CTAs / tracked links).</summary>
