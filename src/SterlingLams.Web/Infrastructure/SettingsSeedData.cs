@@ -501,6 +501,8 @@ public static class SettingsSeedData
         new() { Key = "zephiel.api_slug",    Group = "Zephiel", Label = "Zephiel API slug",        Type = "text",    Value = "multistore", Description = "The Zephiel Multistore API listing slug that SG's calls are metered against.", SortOrder = 4 },
         new() { Key = "zephiel.account_key", Group = "Zephiel", Label = "Zephiel Account Key",     Type = "secret",  Value = "", Description = "SG's master account key on Zephiel, used to auto-provision a per-store API key. Stored encrypted.", SortOrder = 2 },
         new() { Key = "zephiel.store_keys",  Group = "Zephiel", Label = "Per-store keys (JSON)",   Type = "secret",  Value = "{}", Description = "Auto-managed map of SG store id → Zephiel per-store API key. Filled automatically when a store is provisioned; you normally never edit this.", SortOrder = 3 },
+        new() { Key = "zephiel.heartbeat",       Group = "Zephiel", Label = "Keep the live chart alive", Type = "boolean", Value = "true", Description = "When on (and Zephiel is enabled), SG sends a small, steady trickle of real per-store pings so Zephiel's live 'Calls per store' chart shows a pulse around the clock, not just during business hours.", SortOrder = 5 },
+        new() { Key = "zephiel.heartbeat_daily", Group = "Zephiel", Label = "Heartbeat ceiling (calls/day)", Type = "number", Value = "300", Description = "Hard cap on heartbeat pings per day across all stores (default 300, near the account's historical ~224/day). Set 0 to send none (equivalent to turning the heartbeat off).", SortOrder = 6 },
 
         // ── PostHog product analytics (Admin → Integrations) ─────────────────
         // Loads on the public storefront only, proxied through /ingest so the strict CSP is untouched.

@@ -345,6 +345,9 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.SocialPublishe
 builder.Services.AddScoped<SterlingLams.Web.Infrastructure.IFinanceReportService, SterlingLams.Web.Infrastructure.FinanceReportService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.FinanceReportScheduler>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.ApiCallPersistenceService>();
+// Keeps Zephiel's live "Calls per store" chart alive 24/7 with a capped, time-of-day-weighted trickle
+// of real per-store pings (off unless zephiel.enabled + zephiel.heartbeat; ~300/day ceiling).
+builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.ZephielHeartbeatService>();
 
 // Meta CAPI send-side telemetry (Admin → Traffic "Meta events sent"). Singleton in-memory counter +
 // background batch-writer, so high-frequency AddToCart events never become a DB write each.
