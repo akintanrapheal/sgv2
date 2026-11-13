@@ -46,10 +46,13 @@
     .sgc-body { flex:1; overflow-y:auto; padding:16px; background:#f7f7f8; display:flex; flex-direction:column; gap:10px; }
     .sgc-row { display:flex; gap:8px; align-items:flex-end; }
     .sgc-row.sgc-me { justify-content:flex-end; }
-    .sgc-bubble { max-width:84%; width:fit-content; padding:10px 13px; border-radius:14px; font-size:13.5px; line-height:1.5;
+    /* Wrapper caps width against the row (a definite width); the bubble itself has NO % width, so it
+       hugs its text and never collapses a short word like "hello" into "hel/lo". */
+    .sgc-msg { max-width:84%; min-width:0; }
+    .sgc-me .sgc-msg { margin-left:auto; text-align:right; }
+    .sgc-bubble { display:inline-block; text-align:left; padding:10px 13px; border-radius:14px; font-size:13.5px; line-height:1.5;
         color:#1f1f23; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.06); border-top-left-radius:4px;
         white-space:pre-wrap; overflow-wrap:break-word; }
-    .sgc-me .sgc-bubble { margin-left:auto; }
     .sgc-me .sgc-bubble { background:#ed028b; color:#fff; border-top-left-radius:14px; border-top-right-radius:4px; }
     .sgc-bubble a.sgc-inline { color:inherit; text-decoration:underline; }
     .sgc-meta { font-size:10px; color:#9a9aa2; margin:2px 4px 0; }
@@ -75,6 +78,11 @@
     .sgc-det .sgc-fields { display:flex; gap:6px; padding:0 0 8px; }
     .sgc-det input { flex:1; min-width:0; border:1px solid #e2e2e8; border-radius:8px; padding:7px 10px; font-size:12.5px; outline:none; }
     .sgc-det input:focus { border-color:#ed028b; }
+    .sgc-endedbar { flex-shrink:0; border-top:1px solid #ececf0; background:#fff; padding:12px; text-align:center;
+        font-size:12.5px; color:#6b6b73; display:none; }
+    .sgc-endedbar.sgc-on { display:block; }
+    .sgc-endedbar .sgc-cta { margin:8px auto 0; }
+    .sgc-foot.sgc-disabled { opacity:.5; pointer-events:none; }
     .sgc-foot { flex-shrink:0; border-top:1px solid #ececf0; background:#fff; padding:10px; display:flex; gap:8px; align-items:center; }
     .sgc-foot input { flex:1; border:1px solid #e2e2e8; border-radius:9999px; padding:10px 14px; font-size:13.5px; outline:none; }
     .sgc-foot input:focus { border-color:#ed028b; }
@@ -114,12 +122,12 @@
     </div>
     <div class="sgc-body" id="sgc-body">
         <div class="sgc-row">
-            <div class="sgc-bubble">@greeting</div>
+            <div class="sgc-msg"><div class="sgc-bubble">@greeting</div></div>
         </div>
         <div class="sgc-row">
-            <div class="sgc-bubble" style="background:transparent;box-shadow:none;padding:4px 2px;color:#6b6b73;font-size:12px">
+            <div class="sgc-msg"><div class="sgc-bubble" style="background:transparent;box-shadow:none;padding:4px 2px;color:#6b6b73;font-size:12px">
                 Pick a topic below, or type your question — a real person will reply here.
-            </div>
+            </div></div>
         </div>
         <div class="sgc-quick" id="sgc-quick">
             <button type="button" class="sgc-chip" data-sgc="track">
@@ -151,6 +159,10 @@
             <input type="email" id="sgc-email" placeholder="Email" autocomplete="email" />
         </div>
     </details>
+    <div class="sgc-endedbar" id="sgc-ended-bar">
+        This chat has ended.
+        <button type="button" class="sgc-cta" id="sgc-newchat">Start a new chat</button>
+    </div>
     <div class="sgc-foot">
         <input type="file" id="sgc-file" accept="image/jpeg,image/png,image/gif,image/webp" style="display:none" />
         <button type="button" class="sgc-attach" id="sgc-attach" aria-label="Attach a photo">
@@ -172,13 +184,15 @@
     var thread = document.getElementById('sgc-thread');
     var input = document.getElementById('sgc-input');
     var unreadEl = document.getElementById('sgc-unread');
+    var foot = panel.querySelector('.sgc-foot');
+    var endedBar = document.getElementById('sgc-ended-bar');
     var waBase = panel.getAttribute('data-wa') || '';
     var trackUrl = panel.getAttribute('data-track') || '/track';
     var returnsUrl = panel.getAttribute('data-returns') || '/';
     var siteName = (panel.querySelector('h3') && panel.querySelector('h3').textContent.trim()) || 'us';
 
     var lastId = 0, sending = false, polling = null, unread = 0, started = false,
-        ended = false, reviewShown = false, reviewed = false;
+        ended = false, reviewShown = false, reviewed = false, endedShown = false, paused = false;
 
     function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
     function wa(text){ return waBase ? (waBase + '?text=' + encodeURIComponent(text)) : ''; }
@@ -187,7 +201,7 @@
     // A canned / informational bot bubble (self-service answers, not stored)
     function botRow(html){
         var r = document.createElement('div'); r.className = 'sgc-row';
-        r.innerHTML = '<div><div class="sgc-bubble">' + html + '</div><div class="sgc-meta">' + siteName + ' · ' + nowHM() + '</div></div>';
+        r.innerHTML = '<div class="sgc-msg"><div class="sgc-bubble">' + html + '</div><div class="sgc-meta">' + siteName + ' · ' + nowHM() + '</div></div>';
         thread.appendChild(r); body.scrollTop = body.scrollHeight;
     }
     // A real chat message bubble (mine = right, staff = left). May carry an image, text, or both.
@@ -199,8 +213,8 @@
         if (m.imageUrl) inner += '<a href="' + encodeURI(m.imageUrl) + '" target="_blank" rel="noopener"><img src="' + encodeURI(m.imageUrl) + '" alt="shared photo" loading="lazy"></a>';
         if (m.body) inner += (m.imageUrl ? '<div style="margin-top:6px">' : '') + esc(m.body) + (m.imageUrl ? '</div>' : '');
         if (!inner) inner = esc(m.body || '');
-        r.innerHTML = '<div><div class="sgc-bubble">' + inner + '</div>'
-            + (meta ? '<div class="sgc-meta' + (m.fromStaff ? '' : '" style="text-align:right') + '">' + esc(meta) + '</div>' : '')
+        r.innerHTML = '<div class="sgc-msg"><div class="sgc-bubble">' + inner + '</div>'
+            + (meta ? '<div class="sgc-meta">' + esc(meta) + '</div>' : '')
             + '</div>';
         thread.appendChild(r); body.scrollTop = body.scrollHeight;
     }
@@ -266,7 +280,7 @@
         polling = setInterval(poll, 5000);
     }
     async function poll(){
-        if (sending) return;
+        if (sending || paused) return;
         try {
             var r = await fetch('/chat/thread?after=' + lastId, { headers:{ 'Accept':'application/json' } });
             if (!r.ok) return;
@@ -278,15 +292,35 @@
             });
             if (d.reviewed) reviewed = true;
             ended = !!d.ended;
-            if (ended && !reviewed && !reviewShown) showReview();
+            if (ended) enterEndedState();
         } catch (e) {}
     }
 
-    // After the chat ends (30-min inactivity), invite a quick star review.
+    // Chat ended (30-min inactivity or a review): lock the composer, invite a star review once, and show a
+    // clear "Start a new chat" so the next message begins a fresh conversation instead of reopening a rated one.
+    function enterEndedState(){
+        if (endedShown) return; endedShown = true;
+        if (!reviewed && !reviewShown) showReview();
+        if (foot) foot.classList.add('sgc-disabled');
+        if (input) input.disabled = true;
+        if (endedBar) endedBar.classList.add('sgc-on');
+        body.scrollTop = body.scrollHeight;
+    }
+    function resetChat(){
+        thread.innerHTML = '';
+        lastId = 0; ended = false; endedShown = false; reviewShown = false; reviewed = false; paused = true;
+        if (endedBar) endedBar.classList.remove('sgc-on');
+        if (foot) foot.classList.remove('sgc-disabled');
+        if (input) { input.disabled = false; input.focus(); }
+    }
+    if (document.getElementById('sgc-newchat'))
+        document.getElementById('sgc-newchat').addEventListener('click', resetChat);
+
+    // After the chat ends, invite a quick star review.
     function showReview(){
         reviewShown = true;
         var box = document.createElement('div'); box.className = 'sgc-row';
-        box.innerHTML = '<div><div class="sgc-bubble" style="max-width:100%">' +
+        box.innerHTML = '<div class="sgc-msg" style="max-width:94%"><div class="sgc-bubble">' +
             '<div style="font-weight:600;margin-bottom:2px">This chat has ended.</div>' +
             '<div style="color:#6b6b73;font-size:12.5px">How did we do?</div>' +
             '<div class="sgc-stars" id="sgc-stars">' +
@@ -308,21 +342,20 @@
             var comment = (box.querySelector('#sgc-review-comment').value || '').trim();
             try { if (window.postWithFreshToken) window.postWithFreshToken('/chat/review', { rating: rating, comment: comment }).catch(function(){}); } catch (e) {}
             reviewed = true;
-            box.innerHTML = '<div><div class="sgc-bubble">Thank you for your feedback 💛</div><div class="sgc-meta">' + siteName + ' · ' + nowHM() + '</div></div>';
+            box.innerHTML = '<div class="sgc-msg"><div class="sgc-bubble">Thank you for your feedback 💛</div><div class="sgc-meta">' + siteName + ' · ' + nowHM() + '</div></div>';
         });
     }
 
     function send(){
         var text = (input.value || '').trim(); if (!text) return;
         sending = true;
-        reviewShown = false; reviewed = false;   // a new message starts a fresh chat if the last one ended
         msgRow({ body:text, fromStaff:false, at:nowHM() });
         input.value = '';
         var fields = { body:text, channel:'inapp' };
         var nm = (document.getElementById('sgc-name')||{}).value, em = (document.getElementById('sgc-email')||{}).value;
         if (nm && nm.trim()) fields.name = nm.trim();
         if (em && em.trim()) fields.email = em.trim();
-        var done = function(d){ if (d && d.id && d.id > lastId) lastId = d.id; sending = false; };
+        var done = function(d){ if (d && d.id && d.id > lastId) lastId = d.id; sending = false; paused = false; };
         try {
             if (window.postWithFreshToken) {
                 window.postWithFreshToken('/chat/message', fields)
@@ -338,7 +371,7 @@
     async function uploadFile(file){
         if (!file) return;
         if (file.size > 5 * 1024 * 1024){ botRow('That image is too large — please send one under 5 MB.'); return; }
-        sending = true; reviewShown = false; reviewed = false;
+        sending = true;
         try {
             var fd = new FormData();
             fd.append('file', file);
@@ -353,7 +386,7 @@
                 res = await fetch('/chat/upload', { method:'POST', body: fd, headers:{ 'X-AF-Retry':'1' } });
             }
             var d = await res.json().catch(function(){ return null; });
-            if (d && d.ok){ msgRow({ imageUrl:d.url, fromStaff:false, at:nowHM() }); if (d.id && d.id > lastId) lastId = d.id; }
+            if (d && d.ok){ msgRow({ imageUrl:d.url, fromStaff:false, at:nowHM() }); if (d.id && d.id > lastId) lastId = d.id; paused = false; }
             else { botRow((d && d.error) || 'Sorry, that image couldn’t be sent.'); }
         } catch (e) {} finally { sending = false; }
     }
