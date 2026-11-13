@@ -2170,6 +2170,9 @@ namespace SterlingLams.Web.Migrations
                     b.Property<string>("ShortDescription")
                         .HasColumnType("text");
 
+                    b.Property<bool>("ShowOnSalePage")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Sku")
                         .HasColumnType("text");
 

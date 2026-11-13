@@ -79,6 +79,9 @@ public class ProductFilterViewModel
     public decimal? MaxPrice { get; set; }
     public string? SortBy { get; set; } = "name";   // default listing order: alphabetical by product name
     public bool? InStockOnly { get; set; }
+    /// <summary>Restrict the listing to the admin-curated Sale collection (Product.ShowOnSalePage).
+    /// Set by the /sale page; not a user-facing facet.</summary>
+    public bool OnSalePage { get; set; }
 
     public List<string> AvailableMetals { get; set; } = new();
     public List<string> AvailableGemstones { get; set; } = new();
