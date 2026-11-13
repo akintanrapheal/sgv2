@@ -157,10 +157,18 @@ public class ZephielClient : IZephielClient
             var slug = await Get("zephiel.api_slug", "Zephiel:ApiSlug");
             if (slug.Length == 0) slug = "multistore";
             var path = endpoint.StartsWith('/') ? endpoint : "/" + endpoint;
-            var body = JsonSerializer.Serialize(new { method, status });
-            using var req = new HttpRequestMessage(HttpMethod.Post, $"{await BaseUrlAsync()}/api/v1/{slug}{path}");
+            // Use the caller's HTTP verb so the gateway's "Recent requests" list shows a natural
+            // GET/POST mix rather than everything as POST. The gateway accepts any verb and ignores
+            // the body (it returns the listing's sample response), so a GET carries no content.
+            var verb = (method ?? "POST").Trim().ToUpperInvariant() switch
+            {
+                "GET" => HttpMethod.Get, "PUT" => HttpMethod.Put, "DELETE" => HttpMethod.Delete,
+                "PATCH" => HttpMethod.Patch, _ => HttpMethod.Post,
+            };
+            using var req = new HttpRequestMessage(verb, $"{await BaseUrlAsync()}/api/v1/{slug}{path}");
             req.Headers.Add("x-zephiel-key", storeKey);
-            req.Content = new StringContent(body, Encoding.UTF8, "application/json");
+            if (verb != HttpMethod.Get && verb != HttpMethod.Delete)
+                req.Content = new StringContent(JsonSerializer.Serialize(new { method, status }), Encoding.UTF8, "application/json");
 
             using var resp = await _http.SendAsync(req, ct);   // best-effort; the response is intentionally ignored
             // Rate-limited or server error → pause briefly so we stop spamming the gateway (and the logs),

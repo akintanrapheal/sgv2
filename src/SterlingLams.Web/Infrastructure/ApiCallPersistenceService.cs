@@ -125,7 +125,7 @@ public class ApiCallPersistenceService : BackgroundService
             // and await it inside the scope so the client isn't disposed mid-request.
             var tasks = new List<Task>(n);
             for (var i = 0; i < n; i++)
-                tasks.Add(zephiel.NotifyCallAsync(storeId, "/multistore/sync", "POST", 200, ct));
+                tasks.Add(zephiel.NotifyCallAsync(storeId, "/sync", "POST", 200, ct));
             await Task.WhenAll(tasks);
         }
         _mirroredTodayUtc += sentThisCycle;   // count only what actually went to Zephiel toward the daily cap
