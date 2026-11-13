@@ -63,6 +63,12 @@ public class ChatMessagesController : AdminBaseController
         });
     }
 
+    // Live count of conversations needing a reply — polled by the admin layout to drive the sidebar
+    // badge and the new-message chime.
+    [HttpGet]
+    public async Task<IActionResult> UnreadCount()
+        => Json(new { count = await _db.ChatConversations.CountAsync(c => c.StaffUnread > 0) });
+
     public async Task<IActionResult> Detail(int id)
     {
         var conv = await _db.ChatConversations.FirstOrDefaultAsync(c => c.Id == id);
