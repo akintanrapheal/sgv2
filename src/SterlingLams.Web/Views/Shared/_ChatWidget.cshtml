@@ -1,0 +1,239 @@
+@inject SterlingLams.Web.Services.ISettingsService SettingsService
+@{
+    // Concierge "Help" widget: a floating bubble that opens a conversational panel with an auto-greeting
+    // and quick-reply buttons. Self-service replies (order tracking, delivery/returns, sizing) answer
+    // instantly; "Chat on WhatsApp" + the free-text box hand off to a human on WhatsApp with context.
+    // Storefront-only (rendered from _Layout). No third-party script — CSP-clean (nonce'd inline script).
+    var chatEnabled = await SettingsService.GetAsync("chat.enabled", "true");
+    var greeting    = await SettingsService.GetAsync("chat.greeting",
+        "Hi 👋 Welcome to Sterlin Glams! Got a question about an order, delivery, sizing or a piece you love? We're here to help.");
+    var siteName    = await SettingsService.GetAsync("general.site_name", "Sterlin Glams");
+    var waRaw       = await SettingsService.GetAsync("general.whatsapp_number");
+    var waDigits    = new string((waRaw ?? "").Where(char.IsDigit).ToArray());
+    var email       = await SettingsService.GetAsync("general.contact_email");
+
+    var show = !string.Equals(chatEnabled, "false", StringComparison.OrdinalIgnoreCase)
+               && (!string.IsNullOrWhiteSpace(waDigits) || !string.IsNullOrWhiteSpace(email));
+    var waBase = string.IsNullOrWhiteSpace(waDigits) ? "" : $"https://wa.me/{waDigits}";
+}
+@if (show)
+{
+<style>
+    .sgc-launch { position:fixed; bottom:24px; right:24px; z-index:46; display:inline-flex; align-items:center; gap:8px;
+        padding:12px 18px 12px 14px; border:0; border-radius:9999px; cursor:pointer; color:#fff; background:#ed028b;
+        box-shadow:0 8px 24px rgba(237,2,139,.35); font:600 14px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.02em; }
+    .sgc-launch:hover { background:#c70175; }
+    .sgc-launch svg { width:22px; height:22px; display:block; }
+    .sgc-launch .sgc-dot { position:absolute; top:-2px; right:-2px; width:12px; height:12px; border-radius:9999px;
+        background:#25D366; border:2px solid #fff; }
+    .sgc-panel { position:fixed; bottom:92px; right:24px; z-index:47; width:min(92vw,23rem); height:min(72vh,34rem);
+        display:none; flex-direction:column; background:#fff; border-radius:18px; overflow:hidden;
+        box-shadow:0 18px 60px rgba(0,0,0,.28); opacity:0; transform:translateY(12px) scale(.98);
+        transition:opacity .22s ease, transform .22s ease; }
+    .sgc-panel.sgc-open { display:flex; }
+    .sgc-panel.sgc-in { opacity:1; transform:translateY(0) scale(1); }
+    .sgc-head { background:#ed028b; color:#fff; padding:16px 18px; display:flex; align-items:center; gap:12px; flex-shrink:0; }
+    .sgc-head .sgc-ava { width:40px; height:40px; border-radius:9999px; background:rgba(255,255,255,.18);
+        display:flex; align-items:center; justify-content:center; flex-shrink:0; font-weight:700; }
+    .sgc-head h3 { margin:0; font:600 16px/1.1 ui-sans-serif,system-ui,sans-serif; }
+    .sgc-head p { margin:2px 0 0; font-size:11.5px; opacity:.9; display:flex; align-items:center; gap:6px; }
+    .sgc-head .sgc-live { width:7px; height:7px; border-radius:9999px; background:#5bffa5; display:inline-block; }
+    .sgc-min { margin-left:auto; background:transparent; border:0; color:#fff; cursor:pointer; font-size:26px; line-height:1;
+        opacity:.85; padding:0 2px; }
+    .sgc-min:hover { opacity:1; }
+    .sgc-body { flex:1; overflow-y:auto; padding:16px; background:#f7f7f8; display:flex; flex-direction:column; gap:10px; }
+    .sgc-row { display:flex; gap:8px; align-items:flex-end; }
+    .sgc-row.sgc-me { justify-content:flex-end; }
+    .sgc-bubble { max-width:84%; padding:10px 13px; border-radius:14px; font-size:13.5px; line-height:1.5; color:#1f1f23;
+        background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.06); border-top-left-radius:4px; }
+    .sgc-me .sgc-bubble { background:#ed028b; color:#fff; border-top-left-radius:14px; border-top-right-radius:4px; }
+    .sgc-bubble a.sgc-inline { color:inherit; text-decoration:underline; }
+    .sgc-quick { display:flex; flex-direction:column; gap:8px; margin-top:2px; }
+    .sgc-chip { text-align:left; background:#fff; border:1px solid #ecc; border-color:#f3d6e8; color:#b10f73; cursor:pointer;
+        padding:10px 13px; border-radius:12px; font:600 13px/1.3 ui-sans-serif,system-ui,sans-serif; display:flex;
+        align-items:center; gap:9px; transition:background .15s, border-color .15s; }
+    .sgc-chip:hover { background:#fff0f8; border-color:#ed028b; }
+    .sgc-chip svg { width:17px; height:17px; flex-shrink:0; }
+    .sgc-chip.sgc-wa { color:#148a43; border-color:#cdeedd; }
+    .sgc-chip.sgc-wa:hover { background:#edfbf3; border-color:#25D366; }
+    .sgc-cta { display:inline-flex; align-items:center; gap:6px; margin-top:6px; background:#ed028b; color:#fff;
+        text-decoration:none; padding:8px 12px; border-radius:10px; font:600 12.5px/1 ui-sans-serif,system-ui,sans-serif; }
+    .sgc-cta:hover { background:#c70175; }
+    .sgc-foot { flex-shrink:0; border-top:1px solid #ececf0; background:#fff; padding:10px; display:flex; gap:8px; align-items:center; }
+    .sgc-foot input { flex:1; border:1px solid #e2e2e8; border-radius:9999px; padding:10px 14px; font-size:13.5px; outline:none; }
+    .sgc-foot input:focus { border-color:#ed028b; }
+    .sgc-send { flex-shrink:0; width:38px; height:38px; border-radius:9999px; border:0; background:#ed028b; color:#fff;
+        cursor:pointer; display:flex; align-items:center; justify-content:center; }
+    .sgc-send:hover { background:#c70175; }
+    .sgc-send svg { width:18px; height:18px; }
+    @@media (max-width:420px){ .sgc-panel{ right:3vw; bottom:86px; width:94vw; height:72vh; } .sgc-launch{ right:16px; } }
+    @@media (prefers-reduced-motion: reduce){ .sgc-panel{ transition:none; } }
+</style>
+
+<button type="button" class="sgc-launch" id="sgc-launch" aria-expanded="false" aria-controls="sgc-panel" aria-label="Open help chat">
+    <span style="position:relative;display:inline-flex">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h8M8 14h5M21 12a8 8 0 01-8 8H7l-4 3v-6.5A8 8 0 1121 12z"/>
+        </svg>
+        <span class="sgc-dot"></span>
+    </span>
+    Chat
+</button>
+
+<div class="sgc-panel" id="sgc-panel" role="dialog" aria-modal="false" aria-label="Help chat with @siteName"
+     data-wa="@waBase" data-track="/track" data-returns="@Url.Action("PaymentReturns", "Home")">
+    <div class="sgc-head">
+        <div class="sgc-ava">@(string.IsNullOrWhiteSpace(siteName) ? "SG" : siteName.Substring(0,1))</div>
+        <div>
+            <h3>@siteName</h3>
+            <p><span class="sgc-live"></span> We usually reply within minutes</p>
+        </div>
+        <button type="button" class="sgc-min" id="sgc-min" aria-label="Minimise chat">&times;</button>
+    </div>
+    <div class="sgc-body" id="sgc-body">
+        <div class="sgc-row">
+            <div class="sgc-bubble">@greeting</div>
+        </div>
+        <div class="sgc-row">
+            <div class="sgc-bubble" style="background:transparent;box-shadow:none;padding:4px 2px;color:#6b6b73;font-size:12px">
+                Pick a topic below, or type your question.
+            </div>
+        </div>
+        <div class="sgc-quick" id="sgc-quick">
+            <button type="button" class="sgc-chip" data-sgc="track">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zm10 0a2 2 0 11-4 0 2 2 0 014 0zM3 4h2l2 11h10l2-7H6"/></svg>
+                Track my order
+            </button>
+            <button type="button" class="sgc-chip" data-sgc="returns">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7h13l-3-3m3 3l-3 3M21 17H8l3 3m-3-3l3-3"/></svg>
+                Delivery &amp; returns
+            </button>
+            <button type="button" class="sgc-chip" data-sgc="sizing">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7l4-4 14 14-4 4L3 7zm4 0l2 2m2-2l2 2m2 2l2 2"/></svg>
+                Sizing help
+            </button>
+            @if (!string.IsNullOrWhiteSpace(waBase))
+            {
+                <button type="button" class="sgc-chip sgc-wa" data-sgc="whatsapp">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347"/></svg>
+                    Chat on WhatsApp
+                </button>
+            }
+        </div>
+    </div>
+    <div class="sgc-foot">
+        <input type="text" id="sgc-input" placeholder="Type your message here" aria-label="Type your message" autocomplete="off" />
+        <button type="button" class="sgc-send" id="sgc-send" aria-label="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+    </div>
+</div>
+
+<script nonce="@Context.Items["csp-nonce"]">
+(function () {
+    var launch = document.getElementById('sgc-launch');
+    var panel  = document.getElementById('sgc-panel');
+    if (!launch || !panel) return;
+    var body = document.getElementById('sgc-body');
+    var input = document.getElementById('sgc-input');
+    var waBase = panel.getAttribute('data-wa') || '';
+    var trackUrl = panel.getAttribute('data-track') || '/track';
+    var returnsUrl = panel.getAttribute('data-returns') || '/';
+    var siteName = (panel.querySelector('h3') && panel.querySelector('h3').textContent.trim()) || 'us';
+
+    function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+    function wa(text){ return waBase ? (waBase + '?text=' + encodeURIComponent(text)) : ''; }
+
+    function row(side, html){
+        var r = document.createElement('div');
+        r.className = 'sgc-row' + (side==='me' ? ' sgc-me' : '');
+        r.innerHTML = '<div class="sgc-bubble">' + html + '</div>';
+        body.appendChild(r);
+        body.scrollTop = body.scrollHeight;
+        return r;
+    }
+    function me(text){ row('me', esc(text)); }
+    function bot(html){ setTimeout(function(){ row('bot', html); }, 220); }
+
+    var replies = {
+        track: {
+            say: 'Track my order',
+            bot: 'You can check your order status any time with your order number and email:' +
+                 '<br><a class="sgc-cta" href="' + trackUrl + '">Track my order →</a>' +
+                 (waBase ? '<br><a class="sgc-inline" style="font-size:12px" href="' + wa("Hi, I'd like help tracking my order.") + '" target="_blank" rel="noopener">…or ask us on WhatsApp</a>' : '')
+        },
+        returns: {
+            say: 'Delivery & returns',
+            bot: 'We deliver nationwide, with same-day and express options at checkout. Items can be returned within our policy window if unworn.' +
+                 '<br><a class="sgc-cta" href="' + returnsUrl + '">Read delivery & returns →</a>'
+        },
+        sizing: {
+            say: 'Sizing help',
+            bot: (document.getElementById('size-guide-overlay')
+                    ? 'Happy to help you find the right fit. Here\'s our full size &amp; length guide:' +
+                      '<br><button type="button" class="sgc-cta" data-sgc-open-size="1" style="border:0;cursor:pointer">Open size guide →</button>'
+                    : 'Happy to help you find the right fit.') +
+                 (waBase ? '<br><a class="sgc-inline" style="font-size:12px" href="' + wa("Hi, I need sizing help with a piece.") + '" target="_blank" rel="noopener">Ask us about a specific piece on WhatsApp →</a>' : '')
+        }
+    };
+
+    var opened = false;
+    function open(){
+        panel.classList.add('sgc-open');
+        requestAnimationFrame(function(){ panel.classList.add('sgc-in'); });
+        launch.setAttribute('aria-expanded','true');
+        opened = true;
+        setTimeout(function(){ if (input) input.focus(); }, 180);
+    }
+    function close(){
+        panel.classList.remove('sgc-in');
+        launch.setAttribute('aria-expanded','false');
+        setTimeout(function(){ panel.classList.remove('sgc-open'); }, 200);
+    }
+    launch.addEventListener('click', function(){ panel.classList.contains('sgc-open') ? close() : open(); });
+    document.getElementById('sgc-min').addEventListener('click', close);
+    document.addEventListener('keydown', function(e){ if (e.key==='Escape' && panel.classList.contains('sgc-open')) close(); });
+
+    // Quick replies
+    document.getElementById('sgc-quick').addEventListener('click', function(e){
+        var btn = e.target.closest('[data-sgc]'); if (!btn) return;
+        var key = btn.getAttribute('data-sgc');
+        if (key === 'whatsapp'){
+            me('Chat on WhatsApp');
+            var href = wa('Hi ' + siteName + ', I have a question.');
+            if (href) window.open(href, '_blank', 'noopener');
+            bot('Opening WhatsApp… if it didn\'t open, <a class="sgc-inline" href="' + href + '" target="_blank" rel="noopener">tap here</a>.');
+            return;
+        }
+        var r = replies[key]; if (!r) return;
+        me(r.say);
+        bot(r.bot);
+    });
+
+    // Open the on-page size-guide modal from a bot bubble button
+    body.addEventListener('click', function(e){
+        var o = e.target.closest('[data-sgc-open-size]'); if (!o) return;
+        var opener = document.querySelector('[data-size-guide-open]');
+        if (opener) opener.click();
+        else document.getElementById('size-guide-overlay')?.classList.remove('hidden');
+    });
+
+    // Free-text → continue on WhatsApp (that's where a human replies)
+    function send(){
+        var text = (input.value || '').trim(); if (!text) return;
+        me(text);
+        input.value = '';
+        if (waBase){
+            var href = wa(text);
+            window.open(href, '_blank', 'noopener');
+            bot('Thanks! We\'ve opened WhatsApp so a member of our team can reply. ' +
+                'If it didn\'t open, <a class="sgc-inline" href="' + href + '" target="_blank" rel="noopener">tap here to continue</a>.');
+        } else {
+            bot('Thanks for your message — please email us at <a class="sgc-inline" href="mailto:@email">@email</a> and we\'ll get right back to you.');
+        }
+    }
+    document.getElementById('sgc-send').addEventListener('click', send);
+    input.addEventListener('keydown', function(e){ if (e.key==='Enter'){ e.preventDefault(); send(); } });
+})();
+</script>
+}
