@@ -700,6 +700,15 @@
             + parts.join(' · ');
         // Spell out which order(s) are holding the reserved units, linked to the order so staff can free
         // them (a cancelled order that never released its hold shows up here as the culprit).
+        // Spell out which transfer(s) are carrying the in-transit units, linked to the transfer so staff
+        // can click straight through to where the stock physically is.
+        if (l.transitBy && l.transitBy.length) {
+            html += '<div class="mt-1 pt-1 border-t border-amber-200/70 text-neutral-500">In transit on: '
+                + l.transitBy.map(function (t) {
+                    return '<a href="' + t.url + '" class="text-amber-700 hover:underline">' + t.transferNumber
+                        + '</a> (' + t.qty + (t.to ? ' → ' + t.to : '') + (t.status ? ', ' + t.status.toLowerCase() : '') + ')';
+                }).join(', ') + '</div>';
+        }
         if (l.heldBy && l.heldBy.length) {
             html += '<div class="mt-1 pt-1 border-t border-amber-200/70 text-neutral-500">Held by: '
                 + l.heldBy.map(function (h) {
