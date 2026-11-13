@@ -166,6 +166,7 @@ public class ProductsController : InventoryAreaController
     {
         var product = await _db.Products
             .Include(p => p.Variants.OrderBy(v => v.Name))
+            .Include(p => p.Images)
             .FirstOrDefaultAsync(p => p.Id == id);
         if (product == null) return NotFound();
         ViewData["Title"] = "Edit Product";
@@ -318,7 +319,7 @@ public class ProductsController : InventoryAreaController
     [HttpPost, ValidateAntiForgeryToken]
     public async Task<IActionResult> Save(int id, string name, string? sku, string? barcode, decimal price,
         int? categoryId, int lowStockThreshold, bool isActive, string? description, string? buttonColour,
-        bool availableAtTill, bool availableOnline, decimal? posPrice = null)
+        bool availableAtTill, bool availableOnline, decimal? posPrice = null, bool allowOnlineWithoutImage = false)
     {
         if (string.IsNullOrWhiteSpace(name) || categoryId == null)
         {
@@ -346,11 +347,12 @@ public class ProductsController : InventoryAreaController
         // before its photos/description are ready, without it showing to website customers.
         product.HiddenFromWeb = !availableOnline;
         // ...but an item with no photo can never go on the website — force it till-only until a picture
-        // exists, whatever the tick said. A brand-new product has no images yet (they're uploaded after
-        // it's created), so this always holds it back until the owner adds a photo and ticks it online.
+        // exists, UNLESS the owner explicitly overrides with "show without a photo" (placeholder shown).
+        // A brand-new product has no images yet (uploaded after create), so this holds it back by default.
+        product.AllowOnlineWithoutImage = allowOnlineWithoutImage;
         var hasImage = !isNew && await _db.ProductImages.AnyAsync(i => i.ProductId == product.Id);
         product.HideFromWebIfNoImage(hasImage ? 1 : 0);
-        var heldOffline = availableOnline && product.HiddenFromWeb;   // wanted online but blocked (no photo)
+        var heldOffline = availableOnline && product.HiddenFromWeb;   // wanted online but blocked (no photo, no override)
         product.PosButtonColour = string.IsNullOrWhiteSpace(buttonColour) ? null : buttonColour.Trim();
         product.Description = SterlingLams.Web.Services.ProductHtml.Sanitize(description);
         product.UpdatedAt = DateTime.UtcNow;

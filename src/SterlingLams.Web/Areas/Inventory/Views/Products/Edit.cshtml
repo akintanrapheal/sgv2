@@ -124,6 +124,14 @@
         <span class="text-neutral-400 text-xs font-light">untick to hide from the website but keep selling at the till</span>
     </label>
 
+    @if (!Model.Images.Any())
+    {
+        <label class="flex items-center gap-2 text-sm text-neutral-700 ml-6">
+            <input type="checkbox" name="allowOnlineWithoutImage" value="true" checked="@Model.AllowOnlineWithoutImage" /> Show on the website even without a photo
+            <span class="text-amber-600 text-xs font-light">by default a photoless product stays till-only; tick this to publish it anyway (shoppers see a “photo coming soon” placeholder)</span>
+        </label>
+    }
+
     <label class="flex items-center gap-2 text-sm text-neutral-700">
         <input type="checkbox" name="availableAtTill" value="true" checked="@(!Model.HiddenFromPos)" /> Available at the till (EPOS)
         <span class="text-neutral-400 text-xs font-light">untick to hide from the EPOS product search</span>
