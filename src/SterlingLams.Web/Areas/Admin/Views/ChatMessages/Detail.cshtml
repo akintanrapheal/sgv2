@@ -8,81 +8,123 @@
                : !string.IsNullOrWhiteSpace(conv.ContactPhone) ? conv.ContactPhone : "Guest";
     var waDigits = new string((conv.ContactPhone ?? "").Where(char.IsDigit).ToArray());
     var lastId = Model.Messages.Count > 0 ? Model.Messages[^1].Id : 0;
+    var initial = name!.Substring(0, 1).ToUpper();
 }
 @Html.AntiForgeryToken()
 
-<div class="mb-4 flex items-center justify-between gap-3 flex-wrap">
-    <div class="flex items-center gap-3">
-        <a asp-action="Index" class="text-sm text-neutral-500 hover:text-neutral-900">← Inbox</a>
-        <div>
-            <h1 class="text-lg font-medium text-neutral-900">@name</h1>
-            <p class="text-xs text-neutral-400">
-                @if (!string.IsNullOrWhiteSpace(conv.ContactEmail)) { <span>@conv.ContactEmail</span> }
-                @if (!string.IsNullOrWhiteSpace(conv.ContactPhone)) { <span> · @conv.ContactPhone</span> }
-                <span> · started @Stamp(conv.CreatedAt)</span>
-            </p>
+<div class="max-w-4xl">
+    <a asp-action="Index" class="text-sm text-neutral-500 hover:text-neutral-900 inline-flex items-center gap-1 mb-3">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg> Inbox
+    </a>
+
+    <!-- Customer header card -->
+    <div class="bg-white border border-neutral-200 rounded-xl p-4 mb-3 flex items-start gap-4 flex-wrap">
+        <div class="w-12 h-12 rounded-full flex items-center justify-center text-lg font-semibold flex-shrink-0 text-white"
+             style="background:@(Model.IsSignedIn ? "#ed028b" : "#9ca3af")">@initial</div>
+        <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2 flex-wrap">
+                <h1 class="text-lg font-semibold text-neutral-900">@name</h1>
+                @if (Model.IsSignedIn)
+                {
+                    <span class="text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Signed-in customer
+                    </span>
+                }
+                else
+                {
+                    <span class="text-[11px] font-medium bg-neutral-100 text-neutral-500 border border-neutral-200 px-2 py-0.5 rounded-full">Guest</span>
+                }
+                @if (Model.PriorChats == 0)
+                {
+                    <span class="text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">✦ First-time chat</span>
+                }
+                else
+                {
+                    <span class="text-[11px] font-medium bg-violet-50 text-violet-700 border border-violet-200 px-2 py-0.5 rounded-full">Returning · @Model.PriorChats prev. chat@(Model.PriorChats == 1 ? "" : "s")</span>
+                }
+                @if (Model.OrderCount > 0)
+                {
+                    <span class="text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full">@Model.OrderCount order@(Model.OrderCount == 1 ? "" : "s")</span>
+                }
+                @if (conv.Ended)
+                {
+                    <span class="text-[11px] bg-neutral-100 text-neutral-400 px-2 py-0.5 rounded-full">Ended</span>
+                }
+            </div>
+            <div class="text-xs text-neutral-500 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                @if (!string.IsNullOrWhiteSpace(conv.ContactEmail)) { <span>✉ @conv.ContactEmail</span> }
+                @if (!string.IsNullOrWhiteSpace(conv.ContactPhone)) { <span>✆ @conv.ContactPhone</span> }
+                <span>Started @Stamp(conv.CreatedAt)</span>
+                @if (!string.IsNullOrWhiteSpace(conv.DeviceType)) { <span>· @conv.DeviceType</span> }
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            @if (!string.IsNullOrWhiteSpace(waDigits))
+            {
+                <a href="https://wa.me/@waDigits" target="_blank" rel="noopener" class="text-xs text-emerald-700 hover:bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5">WhatsApp</a>
+            }
+            @if (!string.IsNullOrWhiteSpace(conv.ContactEmail))
+            {
+                <a href="mailto:@conv.ContactEmail" class="text-xs text-blue-700 hover:bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">Email</a>
+            }
+            @if (!conv.Ended)
+            {
+                <form asp-action="End" method="post" class="inline" onsubmit="return confirm('End this chat?');">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@conv.Id" />
+                    <button type="submit" class="text-xs text-neutral-500 hover:bg-neutral-100 border border-neutral-200 rounded-lg px-3 py-1.5">End chat</button>
+                </form>
+            }
         </div>
     </div>
-    <div class="flex items-center gap-2">
-        @if (!string.IsNullOrWhiteSpace(waDigits))
-        {
-            <a href="https://wa.me/@waDigits" target="_blank" rel="noopener" class="text-xs text-emerald-600 hover:text-emerald-800 border border-emerald-200 rounded-sm px-3 py-1.5">WhatsApp ↗</a>
-        }
-        @if (!string.IsNullOrWhiteSpace(conv.ContactEmail))
-        {
-            <a href="mailto:@conv.ContactEmail" class="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded-sm px-3 py-1.5">Email ↗</a>
-        }
-        @if (!conv.Ended)
-        {
-            <form asp-action="End" method="post" class="inline" onsubmit="return confirm('End this chat?');">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="id" value="@conv.Id" />
-                <button type="submit" class="text-xs text-neutral-500 hover:text-neutral-900 border border-neutral-200 rounded-sm px-3 py-1.5">End chat</button>
-            </form>
-        }
-    </div>
-</div>
 
-@if (conv.Rating != null)
-{
-    <div class="mb-3 bg-amber-50 border border-amber-200 rounded-sm px-4 py-3 text-sm">
-        <span class="text-amber-500 text-base">@(new string('★', conv.Rating.Value))@(new string('☆', 5 - conv.Rating.Value))</span>
-        <span class="text-neutral-600 ml-2">Shopper rated this chat @conv.Rating.Value/5@(conv.ReviewedAt != null ? $" · {Stamp(conv.ReviewedAt.Value)}" : "")</span>
-        @if (!string.IsNullOrWhiteSpace(conv.ReviewComment)) { <div class="text-neutral-700 mt-1">“@conv.ReviewComment”</div> }
-    </div>
-}
-
-<div class="bg-white border border-neutral-200 rounded-sm flex flex-col" style="height:min(68vh,36rem)">
-    <div id="thread" class="flex-1 overflow-y-auto p-4 space-y-2 bg-neutral-50">
-        @foreach (var m in Model.Messages)
-        {
-            <div class="flex @(m.FromStaff ? "justify-end" : "justify-start")">
-                <div class="max-w-[75%]">
-                    <div class="@(m.FromStaff ? "bg-brand-500 text-white" : "bg-white text-neutral-800 border border-neutral-100") rounded-2xl px-3.5 py-2 text-sm shadow-sm whitespace-pre-wrap break-words">@m.Body</div>
-                    <div class="text-[10px] text-neutral-400 mt-0.5 @(m.FromStaff ? "text-right" : "")">
-                        @(m.FromStaff ? (m.SenderName ?? "You") : name) · @Stamp(m.CreatedAt)
-                    </div>
-                </div>
-            </div>
-        }
-    </div>
-    @if (conv.Ended)
+    @if (conv.Rating != null)
     {
-        <div class="border-t border-neutral-100 px-4 py-2.5 text-center text-xs text-neutral-400 bg-neutral-50">
-            This chat ended@(conv.EndedReason == "timeout" ? " (30 min inactivity)" : conv.EndedReason == "reviewed" ? " (shopper left a review)" : "")@(conv.EndedAt != null ? $" · {Stamp(conv.EndedAt.Value)}" : "").
-            A reply re-opens it.
+        <div class="mb-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm flex items-start gap-3">
+            <span class="text-amber-500 text-lg leading-none mt-0.5">@(new string('★', conv.Rating.Value))@(new string('☆', 5 - conv.Rating.Value))</span>
+            <div>
+                <span class="text-neutral-700 font-medium">Rated @conv.Rating.Value/5</span>
+                @if (conv.ReviewedAt != null) { <span class="text-neutral-400">· @Stamp(conv.ReviewedAt.Value)</span> }
+                @if (!string.IsNullOrWhiteSpace(conv.ReviewComment)) { <div class="text-neutral-700 mt-1 italic">“@conv.ReviewComment”</div> }
+            </div>
         </div>
     }
-    <form asp-action="Reply" method="post" class="border-t border-neutral-100 p-3 flex items-center gap-2" id="reply-form">
-        @Html.AntiForgeryToken()
-        <input type="hidden" name="id" value="@conv.Id" />
-        <input type="text" name="body" id="reply-input" autocomplete="off" placeholder="Type your reply…"
-               class="flex-1 border border-neutral-200 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-brand-500" />
-        <button type="submit" class="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-full px-5 py-2.5">Send</button>
-    </form>
-</div>
 
-<p class="text-xs text-neutral-400 mt-2">Your reply appears in the shopper's chat window within a few seconds. New messages from them show here automatically.</p>
+    <!-- Conversation -->
+    <div class="bg-white border border-neutral-200 rounded-xl flex flex-col overflow-hidden" style="height:min(66vh,34rem)">
+        <div id="thread" class="flex-1 overflow-y-auto px-4 py-4 space-y-3" style="background:linear-gradient(#fafafa,#f4f4f5)">
+            @foreach (var m in Model.Messages)
+            {
+                <div class="flex @(m.FromStaff ? "justify-end" : "justify-start") items-end gap-2">
+                    @if (!m.FromStaff)
+                    {
+                        <div class="w-7 h-7 rounded-full bg-neutral-300 text-white flex items-center justify-center text-[11px] font-semibold flex-shrink-0">@initial</div>
+                    }
+                    <div class="max-w-[72%]">
+                        <div class="@(m.FromStaff ? "bg-brand-500 text-white rounded-br-md" : "bg-white text-neutral-800 border border-neutral-200 rounded-bl-md") rounded-2xl px-4 py-2.5 text-sm shadow-sm" style="white-space:pre-wrap;overflow-wrap:anywhere">@m.Body</div>
+                        <div class="text-[10px] text-neutral-400 mt-1 @(m.FromStaff ? "text-right" : "")">
+                            @(m.FromStaff ? (m.SenderName ?? "You") : name) · @Stamp(m.CreatedAt)
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+        @if (conv.Ended)
+        {
+            <div class="border-t border-neutral-100 px-4 py-2.5 text-center text-xs text-neutral-400 bg-neutral-50">
+                This chat ended@(conv.EndedReason == "timeout" ? " (30 min inactivity)" : conv.EndedReason == "reviewed" ? " (shopper left a review)" : "")@(conv.EndedAt != null ? $" · {Stamp(conv.EndedAt.Value)}" : "") — a reply re-opens it.
+            </div>
+        }
+        <form asp-action="Reply" method="post" class="border-t border-neutral-100 p-3 flex items-center gap-2 bg-white" id="reply-form">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="id" value="@conv.Id" />
+            <input type="text" name="body" id="reply-input" autocomplete="off" placeholder="Type your reply…"
+                   class="flex-1 border border-neutral-200 rounded-full px-4 py-2.5 text-sm focus:outline-none focus:border-brand-500" />
+            <button type="submit" class="bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium rounded-full px-6 py-2.5">Send</button>
+        </form>
+    </div>
+    <p class="text-xs text-neutral-400 mt-2">Your reply appears in the shopper's chat window within a few seconds. New messages from them show here automatically.</p>
+</div>
 
 @section Scripts {
 <script>
@@ -92,18 +134,20 @@
     var convId = @conv.Id;
     var lastId = @lastId;
     var customerName = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(name));
+    var initial = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(initial));
 
     thread.scrollTop = thread.scrollHeight;
     function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 
     function append(m){
         var wrap = document.createElement('div');
-        wrap.className = 'flex ' + (m.fromStaff ? 'justify-end' : 'justify-start');
-        var bubbleCls = m.fromStaff ? 'bg-brand-500 text-white' : 'bg-white text-neutral-800 border border-neutral-100';
+        wrap.className = 'flex items-end gap-2 ' + (m.fromStaff ? 'justify-end' : 'justify-start');
+        var bubbleCls = m.fromStaff ? 'bg-brand-500 text-white rounded-br-md' : 'bg-white text-neutral-800 border border-neutral-200 rounded-bl-md';
         var who = m.fromStaff ? 'You' : customerName;
-        wrap.innerHTML = '<div class="max-w-[75%]">' +
-            '<div class="' + bubbleCls + ' rounded-2xl px-3.5 py-2 text-sm shadow-sm" style="white-space:pre-wrap;word-break:break-word">' + esc(m.body) + '</div>' +
-            '<div class="text-[10px] text-neutral-400 mt-0.5' + (m.fromStaff ? ' text-right' : '') + '">' + esc(who) + ' · ' + esc(m.at) + '</div></div>';
+        var ava = m.fromStaff ? '' : '<div class="w-7 h-7 rounded-full bg-neutral-300 text-white flex items-center justify-center text-[11px] font-semibold flex-shrink-0">' + esc(initial) + '</div>';
+        wrap.innerHTML = ava + '<div class="max-w-[72%]">' +
+            '<div class="' + bubbleCls + ' rounded-2xl px-4 py-2.5 text-sm shadow-sm" style="white-space:pre-wrap;overflow-wrap:anywhere">' + esc(m.body) + '</div>' +
+            '<div class="text-[10px] text-neutral-400 mt-1' + (m.fromStaff ? ' text-right' : '') + '">' + esc(who) + ' · ' + esc(m.at) + '</div></div>';
         thread.appendChild(wrap);
         thread.scrollTop = thread.scrollHeight;
     }
