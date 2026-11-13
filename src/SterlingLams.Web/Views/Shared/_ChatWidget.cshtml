@@ -1,9 +1,10 @@
 @inject SterlingLams.Web.Services.ISettingsService SettingsService
 @{
-    // Concierge "Help" widget: a floating bubble that opens a conversational panel with an auto-greeting
-    // and quick-reply buttons. Self-service replies (order tracking, delivery/returns, sizing) answer
-    // instantly; "Chat on WhatsApp" + the free-text box hand off to a human on WhatsApp with context.
-    // Storefront-only (rendered from _Layout). No third-party script — CSP-clean (nonce'd inline script).
+    // Concierge Help widget with a real two-way LIVE CHAT. A floating bubble opens a panel that auto-greets
+    // the shopper and offers quick replies; the text box is an in-page live chat — messages go to the admin
+    // inbox (Admin → Chat Messages) and staff replies come back here by polling, so a shopper with no
+    // WhatsApp can still talk to the team. "Chat on WhatsApp" stays as an option. Storefront-only; no
+    // third-party script (CSP-clean: nonce'd inline script, scoped sgc- CSS). See storefront ChatController.
     var chatEnabled = await SettingsService.GetAsync("chat.enabled", "true");
     var greeting    = await SettingsService.GetAsync("chat.greeting",
         "Hi 👋 Welcome to Sterlin Glams! Got a question about an order, delivery, sizing or a piece you love? We're here to help.");
@@ -12,21 +13,22 @@
     var waDigits    = new string((waRaw ?? "").Where(char.IsDigit).ToArray());
     var email       = await SettingsService.GetAsync("general.contact_email");
 
-    var show = !string.Equals(chatEnabled, "false", StringComparison.OrdinalIgnoreCase)
-               && (!string.IsNullOrWhiteSpace(waDigits) || !string.IsNullOrWhiteSpace(email));
+    var show = !string.Equals(chatEnabled, "false", StringComparison.OrdinalIgnoreCase);
     var waBase = string.IsNullOrWhiteSpace(waDigits) ? "" : $"https://wa.me/{waDigits}";
 }
 @if (show)
 {
 <style>
-    .sgc-launch { position:fixed; bottom:24px; right:24px; z-index:46; display:inline-flex; align-items:center; gap:8px;
+    .sgc-launch { position:fixed; bottom:24px; right:24px; z-index:120; display:inline-flex; align-items:center; gap:8px;
         padding:12px 18px 12px 14px; border:0; border-radius:9999px; cursor:pointer; color:#fff; background:#ed028b;
         box-shadow:0 8px 24px rgba(237,2,139,.35); font:600 14px/1 ui-sans-serif,system-ui,sans-serif; letter-spacing:.02em; }
     .sgc-launch:hover { background:#c70175; }
     .sgc-launch svg { width:22px; height:22px; display:block; }
     .sgc-launch .sgc-dot { position:absolute; top:-2px; right:-2px; width:12px; height:12px; border-radius:9999px;
         background:#25D366; border:2px solid #fff; }
-    .sgc-panel { position:fixed; bottom:92px; right:24px; z-index:47; width:min(92vw,23rem); height:min(72vh,34rem);
+    .sgc-unread { position:absolute; top:-6px; right:-6px; min-width:18px; height:18px; padding:0 4px; border-radius:9999px;
+        background:#dc2626; color:#fff; font:700 11px/18px ui-sans-serif,system-ui,sans-serif; text-align:center; display:none; }
+    .sgc-panel { position:fixed; bottom:92px; right:24px; z-index:121; width:min(92vw,23rem); height:min(72vh,34rem);
         display:none; flex-direction:column; background:#fff; border-radius:18px; overflow:hidden;
         box-shadow:0 18px 60px rgba(0,0,0,.28); opacity:0; transform:translateY(12px) scale(.98);
         transition:opacity .22s ease, transform .22s ease; }
@@ -45,11 +47,12 @@
     .sgc-row { display:flex; gap:8px; align-items:flex-end; }
     .sgc-row.sgc-me { justify-content:flex-end; }
     .sgc-bubble { max-width:84%; padding:10px 13px; border-radius:14px; font-size:13.5px; line-height:1.5; color:#1f1f23;
-        background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.06); border-top-left-radius:4px; }
+        background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.06); border-top-left-radius:4px; white-space:pre-wrap; word-break:break-word; }
     .sgc-me .sgc-bubble { background:#ed028b; color:#fff; border-top-left-radius:14px; border-top-right-radius:4px; }
     .sgc-bubble a.sgc-inline { color:inherit; text-decoration:underline; }
+    .sgc-meta { font-size:10px; color:#9a9aa2; margin:2px 4px 0; }
     .sgc-quick { display:flex; flex-direction:column; gap:8px; margin-top:2px; }
-    .sgc-chip { text-align:left; background:#fff; border:1px solid #ecc; border-color:#f3d6e8; color:#b10f73; cursor:pointer;
+    .sgc-chip { text-align:left; background:#fff; border:1px solid #f3d6e8; color:#b10f73; cursor:pointer;
         padding:10px 13px; border-radius:12px; font:600 13px/1.3 ui-sans-serif,system-ui,sans-serif; display:flex;
         align-items:center; gap:9px; transition:background .15s, border-color .15s; }
     .sgc-chip:hover { background:#fff0f8; border-color:#ed028b; }
@@ -57,8 +60,19 @@
     .sgc-chip.sgc-wa { color:#148a43; border-color:#cdeedd; }
     .sgc-chip.sgc-wa:hover { background:#edfbf3; border-color:#25D366; }
     .sgc-cta { display:inline-flex; align-items:center; gap:6px; margin-top:6px; background:#ed028b; color:#fff;
-        text-decoration:none; padding:8px 12px; border-radius:10px; font:600 12.5px/1 ui-sans-serif,system-ui,sans-serif; }
+        text-decoration:none; padding:8px 12px; border-radius:10px; font:600 12.5px/1 ui-sans-serif,system-ui,sans-serif; border:0; cursor:pointer; }
     .sgc-cta:hover { background:#c70175; }
+    .sgc-stars { display:flex; gap:4px; font-size:22px; margin:4px 0 2px; }
+    .sgc-stars button { background:none; border:0; cursor:pointer; color:#f5b301; line-height:1; padding:0; }
+    .sgc-review-comment { margin-top:8px; width:100%; box-sizing:border-box; border:1px solid #e2e2e8; border-radius:8px; padding:7px 10px; font-size:12.5px; outline:none; }
+    .sgc-review-comment:focus { border-color:#ed028b; }
+    .sgc-det { flex-shrink:0; background:#fff; border-top:1px solid #ececf0; padding:0 10px; }
+    .sgc-det summary { list-style:none; cursor:pointer; font-size:11.5px; color:#8a8a92; padding:8px 2px; }
+    .sgc-det summary::-webkit-details-marker { display:none; }
+    .sgc-det[open] summary { color:#b10f73; }
+    .sgc-det .sgc-fields { display:flex; gap:6px; padding:0 0 8px; }
+    .sgc-det input { flex:1; min-width:0; border:1px solid #e2e2e8; border-radius:8px; padding:7px 10px; font-size:12.5px; outline:none; }
+    .sgc-det input:focus { border-color:#ed028b; }
     .sgc-foot { flex-shrink:0; border-top:1px solid #ececf0; background:#fff; padding:10px; display:flex; gap:8px; align-items:center; }
     .sgc-foot input { flex:1; border:1px solid #e2e2e8; border-radius:9999px; padding:10px 14px; font-size:13.5px; outline:none; }
     .sgc-foot input:focus { border-color:#ed028b; }
@@ -76,6 +90,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h8M8 14h5M21 12a8 8 0 01-8 8H7l-4 3v-6.5A8 8 0 1121 12z"/>
         </svg>
         <span class="sgc-dot"></span>
+        <span class="sgc-unread" id="sgc-unread"></span>
     </span>
     Chat
 </button>
@@ -96,7 +111,7 @@
         </div>
         <div class="sgc-row">
             <div class="sgc-bubble" style="background:transparent;box-shadow:none;padding:4px 2px;color:#6b6b73;font-size:12px">
-                Pick a topic below, or type your question.
+                Pick a topic below, or type your question — a real person will reply here.
             </div>
         </div>
         <div class="sgc-quick" id="sgc-quick">
@@ -120,7 +135,15 @@
                 </button>
             }
         </div>
+        <div id="sgc-thread"></div>
     </div>
+    <details class="sgc-det" id="sgc-det">
+        <summary>＋ Add your name &amp; email (so we can follow up)</summary>
+        <div class="sgc-fields">
+            <input type="text" id="sgc-name" placeholder="Your name" autocomplete="name" />
+            <input type="email" id="sgc-email" placeholder="Email" autocomplete="email" />
+        </div>
+    </details>
     <div class="sgc-foot">
         <input type="text" id="sgc-input" placeholder="Type your message here" aria-label="Type your message" autocomplete="off" />
         <button type="button" class="sgc-send" id="sgc-send" aria-label="Send">
@@ -135,55 +158,46 @@
     var panel  = document.getElementById('sgc-panel');
     if (!launch || !panel) return;
     var body = document.getElementById('sgc-body');
+    var thread = document.getElementById('sgc-thread');
     var input = document.getElementById('sgc-input');
+    var unreadEl = document.getElementById('sgc-unread');
     var waBase = panel.getAttribute('data-wa') || '';
     var trackUrl = panel.getAttribute('data-track') || '/track';
     var returnsUrl = panel.getAttribute('data-returns') || '/';
     var siteName = (panel.querySelector('h3') && panel.querySelector('h3').textContent.trim()) || 'us';
 
+    var lastId = 0, sending = false, polling = null, unread = 0, started = false,
+        ended = false, reviewShown = false, reviewed = false;
+
     function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
     function wa(text){ return waBase ? (waBase + '?text=' + encodeURIComponent(text)) : ''; }
+    function nowHM(){ var d=new Date(); return ('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2); }
 
-    function row(side, html){
-        var r = document.createElement('div');
-        r.className = 'sgc-row' + (side==='me' ? ' sgc-me' : '');
-        r.innerHTML = '<div class="sgc-bubble">' + html + '</div>';
-        body.appendChild(r);
-        body.scrollTop = body.scrollHeight;
-        return r;
+    // A canned / informational bot bubble (self-service answers, not stored)
+    function botRow(html){
+        var r = document.createElement('div'); r.className = 'sgc-row';
+        r.innerHTML = '<div><div class="sgc-bubble">' + html + '</div><div class="sgc-meta">' + siteName + ' · ' + nowHM() + '</div></div>';
+        thread.appendChild(r); body.scrollTop = body.scrollHeight;
     }
-    function me(text){ row('me', esc(text)); }
-    function bot(html){ setTimeout(function(){ row('bot', html); }, 220); }
-
-    var replies = {
-        track: {
-            say: 'Track my order',
-            bot: 'You can check your order status any time with your order number and email:' +
-                 '<br><a class="sgc-cta" href="' + trackUrl + '">Track my order →</a>' +
-                 (waBase ? '<br><a class="sgc-inline" style="font-size:12px" href="' + wa("Hi, I'd like help tracking my order.") + '" target="_blank" rel="noopener">…or ask us on WhatsApp</a>' : '')
-        },
-        returns: {
-            say: 'Delivery & returns',
-            bot: 'We deliver nationwide, with same-day and express options at checkout. Items can be returned within our policy window if unworn.' +
-                 '<br><a class="sgc-cta" href="' + returnsUrl + '">Read delivery & returns →</a>'
-        },
-        sizing: {
-            say: 'Sizing help',
-            bot: (document.getElementById('size-guide-overlay')
-                    ? 'Happy to help you find the right fit. Here\'s our full size &amp; length guide:' +
-                      '<br><button type="button" class="sgc-cta" data-sgc-open-size="1" style="border:0;cursor:pointer">Open size guide →</button>'
-                    : 'Happy to help you find the right fit.') +
-                 (waBase ? '<br><a class="sgc-inline" style="font-size:12px" href="' + wa("Hi, I need sizing help with a piece.") + '" target="_blank" rel="noopener">Ask us about a specific piece on WhatsApp →</a>' : '')
-        }
-    };
+    // A real chat message bubble (mine = right, staff = left)
+    function msgRow(m){
+        var r = document.createElement('div');
+        r.className = 'sgc-row' + (m.fromStaff ? '' : ' sgc-me');
+        var meta = m.fromStaff ? ((m.name || siteName) + (m.at ? ' · ' + m.at : '')) : (m.at || '');
+        r.innerHTML = '<div><div class="sgc-bubble">' + esc(m.body) + '</div>'
+            + (meta ? '<div class="sgc-meta' + (m.fromStaff ? '' : '" style="text-align:right') + '">' + esc(meta) + '</div>' : '')
+            + '</div>';
+        thread.appendChild(r); body.scrollTop = body.scrollHeight;
+    }
 
     var opened = false;
     function open(){
         panel.classList.add('sgc-open');
         requestAnimationFrame(function(){ panel.classList.add('sgc-in'); });
         launch.setAttribute('aria-expanded','true');
-        opened = true;
-        setTimeout(function(){ if (input) input.focus(); }, 180);
+        opened = true; clearUnread();
+        startChat();
+        setTimeout(function(){ if (input) input.focus(); body.scrollTop = body.scrollHeight; }, 180);
     }
     function close(){
         panel.classList.remove('sgc-in');
@@ -194,43 +208,112 @@
     document.getElementById('sgc-min').addEventListener('click', close);
     document.addEventListener('keydown', function(e){ if (e.key==='Escape' && panel.classList.contains('sgc-open')) close(); });
 
-    // Quick replies
+    function clearUnread(){ unread = 0; if (unreadEl){ unreadEl.style.display='none'; unreadEl.textContent=''; } }
+    function bumpUnread(){ unread++; if (unreadEl){ unreadEl.textContent = unread; unreadEl.style.display='block'; } }
+
+    // ── Quick replies (self-service) ─────────────────────────────────────────
+    var replies = {
+        track: { say:'Track my order',
+            bot:'You can check your order status any time with your order number and email:' +
+                '<br><a class="sgc-cta" href="' + trackUrl + '">Track my order →</a>' },
+        returns: { say:'Delivery & returns',
+            bot:'We deliver nationwide, with same-day and express options at checkout. Items can be returned within our policy window if unworn.' +
+                '<br><a class="sgc-cta" href="' + returnsUrl + '">Read delivery & returns →</a>' },
+        sizing: { say:'Sizing help',
+            bot: (document.getElementById('size-guide-overlay')
+                    ? 'Happy to help you find the right fit. Here\'s our full size &amp; length guide:' +
+                      '<br><button type="button" class="sgc-cta" data-sgc-open-size="1">Open size guide →</button>'
+                    : 'Happy to help you find the right fit — tell me the piece and I\'ll check it for you below.') }
+    };
     document.getElementById('sgc-quick').addEventListener('click', function(e){
         var btn = e.target.closest('[data-sgc]'); if (!btn) return;
         var key = btn.getAttribute('data-sgc');
         if (key === 'whatsapp'){
-            me('Chat on WhatsApp');
             var href = wa('Hi ' + siteName + ', I have a question.');
             if (href) window.open(href, '_blank', 'noopener');
-            bot('Opening WhatsApp… if it didn\'t open, <a class="sgc-inline" href="' + href + '" target="_blank" rel="noopener">tap here</a>.');
             return;
         }
         var r = replies[key]; if (!r) return;
-        me(r.say);
-        bot(r.bot);
+        msgRow({ body:r.say, fromStaff:false, at:nowHM() });
+        setTimeout(function(){ botRow(r.bot); }, 200);
     });
-
-    // Open the on-page size-guide modal from a bot bubble button
     body.addEventListener('click', function(e){
         var o = e.target.closest('[data-sgc-open-size]'); if (!o) return;
         var opener = document.querySelector('[data-size-guide-open]');
         if (opener) opener.click();
-        else document.getElementById('size-guide-overlay')?.classList.remove('hidden');
+        else { var ov = document.getElementById('size-guide-overlay'); if (ov) ov.classList.remove('hidden'); }
     });
 
-    // Free-text → continue on WhatsApp (that's where a human replies)
+    // ── Live chat (two-way) ──────────────────────────────────────────────────
+    function startChat(){
+        if (started) return; started = true;
+        poll();                          // rebuild transcript (after=0) for a returning shopper
+        polling = setInterval(poll, 5000);
+    }
+    async function poll(){
+        if (sending) return;
+        try {
+            var r = await fetch('/chat/thread?after=' + lastId, { headers:{ 'Accept':'application/json' } });
+            if (!r.ok) return;
+            var d = await r.json();
+            (d.messages || []).forEach(function(m){
+                if (m.id <= lastId) return;
+                msgRow(m); lastId = m.id;
+                if (m.fromStaff && !panel.classList.contains('sgc-open')) bumpUnread();
+            });
+            if (d.reviewed) reviewed = true;
+            ended = !!d.ended;
+            if (ended && !reviewed && !reviewShown) showReview();
+        } catch (e) {}
+    }
+
+    // After the chat ends (30-min inactivity), invite a quick star review.
+    function showReview(){
+        reviewShown = true;
+        var box = document.createElement('div'); box.className = 'sgc-row';
+        box.innerHTML = '<div><div class="sgc-bubble" style="max-width:100%">' +
+            '<div style="font-weight:600;margin-bottom:2px">This chat has ended.</div>' +
+            '<div style="color:#6b6b73;font-size:12.5px">How did we do?</div>' +
+            '<div class="sgc-stars" id="sgc-stars">' +
+            [1,2,3,4,5].map(function(n){ return '<button type="button" data-star="' + n + '" aria-label="' + n + ' star">☆</button>'; }).join('') +
+            '</div>' +
+            '<input type="text" class="sgc-review-comment" id="sgc-review-comment" placeholder="Add a comment (optional)" />' +
+            '<button type="button" class="sgc-cta" id="sgc-review-send">Send feedback</button>' +
+            '</div><div class="sgc-meta">' + siteName + ' · ' + nowHM() + '</div></div>';
+        thread.appendChild(box); body.scrollTop = body.scrollHeight;
+
+        var rating = 0;
+        var stars = box.querySelectorAll('[data-star]');
+        stars.forEach(function(s){ s.addEventListener('click', function(){
+            rating = +s.getAttribute('data-star');
+            stars.forEach(function(x, i){ x.textContent = (i < rating) ? '★' : '☆'; });
+        }); });
+        box.querySelector('#sgc-review-send').addEventListener('click', function(){
+            if (!rating) { var st = box.querySelector('#sgc-stars'); st.style.transform = 'scale(1.08)'; setTimeout(function(){ st.style.transform=''; }, 150); return; }
+            var comment = (box.querySelector('#sgc-review-comment').value || '').trim();
+            try { if (window.postWithFreshToken) window.postWithFreshToken('/chat/review', { rating: rating, comment: comment }).catch(function(){}); } catch (e) {}
+            reviewed = true;
+            box.innerHTML = '<div><div class="sgc-bubble">Thank you for your feedback 💛</div><div class="sgc-meta">' + siteName + ' · ' + nowHM() + '</div></div>';
+        });
+    }
+
     function send(){
         var text = (input.value || '').trim(); if (!text) return;
-        me(text);
+        sending = true;
+        reviewShown = false; reviewed = false;   // a new message starts a fresh chat if the last one ended
+        msgRow({ body:text, fromStaff:false, at:nowHM() });
         input.value = '';
-        if (waBase){
-            var href = wa(text);
-            window.open(href, '_blank', 'noopener');
-            bot('Thanks! We\'ve opened WhatsApp so a member of our team can reply. ' +
-                'If it didn\'t open, <a class="sgc-inline" href="' + href + '" target="_blank" rel="noopener">tap here to continue</a>.');
-        } else {
-            bot('Thanks for your message — please email us at <a class="sgc-inline" href="mailto:@email">@email</a> and we\'ll get right back to you.');
-        }
+        var fields = { body:text, channel:'inapp' };
+        var nm = (document.getElementById('sgc-name')||{}).value, em = (document.getElementById('sgc-email')||{}).value;
+        if (nm && nm.trim()) fields.name = nm.trim();
+        if (em && em.trim()) fields.email = em.trim();
+        var done = function(d){ if (d && d.id && d.id > lastId) lastId = d.id; sending = false; };
+        try {
+            if (window.postWithFreshToken) {
+                window.postWithFreshToken('/chat/message', fields)
+                    .then(function(r){ return r.json(); }).then(done).catch(function(){ sending = false; });
+            } else { sending = false; }
+        } catch (e) { sending = false; }
     }
     document.getElementById('sgc-send').addEventListener('click', send);
     input.addEventListener('keydown', function(e){ if (e.key==='Enter'){ e.preventDefault(); send(); } });

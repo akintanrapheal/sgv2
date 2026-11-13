@@ -55,6 +55,7 @@ public static class AdminSections
         new("Finance",    "Finance",    "Finance",    "M11 3.055A9.001 9.001 0 1020.945 13H11V3.055zM20.488 9A9.004 9.004 0 0012 3.512V9h8.488z", "Reports"),
         new("Traffic",    "Traffic",    "Traffic",    "M3 3v18h18M7 14l3-3 3 3 5-6", "Reports"),
         new("CustomerIssues", "Customer Issues", "CustomerIssues", "M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z", "Reports"),
+        new("ChatMessages", "Chat Messages", "ChatMessages", "M8 10h.01M12 10h.01M16 10h.01M21 12a9 9 0 01-9 9c-1.6 0-3.1-.4-4.4-1.1L3 21l1.1-4.6A8.96 8.96 0 013 12a9 9 0 1118 0z", "Reports"),
         new("GoogleAnalytics", "Google Analytics", "GoogleAnalytics", "M13 7h8m0 0v8m0-8l-8 8-4-4-6 6", "Reports"),
 
         // ── Settings & administration ─────────────────────────────────────────

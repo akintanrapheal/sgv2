@@ -1,0 +1,83 @@
+@model SterlingLams.Web.Areas.Admin.Controllers.ChatMessagesController.ChatInboxVm
+@{
+    ViewData["Title"] = "Chat Messages";
+    string Local(DateTime utc) => SterlingLams.Web.Services.ReportCalendar.ToLocal(utc).ToString("MMM d, HH:mm");
+    string Stars(int n) => new string('★', n) + new string('☆', 5 - n);
+}
+@Html.AntiForgeryToken()
+
+@if (TempData["Success"] != null) { <div class="mb-4 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm px-4 py-3 rounded-sm">@TempData["Success"]</div> }
+
+<div class="mb-4">
+    <h1 class="text-xl font-light text-neutral-900">Chat Messages</h1>
+    <p class="text-sm text-neutral-500">Live chat with shoppers on the storefront. Open a conversation to read it and reply — your reply appears in their chat window within seconds. Chats auto-end after 30 min of silence; shoppers can then leave a star rating. Times in WAT.</p>
+</div>
+
+<div class="grid grid-cols-2 gap-3 mb-5 max-w-sm">
+    <div class="bg-white rounded-sm border border-neutral-100 p-4">
+        <p class="text-xs text-neutral-400 uppercase tracking-wide">Needs reply</p>
+        <p class="text-2xl font-light @(Model.UnreadConversations > 0 ? "text-brand-600" : "text-neutral-900") mt-1">@Model.UnreadConversations</p>
+    </div>
+    <div class="bg-white rounded-sm border border-neutral-100 p-4">
+        <p class="text-xs text-neutral-400 uppercase tracking-wide">Conversations</p>
+        <p class="text-2xl font-light text-neutral-900 mt-1">@Model.TotalRows</p>
+    </div>
+</div>
+
+<form method="get" class="flex flex-wrap items-center gap-2 mb-4 bg-white border border-neutral-100 rounded-sm p-3">
+    <input type="text" name="q" value="@Model.Q" placeholder="Search message, name, email, phone…"
+           class="flex-1 min-w-[12rem] border border-neutral-200 rounded-sm px-3 py-2 text-sm" />
+    <select name="status" class="border border-neutral-200 rounded-sm px-3 py-2 text-sm bg-white">
+        <option value="">All</option>
+        <option value="open" selected="@(Model.Status == "open")">Needs reply</option>
+        <option value="done" selected="@(Model.Status == "done")">Up to date</option>
+        <option value="reviewed" selected="@(Model.Status == "reviewed")">Reviewed</option>
+    </select>
+    <button type="submit" class="bg-neutral-900 text-white text-sm px-4 py-2 rounded-sm">Filter</button>
+    <a asp-action="Index" class="text-sm text-neutral-500 hover:text-neutral-800 px-2">Reset</a>
+</form>
+
+@if (!Model.Rows.Any())
+{
+    <div class="bg-white border border-neutral-200 rounded-sm p-12 text-center text-sm text-neutral-400">No conversations yet.</div>
+}
+else
+{
+    <div class="bg-white border border-neutral-200 rounded-sm divide-y divide-neutral-100">
+        @foreach (var c in Model.Rows)
+        {
+            var name = !string.IsNullOrWhiteSpace(c.CustomerName) ? c.CustomerName
+                       : !string.IsNullOrWhiteSpace(c.ContactEmail) ? c.ContactEmail
+                       : !string.IsNullOrWhiteSpace(c.ContactPhone) ? c.ContactPhone : "Guest";
+            <a asp-action="Detail" asp-route-id="@c.Id" class="flex items-start gap-3 px-4 py-3.5 hover:bg-neutral-50 @(c.StaffUnread > 0 ? "bg-brand-50/40" : "")">
+                <div class="w-9 h-9 rounded-full bg-neutral-100 text-neutral-500 flex items-center justify-center text-sm font-medium flex-shrink-0 mt-0.5">
+                    @(name!.Substring(0, 1).ToUpper())
+                </div>
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-sm font-medium text-neutral-800 truncate">@name</span>
+                        @if (!string.IsNullOrEmpty(c.UserId)) { <span class="text-[10px] bg-neutral-100 text-neutral-500 px-1.5 py-0.5 rounded">Signed-in</span> }
+                        @if (c.StaffUnread > 0) { <span class="text-[10px] bg-brand-500 text-white px-1.5 py-0.5 rounded-full">@c.StaffUnread new</span> }
+                        @if (c.Rating != null) { <span class="text-[11px] text-amber-500" title="Shopper rating">@Stars(c.Rating.Value)</span> }
+                        @if (c.Ended) { <span class="text-[10px] bg-neutral-100 text-neutral-400 px-1.5 py-0.5 rounded">Ended</span> }
+                        <span class="ml-auto text-xs text-neutral-400 whitespace-nowrap">@Local(c.LastMessageAt)</span>
+                    </div>
+                    <div class="text-sm text-neutral-500 truncate mt-0.5">
+                        @(c.LastFromStaff ? "You: " : "")@c.LastBody
+                    </div>
+                </div>
+            </a>
+        }
+    </div>
+
+    @if (Model.TotalPages > 1)
+    {
+        <div class="flex items-center justify-center gap-2 mt-4 text-sm">
+            @for (var p = 1; p <= Model.TotalPages; p++)
+            {
+                <a asp-action="Index" asp-route-page="@p" asp-route-q="@Model.Q" asp-route-status="@Model.Status"
+                   class="px-3 py-1.5 rounded-sm border @(p == Model.Page ? "bg-neutral-900 text-white border-neutral-900" : "border-neutral-200 text-neutral-600 hover:border-neutral-400")">@p</a>
+            }
+        </div>
+    }
+}

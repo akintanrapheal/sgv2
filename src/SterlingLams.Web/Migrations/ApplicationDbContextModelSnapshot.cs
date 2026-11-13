@@ -931,6 +931,121 @@ namespace SterlingLams.Web.Migrations
                     b.ToTable("Categories");
                 });
 
+            modelBuilder.Entity("SterlingLams.Web.Models.Domain.ChatConversation", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ContactEmail")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContactPhone")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CustomerName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DeviceType")
+                        .HasColumnType("text");
+
+                    b.Property<bool>("Ended")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EndedReason")
+                        .HasColumnType("text");
+
+                    b.Property<string>("FirstPath")
+                        .HasColumnType("text");
+
+                    b.Property<string>("IpAddress")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LastBody")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("LastCustomerAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("LastFromStaff")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("LastMessageAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("Rating")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ReviewComment")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("StaffUnread")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.HasIndex("LastMessageAt");
+
+                    b.HasIndex("Ended", "LastCustomerAt");
+
+                    b.ToTable("ChatConversations");
+                });
+
+            modelBuilder.Entity("SterlingLams.Web.Models.Domain.ChatMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("ConversationId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("FromStaff")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("SeenByCustomer")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("SenderName")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId", "Id");
+
+                    b.ToTable("ChatMessages");
+                });
+
             modelBuilder.Entity("SterlingLams.Web.Models.Domain.DiscountCategory", b =>
                 {
                     b.Property<int>("Id")
@@ -3703,6 +3818,17 @@ namespace SterlingLams.Web.Migrations
                     b.Navigation("Parent");
                 });
 
+            modelBuilder.Entity("SterlingLams.Web.Models.Domain.ChatMessage", b =>
+                {
+                    b.HasOne("SterlingLams.Web.Models.Domain.ChatConversation", "Conversation")
+                        .WithMany("Messages")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Conversation");
+                });
+
             modelBuilder.Entity("SterlingLams.Web.Models.Domain.DiscountCategory", b =>
                 {
                     b.HasOne("SterlingLams.Web.Models.Domain.Category", "Category")
@@ -4260,6 +4386,11 @@ namespace SterlingLams.Web.Migrations
                     b.Navigation("Children");
 
                     b.Navigation("Products");
+                });
+
+            modelBuilder.Entity("SterlingLams.Web.Models.Domain.ChatConversation", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("SterlingLams.Web.Models.Domain.DiscountCode", b =>

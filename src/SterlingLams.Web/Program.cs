@@ -331,6 +331,7 @@ builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.PaymentReconci
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.OrderItemStoreBackfillService>();
 // Customer Issues monitor: alert on spikes (email/WhatsApp) + purge old issue records.
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.StorefrontIssueAlertService>();
+builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.ChatTimeoutService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.LowStockAlertService>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.BackInStockNotifier>();
 builder.Services.AddHostedService<SterlingLams.Web.Infrastructure.AbandonedCartService>();

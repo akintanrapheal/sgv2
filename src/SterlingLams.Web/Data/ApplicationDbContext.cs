@@ -77,6 +77,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
     public DbSet<ApiCallDaily> ApiCallDaily => Set<ApiCallDaily>();
     public DbSet<MetaEventDaily> MetaEventDaily => Set<MetaEventDaily>();
     public DbSet<StorefrontIssue> StorefrontIssues => Set<StorefrontIssue>();
+    public DbSet<ChatConversation> ChatConversations => Set<ChatConversation>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<PriceCapBackup> PriceCapBackups => Set<PriceCapBackup>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -99,6 +101,22 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IDataPro
             e.HasIndex(x => x.CreatedAt);
             e.HasIndex(x => new { x.Type, x.CreatedAt });
             e.HasIndex(x => new { x.Resolved, x.CreatedAt });
+        });
+
+        // ─── Live chat (storefront Help widget ↔ admin inbox) ───────────────
+        // The widget resolves its thread by the cookie Key; the admin inbox lists conversations newest
+        // first with an unread badge; a sweeper ends ones idle past 30 min (LastCustomerAt).
+        builder.Entity<ChatConversation>(e =>
+        {
+            e.HasIndex(x => x.Key).IsUnique();
+            e.HasIndex(x => x.LastMessageAt);
+            e.HasIndex(x => new { x.Ended, x.LastCustomerAt });
+        });
+        builder.Entity<ChatMessage>(e =>
+        {
+            e.HasIndex(x => new { x.ConversationId, x.Id });
+            e.HasOne(x => x.Conversation).WithMany(c => c.Messages)
+                .HasForeignKey(x => x.ConversationId).OnDelete(DeleteBehavior.Cascade);
         });
 
         // ─── Traffic hits (Admin → Traffic analytics) ───────────────────────
