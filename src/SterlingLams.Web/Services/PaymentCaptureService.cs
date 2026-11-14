@@ -42,6 +42,7 @@ public class PaymentCaptureService : IPaymentCaptureService
     private readonly IPostHogClient _posthog;
     private readonly IOrderNotificationService _notifications;
     private readonly IRetainfulOrderNotifier _retainful;
+    private readonly Marketing.IMetaConversionsApi _meta;
     private readonly ILogger<PaymentCaptureService> _logger;
 
     public PaymentCaptureService(
@@ -55,6 +56,7 @@ public class PaymentCaptureService : IPaymentCaptureService
         IPostHogClient posthog,
         IOrderNotificationService notifications,
         IRetainfulOrderNotifier retainful,
+        Marketing.IMetaConversionsApi meta,
         ILogger<PaymentCaptureService> logger)
     {
         _db = db;
@@ -67,6 +69,7 @@ public class PaymentCaptureService : IPaymentCaptureService
         _posthog = posthog;
         _notifications = notifications;
         _retainful = retainful;
+        _meta = meta;
         _logger = logger;
     }
 
@@ -109,6 +112,20 @@ public class PaymentCaptureService : IPaymentCaptureService
             value = order.Total, currency = "NGN", order_number = order.OrderNumber,
             payment_provider = provider, channel = "online",
         });
+
+        // Server-side Meta Purchase (Conversions API) — reported here too, so a sale reaches Meta even when
+        // the shopper never lands on the confirmation page (webhook / reconciliation path). The confirmation
+        // page still sends the pixel + a richer CAPI event; Meta dedupes both by the order-based event id.
+        try
+        {
+            var metaOrder = await _db.Orders
+                .Include(o => o.Items)
+                .Include(o => o.User)
+                .Include(o => o.DeliveryAddress)
+                .FirstOrDefaultAsync(o => o.Id == order.Id, ct);
+            if (metaOrder != null) await _meta.SendPurchaseAsync(metaOrder, ct);
+        }
+        catch (Exception ex) { _logger.LogWarning(ex, "Meta CAPI purchase (capture path) failed for {Order}.", order.OrderNumber); }
 
         // Deduct stock through the in-house ledger. Idempotent (no-ops once FulfillingStoreId is set).
         // If an item sold out before this payment landed, the service auto-cancels + refunds.

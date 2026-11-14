@@ -24,6 +24,11 @@ public interface IMetaConversionsApi
     /// <summary>Reports <paramref name="order"/> as a Purchase. Never throws.</summary>
     Task SendPurchaseAsync(Order order, HttpContext http, CancellationToken ct = default);
 
+    /// <summary>Reports <paramref name="order"/> as a Purchase WITHOUT a live request — used from the
+    /// payment-capture path so a sale is reported even when the shopper never returns to the confirmation
+    /// page. Deduped with the page's pixel/CAPI by the order-based event id. Never throws.</summary>
+    Task SendPurchaseAsync(Order order, CancellationToken ct = default);
+
     /// <summary>True when a pixel id and an access token are both configured and CAPI is switched on.</summary>
     Task<bool> IsConfiguredAsync();
 
@@ -64,15 +69,18 @@ public sealed class MetaConversionsApi : IMetaConversionsApi
     private readonly ISettingsSecretProtector _secrets;
     private readonly ILogger<MetaConversionsApi> _logger;
     private readonly MetaEventTracker _tracker;
+    private readonly IConfiguration _config;
 
     public MetaConversionsApi(HttpClient http, ISettingsService settings,
-        ISettingsSecretProtector secrets, ILogger<MetaConversionsApi> logger, MetaEventTracker tracker)
+        ISettingsSecretProtector secrets, ILogger<MetaConversionsApi> logger, MetaEventTracker tracker,
+        IConfiguration config)
     {
         _http = http;
         _settings = settings;
         _secrets = secrets;
         _logger = logger;
         _tracker = tracker;
+        _config = config;
     }
 
     private async Task<(bool On, string PixelId, string Token, string TestCode)> ConfigAsync()
@@ -164,6 +172,27 @@ public sealed class MetaConversionsApi : IMetaConversionsApi
         }
     }
 
+    public async Task SendPurchaseAsync(Order order, CancellationToken ct = default)
+    {
+        try
+        {
+            var (on, pixel, token, testCode) = await ConfigAsync();
+            if (!on || !MetaCapi.LooksLikePixelId(pixel) || token.Length == 0) return;
+            if (order.Total <= 0) return;
+
+            // No live request here (webhook / reconciliation). We still have the strong signals — hashed
+            // email/phone/name/address + external_id + the order_id — so the sale is reported and deduped
+            // with the confirmation page's event by the order-based event id.
+            var src = (_config["App:BaseUrl"] ?? "https://sterlinglams.com").TrimEnd('/') + "/";
+            var payload = BuildPurchase(order, null, testCode, src);
+            await PostEventsAsync(pixel, token, payload, "Purchase", $"purchase {order.OrderNumber} (server)", ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Meta CAPI purchase (capture path) for {OrderNumber} could not be sent.", order.OrderNumber);
+        }
+    }
+
     /// <summary>Builds a visitor context from the current request, synchronously, so the event can be sent
     /// on a background task after the response completes. Pulls external_id from the signed-in user and the
     /// Meta cookies (_fbp/_fbc) + IP + user-agent — the match signals that work for anonymous visitors.</summary>
@@ -246,7 +275,7 @@ public sealed class MetaConversionsApi : IMetaConversionsApi
     }
 
     /// <summary>The request body for one Purchase event. Separated out so it can be asserted in tests.</summary>
-    public static object BuildPurchase(Order order, HttpContext http, string testCode)
+    public static object BuildPurchase(Order order, HttpContext? http, string testCode, string? fallbackSourceUrl = null)
     {
         var addr = order.DeliveryAddress;
         var email = order.User?.Email;
@@ -279,15 +308,19 @@ public sealed class MetaConversionsApi : IMetaConversionsApi
         }
 
         // Sent in the clear on purpose — Meta requires these unhashed, and they are the strongest
-        // signals for tying the sale back to the ad click that produced it.
-        var ip = http.Connection.RemoteIpAddress?.ToString();
-        if (!string.IsNullOrWhiteSpace(ip)) user["client_ip_address"] = ip;
-        var ua = http.Request.Headers.UserAgent.ToString();
-        if (!string.IsNullOrWhiteSpace(ua)) user["client_user_agent"] = ua;
-        var fbp = http.Request.Cookies["_fbp"];
-        if (!string.IsNullOrWhiteSpace(fbp)) user["fbp"] = fbp;
-        var fbc = http.Request.Cookies["_fbc"];
-        if (!string.IsNullOrWhiteSpace(fbc)) user["fbc"] = fbc;
+        // signals for tying the sale back to the ad click that produced it. Only available with a live
+        // request (the confirmation page); the capture path reports without them, deduped by event id.
+        if (http != null)
+        {
+            var ip = http.Connection.RemoteIpAddress?.ToString();
+            if (!string.IsNullOrWhiteSpace(ip)) user["client_ip_address"] = ip;
+            var ua = http.Request.Headers.UserAgent.ToString();
+            if (!string.IsNullOrWhiteSpace(ua)) user["client_user_agent"] = ua;
+            var fbp = http.Request.Cookies["_fbp"];
+            if (!string.IsNullOrWhiteSpace(fbp)) user["fbp"] = fbp;
+            var fbc = http.Request.Cookies["_fbc"];
+            if (!string.IsNullOrWhiteSpace(fbc)) user["fbc"] = fbc;
+        }
 
         var items = (order.Items ?? new List<OrderItem>()).Select(i => new Dictionary<string, object?>
         {
@@ -315,7 +348,9 @@ public sealed class MetaConversionsApi : IMetaConversionsApi
             ["event_time"] = new DateTimeOffset(DateTime.SpecifyKind(
                 order.PaidAt ?? order.CreatedAt, DateTimeKind.Utc)).ToUnixTimeSeconds(),
             ["event_id"] = MetaCapi.PurchaseEventId(order.OrderNumber),
-            ["event_source_url"] = $"{http.Request.Scheme}://{http.Request.Host}{http.Request.Path}",
+            ["event_source_url"] = http != null
+                ? $"{http.Request.Scheme}://{http.Request.Host}{http.Request.Path}"
+                : (fallbackSourceUrl ?? "https://sterlinglams.com/"),
             ["action_source"] = "website",
             ["user_data"] = user,
             ["custom_data"] = custom
